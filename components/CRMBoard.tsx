@@ -133,7 +133,7 @@ const CHANNEL_COLORS: Record<string, string> = {
 function EditableCell({
   value, onChange, type = 'text', placeholder = '–', className = '',
 }: {
-  value: string; onChange: (v: string) => void; type?: string;
+  value: string | number; onChange: (v: string) => void; type?: string;
   placeholder?: string; className?: string;
 }) {
   const [editing, setEditing] = useState(false);
@@ -464,7 +464,7 @@ function SamplesSection({ subitem, onUpdate }: { subitem: Subitem; onUpdate: (u:
               <td className="px-2 py-1 border-r border-gray-100">
                 <StatusBadge value={subitem.sampleStatus} onChange={v => onUpdate({ sampleStatus: v })} options={sampleStatusOpts} colorMap={SAMPLE_STATUS_COLORS} small />
               </td>
-               <td className="px-2 py-1 border-r border-gray-100">
+              <td className="px-2 py-1 border-r border-gray-100">
                 <StatusBadge value={subitem.sampleType} onChange={v => onUpdate({ sampleType: v })} options={sampleTypeOpts} colorMap={SAMPLE_TYPE_COLORS} small />
               </td>
               <td className="px-2 py-1 border-r border-gray-100">
@@ -607,7 +607,7 @@ function SubitemsTable({ clientId, subitems, clientColor, onUpdateSubitem, onAdd
                   </td>
                   <td className="px-2 py-1 border-r border-gray-200" style={{ minWidth: 70 }}>
                     <EditableCell value={Number(sub.cost || 0) + Number(sub.manpower || 0) + Number(sub.ls || 0) + Number(sub.os || 0) + Number(sub.tcSgd || 0)}
-                     onChange={()=>{}} type="number" readOnly />
+                    onChange={()=>{}} type="number" readOnly />
                   </td>
                   <td className="px-2 py-1 border-r border-gray-200" style={{ minWidth: 60 }}>
                     <EditableCell value={sub.uc} onChange={v => onUpdateSubitem(sub.id, { uc: v })} type="number" />
