@@ -133,7 +133,7 @@ const CHANNEL_COLORS: Record<string, string> = {
 function EditableCell({
   value, onChange, type = 'text', placeholder = '–', className = '',
 }: {
-  value: string | number; onChange: (v: string) => void; type?: string;
+  value: string; onChange: (v: string) => void; type?: string;
   placeholder?: string; className?: string;
 }) {
   const [editing, setEditing] = useState(false);
@@ -606,8 +606,8 @@ function SubitemsTable({ clientId, subitems, clientColor, onUpdateSubitem, onAdd
                     <EditableCell value={sub.os} onChange={v => onUpdateSubitem(sub.id, { os: v })} type="number" />
                   </td>
                   <td className="px-2 py-1 border-r border-gray-200" style={{ minWidth: 70 }}>
-                    <EditableCell value={Number(sub.cost || 0) + Number(sub.manpower || 0) + Number(sub.ls || 0) + Number(sub.os || 0) + Number(sub.tcSgd || 0)}
-                    onChange={()=>{}} type="number" readOnly />
+                    <EditableCell value={String(Number(sub.cost || 0) + Number(sub.manpower || 0) + Number(sub.ls || 0) + Number(sub.os || 0) + Number(sub.tcSgd || 0))}
+                    onChange={()=>{}} type="number" />
                   </td>
                   <td className="px-2 py-1 border-r border-gray-200" style={{ minWidth: 60 }}>
                     <EditableCell value={sub.uc} onChange={v => onUpdateSubitem(sub.id, { uc: v })} type="number" />
@@ -656,7 +656,7 @@ function SubitemsTable({ clientId, subitems, clientColor, onUpdateSubitem, onAdd
                 {sub.showPayments && (
                   <tr>
                     <td colSpan={18} className="p-0 bg-green-50/20">
-                      <PaymentsSection subitem={sub} onUpdate={u => onUpdateSubitem(sub.id, u)} />
+                      <PaymentsSection subitem={sub} onUpdate={u => onUpdateSubitem(sub.id, u)} onUpdateClientStatus={()=>{}} />
                     </td>
                   </tr>
                 )}
@@ -995,7 +995,7 @@ export function CRMBoard({ clients, onUpdateClients, search='' }: CRMBoardProps)
       { id: `tl-${now}-4`, name: 'Local Shipping', person: '',  remarks: '', subProgress: '', timelineStart: '', timelineEnd: '', duration: '', dependency: 'Production FS-1',   status: '' },
       { id: `tl-${now}-5`, name: 'Sea/Air Freight', person: '',  remarks: '', subProgress: '', timelineStart: '', timelineEnd: '', duration: '', dependency: 'Local Shipping',   status: '' },
       { id: `tl-${now}-6`, name: 'Check Shipment Status (+3 from shipment start)', person: '',   subProgress: '', timelineStart: '', timelineEnd: '', duration: '', dependency: '', remarks: '',  status: '' },
-      { id: `tl-${now}-7`, name: 'NBD', person: '', remarks: '', subProgress: '', timelineStart: '', timelineEnd: '', duration: '', dependency: '', remarks: '',  status: '' },
+      { id: `tl-${now}-7`, name: 'NBD', person: '', remarks: '', subProgress: '', timelineStart: '', timelineEnd: '', duration: '', dependency: '',  status: '' },
     ];
     const sampleRows: SampleRow[] = [
       
