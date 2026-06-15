@@ -168,7 +168,7 @@ export function ReportsPanel({ clients }: ReportsPanelProps) {
                 />
                 <YAxis tick={{ fontSize: 9, fill: '#6b7280' }} />
                 <Tooltip
-                  formatter={(val: number) => [`SGD ${val.toLocaleString()}`, 'Revenue']}
+                  formatter={(val) => [`SGD ${Number(val ?? 0).toLocaleString()}`, 'Revenue']}
                   contentStyle={{ fontSize: 11, borderRadius: 8 }}
                 />
                 <Bar dataKey="revenue" radius={[4, 4, 0, 0]}>

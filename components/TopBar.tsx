@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Bell, Settings, User, Search, ChevronDown, Check, Info, AlertTriangle, CheckCircle, XCircle, X } from 'lucide-react';
-import { Notification } from '../types';
+import { Notification } from '../app/types';
 
 interface TopBarProps {
   value: string;
