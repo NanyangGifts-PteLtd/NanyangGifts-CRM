@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutGrid, Mail, BarChart2, Users, Package, Calendar, Star, Building2 } from 'lucide-react';
+import { LayoutGrid, Mail, BarChart2, Users, SquareChartGantt, Calendar, Star, Building2 } from 'lucide-react';
 
 export type SidePanel = 'crm' | 'emails' | 'reports';
 
@@ -71,10 +71,10 @@ export function Sidebar({ activePanel, onChangePanel, emailUnread, collapsed, on
         ))}
 
         {[
-          { icon: <Users size={18} />, label: 'Teams' },
-          { icon: <Building2 size={18} />, label: 'Companies' },
-          { icon: <Calendar size={18} />, label: 'Gantt Chart' },
-          { icon: <Star size={18} />, label: 'Starred' },
+          { icon: <Users size={17.5} />, label: 'Teams' },
+          { icon: <Building2 size={17.5} />, label: 'Companies' },
+          { icon: <SquareChartGantt size={17.5} />, label: 'Gantt Chart' },
+          { icon: <Star size={17.5} />, label: 'Starred' },
         ].map(item => (
           <button
             key={item.label}
