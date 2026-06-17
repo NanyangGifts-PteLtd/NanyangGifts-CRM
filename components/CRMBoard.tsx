@@ -52,7 +52,7 @@ const STATUS_COLORS: Record<string, string> = {
   'Project Started': '#CF6E93',
   'Project Done': '#dcb0ff',
   'Closed': '#0D1821',
-  'Unqualified': '#0C0C0C',
+  'Unqualified': '#561769',
 };
 
 const SUBITEM_STATUS_COLORS: Record<string, string> = {
@@ -226,14 +226,14 @@ function StatusBadge({
   };
 
   const bg = colorMap[value] || '#e5e7eb';
-  const textColor = bg === '#FFCB00' || bg === '#BFCC94' || bg === '#abd2fa' ? '#333' : '#fff';
+  const textColor = bg === '#FFCB00' || bg === '#ffffff';
 
 
   const menu = open && createPortal(
     <div
       ref={menuRef}
       style={menuStyle}
-      className="bg-white border font-semibold border-gray-200 rounded-lg shadow-2xl py-1 max-h-72"
+      className="bg-white border font-semibold border-gray-200 rounded-lg shadow-2xl py-1 max-h-90"
     >
       {options.map(opt => (
         <button
