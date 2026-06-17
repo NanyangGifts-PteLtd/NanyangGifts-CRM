@@ -7,6 +7,11 @@ import {
 } from 'lucide-react';
   import { Client, Subitem, TimelineRow, ClientStatus, ReplyStatus, SampleRow } from '../app/types';
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction, AlertDialogPortal, AlertDialogOverlay, AlertDialogTrigger } from './ui/alert-dialog';
+import { Button } from './ui/button';
+
+
+
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 export const EditableDate: React.FC = () => {
@@ -253,7 +258,7 @@ function StatusBadge({
     </div>,
     document.body,
   );
-// aaaa
+  
   return (
     <>
       <button
@@ -813,7 +818,7 @@ function ClientRow({
         <input
           type="file"
           multiple
-          className="mt-2 block w-full text-sm"
+          className="file:rounded-md file:border-0 file:font-semibold file:bg-[#7BCBD5] file:text-[#ffffff] hover:file:bg-[#6db6bf] file:mr-4 mt-2 block text-sm transition transform active:scale-95 duration-150"
           onChange={(e) => {
             const files = Array.from(e.target.files || []);
             setCloseFiles(files);
@@ -824,7 +829,7 @@ function ClientRow({
         <input
           type="file"
           multiple
-          className="mt-2 block w-full text-sm"
+          className="file:rounded-md file:border-0 file:font-semibold file:bg-[#7BCBD5] file:text-[#ffffff] hover:file:bg-[#6db6bf] file:mr-4 mt-2 block text-sm transition transform active:scale-95 duration-150"
           onChange={(e) => {
             const files = Array.from(e.target.files || []);
             setCloseFiles(files);
@@ -835,7 +840,7 @@ function ClientRow({
         <input
           type="file"
           multiple
-          className="mt-2 block w-full text-sm"
+          className="file:rounded-md file:border-0 file:font-semibold file:bg-[#7BCBD5] file:text-[#ffffff] hover:file:bg-[#6db6bf] file:mr-4 mt-2 block text-sm transition transform active:scale-95 duration-150"
           onChange={(e) => {
             const files = Array.from(e.target.files || []);
             setCloseFiles(files);
@@ -878,7 +883,7 @@ function ClientRow({
 
           onUpdate({
             status: "Closed",
-            // optionally store metadata too
+            // future: store metadata too
             // closedFiles: closeFiles,
             // closedAt: new Date().toISOString(),
           });
