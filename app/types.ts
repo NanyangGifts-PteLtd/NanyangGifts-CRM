@@ -16,13 +16,13 @@ export type ReplyStatus =
   | 'Replied'
 
 export type SubitemStatus =
-  | 'Pending'
+  | 'To Quote'
   | 'Verified'
   | 'Awarded'
-  | 'In Progress'
-  | 'Done'
-  | 'Cancelled'
-  | 'On Hold'
+  | 'Initial Quote'
+  | 'Quoted'
+  | 'Shortlisted'
+  | 'Failed'
   | '';
 
 export type PaymentStatus = 'Paid' | 'To Pay' | 'Partial' | 'Overdue';

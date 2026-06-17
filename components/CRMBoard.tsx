@@ -140,6 +140,7 @@ function EditableCell({
 }: {
   value: string; onChange: (v: string) => void; type?: string;
   placeholder?: string; className?: string;
+  readOnly?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [local, setLocal] = useState(value);
@@ -611,8 +612,8 @@ function SubitemsTable({ clientId, subitems, clientColor, onUpdateSubitem, onAdd
                     <EditableCell value={sub.os} onChange={v => onUpdateSubitem(sub.id, { os: v })} type="number" />
                   </td>
                   <td className="px-2 py-1 border-r border-gray-200" style={{ minWidth: 70 }}>
-                    <EditableCell value={String(Number(sub.cost || 0) + Number(sub.manpower || 0) + Number(sub.ls || 0) + Number(sub.os || 0) + Number(sub.tcSgd || 0))}
-                    onChange={()=>{}} type="number" />
+                    <div className="px-2 py-1 text-xs text-gray-800"> {Number(sub.cost || 0) + Number(sub.manpower || 0) + Number(sub.ls || 0) + Number(sub.os || 0) + Number(sub.tcSgd || 0)}
+                    </div>
                   </td>
                   <td className="px-2 py-1 border-r border-gray-200" style={{ minWidth: 60 }}>
                     <EditableCell value={sub.uc} onChange={v => onUpdateSubitem(sub.id, { uc: v })} type="number" />
@@ -1251,7 +1252,7 @@ export function CRMBoard({ clients, onUpdateClients, search='' }: CRMBoardProps)
                   opacity: filterStatus !== 'All' && filterStatus !== st ? 0.35 : 1,
                 }}
               >
-                {st} <span className="bg-white/30 rounded-full px-1">{count}</span>
+              {st} <span className="bg-white/30 rounded-full px-1">{count}</span>
               </button>
             );
           })}

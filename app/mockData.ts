@@ -107,7 +107,7 @@ export const initialClients: Client[] = [
     totalPrice: '', expanded: false, color: '#008e9b',
     subitems: [
       {
-        id: 's9', name: 'Custom Pen Set (Box of 3)', people: '', status: 'Pending', qty: '200', description: 'Logo on clip, 1 colour', supplier: '', cost: '2.5', ls: '', os: '', tc: '', uc: '', tcSgd: '', price: '', up: '', cnTracking:'', sgTracking:'',
+        id: 's9', name: 'Custom Pen Set (Box of 3)', people: '', status: 'To Quote', qty: '200', description: 'Logo on clip, 1 colour', supplier: '', cost: '2.5', ls: '', os: '', tc: '', uc: '', tcSgd: '', price: '', up: '', cnTracking:'', sgTracking:'',
         owner: '', shipper: '', paymentStatus: '', total: '', manpower: '', lsRmb: '', totalC: '', modeOfPayment: '', orderNumber: '', quantityProduced: '', sample: '', qtyFor: '', paymentAmount: '', difference: '', localOverseas:'Local', numOfCartons:'', paymentRemarks:'',
         timelineRows: makeTimelineRows(), showTimeline: false, showPayments: false,sampleRows:[], showSample: false, sampleOrderStatus:'', sampleStatus:'', sampleType:'',remarks:'',
       },
@@ -129,12 +129,12 @@ export const initialClients: Client[] = [
     totalPrice: '4,500', expanded: false, color: '#4e8397',
     subitems: [
       {
-        id: 's10', name: 'Leather Portfolio', people: 'JM', status: 'In Progress', qty: '500', description: 'Deboss logo, tan leather', supplier: 'CN Leather Co.', cost: '7.5', ls: '', os: '90', tc: '420', uc: '8.4', tcSgd: '120', price: '3750', up: '7.5', cnTracking:'', sgTracking:'',
+        id: 's10', name: 'Leather Portfolio', people: 'JM', status: 'Quoted', qty: '500', description: 'Deboss logo, tan leather', supplier: 'CN Leather Co.', cost: '7.5', ls: '', os: '90', tc: '420', uc: '8.4', tcSgd: '120', price: '3750', up: '7.5', cnTracking:'', sgTracking:'',
         owner: 'JM', shipper: '', paymentStatus: 'To Pay', total: '3750', manpower: '50', lsRmb: '150', totalC: '3900', modeOfPayment: '', orderNumber: '', quantityProduced: '', sample: '5', qtyFor: '500', paymentAmount: '', difference: '', localOverseas:'Local', numOfCartons:'', paymentRemarks:'',
         timelineRows: makeTimelineRows(), showTimeline: false, showPayments: false,sampleRows:[], showSample: false, sampleOrderStatus:'', sampleStatus:'', sampleType:'',remarks:'',
       },
       {
-        id: 's11', name: 'Metal Pen', people: '', status: 'Pending', qty: '500', description: 'Laser engrave logo', supplier: '', cost: '1.5', ls: '', os: '', tc: '', uc: '', tcSgd: '', price: '750', up: '1.5', cnTracking:'', sgTracking:'', 
+        id: 's11', name: 'Metal Pen', people: '', status: 'Awarded', qty: '500', description: 'Laser engrave logo', supplier: '', cost: '1.5', ls: '', os: '', tc: '', uc: '', tcSgd: '', price: '750', up: '1.5', cnTracking:'', sgTracking:'', 
         owner: '', shipper: '', paymentStatus: '', total: '750', manpower: '', lsRmb: '', totalC: '', modeOfPayment: '', orderNumber: '', quantityProduced: '', sample: '', qtyFor: '', paymentAmount: '', difference: '', localOverseas:'Local', numOfCartons:'', paymentRemarks:'',
         timelineRows: makeTimelineRows(), showTimeline: false, showPayments: false,sampleRows:[], showSample: false, sampleOrderStatus:'', sampleStatus:'', sampleType:'',remarks:'',
       },
