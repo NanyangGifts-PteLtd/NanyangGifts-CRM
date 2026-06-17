@@ -16,13 +16,6 @@
 ## Features
 
   - to be updated 
-  
-- supabase-ssr. A package to configure Supabase Auth to use cookies
-- Password-based authentication block installed via the [Supabase UI Library](https://supabase.com/ui/docs/nextjs/password-based-auth)
-- Styling with [Tailwind CSS](https://tailwindcss.com)
-- Components with [shadcn/ui](https://ui.shadcn.com/)
-- Optional deployment with [Supabase Vercel Integration and Vercel deploy](#deploy-your-own)
-  - Environment variables automatically assigned to Vercel project
 
 
 ## Clone and run locally
@@ -53,6 +46,6 @@
    npm run dev
    ```
 
-   The starter kit should now be running on [localhost:3000](http://localhost:3000/).
+   The web app should now be running on [localhost:3000](http://localhost:3000/).
 
 6. This template comes with the default shadcn/ui style initialized. If you instead want other ui.shadcn styles, delete `components.json` and [re-install shadcn/ui](https://ui.shadcn.com/docs/installation/next)

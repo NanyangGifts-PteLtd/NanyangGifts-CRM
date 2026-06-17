@@ -6,7 +6,7 @@ import {
   Filter, ChevronsDown, ChevronsUp, FileText, X, Package
 } from 'lucide-react';
   import { Client, Subitem, TimelineRow, ClientStatus, ReplyStatus, SampleRow } from '../app/types';
-
+import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction, AlertDialogPortal, AlertDialogOverlay, AlertDialogTrigger } from './ui/alert-dialog';
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 export const EditableDate: React.FC = () => {
@@ -686,7 +686,7 @@ function SubitemsTable({ clientId, subitems, clientColor, onUpdateSubitem, onAdd
   );
 }
 
-// ─── ClientRow ────────────────────────────────────────────────────────────────
+// ─── Client Rows ────────────────────────────────────────────────────────────────
 
 function ClientRow({
   client, isSelected, onToggleSelect, onUpdate, onUpdateSubitem,
@@ -705,6 +705,10 @@ function ClientRow({
   const channelOpts = ['Forms', 'Email', 'Referral', 'Whatsapp', 'E-comm', 'Direct'];
   const localOverseasOpts = ['Local', 'Overseas'];
   const subitemCount = client.subitems.length;
+  const [showCloseDialog, setShowCloseDialog] = useState(false);
+  const [pendingStatus, setPendingStatus] = useState<ClientStatus | null>(null);
+  const [closeFiles, setCloseFiles] = useState<File[]>([]);
+  const [closeConfirmed, setCloseConfirmed] = useState(false);
 
   return (
     <div className="mbs-3">
@@ -778,10 +782,118 @@ function ClientRow({
         <div className="flex items-center px-2 border-r border-gray-200 flex-shrink-0" style={{ minWidth: 110, width: 110 }}>
           <StatusBadge
             value={client.status}
-            onChange={v => onUpdate({ status: v as ClientStatus })}
+            onChange={(v) => {
+              const nextStatus = v as ClientStatus;
+
+              if (nextStatus=="Closed"){
+                setPendingStatus(nextStatus);
+                setCloseFiles([]);
+                setCloseConfirmed(false);
+                setShowCloseDialog(true);
+                return;
+              }
+              onUpdate({ status: nextStatus });
+            }
+            }
             options={CLIENT_STATUSES}
             colorMap={STATUS_COLORS}
           />
+          <AlertDialog open={showCloseDialog} onOpenChange={setShowCloseDialog}>
+  <AlertDialogContent>
+    <AlertDialogHeader>
+      <AlertDialogTitle>Close this client?</AlertDialogTitle>
+      <AlertDialogDescription>
+        Please upload the required files and confirm before marking this client as Closed.
+      </AlertDialogDescription>
+    </AlertDialogHeader>
+
+    <div className="space-y-4 py-2">
+      <div>
+        <label className="text-sm font-medium">Upload purchase order</label>
+        <input
+          type="file"
+          multiple
+          className="mt-2 block w-full text-sm"
+          onChange={(e) => {
+            const files = Array.from(e.target.files || []);
+            setCloseFiles(files);
+          }}
+        />
+        <br />
+        <label className="text-sm font-medium">Upload signed quotation</label>
+        <input
+          type="file"
+          multiple
+          className="mt-2 block w-full text-sm"
+          onChange={(e) => {
+            const files = Array.from(e.target.files || []);
+            setCloseFiles(files);
+          }}
+        />
+        <br />
+        <label className="text-sm font-medium">Upload proof of payment</label>
+        <input
+          type="file"
+          multiple
+          className="mt-2 block w-full text-sm"
+          onChange={(e) => {
+            const files = Array.from(e.target.files || []);
+            setCloseFiles(files);
+          }}
+        />
+        {closeFiles.length > 0 && (
+          <div className="mt-2 text-xs text-gray-500 font-semibold">
+            {closeFiles.length} file(s) selected
+          </div>
+        )}
+      </div>
+
+      <label className="flex items-center gap-2 text-sm font-semibold">
+        <input
+          type="checkbox"
+          checked={closeConfirmed}
+          onChange={(e) => setCloseConfirmed(e.target.checked)}
+        />
+        OCF signed?
+      </label>
+    </div>
+
+    <AlertDialogFooter>
+      <AlertDialogCancel
+        onClick={() => {
+          setPendingStatus(null);
+          setCloseFiles([]);
+          setCloseConfirmed(false);
+        }}
+      >
+        Cancel
+      </AlertDialogCancel>
+
+      <AlertDialogAction
+        onClick={(e) => {
+          if (!closeFiles.length || !closeConfirmed || pendingStatus !== "Closed") {
+            e.preventDefault();
+            return;
+          }
+
+          onUpdate({
+            status: "Closed",
+            // optionally store metadata too
+            // closedFiles: closeFiles,
+            // closedAt: new Date().toISOString(),
+          });
+
+          setShowCloseDialog(false);
+          setPendingStatus(null);
+          setCloseFiles([]);
+          setCloseConfirmed(false);
+        }}
+      >
+        Confirm Close
+      </AlertDialogAction>
+    </AlertDialogFooter>
+  </AlertDialogContent>
+</AlertDialog>
         </div>
 
         {/* Channel */}

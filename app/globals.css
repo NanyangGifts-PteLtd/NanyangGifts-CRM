@@ -60,6 +60,40 @@
     --chart-5: 340 75% 55%;
   }
 }
+/* Alert styles */
+.AlertDialogOverlay {
+	background-color: white;
+	position: fixed;
+	inset: 0;
+	animation: overlayShow 150ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.AlertDialogContent {
+	background-color: white;
+	border-radius: 6px;
+	box-shadow: var(--shadow-6);
+	position: fixed;
+	top: 50%;
+	left: 50%;
+	transform: translate(-50%, -50%);
+	width: 90vw;
+	max-width: 500px;
+	max-height: 85vh;
+	padding: 25px;
+	animation: contentShow 150ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.AlertDialogContent:focus {
+	outline: none;
+}
+
+.AlertDialogDescription {
+	margin-bottom: 20px;
+	color: var(--mauve-11);
+	font-size: 15px;
+	line-height: 1.5;
+}
+
 
 .recharts-wrapper:focus, 
 .recharts-wrapper *:focus {
