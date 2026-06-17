@@ -238,7 +238,7 @@ function StatusBadge({
     <div
       ref={menuRef}
       style={menuStyle}
-      className="bg-white border font-semibold border-gray-200 rounded-lg shadow-2xl py-1 max-h-90"
+      className="bg-white border font-semibold border-gray-200 rounded-lg shadow-2xl py-1 max-h-90 transition transform active:scale-95 duration-150"
     >
       {options.map(opt => (
         <button
@@ -264,7 +264,7 @@ function StatusBadge({
       <button
         ref={btnRef}
         onClick={handleOpen}
-        className={`rounded font-medium whitespace-nowrap leading-none ${small ? 'px-2 py-1 text-xs' : 'px-2 py-1 text-xs'}`}
+        className={`rounded font-medium whitespace-nowrap leading-none ${small ? 'px-2 py-1 text-xs' : 'px-2 py-1 text-xs'} transition transform active:scale-95 duration-150`}
         style={{ background: bg, color: '#ffffff', minWidth: 60 }}
       >
         {value || <span style={{ opacity: 0.5 }}>Set</span>}
@@ -498,8 +498,8 @@ function SubitemsTable({ clientId, subitems, clientColor, onUpdateSubitem, onAdd
   const cols = [
     { key: 'name', label: 'Subitem', w: 200 },
     { key: 'people', label: 'People', w: 70 },
-    { key: 'status', label: 'Local/Overseas', w: 90 },
-    { key: 'localOverseas', label: 'Status', w: 60 },
+    { key: 'localOverseas', label: 'Local/Overseas', w: 90 },
+    { key: 'status', label: 'Status', w: 60 },
     { key: 'qty', label: 'Qty', w: 55 },
     { key: 'description', label: 'Description', w: 180 },
     { key: 'remarks', label: 'Remarks', w: 140 },
@@ -784,7 +784,7 @@ function ClientRow({
         </div>
 
         {/* Status */}
-        <div className="flex items-center px-2 border-r border-gray-200 flex-shrink-0" style={{ minWidth: 110, width: 110 }}>
+        <div className="flex items-center px-2 border-r border-gray-200 flex-shrink-0" style={{ minWidth: 115, width: 115 }}>
           <StatusBadge
             value={client.status}
             onChange={(v) => {
@@ -997,7 +997,7 @@ const CLIENT_HEADER_COLS = [
   { label: 'People', width: 70 },
   { label: 'Reply Status', width: 90 },
   { label: 'Follow Up', width: 100 },
-  { label: 'Status', width: 110 },
+  { label: 'Status', width: 115 },
   { label: 'Channel', width: 90 },
   { label: 'Importance', width: 80 },
   { label: 'Company', width: 170 },
@@ -1236,7 +1236,7 @@ export function CRMBoard({ clients, onUpdateClients, search='' }: CRMBoardProps)
           )}
         </div>
 
-        {/* Status pills */}
+        {/* Status pills beside filter by status */}
         <div className="flex items-center gap-1">
           {CLIENT_STATUSES.map(st => {
             const count = clients.filter(c => c.status === st).length;
