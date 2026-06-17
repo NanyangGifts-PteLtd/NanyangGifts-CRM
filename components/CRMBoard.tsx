@@ -708,7 +708,6 @@ function ClientRow({
 }) {
   const importanceOpts = ['High', 'Medium', 'Low'];
   const channelOpts = ['Forms', 'Email', 'Referral', 'Whatsapp', 'E-comm', 'Direct'];
-  const localOverseasOpts = ['Local', 'Overseas'];
   const subitemCount = client.subitems.length;
   const [showCloseDialog, setShowCloseDialog] = useState(false);
   const [pendingStatus, setPendingStatus] = useState<ClientStatus | null>(null);
@@ -717,7 +716,7 @@ function ClientRow({
 
   return (
     <div className="mbs-3">
-      <div className={`flex items-stretch border-b border-gray-200 hover:bg-gray-50 group transition-colors ${isSelected ? 'bg-blue-50' : ''}`}>
+      <div className={`flex items-stretch border-b border-gray-100 hover:bg-gray-50 group transition-colors ${isSelected ? 'bg-blue-50' : ''}`}>
 
         {/* Checkbox + expand */}
         <div className="flex items-center px-2 gap-1.5 flex-shrink-0 border-r border-gray-200" style={{ minWidth: 60, width: 60 }}>
@@ -1289,7 +1288,7 @@ export function CRMBoard({ clients, onUpdateClients, search='' }: CRMBoardProps)
 
           {/* Sticky column header */}
           <div
-            className="flex items-center flex-shrink-0 border-b border-gray-200 bg-[#e7fdff] sticky top-0 z-10"
+            className="flex items-center flex-shrink-0 border-b border-gray-200 animated-background bg-gradient-to-r from-[#e7fdff] to-[#a3dfff] sticky top-0 z-10" // edit here 
             style={{ minWidth: TOTAL_MIN_WIDTH }}
           >
             {/* Select-all checkbox in first header cell */}

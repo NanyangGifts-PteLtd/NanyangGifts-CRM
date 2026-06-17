@@ -20,7 +20,7 @@ const navItems: { id: SidePanel; icon: React.ReactNode; label: string }[] = [
 
 export function Sidebar({ activePanel, onChangePanel, emailUnread, collapsed, onToggleCollapsed }: SidebarProps) {
   return (
-    <div className={`${collapsed ? 'w-12' : 'w-52'} bg-[#ffffff] flex flex-col border-r border-[#f2f8ff] flex-shrink-0 h-fulltransition-[width] duration-200 ease-in-out overflow-hidden
+    <div className={`${collapsed ? 'w-12' : 'w-52'} bg-[#ffffff] flex flex-col border-r border-[#f2f8ff] flex-shrink-0 h-fulltransition-[width] duration-200 ease-in-out overflow-hidden 
   `}
 >
       {/* Brand area */}
