@@ -44,7 +44,7 @@ export function SignUpForm({
         email,
         password,
         options: {
-          emailRedirectTo: `${window.location.origin}/protected`,
+          emailRedirectTo: `${window.location.origin}/`,
         },
       });
       if (error) throw error;
@@ -71,7 +71,7 @@ export function SignUpForm({
                 <Input
                   id="email"
                   type="email"
-                  placeholder="m@example.com"
+                  placeholder="a@example.com"
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
