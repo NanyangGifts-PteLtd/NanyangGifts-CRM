@@ -5,7 +5,7 @@ import {
   ChevronDown, ChevronRight, Plus, Calendar, CreditCard, Trash2,
   Filter, ChevronsDown, ChevronsUp, FileText, X, Package
 } from 'lucide-react';
-  import { Client, Subitem, TimelineRow, ClientStatus, ReplyStatus, SampleRow } from '../app/types';
+  import { Client, Subitem, TimelineRow, ClientStatus, ReplyStatus, SampleRow, SubitemStatus } from '../app/types';
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction, AlertDialogPortal, AlertDialogOverlay, AlertDialogTrigger } from './ui/alert-dialog';
 import { Button } from './ui/button';
 
@@ -483,7 +483,7 @@ function SamplesSection({ subitem, onUpdate }: { subitem: Subitem; onUpdate: (u:
   );
 }
 
-// ─── Subitems Table ────────────────────────────────────────────────────────────
+// ─── Subitem Rows ────────────────────────────────────────────────────────────
 
 function SubitemsTable({ clientId, subitems, clientColor, onUpdateSubitem, onAddSubitem, onDeleteSubitem }: {
   clientId: string; subitems: Subitem[]; clientColor: string;
@@ -1250,9 +1250,8 @@ export function CRMBoard({ clients, onUpdateClients, search='' }: CRMBoardProps)
                   background: STATUS_COLORS[st],
                   color: ['#FFCB00', '#BFCC94', '#abd2fa'].includes(STATUS_COLORS[st]) ? '#ffffff' : '#fff',
                   opacity: filterStatus !== 'All' && filterStatus !== st ? 0.35 : 1,
-                }}
-              >
-              {st}<span className="bg-white/30 rounded-full px-1">{count}</span>
+                }}>
+                {st}<span className="bg-white/30 rounded-full px-1">{count}</span>
               </button>
             );
           })}

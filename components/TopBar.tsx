@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Bell, Settings, User, Search, ChevronDown, Check, Info, AlertTriangle, CheckCircle, XCircle, X } from 'lucide-react';
 import { Notification } from '../app/types';
+import { LogoutButton } from './logout-button';
 
 interface TopBarProps {
   value: string;
@@ -166,13 +167,19 @@ export function TopBar({ value, onChange, placeholder = 'Search clients, items, 
               <p className="text-xs font-semibold text-gray-800">Admin User</p>
               <p className="text-xs text-gray-500 mt-0.5">admin@procrm.com</p>
             </div>
-            {['My Profile', 'Account Settings', 'My Notifications', 'Keyboard Shortcuts', 'Log Out'].map((item, i) => (
+            {['My Profile', 'Account Settings', 'My Notifications', 'Log Out'].map((item, i) => (
+              item == 'Log Out' ? (
+                <div key={item} className="text-left">
+                <LogoutButton className= "w-full text-left px-4 py-2 text-xs bg-white hover:bg-[#e7fdff] text-red-500" /> 
+                </div>
+              ) : (
               <button
                 key={item}
-                className={`w-full text-left px-4 py-2 text-xs hover:bg-[#e7fdff] border-b border-gray-50 ${i === 4 ? 'text-red-500' : 'text-gray-700'}`}
+                className="w-full text-left px-4 py-2 text-xs hover:bg-[#e7fdff] text-gray-700"
               >
                 {item}
               </button>
+            )
             ))}
           </div>
         )}

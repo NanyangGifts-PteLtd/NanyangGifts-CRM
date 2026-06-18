@@ -129,7 +129,7 @@ export const initialClients: Client[] = [
     totalPrice: '4,500', expanded: false, color: '#4e8397',
     subitems: [
       {
-        id: 's10', name: 'Leather Portfolio', people: 'JM', status: 'Quoted', qty: '500', description: 'Deboss logo, tan leather', supplier: 'CN Leather Co.', cost: '7.5', ls: '', os: '90', tc: '420', uc: '8.4', tcSgd: '120', price: '3750', up: '7.5', cnTracking:'', sgTracking:'',
+        id: 's10', name: 'Leather Portfolio', people: 'JM', status: 'Verified', qty: '500', description: 'Deboss logo, tan leather', supplier: 'CN Leather Co.', cost: '7.5', ls: '', os: '90', tc: '420', uc: '8.4', tcSgd: '120', price: '3750', up: '7.5', cnTracking:'', sgTracking:'',
         owner: 'JM', shipper: '', paymentStatus: 'To Pay', total: '3750', manpower: '50', lsRmb: '150', totalC: '3900', modeOfPayment: '', orderNumber: '', quantityProduced: '', sample: '5', qtyFor: '500', paymentAmount: '', difference: '', localOverseas:'Local', numOfCartons:'', paymentRemarks:'',
         timelineRows: makeTimelineRows(), showTimeline: false, showPayments: false,sampleRows:[], showSample: false, sampleOrderStatus:'', sampleStatus:'', sampleType:'',remarks:'',
       },
