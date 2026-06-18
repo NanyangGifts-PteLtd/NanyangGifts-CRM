@@ -1252,7 +1252,7 @@ export function CRMBoard({ clients, onUpdateClients, search='' }: CRMBoardProps)
                   opacity: filterStatus !== 'All' && filterStatus !== st ? 0.35 : 1,
                 }}
               >
-              {st} <span className="bg-white/30 rounded-full px-1">{count}</span>
+              {st}<span className="bg-white/30 rounded-full px-1">{count}</span>
               </button>
             );
           })}
