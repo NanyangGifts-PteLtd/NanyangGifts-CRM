@@ -526,7 +526,7 @@ function SubitemsTable({ clientId, subitems, clientColor, onUpdateSubitem, onAdd
       <div className="overflow-x-auto">
         <table className="border-collapse" style={{ minWidth: 1250 }}>
           <thead>
-            <tr className="bg-[#f0f0f3] border-b border-gray-200">
+            <tr className="bg-gray-50 border-b border-gray-200">
               <th className="w-8 px-2 py-1 border-r border-gray-200" />
               {cols.map(col => (
                 <th key={col.key}
@@ -546,7 +546,7 @@ function SubitemsTable({ clientId, subitems, clientColor, onUpdateSubitem, onAdd
                   </td>
                   {/* Name + timeline, payment, sample buttons */}
                   <td className="px-2 py-1 border-r border-gray-200" style={{ minWidth: 300 }}>
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1 transition transform active:scale-95 duration-150">
                       <FileText size={11} className="text-gray-400 flex-shrink-0" />
                       <EditableCell value={sub.name} onChange={v => onUpdateSubitem(sub.id, { name: v })} placeholder="Subitem name" />
                          {/* Delete subitem */}
@@ -569,7 +569,7 @@ function SubitemsTable({ clientId, subitems, clientColor, onUpdateSubitem, onAdd
                       </button>
                       <button
                         onClick={() => onUpdateSubitem(sub.id, { showPayments: !sub.showPayments, showTimeline: false, showSample: false })}
-                        className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium transition-colors whitespace-nowrap flex-shrink-0 ${
+                        className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium transition-colors whitespace-nowrap flex-shrink-0  ${
                           sub.showPayments ? 'bg-[#f291b6] text-white' : 'bg-transparent text-[#e87da6] hover:bg-pink-100 border border-pink-200'
                         }`}
                       >
@@ -632,7 +632,8 @@ function SubitemsTable({ clientId, subitems, clientColor, onUpdateSubitem, onAdd
                     <EditableCell value={sub.tcSgd} onChange={v => onUpdateSubitem(sub.id, { tcSgd: v })} type="number" />
                   </td>
                   <td className="px-2 py-1 border-r border-gray-200" style={{ minWidth: 70 }}>
-                    <EditableCell value={sub.price} onChange={v => onUpdateSubitem(sub.id, { price: v })} type="number" />
+                    <div className="px-2 py-1 text-xs text-gray-800"> {Number(sub.up || 0) * Number(sub.qty || 0)}
+                    </div>
                   </td>
                   <td className="px-2 py-1 border-r border-gray-200" style={{ minWidth: 55 }}>
                     <EditableCell value={sub.up} onChange={v => onUpdateSubitem(sub.id, { up: v })} type="number" />
@@ -1246,7 +1247,7 @@ export function CRMBoard({ clients, onUpdateClients, search='' }: CRMBoardProps)
               <button
                 key={st}
                 onClick={() => setFilterStatus(filterStatus === st ? 'All' : st)}
-                className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap flex-shrink-0 transition-opacity"
+                className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap flex-shrink-0 transition-opacity transition transform active:scale-95 duration-150"
                 style={{
                   background: STATUS_COLORS[st],
                   color: ['#FFCB00', '#BFCC94', '#abd2fa'].includes(STATUS_COLORS[st]) ? '#ffffff' : '#fff',
