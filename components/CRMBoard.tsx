@@ -5,7 +5,7 @@ import {
   ChevronDown, ChevronRight, Plus, Calendar, CreditCard, Trash2,
   Filter, ChevronsDown, ChevronsUp, FileText, X, Package, Activity
 } from 'lucide-react';
-  import { Client, Subitem, TimelineRow, ClientStatus, ReplyStatus, SampleRow } from '../app/types';
+  import { Client, Subitem, TimelineRow, ClientStatus, ReplyStatus, SampleRow, ActivityEntry } from '../app/types';
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction, AlertDialogPortal, AlertDialogOverlay, AlertDialogTrigger } from './ui/alert-dialog';
 import { createClient } from '@/lib/supabase/client';
 
