@@ -36,9 +36,9 @@ export const STATUS_COLORS: Record<string, string> = {
 };
 
 export const IMPORTANCE_COLORS: Record<string, string> = {
-    'High': '#ff5a5a',
+    'High': '#ff6f9c',
     'Medium': '#ff99b6',
-    'Low': '#FFd0f2'
+    'Low': '#ffd0e4'
 };
 
 export const CHANNEL_COLORS: Record<string, string> = {
