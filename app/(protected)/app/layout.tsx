@@ -1,18 +1,14 @@
-import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { Suspense } from "react";
+import AuthGate from "./AuthGate";
 
-
-export default async function ProtectedAppLayout({
+export default function ProtectedAppLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const supabase = await createClient();
-  const { data, error } = await supabase.auth.getUser();
-
-  if (error || !data.user) {
-    redirect("/auth/login");
-  }
-
-  return <>{children}</>;
+  return (
+    <Suspense fallback={null}>
+      <AuthGate>{children}</AuthGate>
+    </Suspense>
+  );
 }
