@@ -111,13 +111,13 @@ export function ClientRow({
                         type="checkbox"
                         checked={isSelected}
                         onChange={onToggleSelect}
-                        className="w-3 h-3 rounded cursor-pointer accent-[#7BCBD5]"
+                        className="w-3 h-3 rounded cursor-pointer accent-[#7BCBD5] transition transform active:scale-150 duration-200"
                     />
                     <button
                         onClick={() => onUpdate({ expanded: !client.expanded })}
                         className="text-gray-400 hover:text-gray-700 transition-colors"
                     >
-                        {client.expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                        {client.expanded ? <ChevronDown size={14} className="transition transform active:scale-100 duration-200" /> : <ChevronRight size={14} className="transition transform active:scale-150 duration-200" />}
                     </button>
                 </div>
 
@@ -137,7 +137,7 @@ export function ClientRow({
                         type="button"
                         onClick={() => setShowActivityLog(true)}
                         className="px-2 py-1 text-[10px] font-medium text-cyan-500 hover:bg-gray-50 hover:text-cyan-600 transition transform active:scale-95 duration-150"
-                    > <Activity size={10} /> </button>
+                    > <Activity size={10} className="transition transform active:scale-150 duration-200" /> </button>
                     {showActivityLog && (
                         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
                             <div className="w-full max-w-2xl rounded-xl bg-white p-4 shadow-xl">

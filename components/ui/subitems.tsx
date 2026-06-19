@@ -216,7 +216,7 @@ export function SubitemsTable({ clientId, subitems, clientColor, onUpdateSubitem
                             <td colSpan={18} className="px-3 py-1.5">
                                 <button
                                     onClick={onAddSubitem}
-                                    className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-blue-500 transition-colors"
+                                    className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-[#7BCBD5] transition-colors transition transform active:scale-95 duration-150"
                                 >
                                     <Plus size={12} />Add subitem
                                 </button>

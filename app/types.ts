@@ -104,12 +104,14 @@ export interface Subitem {
 
 export type ActivityEntry = {
   id: string,
-  action: string,
-  fieldName?: string,
-  oldValue?: unknown,
+  action: "field_changed" | "subitem_added" | "subitem_deleted" | "subitem_field_changed";
+  fieldName?: string;
+  oldValue?: unknown;
   newValue?: unknown;
   actorName: string;
   createdAt: string;
+  subitemId?: string;
+  subitemName?: string;
 }
 
 export interface Client {

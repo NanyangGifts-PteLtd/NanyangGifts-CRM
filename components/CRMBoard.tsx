@@ -4,7 +4,7 @@ import {
   ChevronDown, Plus, Trash2,
   Filter, ChevronsDown, ChevronsUp, X
 } from 'lucide-react';
-import { Client, Subitem, TimelineRow, ClientStatus, SampleRow} from '../app/types';
+import { Client, Subitem, TimelineRow, ClientStatus, SampleRow, ActivityEntry} from '../app/types';
 import { createClient } from '@/lib/supabase/client';
 import { ClientRow, CLIENT_STATUSES, STATUS_COLORS } from './ui/clientrows';
 
@@ -178,72 +178,175 @@ export function CRMBoard({ clients, onUpdateClients, search='' }: CRMBoardProps)
   };
 
   // ── client/subitem updates ──
-  const updateClient = useCallback(async (clientId: string, updates: Partial<Client>) => {
-    
+const EXCLUDED_ACTIVITY_FIELDS = new Set<keyof Client>(["expanded"]);
+
+const updateClient = useCallback(
+  async (clientId: string, updates: Partial<Client>) => {
     const actorName = await getCurrentActorName();
 
-    onUpdateClients( 
-    clients.map((client) => {
-      if (client.id !== clientId) return client;
+    onUpdateClients(
+      clients.map((client) => {
+        if (client.id !== clientId) return client;
 
-      const newEntries = Object.entries(updates)
-        .filter(([field, newValue]) => client[field as keyof Client] !== newValue)
-        .map(([field, newValue]) => ({
+        const newEntries: ActivityEntry[] = Object.entries(updates)
+          .filter(([field, newValue]) => {
+            const typedField = field as keyof Client;
+
+            if (EXCLUDED_ACTIVITY_FIELDS.has(typedField)) return false;
+
+            return client[typedField] !== newValue;
+          })
+          .map(([field, newValue]) => ({
+            id: crypto.randomUUID(),
+            action: "field_changed",
+            fieldName: field,
+            oldValue: client[field as keyof Client],
+            newValue,
+            actorName,
+            createdAt: new Date().toISOString(),
+          }));
+
+        return {
+          ...client,
+          ...updates,
+          activityLog: [...(client.activityLog ?? []), ...newEntries],
+        };
+      })
+    );
+  },
+  [clients, onUpdateClients]
+);
+
+// Update subitem 
+const updateSubitem = useCallback(
+  async (clientId: string, subitemId: string, updates: Partial<Subitem>) => {
+    const actorName = await getCurrentActorName();
+
+    onUpdateClients(
+      clients.map((client) => {
+        if (client.id !== clientId) return client;
+
+        const targetSubitem = client.subitems.find((s) => s.id === subitemId);
+        if (!targetSubitem) return client;
+
+        const subitemEntries: ActivityEntry[] = Object.entries(updates)
+          .filter(([field, newValue]) => {
+            return targetSubitem[field as keyof Subitem] !== newValue;
+          })
+          .map(([field, newValue]) => ({
+            id: crypto.randomUUID(),
+            action: "subitem_field_changed",
+            fieldName: field,
+            oldValue: targetSubitem[field as keyof Subitem],
+            newValue,
+            actorName,
+            createdAt: new Date().toISOString(),
+            subitemId,
+            subitemName:
+              (targetSubitem as { item?: string; name?: string }).item ??
+              (targetSubitem as { item?: string; name?: string }).name ??
+              "Subitem",
+          }));
+
+        return {
+          ...client,
+          subitems: client.subitems.map((s) =>
+            s.id === subitemId ? { ...s, ...updates } : s
+          ),
+          activityLog: [...(client.activityLog ?? []), ...subitemEntries],
+        };
+      })
+    );
+  },
+  [clients, onUpdateClients]
+);
+
+  const addSubitem = useCallback(
+  async (clientId: string) => {
+    const actorName = await getCurrentActorName();
+    const now = Date.now();
+
+    const timelineRows: TimelineRow[] = [
+      { id: `tl-${now}-1`, name: "Sample", person: "", remarks: "", subProgress: "", timelineStart: "", timelineEnd: "", duration: "", dependency: "", status: "" },
+      { id: `tl-${now}-2`, name: "Production", person: "", remarks: "", subProgress: "", timelineStart: "", timelineEnd: "", duration: "", dependency: "Sample", status: "" },
+      { id: `tl-${now}-3`, name: "Check Production Status (+3 from production start)", person: "", subProgress: "", timelineStart: "", timelineEnd: "", duration: "", dependency: "", status: "", remarks: "" },
+      { id: `tl-${now}-4`, name: "Local Shipping", person: "", remarks: "", subProgress: "", timelineStart: "", timelineEnd: "", duration: "", dependency: "Production FS-1", status: "" },
+      { id: `tl-${now}-5`, name: "Sea/Air Freight", person: "", remarks: "", subProgress: "", timelineStart: "", timelineEnd: "", duration: "", dependency: "Local Shipping", status: "" },
+      { id: `tl-${now}-6`, name: "Check Shipment Status (+3 from shipment start)", person: "", subProgress: "", timelineStart: "", timelineEnd: "", duration: "", dependency: "", remarks: "", status: "" },
+      { id: `tl-${now}-7`, name: "NBD", person: "", remarks: "", subProgress: "", timelineStart: "", timelineEnd: "", duration: "", dependency: "", status: "" },
+    ];
+
+    const sampleRows: SampleRow[] = [];
+
+    const newSubitem: Subitem = {
+      id: `s-${now}`, name: "New Item", people: "", status: "", qty: "", description: "",
+      supplier: "", cost: "", manpower: "", ls: "", os: "", tc: "", uc: "", tcSgd: "",
+      price: "", up: "", owner: "", shipper: "", paymentStatus: "", total: "",
+      lsRmb: "", totalC: "", modeOfPayment: "", orderNumber: "", quantityProduced: "",
+      sample: "",qtyFor: "",paymentAmount: "",difference: "",paymentRemarks: "",
+      numOfCartons: "",cnTracking: "",sgTracking: "",localOverseas: "Local",
+      remarks: "",sampleOrderStatus: "",timelineRows,showTimeline: false,
+      showPayments: false,sampleRows,sampleStatus: "",sampleType: "",showSample: false,
+    };
+
+    onUpdateClients(
+      clients.map((client) => {
+        if (client.id !== clientId) return client;
+
+        const entry: ActivityEntry = {
           id: crypto.randomUUID(),
-          action: "field_changed",
-          fieldName: field,
-          oldValue: client[field as keyof Client],
-          newValue,
+          action: "subitem_added",
           actorName,
           createdAt: new Date().toISOString(),
-        }));
+          subitemId: newSubitem.id,
+          subitemName: newSubitem.name ?? "Subitem",
+          newValue: newSubitem,
+        };
 
-      return {
-        ...client,
-        ...updates,
-        activityLog: [...(client.activityLog ?? []), ...newEntries],
-      };
-    })
-  );
-}, [clients, onUpdateClients]);
+        return {
+          ...client,
+          subitems: [...client.subitems, newSubitem],
+          activityLog: [...(client.activityLog ?? []), entry],
+        };
+      })
+    );
+  },
+  [clients, onUpdateClients]
+);
+  const deleteSubitem = useCallback(
+  async (clientId: string, subitemId: string) => {
+    const actorName = await getCurrentActorName();
 
-  const updateSubitem = useCallback((clientId: string, subitemId: string, updates: Partial<Subitem>) => {
-    onUpdateClients(clients.map(c =>
-      c.id !== clientId ? c
-        : { ...c, subitems: c.subitems.map(s => s.id === subitemId ? { ...s, ...updates } : s) }
-    ));
-  }, [clients, onUpdateClients]);
+    onUpdateClients(
+      clients.map((client) => {
+        if (client.id !== clientId) return client;
 
-  const addSubitem = useCallback((clientId: string) => {
-    const now = Date.now();
-    const timelineRows: TimelineRow[] = [
-      { id: `tl-${now}-1`, name: 'Sample', person: '',  remarks: '', subProgress: '', timelineStart: '', timelineEnd: '', duration: '', dependency: '',   status: '' },
-      { id: `tl-${now}-2`, name: 'Production', person: '',  remarks: '', subProgress: '', timelineStart: '', timelineEnd: '', duration: '', dependency: 'Sample',  status: '' },
-      { id: `tl-${now}-3`, name: 'Check Production Status (+3 from production start)', person: '',   subProgress: '', timelineStart: '', timelineEnd: '', duration: '', dependency: '',   status: '', remarks:'' },
-      { id: `tl-${now}-4`, name: 'Local Shipping', person: '',  remarks: '', subProgress: '', timelineStart: '', timelineEnd: '', duration: '', dependency: 'Production FS-1',   status: '' },
-      { id: `tl-${now}-5`, name: 'Sea/Air Freight', person: '',  remarks: '', subProgress: '', timelineStart: '', timelineEnd: '', duration: '', dependency: 'Local Shipping',   status: '' },
-      { id: `tl-${now}-6`, name: 'Check Shipment Status (+3 from shipment start)', person: '',   subProgress: '', timelineStart: '', timelineEnd: '', duration: '', dependency: '', remarks: '',  status: '' },
-      { id: `tl-${now}-7`, name: 'NBD', person: '', remarks: '', subProgress: '', timelineStart: '', timelineEnd: '', duration: '', dependency: '',  status: '' },
-    ];
-    const sampleRows: SampleRow[] = [
-      
-    ];
-    const newSubitem: Subitem = {
-      id: `s-${now}`, name: 'New Item', people: '', status: '', qty: '', description: '',
-      supplier: '', cost: '', manpower: '', ls: '', os: '', tc: '', uc: '', tcSgd: '', price: '', up: '',
-      owner: '', shipper: '', paymentStatus: '', total: '', lsRmb: '', totalC: '',
-      modeOfPayment: '', orderNumber: '', quantityProduced: '', sample: '', qtyFor: '',
-      paymentAmount: '', difference: '', paymentRemarks: '', numOfCartons:'', cnTracking:'', sgTracking:'', localOverseas:'Local', remarks:'', sampleOrderStatus:'',
-      timelineRows, showTimeline: false, showPayments: false, sampleRows, sampleStatus:'', sampleType:'', showSample: false,
-    };
-    onUpdateClients(clients.map(c => c.id === clientId ? { ...c, subitems: [...c.subitems, newSubitem] } : c));
-  }, [clients, onUpdateClients]);
+        const targetSubitem = client.subitems.find((s) => s.id === subitemId);
+        if (!targetSubitem) return client;
 
-  const deleteSubitem = useCallback((clientId: string, subitemId: string) => {
-    onUpdateClients(clients.map(c =>
-      c.id === clientId ? { ...c, subitems: c.subitems.filter(s => s.id !== subitemId) } : c
-    ));
-  }, [clients, onUpdateClients]);
+        const entry: ActivityEntry = {
+          id: crypto.randomUUID(),
+          action: "subitem_deleted",
+          actorName,
+          createdAt: new Date().toISOString(),
+          subitemId,
+          subitemName:
+            (targetSubitem as { item?: string; name?: string }).item ??
+            (targetSubitem as { item?: string; name?: string }).name ??
+            "Subitem",
+          oldValue: targetSubitem,
+        };
+
+        return {
+          ...client,
+          subitems: client.subitems.filter((s) => s.id !== subitemId),
+          activityLog: [...(client.activityLog ?? []), entry],
+        };
+      })
+    );
+  },
+  [clients, onUpdateClients]
+);
 
   const deleteClient = useCallback((clientId: string) => {
     onUpdateClients(clients.filter(c => c.id !== clientId));
