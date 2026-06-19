@@ -117,7 +117,7 @@ export function ClientRow({
                         onClick={() => onUpdate({ expanded: !client.expanded })}
                         className="text-gray-400 hover:text-gray-700 transition-colors"
                     >
-                        {client.expanded ? <ChevronDown size={14} className="transition transform active:scale-150 duration-200" /> : <ChevronRight size={14} className="transition transform active:scale-150 duration-200" />}
+                        {client.expanded ? <ChevronDown size={14} className="transition transform active:scale-150 duration-100" /> : <ChevronRight size={14} className="transition transform active:scale-150 duration-100" />}
                     </button>
                 </div>
 
