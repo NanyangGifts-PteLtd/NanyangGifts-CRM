@@ -17,37 +17,37 @@ export const REPLY_STATUSES: ReplyStatus[] = [
 ];
 
 export const REPLY_STATUS_COLORS: Record<string, string> = {
-    'Waiting...': '#c5b1ff',
+    'Waiting...': '#b9f7e0',
     'Replied': '#00cdb6'
 };
 
 export const STATUS_COLORS: Record<string, string> = {
-    'New Lead': '#abd2fa',
-    'Contacted': '#7692ff',
-    'Quoted': '#3d518c',
+    'New Lead': '#7ae9f0',
+    'Contacted': '#5accf3',
+    'Quoted': '#67aaea',
     'Failed': '#d4102d',
-    'Overdue': '#1b2cc1',
+    'Overdue': '#a13762',
     'Follow Up': '#9D4393',
     'Shortlisted': '#a159cf',
-    'Project Started': '#CF6E93',
+    'Project Started': '#a05d9f',
     'Project Done': '#dcb0ff',
     'Closed': '#0D1821',
-    'Unqualified': '#561769',
+    'Unqualified': '#8985ce',
 };
 
 export const IMPORTANCE_COLORS: Record<string, string> = {
-    'High': '#e03131',
-    'Medium': '#ff85a8',
-    'Low': '#ffccd5'
+    'High': '#ff5a5a',
+    'Medium': '#ff99b6',
+    'Low': '#FFd0f2'
 };
 
 export const CHANNEL_COLORS: Record<string, string> = {
     'Forms': '#82E1C2',
-    'Email': '#0085FF',
-    'Referral': '#00C875',
-    'Direct': '#0077B5',
-    'Whatsapp': '#07C160',
-    'E-comm': '#008b74'
+    'Email': '#70b5f6',
+    'Referral': '#0085c8',
+    'Direct': '#1eadd1',
+    'Whatsapp': '#67e284',
+    'E-comm': '#1cdcbc'
 };
 
 

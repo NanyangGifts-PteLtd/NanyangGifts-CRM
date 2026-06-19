@@ -88,7 +88,7 @@ export function SubitemsTable({ clientId, subitems, clientColor, onUpdateSubitem
                                             <FileText size={11} className="text-gray-400 flex-shrink-0" />
                                             <EditableCell value={sub.name} onChange={v => onUpdateSubitem(sub.id, { name: v })} placeholder="Subitem name" />
                                             {/* Delete subitem */}
-                                            <td className="px-2 py-1" style={{ minWidth: 40 }}>
+                                            <div className="px-2 py-1" style={{ minWidth: 40 }}>
                                                 <button
                                                     onClick={() => onDeleteSubitem(sub.id)}
                                                     className="p-1 text-gray-300 hover:text-red-400 transition-colors opacity-100 group-hover:opacity-100"
@@ -96,7 +96,7 @@ export function SubitemsTable({ clientId, subitems, clientColor, onUpdateSubitem
                                                 >
                                                     <Trash2 size={15} />
                                                 </button>
-                                            </td>
+                                            </div>
                                             <button
                                                 onClick={() => onUpdateSubitem(sub.id, { showTimeline: !sub.showTimeline, showPayments: false, showSample: false })}
                                                 className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium transition-colors whitespace-nowrap flex-shrink-0 ${sub.showTimeline ? 'bg-[#7BCBD5] text-white' : 'bg-transparent text-[#6db6bf] hover:bg-teal-100 border border-teal-200'
