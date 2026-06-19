@@ -84,7 +84,7 @@ export function SubitemsTable({ clientId, subitems, clientColor, onUpdateSubitem
                                     </td>
                                     {/* Name + timeline, payment, sample buttons */}
                                     <td className="px-2 py-1 border-r border-gray-200" style={{ minWidth: 300 }}>
-                                        <div className="flex items-center gap-1 transition transform active:scale-95 duration-150">
+                                        <div className="flex items-center gap-1">
                                             <FileText size={11} className="text-gray-400 flex-shrink-0" />
                                             <EditableCell value={sub.name} onChange={v => onUpdateSubitem(sub.id, { name: v })} placeholder="Subitem name" />
                                             {/* Delete subitem */}
@@ -99,21 +99,21 @@ export function SubitemsTable({ clientId, subitems, clientColor, onUpdateSubitem
                                             </div>
                                             <button
                                                 onClick={() => onUpdateSubitem(sub.id, { showTimeline: !sub.showTimeline, showPayments: false, showSample: false })}
-                                                className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium transition-colors whitespace-nowrap flex-shrink-0 ${sub.showTimeline ? 'bg-[#7BCBD5] text-white' : 'bg-transparent text-[#6db6bf] hover:bg-teal-100 border border-teal-200'
+                                                className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium transition-colors whitespace-nowrap flex-shrink-0 transition transform active:scale-95 duration-2 ${sub.showTimeline ? 'bg-[#7BCBD5] text-white' : 'bg-transparent text-[#6db6bf] hover:bg-teal-100 border border-teal-200'
                                                     }`}
                                             >
                                                 <Calendar size={9} />Timeline
                                             </button>
                                             <button
                                                 onClick={() => onUpdateSubitem(sub.id, { showPayments: !sub.showPayments, showTimeline: false, showSample: false })}
-                                                className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium transition-colors whitespace-nowrap flex-shrink-0  ${sub.showPayments ? 'bg-[#f291b6] text-white' : 'bg-transparent text-[#e87da6] hover:bg-pink-100 border border-pink-200'
+                                                className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium transition-colors whitespace-nowrap flex-shrink-0 transition transform active:scale-95 duration-2  ${sub.showPayments ? 'bg-[#f291b6] text-white' : 'bg-transparent text-[#e87da6] hover:bg-pink-100 border border-pink-200'
                                                     }`}
                                             >
                                                 <CreditCard size={9} />Payments
                                             </button>
                                             <button
                                                 onClick={() => onUpdateSubitem(sub.id, { showPayments: false, showTimeline: false, showSample: !sub.showSample })}
-                                                className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium transition-colors whitespace-nowrap flex-shrink-0 ${sub.showSample ? 'bg-[#d5a5ec] text-white' : 'bg-transparent text-[#ac7ec2] hover:bg-purple-100 border border-purple-200'
+                                                className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium transition-colors whitespace-nowrap flex-shrink-0 transition transform active:scale-95 duration-2 ${sub.showSample ? 'bg-[#d5a5ec] text-white' : 'bg-transparent text-[#ac7ec2] hover:bg-purple-100 border border-purple-200'
                                                     }`}
                                             >
                                                 <Package size={9} />Sample
