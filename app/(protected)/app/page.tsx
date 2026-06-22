@@ -111,7 +111,9 @@ export default function App() {
             <ReportsPanel clients={clients} />
           )}
           {activePanel === 'ganttchart' && (
+            <div className="flex-1 min-h-0 overflow-auto">
             <GanttChart clients={clients} />
+            </div>
           )}
         </main>
       </div>

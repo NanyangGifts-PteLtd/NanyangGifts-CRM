@@ -3,9 +3,9 @@ import { Client, Email, Notification, TimelineRow } from './types';
 function makeTimelineRows(): TimelineRow[] {
   return [
     { id: `tl-${Math.random().toString(36).slice(2)}`, name: 'Sample', person: '',  remarks: '', subProgress: 'Not Started', timelineStart: '', timelineEnd: '', duration: '', dependency: '',   status: '' },
-    { id: `tl-${Math.random().toString(36).slice(2)}`, name: 'Production', person: '',  remarks: '', subProgress: 'Done', timelineStart: '2024-06-04', timelineEnd: '2024-06-07', duration: '4', dependency: 'Sample',  status: '' },
+    { id: `tl-${Math.random().toString(36).slice(2)}`, name: 'Production', person: '',  remarks: '', subProgress: 'Done', timelineStart: '2026-06-04', timelineEnd: '2026-06-07', duration: '4', dependency: 'Sample',  status: '' },
     { id: `tl-${Math.random().toString(36).slice(2)}`, name: 'Check Production Status (+3 from production start)', person: '',  remarks: '', subProgress: '', timelineStart: '', timelineEnd: '', duration: '', dependency: '', status: '' },
-    { id: `tl-${Math.random().toString(36).slice(2)}`, name: 'Local Shipping', person: '',  remarks: '', subProgress: 'Started', timelineStart: '2024-06-07', timelineEnd: '2024-06-10', duration: '4', dependency: 'Production FS-1',  status: '' },
+    { id: `tl-${Math.random().toString(36).slice(2)}`, name: 'Local Shipping', person: '',  remarks: '', subProgress: 'Started', timelineStart: '2026-06-07', timelineEnd: '2026-06-10', duration: '4', dependency: 'Production FS-1',  status: '' },
     { id: `tl-${Math.random().toString(36).slice(2)}`, name: 'Sea/Air Freight', person: '',  remarks: '', subProgress: 'Not Started', timelineStart: '', timelineEnd: '', duration: '', dependency: 'Local Shipping',  status: '' },
     { id: `tl-${Math.random().toString(36).slice(2)}`, name: 'Check Shipment Status (+3 from shipment start)', person: '', remarks: '', subProgress: 'Not Started', timelineStart: '', timelineEnd: '', duration: '', dependency: '',   status: '' },
     { id: `tl-${Math.random().toString(36).slice(2)}`, name: 'NBD', person: '',  remarks: '', subProgress: 'Not Started', timelineStart: '', timelineEnd: '', duration: '', dependency: '',   status: '' },
@@ -47,7 +47,7 @@ export const initialClients: Client[] = [
     id: 'c2', name: 'Lara Walsh', people: 'JM KH', replyStatus: 'Waiting...', 
     followUp: '',  status: 'Project Done', channel: 'Email', importance: 'High',
     company: 'Bolt Insight Limited', email: 'lara.walsh@boltinsight.co.uk', phone: '+44 7442 924453',
-    requirements: '', qty: '100', nbd: 'Oct 14, 2024', totalPrice: '800', companyAddress:'', billingAddress:'', dateCreated:'',
+    requirements: '', qty: '100', nbd: 'Oct 14, 2026', totalPrice: '800', companyAddress:'', billingAddress:'', dateCreated:'',
     expanded: false, color: '#2c73d2',
     subitems: [
       {
@@ -80,7 +80,7 @@ export const initialClients: Client[] = [
     id: 'c4', name: 'Ling Shu Mei', people: 'XH', replyStatus: 'Replied',
     followUp: '',  status: 'Quoted', channel: 'Whatsapp', importance: 'Medium',
     company: 'Ling Enterprises Pte Ltd', email: 'ling@lingenterprises.com', phone: '+86 138 0013 8888',
-    requirements: 'Towel customization with full colour print', qty: '500', nbd: 'Jun 15, 2024', companyAddress:'', billingAddress:'', dateCreated:'',
+    requirements: 'Towel customization with full colour print', qty: '500', nbd: 'Jun 15, 2026', companyAddress:'', billingAddress:'', dateCreated:'',
     totalPrice: '', expanded: false, color: '#24819c',
     subitems: [
       {
@@ -88,9 +88,9 @@ export const initialClients: Client[] = [
         owner: '', shipper: '', paymentStatus: '', total: '', manpower: '', lsRmb: '', totalC: '', modeOfPayment: '', orderNumber: '', quantityProduced: '', sample: '', qtyFor: '', paymentAmount: '', difference: '', localOverseas:'Local', numOfCartons:'', paymentRemarks:'', showSample:false, description:'', sampleRows:[], sampleOrderStatus:'', sampleStatus:'', sampleType:'',
         timelineRows: [
           { id: 'tl-a1', name: 'Sample', person: '',  subProgress: '', timelineStart: '', timelineEnd: '', duration: '', dependency: '', remarks: '',  status: '' },
-          { id: 'tl-a2', name: 'Production', person: 'XH',  subProgress: 'Done', timelineStart: '2024-06-04', timelineEnd: '2024-06-07', duration: '4', dependency: 'Sample', remarks: '',  status: '' },
+          { id: 'tl-a2', name: 'Production', person: 'XH',  subProgress: 'Done', timelineStart: '2026-06-04', timelineEnd: '2026-06-07', duration: '4', dependency: 'Sample', remarks: '',  status: '' },
           { id: 'tl-a3', name: 'Check Production Status (+3 from production start)', person: '', remarks: '', subProgress: '', timelineStart: '', timelineEnd: '', duration: '', dependency: '',  status: '' },
-          { id: 'tl-a4', name: 'Local Shipping', person: '',   subProgress: 'Started', timelineStart: '2024-06-07', timelineEnd: '2024-06-10', duration: '4', dependency: 'Production FS-1', remarks: '',  status: '' },
+          { id: 'tl-a4', name: 'Local Shipping', person: '',   subProgress: 'Started', timelineStart: '2026-06-07', timelineEnd: '2026-06-10', duration: '4', dependency: 'Production FS-1', remarks: '',  status: '' },
           { id: 'tl-a5', name: 'Sea/Air Freight', person: '',   subProgress: '', timelineStart: '', timelineEnd: '', duration: '', dependency: 'Local Shipping', remarks: '',  status: '' },
           { id: 'tl-a6', name: 'Check Shipment Status (+3 from shipment start)', person: '',  subProgress: '', timelineStart: '', timelineEnd: '', duration: '', dependency: '', remarks: '',  status: '' },
           { id: 'tl-a7', name: 'NBD', person: '',  subProgress: '', timelineStart: '', timelineEnd: '', duration: '', dependency: '', remarks: '', status: '' },
@@ -101,7 +101,7 @@ export const initialClients: Client[] = [
   },
   {
     id: 'c5', name: 'Ahmad Hassan', people: 'P', replyStatus: 'Replied', 
-    followUp: '2024-06-20',  status: 'New Lead', channel: 'Whatsapp', importance: 'Low',
+    followUp: '2026-06-20',  status: 'New Lead', channel: 'Whatsapp', importance: 'Low',
     company: 'Hassan Trading Co.', email: 'ahmad@hassantrading.com', phone: '+65 91234567',
     requirements: 'Custom pen sets with company logo', qty: '200', nbd: '', companyAddress:'', billingAddress:'', dateCreated:'',
     totalPrice: '', expanded: false, color: '#008e9b',
@@ -119,7 +119,11 @@ export const initialClients: Client[] = [
     company: 'Chen & Associates', email: 'sarah.chen@chenassoc.com.sg', phone: '+65 87654321',
     requirements: 'Branded merchandise for company event', qty: '', nbd: '', 
     totalPrice: '', companyAddress:'', billingAddress:'', dateCreated:'', expanded: false, color: '#008f7a',
-    subitems: [],
+    subitems: [{
+        id: 's10', name: 'Custom Pen Set (Box of 5)', people: '', status: 'To Quote', qty: '200', description: 'Logo on clip, 1 colour', supplier: '', cost: '2.5', ls: '', os: '', tc: '', uc: '', tcSgd: '', price: '', up: '', cnTracking:'', sgTracking:'',
+        owner: '', shipper: '', paymentStatus: '', total: '', manpower: '', lsRmb: '', totalC: '', modeOfPayment: '', orderNumber: '', quantityProduced: '', sample: '', qtyFor: '', paymentAmount: '', difference: '', localOverseas:'Local', numOfCartons:'', paymentRemarks:'',
+        timelineRows: makeTimelineRows(), showTimeline: false, showPayments: false,sampleRows:[], showSample: false, sampleOrderStatus:'', sampleStatus:'', sampleType:'',remarks:'',
+      }],
   },
   {
     id: 'c7', name: 'Marcus Tan', people: 'JM', replyStatus: 'Replied', 
@@ -129,12 +133,12 @@ export const initialClients: Client[] = [
     totalPrice: '4,500', expanded: false, color: '#4e8397',
     subitems: [
       {
-        id: 's10', name: 'Leather Portfolio', people: 'JM', status: 'Verified', qty: '500', description: 'Deboss logo, tan leather', supplier: 'CN Leather Co.', cost: '7.5', ls: '', os: '90', tc: '420', uc: '8.4', tcSgd: '120', price: '3750', up: '7.5', cnTracking:'', sgTracking:'',
+        id: 's11', name: 'Leather Portfolio', people: 'JM', status: 'Verified', qty: '500', description: 'Deboss logo, tan leather', supplier: 'CN Leather Co.', cost: '7.5', ls: '', os: '90', tc: '420', uc: '8.4', tcSgd: '120', price: '3750', up: '7.5', cnTracking:'', sgTracking:'',
         owner: 'JM', shipper: '', paymentStatus: 'To Pay', total: '3750', manpower: '50', lsRmb: '150', totalC: '3900', modeOfPayment: '', orderNumber: '', quantityProduced: '', sample: '5', qtyFor: '500', paymentAmount: '', difference: '', localOverseas:'Local', numOfCartons:'', paymentRemarks:'',
         timelineRows: makeTimelineRows(), showTimeline: false, showPayments: false,sampleRows:[], showSample: false, sampleOrderStatus:'', sampleStatus:'', sampleType:'',remarks:'',
       },
       {
-        id: 's11', name: 'Metal Pen', people: '', status: 'Awarded', qty: '500', description: 'Laser engrave logo', supplier: '', cost: '1.5', ls: '', os: '', tc: '', uc: '', tcSgd: '', price: '750', up: '1.5', cnTracking:'', sgTracking:'', 
+        id: 's12', name: 'Metal Pen', people: '', status: 'Awarded', qty: '500', description: 'Laser engrave logo', supplier: '', cost: '1.5', ls: '', os: '', tc: '', uc: '', tcSgd: '', price: '750', up: '1.5', cnTracking:'', sgTracking:'', 
         owner: '', shipper: '', paymentStatus: '', total: '750', manpower: '', lsRmb: '', totalC: '', modeOfPayment: '', orderNumber: '', quantityProduced: '', sample: '', qtyFor: '', paymentAmount: '', difference: '', localOverseas:'Local', numOfCartons:'', paymentRemarks:'',
         timelineRows: makeTimelineRows(), showTimeline: false, showPayments: false,sampleRows:[], showSample: false, sampleOrderStatus:'', sampleStatus:'', sampleType:'',remarks:'',
       },
@@ -174,9 +178,9 @@ export const initialEmails: Email[] = [
     date: 'Jun 2', read: false, clientId: 'c6',
   },
   {
-    id: 'e6', from: 'CN Supplier XYZ', subject: 'Price Update - Q3 2024',
-    preview: 'We would like to inform you of upcoming price changes effective July 2024.',
-    body: `Dear Partner,\n\nWe would like to inform you of upcoming price adjustments effective July 1, 2024 due to increased raw material costs.\n\nPlease review the updated price list attached.\n\nBest regards,\nSupplier XYZ Team`,
+    id: 'e6', from: 'CN Supplier XYZ', subject: 'Price Update - Q3 2026',
+    preview: 'We would like to inform you of upcoming price changes effective July 2026.',
+    body: `Dear Partner,\n\nWe would like to inform you of upcoming price adjustments effective July 1, 2026 due to increased raw material costs.\n\nPlease review the updated price list attached.\n\nBest regards,\nSupplier XYZ Team`,
     date: 'Jun 1', read: true,
   },
   {

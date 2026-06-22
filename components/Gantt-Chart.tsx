@@ -42,7 +42,9 @@ function buildTasks(clients: Client[]): GanttTask[] {
     const tasks: GanttTask[] = [];
     let nextId = 1;
 
-    const safeClients = Array.isArray(clients) ? clients : [];
+    const safeClients = Array.isArray(clients)
+        ? clients.filter((client): client is Client => !!client && typeof client === "object")
+        : [];
 
     safeClients.forEach((client) => {
         const clientId = nextId++;
@@ -50,7 +52,7 @@ function buildTasks(clients: Client[]): GanttTask[] {
         tasks.push({
             id: clientId,
             parent: 0,
-            text: client?.name || "Unnamed Client",
+            text: client.name || "Unnamed Client",
             start: new Date(2026, 0, 1),
             duration: 1,
             progress: 0,
@@ -58,21 +60,33 @@ function buildTasks(clients: Client[]): GanttTask[] {
             open: true,
         });
 
-        const subitems: Subitem[] = Array.isArray(client?.subitems) ? client.subitems : [];
+        const subitems: Subitem[] = Array.isArray(client.subitems)
+            ? client.subitems.filter(
+                (subitem): subitem is Subitem => !!subitem && typeof subitem === "object"
+            )
+            : [];
 
         subitems.forEach((subitem) => {
             const subitemId = nextId++;
 
-            const timelineRows: TimelineRow[] = Array.isArray(subitem?.timelineRows)
-                ? subitem.timelineRows
+            const timelineRows: TimelineRow[] = Array.isArray(subitem.timelineRows)
+                ? subitem.timelineRows.filter(
+                    (row): row is TimelineRow => !!row && typeof row === "object"
+                )
                 : [];
 
             const validRows = timelineRows
                 .map((row) => {
-                    const start = parseDate(row?.timelineStart);
-                    const end = parseDate(row?.timelineEnd) ?? start;
+                    const start = parseDate(row.timelineStart);
                     if (!start) return null;
-                    return { row, start, end };
+
+                    const end = parseDate(row.timelineEnd) ?? start;
+
+                    return {
+                        row,
+                        start,
+                        end,
+                    };
                 })
                 .filter(
                     (item): item is { row: TimelineRow; start: Date; end: Date } => item !== null
@@ -91,7 +105,7 @@ function buildTasks(clients: Client[]): GanttTask[] {
             tasks.push({
                 id: subitemId,
                 parent: clientId,
-                text: subitem?.name || "Unnamed Subitem",
+                text: subitem.name || "Unnamed Subitem",
                 start: subitemStart,
                 duration: daysBetween(subitemStart, subitemEnd),
                 progress: 0,
@@ -103,10 +117,10 @@ function buildTasks(clients: Client[]): GanttTask[] {
                 tasks.push({
                     id: nextId++,
                     parent: subitemId,
-                    text: row?.name || "Untitled Step",
+                    text: row.name || "Untitled Step",
                     start,
                     duration: daysBetween(start, end),
-                    progress: progressToNumber(row?.subProgress),
+                    progress: progressToNumber(row.subProgress),
                     type: "task",
                 });
             });
@@ -116,16 +130,17 @@ function buildTasks(clients: Client[]): GanttTask[] {
     return tasks;
 }
 
+
 const SCALES = [
     { unit: "month", step: 1, format: "%M %Y" },
     { unit: "day", step: 1, format: "%d" },
 ];
 
 export default function GanttChart({ clients }: Props) {
-    const tasks = useMemo(() => buildTasks(clients), [clients]);
+    const tasks = useMemo(() =>  { const built = buildTasks(clients); console.log("final tasks", built); return built;}, [clients]);
 
     return (
-        <div style={{ height: "100%", width: "100%", minHeight: 600 }}>
+        <div className="flex flex-col"style={{ height: "600px", width: "100%", minHeight: 600}}>
             <Willow>
                 <Gantt
                     tasks={tasks}
