@@ -158,22 +158,12 @@ const options = [
 export default function GanttChart({ clients }: Props) {
     const [mounted, setMounted] = useState(false);
     const [api, setApi] = useState<IApi | null>(null);
-    const apiRef = useRef<IApi | null>(null);
-    
+
     const tasks = useMemo(() =>  { const built = buildTasks(clients); console.log("final tasks", built); return built;}, [clients]);
     
     useEffect(() => {
         setMounted(true);
     }, []);
-
-    const handleInit = useCallback((instance: IApi) => {
-        apiRef.current = instance;
-        setApi((prev) => prev === instance ? prev : instance);
-    }, []);
-
-    if(!mounted){
-        return null;
-    }
     return (
         <div className="min-h-[700px] overflow-auto"style={{ height: "600px", minWidth: "50%"}}>
             <Willow>
@@ -185,7 +175,7 @@ export default function GanttChart({ clients }: Props) {
                             scales={SCALES}
                             start={new Date(2026, 0, 1)}
                             end={new Date(2027, 11, 31)}
-                            init={handleInit}
+                            init={setApi}
                         />
                     </ContextMenu>
                     {api && <Editor api={api} />}
