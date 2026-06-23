@@ -124,23 +124,25 @@ export default function GanttChart({ clients }: Props) {
     const data = useMemo(() => buildSchedulerData(clients), [clients]);
 
     return (
-        <div className="h-full min-h-[700px] w-full overflow-auto bg-white">
-            <Scheduler
-                data={data}
-                isLoading={isLoading}
-                onItemClick={(item) => {
-                    console.log("Clicked timeline item:", item);
-                }}
-                onFilterData={() => { }}
-                onClearFilterData={() => { }}
-                config={{
-                    zoom: 1,
-                    lang: "en",
-                    maxRecordsPerPage: 20,
-                    filterButtonState: 0,
-                    showThemeToggle:true,
-                }}
-            />
+        <div className="flex-1 min-h-0 overflow-hidden p-4">
+            <div className="relative h-[700px] w-full max-w-full overflow-hidden rounded-xl border bg-white">
+                <Scheduler
+                    data={data}
+                    isLoading={isLoading}
+                    onItemClick={(item) => {
+                        console.log("Clicked timeline item:", item);
+                    }}
+                    onFilterData={() => { }}
+                    onClearFilterData={() => { }}
+                    config={{
+                        zoom: 1,
+                        lang: "en",
+                        maxRecordsPerPage: 20,
+                        filterButtonState: 0,
+                        showThemeToggle: true,
+                    }}
+                />
+            </div>
         </div>
     );
 }
