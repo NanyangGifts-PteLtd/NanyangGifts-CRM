@@ -15,7 +15,7 @@ type SchedulerItem = {
     endDate: Date;
     occupancy: number;
     title: string;
-    subtitle?: string;
+    subtitle: string;
     description?: string;
     bgColor?: string;
 };
@@ -24,7 +24,7 @@ type SchedulerResource = {
     id: string;
     label: {
         title: string;
-        subtitle?: string;
+        subtitle: string;
         icon: string;
     };
     data: SchedulerItem[];
