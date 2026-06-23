@@ -159,8 +159,9 @@ export default function GanttChart({ clients }: Props) {
         </div>
     }
     return (
-        <div className="flex flex-col"style={{ height: "600px", width: "100%", minHeight: 600}}>
+        <div className="min-h-[700px] overflow-auto"style={{ height: "600px", minWidth: "50%"}}>
             <Willow>
+                <div className="willow-modified">
                 <Gantt
                     tasks={tasks}
                     links={[]}
@@ -168,6 +169,7 @@ export default function GanttChart({ clients }: Props) {
                     start={new Date(2026, 0, 1)}
                     end={new Date(2027, 11, 31)}
                 />
+                </div>
             </Willow>
         </div>
     );
