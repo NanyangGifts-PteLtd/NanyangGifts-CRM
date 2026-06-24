@@ -218,8 +218,8 @@ export function TopBar({
         {showProfile && (
           <div className="absolute right-0 top-full mt-1 w-56 bg-white font-semibold rounded-lg shadow-2xl border border-gray-200 z-50 overflow-hidden">
             <div className="px-4 py-3 bg-gray-50 border-b">
-              <p className="text-xs font-semibold text-gray-800 truncate">{displayName}</p>
-              <p className="text-xs text-gray-500 mt-0.5 truncate">{userEmail}</p>
+              <p className="text-xs font-semibold text-gray-800 truncate">{userEmail}</p>
+              <p className="text-xs text-gray-500 mt-0.5 truncate">Online</p>
             </div>
 
             {['My Profile', 'Account Settings', 'My Notifications'].map(item => (

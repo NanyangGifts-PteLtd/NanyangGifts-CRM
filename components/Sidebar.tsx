@@ -117,8 +117,8 @@ export function Sidebar({
           </div>
           {!collapsed && (
             <div className="min-w-0">
-              <p className="text-xs text-black truncate">{displayName}</p>
-              <p className="text-xs text-gray-500 truncate">{userEmail}</p>
+              <p className="text-xs text-black truncate">{userEmail}</p>
+              <p className="text-xs text-gray-500 truncate">Online</p>
             </div>
           )}
         </div>
