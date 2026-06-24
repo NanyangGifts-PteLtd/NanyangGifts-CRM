@@ -1,3 +1,5 @@
+import { Stringifier } from "postcss";
+
 export type ClientStatus =
   | 'New Lead'
   | 'Contacted'
@@ -30,6 +32,13 @@ export type TimelineProgress = 'Not Started' | 'Started' | 'Done';
 export type SampleStatus = 'Ready to collect' | 'Return arranged' | "Extended" | 'Chased'| 'Must return' | 'Request to not return' | 'No return needed'|'Failed'| 'Overdue';
 export type SampleType = 'Product sample' | 'Pre-production sample';
 export type SampleOrderStatus = 'Pending'| 'To order'| 'Ordered'| 'Delivered'| 'Paid'| 'Shipped'| 'Failed';
+
+export type Profile = {
+  id: string
+  full_name: string | null
+  email: string | null
+  avatar_url?: string | null
+}
 
 export interface SampleRow {
   status: string;
@@ -137,7 +146,12 @@ export interface Client {
   color: string;
   subitems: Subitem[];
   activityLog?: ActivityEntry[];
+  assignedProfileIds?: string;
 }
+export type ClientAssigneeMap = Record<string, string[]>;
+
+export type SubitemAssigneeMap = Record<string, string[]>;
+
 
 export interface Email {
   id: string;

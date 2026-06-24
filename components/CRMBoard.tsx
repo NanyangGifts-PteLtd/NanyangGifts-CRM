@@ -4,42 +4,25 @@ import {
   ChevronDown, Plus, Trash2,
   Filter, ChevronsDown, ChevronsUp, X
 } from 'lucide-react';
-import { Client, Subitem, TimelineRow, ClientStatus, SampleRow, ActivityEntry} from '../app/types';
+import { Client, Subitem, TimelineRow, ClientStatus, SampleRow, ActivityEntry } from '../app/types';
 import { createClient } from '@/lib/supabase/client';
 import { ClientRow, CLIENT_STATUSES, STATUS_COLORS } from './ui/clientrows';
-
-async function getCurrentActorName() {
-  const supabase = createClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) return "Unknown user";
-
-  return (
-    user.user_metadata?.full_name ||
-    user.user_metadata?.name ||
-    user.email ||
-    "Unknown user"
-  );
-}
-
-
-// ─── Constants ────────────────────────────────────────────────────────────────
-
-const supabase = createClient();
-const {
-  data: { user },
-} = await supabase.auth.getUser();
+import type { Profile, ClientAssigneeMap, SubitemAssigneeMap } from '../app/types';
+import {
+  fetchProfiles,
+  fetchClientAssigneeIds,
+  fetchSubitemAssigneeIds,
+  saveClientAssignees,
+  saveSubitemAssignees,
+} from '@/lib/assignments';
 
 export const EditableDate: React.FC = () => {
-  const [date, setDate]= useState<Date>(new Date());
+  const [date, setDate] = useState<Date>(new Date());
   const [isEditing, setIsEditing] = useState<boolean>(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(()=>{
-    if (isEditing && inputRef.current){
+  useEffect(() => {
+    if (isEditing && inputRef.current) {
       inputRef.current.focus();
     }
   }, [isEditing]);
@@ -83,23 +66,36 @@ interface CRMBoardProps {
   search?: string;
 }
 
-export function CRMBoard({ clients, onUpdateClients, search='' }: CRMBoardProps) {
+export function CRMBoard({ clients, onUpdateClients, search = '' }: CRMBoardProps) {
   const [filterStatus, setFilterStatus] = useState<ClientStatus | 'All'>('All');
   const [showFilter, setShowFilter] = useState(false);
   const [allExpanded, setAllExpanded] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const filterRef = useRef<HTMLDivElement>(null);
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [clientAssignees, setClientAssignees] = useState<ClientAssigneeMap>({});
+  const [subitemAssignees, setSubitemAssignees] = useState<SubitemAssigneeMap>({});
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+
 
   const displayedClients = clients.filter((client) => {
     const matchesStatus =
       filterStatus === 'All' || client.status === filterStatus;
 
     const q = (search ?? '').trim().toLowerCase();
+    const clientAssignedProfiles =
+      (clientAssignees[client.id] ?? [])
+        .map((id) => profiles.find((p) => p.id === id))
+        .filter(Boolean) as Profile[];
+
     const matchesSearch =
       !q ||
       client.name.toLowerCase().includes(q) ||
-      client.people.toLowerCase().includes(q) ||
       client.company.toLowerCase().includes(q) ||
+      clientAssignedProfiles.some((p) =>
+        (p.full_name ?? '').toLowerCase().includes(q) ||
+        (p.email ?? '').toLowerCase().includes(q)
+      ) ||
       client.subitems.some((subitem) =>
         (subitem.name ?? '').toLowerCase().includes(q)
       );
@@ -122,15 +118,99 @@ export function CRMBoard({ clients, onUpdateClients, search='' }: CRMBoardProps)
   const groupedClients = GROUP_ORDER.map((status) => ({
     status,
     clients: displayedClients.filter((client) => client.status === status),
-    })).filter((group) => group.clients.length > 0);
+  })).filter((group) => group.clients.length > 0);
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
 
   const toggleGroup = (groupStatus: string) => {
     setCollapsedGroups((prev) => ({
-    ...prev,
-    [groupStatus]: !prev[groupStatus],
-  }));
-};
+      ...prev,
+      [groupStatus]: !prev[groupStatus],
+    }));
+  };
+  useEffect(() => {
+    const loadAssignments = async () => {
+      try {
+        const supabase = createClient();
+
+        const [
+          profilesData,
+          {
+            data: { user },
+          },
+        ] = await Promise.all([
+          fetchProfiles(),
+          supabase.auth.getUser(),
+        ]);
+
+        setProfiles(profilesData);
+        setCurrentUserId(user?.id ?? null);
+
+        const clientEntries = await Promise.all(
+          clients.map(async (client) => [client.id, await fetchClientAssigneeIds(client.id)] as const)
+        );
+
+        const subitemEntries = await Promise.all(
+          clients.flatMap((client) =>
+            client.subitems.map(async (subitem) => [subitem.id, await fetchSubitemAssigneeIds(subitem.id)] as const)
+          )
+        );
+
+        setClientAssignees(Object.fromEntries(clientEntries));
+        setSubitemAssignees(Object.fromEntries(subitemEntries));
+      } catch (error) {
+        console.error('Failed to load assignments', error);
+      }
+    };
+
+    loadAssignments();
+  }, [clients]);
+  const handleClientAssigneesChange = useCallback(
+    async (clientId: string, ids: string[]) => {
+      setClientAssignees((prev) => ({ ...prev, [clientId]: ids }));
+      try {
+        await saveClientAssignees(clientId, ids, currentUserId);
+      } catch (error) {
+        console.error('Failed to save client assignees', error);
+      }
+    },
+    [currentUserId]
+  );
+
+  const handleSubitemAssigneesChange = useCallback(
+    async (subitemId: string, ids: string[]) => {
+      setSubitemAssignees((prev) => ({ ...prev, [subitemId]: ids }));
+      try {
+        await saveSubitemAssignees(subitemId, ids, currentUserId);
+      } catch (error) {
+        console.error('Failed to save subitem assignees', error);
+      }
+    },
+    [currentUserId]
+  );
+
+  const getCurrentActorName = useCallback(async () => {
+    try {
+      const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) return "Unknown User";
+
+      const metadata = user.user_metadata ?? {};
+
+      return (
+        metadata.full_name ||
+        metadata.name ||
+        metadata.display_name ||
+        user.email ||
+        "Unknown User"
+      );
+    } catch (error) {
+      console.error("Failed to get current actor name", error);
+      return "Unknown User";
+    }
+  }, []);
 
   useEffect(() => {
     if (!showFilter) return;
@@ -178,67 +258,155 @@ export function CRMBoard({ clients, onUpdateClients, search='' }: CRMBoardProps)
   };
 
   // ── client/subitem updates ──
-const EXCLUDED_ACTIVITY_FIELDS = new Set<keyof Client>(["expanded"]);
+  const EXCLUDED_ACTIVITY_FIELDS = new Set<keyof Client>(["expanded"]);
 
-const updateClient = useCallback(
-  async (clientId: string, updates: Partial<Client>) => {
-    const actorName = await getCurrentActorName();
+  const updateClient = useCallback(
+    async (clientId: string, updates: Partial<Client>) => {
+      const actorName = await getCurrentActorName();
 
-    onUpdateClients(
-      clients.map((client) => {
-        if (client.id !== clientId) return client;
+      onUpdateClients(
+        clients.map((client) => {
+          if (client.id !== clientId) return client;
 
-        const newEntries: ActivityEntry[] = Object.entries(updates)
-          .filter(([field, newValue]) => {
-            const typedField = field as keyof Client;
+          const newEntries: ActivityEntry[] = Object.entries(updates)
+            .filter(([field, newValue]) => {
+              const typedField = field as keyof Client;
 
-            if (EXCLUDED_ACTIVITY_FIELDS.has(typedField)) return false;
+              if (EXCLUDED_ACTIVITY_FIELDS.has(typedField)) return false;
 
-            return client[typedField] !== newValue;
-          })
-          .map(([field, newValue]) => ({
+              return client[typedField] !== newValue;
+            })
+            .map(([field, newValue]) => ({
+              id: crypto.randomUUID(),
+              action: "field_changed",
+              fieldName: field,
+              oldValue: client[field as keyof Client],
+              newValue,
+              actorName,
+              createdAt: new Date().toISOString(),
+            }));
+
+          return {
+            ...client,
+            ...updates,
+            activityLog: [...(client.activityLog ?? []), ...newEntries],
+          };
+        })
+      );
+    },
+    [clients, onUpdateClients]
+  );
+
+  // Update subitem
+  const updateSubitem = useCallback(
+    async (clientId: string, subitemId: string, updates: Partial<Subitem>) => {
+      const actorName = await getCurrentActorName();
+
+      onUpdateClients(
+        clients.map((client) => {
+          if (client.id !== clientId) return client;
+
+          const targetSubitem = client.subitems.find((s) => s.id === subitemId);
+          if (!targetSubitem) return client;
+
+          const subitemEntries: ActivityEntry[] = Object.entries(updates)
+            .filter(([field, newValue]) => {
+              return targetSubitem[field as keyof Subitem] !== newValue;
+            })
+            .map(([field, newValue]) => ({
+              id: crypto.randomUUID(),
+              action: "subitem_field_changed",
+              fieldName: field,
+              oldValue: targetSubitem[field as keyof Subitem],
+              newValue,
+              actorName,
+              createdAt: new Date().toISOString(),
+              subitemId,
+              subitemName:
+                (targetSubitem as { item?: string; name?: string }).item ??
+                (targetSubitem as { item?: string; name?: string }).name ??
+                "Subitem",
+            }));
+
+          return {
+            ...client,
+            subitems: client.subitems.map((s) =>
+              s.id === subitemId ? { ...s, ...updates } : s
+            ),
+            activityLog: [...(client.activityLog ?? []), ...subitemEntries],
+          };
+        })
+      );
+    },
+    [clients, onUpdateClients]
+  );
+
+  const addSubitem = useCallback(
+    async (clientId: string) => {
+      const actorName = await getCurrentActorName();
+      const now = Date.now();
+
+      const timelineRows: TimelineRow[] = [
+        { id: `tl-${now}-1`, name: "Sample", person: "", remarks: "", subProgress: "", timelineStart: "", timelineEnd: "", duration: "", dependency: "", status: "" },
+        { id: `tl-${now}-2`, name: "Production 📦", person: "", remarks: "", subProgress: "", timelineStart: "", timelineEnd: "", duration: "", dependency: "Sample", status: "" },
+        { id: `tl-${now}-3`, name: "Check Production Status (+3 from production start)", person: "", subProgress: "", timelineStart: "", timelineEnd: "", duration: "", dependency: "", status: "", remarks: "" },
+        { id: `tl-${now}-4`, name: "Local Shipping 🚚", person: "", remarks: "", subProgress: "", timelineStart: "", timelineEnd: "", duration: "", dependency: "Production FS-1", status: "" },
+        { id: `tl-${now}-5`, name: "Sea/Air Freight ⛵✈️", person: "", remarks: "", subProgress: "", timelineStart: "", timelineEnd: "", duration: "", dependency: "Local Shipping", status: "" },
+        { id: `tl-${now}-6`, name: "Check Shipment Status (+3 from shipment start)", person: "", subProgress: "", timelineStart: "", timelineEnd: "", duration: "", dependency: "", remarks: "", status: "" },
+        { id: `tl-${now}-7`, name: "NBD", person: "", remarks: "", subProgress: "", timelineStart: "", timelineEnd: "", duration: "", dependency: "", status: "" },
+      ];
+
+      const sampleRows: SampleRow[] = [];
+
+      const newSubitem: Subitem = {
+        id: `s-${now}`, name: "New Item", people: "", status: "", qty: "", description: "",
+        supplier: "", cost: "", manpower: "", ls: "", os: "", tc: "", uc: "", tcSgd: "",
+        price: "", up: "", owner: "", shipper: "", paymentStatus: "", total: "",
+        lsRmb: "", totalC: "", modeOfPayment: "", orderNumber: "", quantityProduced: "",
+        sample: "", qtyFor: "", paymentAmount: "", difference: "", paymentRemarks: "",
+        numOfCartons: "", cnTracking: "", sgTracking: "", localOverseas: "Local",
+        remarks: "", sampleOrderStatus: "", timelineRows, showTimeline: false,
+        showPayments: false, sampleRows, sampleStatus: "", sampleType: "", showSample: false,
+      };
+
+      onUpdateClients(
+        clients.map((client) => {
+          if (client.id !== clientId) return client;
+
+          const entry: ActivityEntry = {
             id: crypto.randomUUID(),
-            action: "field_changed",
-            fieldName: field,
-            oldValue: client[field as keyof Client],
-            newValue,
+            action: "subitem_added",
             actorName,
             createdAt: new Date().toISOString(),
-          }));
+            subitemId: newSubitem.id,
+            subitemName: newSubitem.name ?? "Subitem",
+            newValue: newSubitem,
+          };
 
-        return {
-          ...client,
-          ...updates,
-          activityLog: [...(client.activityLog ?? []), ...newEntries],
-        };
-      })
-    );
-  },
-  [clients, onUpdateClients]
-);
+          return {
+            ...client,
+            subitems: [...client.subitems, newSubitem],
+            activityLog: [...(client.activityLog ?? []), entry],
+          };
+        })
+      );
+    },
+    [clients, onUpdateClients]
+  );
+  const deleteSubitem = useCallback(
+    async (clientId: string, subitemId: string) => {
+      const actorName = await getCurrentActorName();
 
-// Update subitem 
-const updateSubitem = useCallback(
-  async (clientId: string, subitemId: string, updates: Partial<Subitem>) => {
-    const actorName = await getCurrentActorName();
+      onUpdateClients(
+        clients.map((client) => {
+          if (client.id !== clientId) return client;
 
-    onUpdateClients(
-      clients.map((client) => {
-        if (client.id !== clientId) return client;
+          const targetSubitem = client.subitems.find((s) => s.id === subitemId);
+          if (!targetSubitem) return client;
 
-        const targetSubitem = client.subitems.find((s) => s.id === subitemId);
-        if (!targetSubitem) return client;
-
-        const subitemEntries: ActivityEntry[] = Object.entries(updates)
-          .filter(([field, newValue]) => {
-            return targetSubitem[field as keyof Subitem] !== newValue;
-          })
-          .map(([field, newValue]) => ({
+          const entry: ActivityEntry = {
             id: crypto.randomUUID(),
-            action: "subitem_field_changed",
-            fieldName: field,
-            oldValue: targetSubitem[field as keyof Subitem],
-            newValue,
+            action: "subitem_deleted",
             actorName,
             createdAt: new Date().toISOString(),
             subitemId,
@@ -246,107 +414,19 @@ const updateSubitem = useCallback(
               (targetSubitem as { item?: string; name?: string }).item ??
               (targetSubitem as { item?: string; name?: string }).name ??
               "Subitem",
-          }));
+            oldValue: targetSubitem,
+          };
 
-        return {
-          ...client,
-          subitems: client.subitems.map((s) =>
-            s.id === subitemId ? { ...s, ...updates } : s
-          ),
-          activityLog: [...(client.activityLog ?? []), ...subitemEntries],
-        };
-      })
-    );
-  },
-  [clients, onUpdateClients]
-);
-
-  const addSubitem = useCallback(
-  async (clientId: string) => {
-    const actorName = await getCurrentActorName();
-    const now = Date.now();
-
-    const timelineRows: TimelineRow[] = [
-      { id: `tl-${now}-1`, name: "Sample", person: "", remarks: "", subProgress: "", timelineStart: "", timelineEnd: "", duration: "", dependency: "", status: "" },
-      { id: `tl-${now}-2`, name: "Production 📦", person: "", remarks: "", subProgress: "", timelineStart: "", timelineEnd: "", duration: "", dependency: "Sample", status: "" },
-      { id: `tl-${now}-3`, name: "Check Production Status (+3 from production start)", person: "", subProgress: "", timelineStart: "", timelineEnd: "", duration: "", dependency: "", status: "", remarks: "" },
-      { id: `tl-${now}-4`, name: "Local Shipping 🚚", person: "", remarks: "", subProgress: "", timelineStart: "", timelineEnd: "", duration: "", dependency: "Production FS-1", status: "" },
-      { id: `tl-${now}-5`, name: "Sea/Air Freight ⛵✈️", person: "", remarks: "", subProgress: "", timelineStart: "", timelineEnd: "", duration: "", dependency: "Local Shipping", status: "" },
-      { id: `tl-${now}-6`, name: "Check Shipment Status (+3 from shipment start)", person: "", subProgress: "", timelineStart: "", timelineEnd: "", duration: "", dependency: "", remarks: "", status: "" },
-      { id: `tl-${now}-7`, name: "NBD", person: "", remarks: "", subProgress: "", timelineStart: "", timelineEnd: "", duration: "", dependency: "", status: "" },
-    ];
-
-    const sampleRows: SampleRow[] = [];
-
-    const newSubitem: Subitem = {
-      id: `s-${now}`, name: "New Item", people: "", status: "", qty: "", description: "",
-      supplier: "", cost: "", manpower: "", ls: "", os: "", tc: "", uc: "", tcSgd: "",
-      price: "", up: "", owner: "", shipper: "", paymentStatus: "", total: "",
-      lsRmb: "", totalC: "", modeOfPayment: "", orderNumber: "", quantityProduced: "",
-      sample: "",qtyFor: "",paymentAmount: "",difference: "",paymentRemarks: "",
-      numOfCartons: "",cnTracking: "",sgTracking: "",localOverseas: "Local",
-      remarks: "",sampleOrderStatus: "",timelineRows,showTimeline: false,
-      showPayments: false,sampleRows,sampleStatus: "",sampleType: "",showSample: false,
-    };
-
-    onUpdateClients(
-      clients.map((client) => {
-        if (client.id !== clientId) return client;
-
-        const entry: ActivityEntry = {
-          id: crypto.randomUUID(),
-          action: "subitem_added",
-          actorName,
-          createdAt: new Date().toISOString(),
-          subitemId: newSubitem.id,
-          subitemName: newSubitem.name ?? "Subitem",
-          newValue: newSubitem,
-        };
-
-        return {
-          ...client,
-          subitems: [...client.subitems, newSubitem],
-          activityLog: [...(client.activityLog ?? []), entry],
-        };
-      })
-    );
-  },
-  [clients, onUpdateClients]
-);
-  const deleteSubitem = useCallback(
-  async (clientId: string, subitemId: string) => {
-    const actorName = await getCurrentActorName();
-
-    onUpdateClients(
-      clients.map((client) => {
-        if (client.id !== clientId) return client;
-
-        const targetSubitem = client.subitems.find((s) => s.id === subitemId);
-        if (!targetSubitem) return client;
-
-        const entry: ActivityEntry = {
-          id: crypto.randomUUID(),
-          action: "subitem_deleted",
-          actorName,
-          createdAt: new Date().toISOString(),
-          subitemId,
-          subitemName:
-            (targetSubitem as { item?: string; name?: string }).item ??
-            (targetSubitem as { item?: string; name?: string }).name ??
-            "Subitem",
-          oldValue: targetSubitem,
-        };
-
-        return {
-          ...client,
-          subitems: client.subitems.filter((s) => s.id !== subitemId),
-          activityLog: [...(client.activityLog ?? []), entry],
-        };
-      })
-    );
-  },
-  [clients, onUpdateClients]
-);
+          return {
+            ...client,
+            subitems: client.subitems.filter((s) => s.id !== subitemId),
+            activityLog: [...(client.activityLog ?? []), entry],
+          };
+        })
+      );
+    },
+    [clients, onUpdateClients]
+  );
 
   const deleteClient = useCallback((clientId: string) => {
     onUpdateClients(clients.filter(c => c.id !== clientId));
@@ -354,10 +434,10 @@ const updateSubitem = useCallback(
   }, [clients, onUpdateClients]);
 
   const addClient = useCallback(() => {
-    const colors = ['#845ec2', '#2c73d2', '#0081cf', '#0089ba', '#008e9b', '#008f7a', '#4e8397'];
+    const colors = ['#e485b3', '#2c73d2', '#0081cf', '#0089ba', '#008e9b', '#008f7a', '#4e8397'];
     const newClient: Client = {
       id: `c-${Date.now()}`, name: 'New Client', people: '', replyStatus: '',
-      followUp: '',  status: 'New Lead', channel: '', importance: '',
+      followUp: '', status: 'New Lead', channel: '', importance: '',
       company: '', email: '', phone: '', requirements: '', qty: '', nbd: '', totalPrice: '',
       companyAddress: '', billingAddress: '', dateCreated: '', expanded: true,
       color: colors[clients.length % colors.length], subitems: [],
@@ -375,10 +455,10 @@ const updateSubitem = useCallback(
     <div className="flex flex-col h-full bg-white">
       {/* ── Toolbar ── */}
       <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-200 bg-white flex-shrink-0">
-          <button
+        <button
           onClick={addClient}
           className="flex items-center gap-1.5 px-3 py-1.5 bg-[#7BCBD5] hover:bg-[#61a5ad] text-white rounded-md text-xs font-medium transition-colors"
-          >
+        >
           <Plus size={13} />Add Client
         </button>
         <button
@@ -504,41 +584,46 @@ const updateSubitem = useCallback(
 
           {/* Client group headers */}
           {groupedClients.map((group) => (
-          <React.Fragment key={group.status}>
-          <div className="flex items-center gap-2.5 px-2 py-0.4 text-sm bg-gray-50 border-y border-gray-100">
-            <button
-            onClick={() => toggleGroup(group.status)}
-            className="text-sm text-gray-500"
-          >
-            {collapsedGroups[group.status] ? '▷' : '▼'}
-            </button>
-      <div className="h-5 w-1 rounded bg-[#7BCBD5]" />
-      <div>
-        <div className="font-semibold text-slate-700">{group.status}</div>
-        <div className="text-xs italic font-normal text-slate-500">
-          {group.clients.length} Clients
-        </div>
-      </div>
-    </div>
+            <React.Fragment key={group.status}>
+              <div className="flex items-center gap-2.5 px-2 py-0.4 text-sm bg-gray-50 border-y border-gray-100">
+                <button
+                  onClick={() => toggleGroup(group.status)}
+                  className="text-sm text-gray-500"
+                >
+                  {collapsedGroups[group.status] ? '▷' : '▼'}
+                </button>
+                <div className="h-5 w-1 rounded bg-[#7BCBD5]" />
+                <div>
+                  <div className="font-semibold text-slate-700">{group.status}</div>
+                  <div className="text-xs italic font-normal text-slate-500">
+                    {group.clients.length} Clients
+                  </div>
+                </div>
+              </div>
 
-    {!collapsedGroups[group.status] &&
-      group.clients.map((client) => (
-        <ClientRow
-          key={client.id}
-          client={client}
-          isSelected={selectedIds.has(client.id)}
-          onToggleSelect={() => toggleSelect(client.id)}
-          onUpdate={(updates) => updateClient(client.id, updates)}
-          onUpdateSubitem={(subitemId, updates) =>
-            updateSubitem(client.id, subitemId, updates)
-          }
-          onAddSubitem={() => addSubitem(client.id)}
-          onDeleteSubitem={(subitemId) => deleteSubitem(client.id, subitemId)}
-          onDelete={() => deleteClient(client.id)}
-          />
+              {!collapsedGroups[group.status] &&
+                group.clients.map((client) => (
+                  <ClientRow
+                    key={client.id}
+                    client={client}
+                    isSelected={selectedIds.has(client.id)}
+                    onToggleSelect={() => toggleSelect(client.id)}
+                    onUpdate={(updates) => updateClient(client.id, updates)}
+                    onUpdateSubitem={(subitemId, updates) =>
+                      updateSubitem(client.id, subitemId, updates)
+                    }
+                    onAddSubitem={() => addSubitem(client.id)}
+                    onDeleteSubitem={(subitemId) => deleteSubitem(client.id, subitemId)}
+                    onDelete={() => deleteClient(client.id)}
+                    profiles={profiles}
+                    clientAssignedIds={clientAssignees[client.id] ?? []}
+                    onChangeClientAssignees={(ids) => handleClientAssigneesChange(client.id, ids)}
+                    subitemAssigneeMap={subitemAssignees}
+                    onChangeSubitemAssignees={handleSubitemAssigneesChange}
+                  />
+                ))}
+            </React.Fragment>
           ))}
-        </React.Fragment>
-        ))}
         </div>
       </div>
     </div>

@@ -8,6 +8,8 @@ import { Calendar, CreditCard, Trash2, Package, FileText, Plus } from "lucide-re
 import { TimelineSection } from './timeline';
 import { PaymentsSection } from './payments';
 import { SamplesSection } from './sample';
+import type { Profile } from "../../app/types";
+import { AssigneeMultiSelect } from "./assignee-multiselect";
 
 const SUBITEM_STATUS_COLORS: Record<string, string> = {
     'To Quote': '#5cc9d5',
@@ -25,11 +27,26 @@ const LOCALOVERSEAS_COLORS: Record<string, string> = {
 }
 
 
-export function SubitemsTable({ clientId, subitems, clientColor, onUpdateSubitem, onAddSubitem, onDeleteSubitem }: {
-    clientId: string; subitems: Subitem[]; clientColor: string;
+export function SubitemsTable({
+    clientId,
+    subitems,
+    clientColor,
+    onUpdateSubitem,
+    onAddSubitem,
+    onDeleteSubitem,
+    profiles,
+    subitemAssigneeMap,
+    onChangeSubitemAssignees,
+}: {
+    clientId: string;
+    subitems: Subitem[];
+    clientColor: string;
     onUpdateSubitem: (id: string, u: Partial<Subitem>) => void;
     onAddSubitem: () => void;
     onDeleteSubitem: (id: string) => void;
+    profiles: Profile[];
+    subitemAssigneeMap: Record<string, string[]>;
+    onChangeSubitemAssignees: (subitemId: string, ids: string[]) => void;
 }) {
     const statusOpts = ['', 'To Quote', 'Verified', 'Awarded', 'Initial Quote', 'Quoted', 'Shortlisted', 'Failed'];
     const localOverseasOpts = ['Local', 'Overseas'];
@@ -222,8 +239,12 @@ export function SubitemsTable({ clientId, subitems, clientColor, onUpdateSubitem
                                             </button>
                                         </div>
                                     </td>
-                                    <td className="px-2 py-1 border-r border-gray-200" style={{ minWidth: 70 }}>
-                                        <EditableCell value={sub.people} onChange={v => onUpdateSubitem(sub.id, { people: v })} />
+                                    <td className="px-2 py-1 border-r border-gray-200" style={{ minWidth: 90 }}>
+                                        <AssigneeMultiSelect
+                                            profiles={profiles}
+                                            selectedIds={subitemAssigneeMap[sub.id] ?? []}
+                                            onChange={(ids) => onChangeSubitemAssignees(sub.id, ids)}
+                                        />
                                     </td>
                                     <td className="px-2 py-1 border-r border-gray-200" style={{ minWidth: 90 }}>
                                         <StatusBadge value={sub.localOverseas || 'Local'} onChange={v => onUpdateSubitem(sub.id, { localOverseas: v })} options={localOverseasOpts} colorMap={LOCALOVERSEAS_COLORS} small />
