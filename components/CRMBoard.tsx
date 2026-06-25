@@ -359,7 +359,7 @@ export function CRMBoard({ clients, onUpdateClients, search = '' }: CRMBoardProp
       const sampleRows: SampleRow[] = [];
 
       const newSubitem: Subitem = {
-        id: `s-${now}`, name: "New Item", people: "", status: "", qty: "", description: "",
+        id: crypto.randomUUID(), name: "New Item", people: "", status: "", qty: "", description: "",
         supplier: "", cost: "", manpower: "", ls: "", os: "", tc: "", uc: "", tcSgd: "",
         price: "", up: "", owner: "", shipper: "", paymentStatus: "", total: "",
         lsRmb: "", totalC: "", modeOfPayment: "", orderNumber: "", quantityProduced: "",
@@ -436,7 +436,7 @@ export function CRMBoard({ clients, onUpdateClients, search = '' }: CRMBoardProp
   const addClient = useCallback(() => {
     const colors = ['#e485b3', '#2c73d2', '#0081cf', '#0089ba', '#008e9b', '#008f7a', '#4e8397'];
     const newClient: Client = {
-      id: `c-${Date.now()}`, name: 'New Client', people: '', replyStatus: '',
+      id: crypto.randomUUID(), name: 'New Client', people: '', replyStatus: '',
       followUp: '', status: 'New Lead', channel: '', importance: '',
       company: '', email: '', phone: '', requirements: '', qty: '', nbd: '', totalPrice: '',
       companyAddress: '', billingAddress: '', dateCreated: '', expanded: true,
