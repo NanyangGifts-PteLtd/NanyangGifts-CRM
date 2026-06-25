@@ -1,7 +1,5 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { Sidebar } from "@/components/Sidebar";
-import { TopBar } from "@/components/TopBar";
 
 export default async function AuthGate({
     children,
