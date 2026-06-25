@@ -39,7 +39,7 @@ import {
 const CLIENT_HEADER_COLS = [
   { label: '', width: 60 },
   { label: 'Client', width: 180 },
-  { label: 'People', width: 70 },
+  { label: 'People', width: 90 },
   { label: 'Reply Status', width: 90 },
   { label: 'Follow Up', width: 100 },
   { label: 'Status', width: 115 },
@@ -53,7 +53,7 @@ const CLIENT_HEADER_COLS = [
   { label: 'NBD', width: 100 },
   { label: 'Total Price', width: 90 },
   { label: 'Company Address', width: 115 },
-  { label: 'Billing Address', width: 120 },
+  { label: 'Billing Address', width: 115 },
   { label: 'Date Created', width: 90 },
   { label: '', width: 60 },
 ];
