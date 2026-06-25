@@ -244,8 +244,8 @@ export function SubitemsTable({
                                                 onClick={() =>
                                                     onUpdateSubitem(sub.id, {
                                                         timelineRows: sub.timelineRows?.length ? sub.timelineRows : DEFAULT_TIMELINE_ROWS,
-                                                        showTimeline: !sub.showTimeline,
-                                                        showPayments: false,
+                                                        showTimeline: false,
+                                                        showPayments: !sub.showPayments,
                                                         showSample: false,
                                                     })
                                                 }

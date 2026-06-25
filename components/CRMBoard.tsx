@@ -60,31 +60,120 @@ const CLIENT_HEADER_COLS = [
 
 const TOTAL_MIN_WIDTH = CLIENT_HEADER_COLS.reduce((s, c) => s + c.width, 0);
 
+const GROUP_ORDER: ClientStatus[] = [
+  'New Lead',
+  'Contacted',
+  'Quoted',
+  'Failed',
+  'Overdue',
+  'Follow Up',
+  'Shortlisted',
+  'Project Started',
+  'Project Done',
+  'Closed',
+  'Unqualified',
+];
+
 interface CRMBoardProps {
   clients: Client[];
   reloadClients: () => Promise<void>;
   search?: string;
 }
 
+export async function fetchAllClientAssignees(): Promise<ClientAssigneeMap> {
+  const supabase = createSupabaseClient()
+  const { data } = await supabase
+    .from('client_assignees')
+    .select('client_id, user_id')
+  return (data ?? []).reduce((acc, row) => {
+    acc[row.client_id] = [...(acc[row.client_id] ?? []), row.user_id]
+    return acc
+  }, {} as ClientAssigneeMap)
+}
+
+export async function fetchAllSubitemAssignees(): Promise<SubitemAssigneeMap> {
+  const supabase = createSupabaseClient()
+  const { data } = await supabase
+    .from('subitem_assignees')
+    .select('subitem_id, user_id')
+  return (data ?? []).reduce((acc, row) => {
+    acc[row.subitem_id] = [...(acc[row.subitem_id] ?? []), row.user_id]
+    return acc
+  }, {} as SubitemAssigneeMap)
+}
+
 export function CRMBoard({ clients, reloadClients, search = '' }: CRMBoardProps) {
+
+  const [localClients, setLocalClients] = useState<Client[]>(clients);
+
+  // Sync when parent reloads (e.g. initial load or hard refresh)
+  useEffect(() => {
+    setLocalClients(clients);
+  }, [clients]);
+
   const [filterStatus, setFilterStatus] = useState<ClientStatus | 'All'>('All');
   const [showFilter, setShowFilter] = useState(false);
-  const [allExpanded, setAllExpanded] = useState(false);
+
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(
+    () => new Set(clients.filter((c) => c.expanded).map((c) => c.id))
+  );
+  const allExpanded = expandedIds.size === localClients.length && localClients.length > 0;
+
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [clientAssignees, setClientAssignees] = useState<ClientAssigneeMap>({});
   const [subitemAssignees, setSubitemAssignees] = useState<SubitemAssigneeMap>({});
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const filterRef = useRef<HTMLDivElement>(null);
 
-  const displayedClients = clients.filter((client) => {
+  useEffect(() => {
+    const loadAssignments = async () => {
+      try {
+        const supabase = createSupabaseClient();
+
+        const [
+          profilesData,
+          { data: { user } },
+          allClientAssigneeMap,
+          allSubitemAssigneeMap,
+        ] = await Promise.all([
+          fetchProfiles(),
+          supabase.auth.getUser(),
+          fetchAllClientAssignees(),   // 1 bulk query instead of N
+          fetchAllSubitemAssignees(),  // 1 bulk query instead of N×M
+        ]);
+
+        setProfiles(profilesData);
+        setCurrentUserId(user?.id ?? null);
+        setClientAssignees(allClientAssigneeMap);
+        setSubitemAssignees(allSubitemAssigneeMap);
+      } catch (error: any) {
+        console.error('Failed to load assignments', error);
+      }
+    };
+
+    void loadAssignments();
+  }, []);
+
+  useEffect(() => {
+    if (!showFilter) return;
+    const handler = (e: MouseEvent) => {
+      if (filterRef.current && !filterRef.current.contains(e.target as Node)) {
+        setShowFilter(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showFilter]);
+
+  const displayedClients = localClients.filter((client) => {
     const matchesStatus = filterStatus === 'All' || client.status === filterStatus;
     const q = search.trim().toLowerCase();
 
-    const clientAssignedProfiles =
-      (clientAssignees[client.id] ?? [])
-        .map((id) => profiles.find((p) => p.id === id))
-        .filter(Boolean) as Profile[];
+    const clientAssignedProfiles = (clientAssignees[client.id] ?? [])
+      .map((id) => profiles.find((p) => p.id === id))
+      .filter(Boolean) as Profile[];
 
     const matchesSearch =
       !q ||
@@ -95,151 +184,45 @@ export function CRMBoard({ clients, reloadClients, search = '' }: CRMBoardProps)
           (p.full_name ?? '').toLowerCase().includes(q) ||
           (p.email ?? '').toLowerCase().includes(q)
       ) ||
-      client.subitems.some((subitem) => (subitem.name ?? '').toLowerCase().includes(q));
+      client.subitems.some((s) => (s.name ?? '').toLowerCase().includes(q));
 
     return matchesStatus && matchesSearch;
   });
 
-  const GROUP_ORDER: ClientStatus[] = [
-    'New Lead',
-    'Contacted',
-    'Quoted',
-    'Failed',
-    'Overdue',
-    'Follow Up',
-    'Shortlisted',
-    'Project Started',
-    'Project Done',
-    'Closed',
-    'Unqualified',
-  ];
-
   const groupedClients = GROUP_ORDER.map((status) => ({
     status,
-    clients: displayedClients.filter((client) => client.status === status),
-  })).filter((group) => group.clients.length > 0);
-
-  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
-
-  const toggleGroup = (groupStatus: string) => {
-    setCollapsedGroups((prev) => ({
-      ...prev,
-      [groupStatus]: !prev[groupStatus],
-    }));
-  };
-
-  useEffect(() => {
-    const loadAssignments = async () => {
-      try {
-        const supabase = createSupabaseClient();
-
-        const [
-          profilesData,
-          {
-            data: { user },
-          },
-        ] = await Promise.all([fetchProfiles(), supabase.auth.getUser()]);
-
-        setProfiles(profilesData);
-        setCurrentUserId(user?.id ?? null);
-
-        const clientEntries = await Promise.all(
-          clients.map(async (client) => [client.id, await fetchClientAssigneeIds(client.id)] as const)
-        );
-
-        const subitemEntries = await Promise.all(
-          clients.flatMap((client) =>
-            client.subitems.map(
-              async (subitem) => [subitem.id, await fetchSubitemAssigneeIds(subitem.id)] as const
-            )
-          )
-        );
-
-        setClientAssignees(Object.fromEntries(clientEntries));
-        setSubitemAssignees(Object.fromEntries(subitemEntries));
-      } catch (error: any) {
-        console.error('Failed to load assignments', {
-          message: error?.message,
-          code: error?.code,
-          details: error?.details,
-          hint: error?.hint,
-          full: error,
-        });
-      }
-    };
-
-    void loadAssignments();
-  }, [clients]);
-
-  const handleClientAssigneesChange = useCallback(
-    async (clientId: string, ids: string[]) => {
-      setClientAssignees((prev) => ({ ...prev, [clientId]: ids }));
-      try {
-        await saveClientAssignees(clientId, ids, currentUserId);
-      } catch (error: any) {
-        console.error('Failed to save client assignees', {
-          clientId,
-          ids,
-          message: error?.message,
-          code: error?.code,
-          details: error?.details,
-          hint: error?.hint,
-          full: error,
-        });
-      }
-    },
-    [currentUserId]
-  );
-
-  const handleSubitemAssigneesChange = useCallback(
-    async (subitemId: string, ids: string[]) => {
-      setSubitemAssignees((prev) => ({ ...prev, [subitemId]: ids }));
-      try {
-        await saveSubitemAssignees(subitemId, ids, currentUserId);
-      } catch (error: any) {
-        console.error('Failed to save subitem assignees', {
-          subitemId,
-          ids,
-          message: error?.message,
-          code: error?.code,
-          details: error?.details,
-          hint: error?.hint,
-          full: error,
-        });
-      }
-    },
-    [currentUserId]
-  );
-
-  useEffect(() => {
-    if (!showFilter) return;
-
-    const handler = (e: MouseEvent) => {
-      if (filterRef.current && !filterRef.current.contains(e.target as Node)) {
-        setShowFilter(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [showFilter]);
+    clients: displayedClients.filter((c) => c.status === status),
+  })).filter((g) => g.clients.length > 0);
 
   const filteredClients =
-    filterStatus === 'All' ? clients : clients.filter((c) => c.status === filterStatus);
-
-  const toggleSelect = useCallback((id: string) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }, []);
+    filterStatus === 'All' ? localClients : localClients.filter((c) => c.status === filterStatus);
 
   const allFilteredSelected =
     filteredClients.length > 0 && filteredClients.every((c) => selectedIds.has(c.id));
 
-  const toggleSelectAll = () => {
+  // --- Expand / collapse ---
+  const toggleExpandAll = useCallback(() => {
+    if (allExpanded) {
+      setExpandedIds(new Set());
+    } else {
+      setExpandedIds(new Set(localClients.map((c) => c.id)));
+    }
+  }, [allExpanded, localClients]);
+
+  const toggleGroup = useCallback((groupStatus: string) => {
+    setCollapsedGroups((prev) => ({ ...prev, [groupStatus]: !prev[groupStatus] }));
+  }, []);
+
+  // --- Selection ---
+  const toggleSelect = useCallback((id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }, []);
+
+  const toggleSelectAll = useCallback(() => {
     if (allFilteredSelected) {
       setSelectedIds((prev) => {
         const next = new Set(prev);
@@ -253,64 +236,112 @@ export function CRMBoard({ clients, reloadClients, search = '' }: CRMBoardProps)
         return next;
       });
     }
-  };
+  }, [allFilteredSelected, filteredClients]);
 
-  const deleteSelected = useCallback(async () => {
-    try {
-      await Promise.all([...selectedIds].map((id) => deleteClientRow(id)));
-      setSelectedIds(new Set());
-      await reloadClients();
-    } catch (error: any) {
-      console.error('Failed to delete selected clients', {
-        ids: [...selectedIds],
-        message: error?.message,
-        code: error?.code,
-        details: error?.details,
-        hint: error?.hint,
-        full: error,
-      });
-    }
-  }, [selectedIds, reloadClients]);
+  // --- Assignees ---
+  const handleClientAssigneesChange = useCallback(
+    async (clientId: string, ids: string[]) => {
+      setClientAssignees((prev) => ({ ...prev, [clientId]: ids })); // optimistic
+      try {
+        await saveClientAssignees(clientId, ids, currentUserId);
+      } catch (error: any) {
+        console.error('Failed to save client assignees', error);
+      }
+    },
+    [currentUserId]
+  );
+
+  const handleSubitemAssigneesChange = useCallback(
+    async (subitemId: string, ids: string[]) => {
+      setSubitemAssignees((prev) => ({ ...prev, [subitemId]: ids })); // optimistic
+      try {
+        await saveSubitemAssignees(subitemId, ids, currentUserId);
+      } catch (error: any) {
+        console.error('Failed to save subitem assignees', error);
+      }
+    },
+    [currentUserId]
+  );
+
 
   const updateClient = useCallback(
     async (clientId: string, updates: Partial<Client>) => {
+      // 1. Update UI instantly
+      setLocalClients((prev) =>
+        prev.map((c) => (c.id === clientId ? { ...c, ...updates } : c))
+      );
       try {
         await updateClientRow(clientId, updates);
-        await reloadClients();
       } catch (error: any) {
-        console.error('Failed to update client', {
-          clientId,
-          updates,
-          message: error?.message,
-          code: error?.code,
-          details: error?.details,
-          hint: error?.hint,
-          full: error,
-        });
+        setLocalClients(clients);
+        console.error('Failed to update client', error);
       }
     },
-    [reloadClients]
+    [clients]
   );
 
   const updateSubitem = useCallback(
     async (_clientId: string, subitemId: string, updates: Partial<Subitem>) => {
+      // 1. Update UI instantly
+      setLocalClients((prev) =>
+        prev.map((c) => ({
+          ...c,
+          subitems: c.subitems.map((s) =>
+            s.id === subitemId ? { ...s, ...updates } : s
+          ),
+        }))
+      );
       try {
         await updateSubitemRow(subitemId, updates);
-        await reloadClients();
       } catch (error: any) {
-        console.error('Failed to update subitem', {
-          subitemId,
-          updates,
-          message: error?.message,
-          code: error?.code,
-          details: error?.details,
-          hint: error?.hint,
-          full: error,
-        });
+        setLocalClients(clients);
+        console.error('Failed to update subitem', error);
       }
     },
-    [reloadClients]
+    [clients]
   );
+
+  const addClient = useCallback(async () => {
+    try {
+      // Create in DB first to get the real ID, then reload once
+      await createClientRow();
+      await reloadClients();
+    } catch (error: any) {
+      console.error('Failed to add client', error);
+    }
+  }, [reloadClients]);
+
+  const deleteClient = useCallback(
+    async (clientId: string) => {
+      // 1. Remove from UI instantly
+      setLocalClients((prev) => prev.filter((c) => c.id !== clientId));
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(clientId);
+        return next;
+      });
+      try {
+        await deleteClientRow(clientId);
+      } catch (error: any) {
+        setLocalClients(clients);
+        console.error('Failed to delete client', error);
+      }
+    },
+    [clients]
+  );
+
+  const deleteSelected = useCallback(async () => {
+    const ids = [...selectedIds];
+    // 1. Remove from UI instantly
+    setLocalClients((prev) => prev.filter((c) => !selectedIds.has(c.id)));
+    setSelectedIds(new Set());
+    try {
+      await Promise.all(ids.map((id) => deleteClientRow(id)));
+    } catch (error: any) {
+      setLocalClients(clients);
+      console.error('Failed to delete selected clients', error);
+    }
+  }, [selectedIds, clients]);
 
   const addSubitem = useCallback(
     async (clientId: string) => {
@@ -318,14 +349,7 @@ export function CRMBoard({ clients, reloadClients, search = '' }: CRMBoardProps)
         await createSubitemRow(clientId);
         await reloadClients();
       } catch (error: any) {
-        console.error('Failed to add subitem', {
-          clientId,
-          message: error?.message,
-          code: error?.code,
-          details: error?.details,
-          hint: error?.hint,
-          full: error,
-        });
+        console.error('Failed to add subitem', error);
       }
     },
     [reloadClients]
@@ -333,85 +357,26 @@ export function CRMBoard({ clients, reloadClients, search = '' }: CRMBoardProps)
 
   const deleteSubitem = useCallback(
     async (_clientId: string, subitemId: string) => {
+      // 1. Remove from UI instantly
+      setLocalClients((prev) =>
+        prev.map((c) => ({
+          ...c,
+          subitems: c.subitems.filter((s) => s.id !== subitemId),
+        }))
+      );
       try {
         await deleteSubitemRow(subitemId);
-        await reloadClients();
       } catch (error: any) {
-        console.error('Failed to delete subitem', {
-          subitemId,
-          message: error?.message,
-          code: error?.code,
-          details: error?.details,
-          hint: error?.hint,
-          full: error,
-        });
+        setLocalClients(clients);
+        console.error('Failed to delete subitem', error);
       }
     },
-    [reloadClients]
+    [clients]
   );
-
-  const deleteClient = useCallback(
-    async (clientId: string) => {
-      try {
-        await deleteClientRow(clientId);
-        setSelectedIds((prev) => {
-          const next = new Set(prev);
-          next.delete(clientId);
-          return next;
-        });
-        await reloadClients();
-      } catch (error: any) {
-        console.error('Failed to delete client', {
-          clientId,
-          message: error?.message,
-          code: error?.code,
-          details: error?.details,
-          hint: error?.hint,
-          full: error,
-        });
-      }
-    },
-    [reloadClients]
-  );
-
-  const addClient = useCallback(async () => {
-    try {
-      await createClientRow();
-      await reloadClients();
-    } catch (error: any) {
-      console.error('Failed to add client', {
-        message: error?.message,
-        code: error?.code,
-        details: error?.details,
-        hint: error?.hint,
-        full: error,
-      });
-    }
-  }, [reloadClients]);
-
-  const toggleExpandAll = useCallback(async () => {
-    const next = !allExpanded;
-    setAllExpanded(next);
-
-    try {
-      await Promise.all(
-        clients.map((client) => updateClientRow(client.id, { expanded: next }))
-      );
-      await reloadClients();
-    } catch (error: any) {
-      console.error('Failed to toggle expand all', {
-        expanded: next,
-        message: error?.message,
-        code: error?.code,
-        details: error?.details,
-        hint: error?.hint,
-        full: error,
-      });
-    }
-  }, [allExpanded, clients, reloadClients]);
 
   return (
     <div className="flex flex-col h-full bg-white">
+      {/* Toolbar */}
       <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-200 bg-white flex-shrink-0">
         <button
           onClick={addClient}
@@ -442,10 +407,7 @@ export function CRMBoard({ clients, reloadClients, search = '' }: CRMBoardProps)
           {showFilter && (
             <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-xl z-50 min-w-44 py-1 max-h-80 overflow-y-auto">
               <button
-                onClick={() => {
-                  setFilterStatus('All');
-                  setShowFilter(false);
-                }}
+                onClick={() => { setFilterStatus('All'); setShowFilter(false); }}
                 className="flex items-center gap-2 w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50"
               >
                 <span className="w-2.5 h-2.5 rounded-sm bg-gray-300" />
@@ -458,18 +420,12 @@ export function CRMBoard({ clients, reloadClients, search = '' }: CRMBoardProps)
               {CLIENT_STATUSES.map((st) => (
                 <button
                   key={st}
-                  onClick={() => {
-                    setFilterStatus(st);
-                    setShowFilter(false);
-                  }}
+                  onClick={() => { setFilterStatus(st); setShowFilter(false); }}
                   className="flex items-center gap-2 w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50"
                 >
-                  <span
-                    className="w-2.5 h-2.5 rounded-sm"
-                    style={{ background: STATUS_COLORS[st] }}
-                  />
+                  <span className="w-2.5 h-2.5 rounded-sm" style={{ background: STATUS_COLORS[st] }} />
                   <span className="flex-1">{st}</span>
-                  <span className="text-gray-400">{clients.filter((c) => c.status === st).length}</span>
+                  <span className="text-gray-400">{localClients.filter((c) => c.status === st).length}</span>
                   {filterStatus === st && <span className="text-blue-500 ml-1">✓</span>}
                 </button>
               ))}
@@ -479,9 +435,8 @@ export function CRMBoard({ clients, reloadClients, search = '' }: CRMBoardProps)
 
         <div className="flex items-center gap-1">
           {CLIENT_STATUSES.map((st) => {
-            const count = clients.filter((c) => c.status === st).length;
+            const count = localClients.filter((c) => c.status === st).length;
             if (!count) return null;
-
             return (
               <button
                 key={st}
@@ -523,8 +478,10 @@ export function CRMBoard({ clients, reloadClients, search = '' }: CRMBoardProps)
         )}
       </div>
 
+      {/* Table */}
       <div className="flex-1 overflow-auto text-gray-500 font-semibold">
         <div style={{ minWidth: TOTAL_MIN_WIDTH }}>
+          {/* Header */}
           <div
             className="flex items-center flex-shrink-0 border-b border-gray-200 animated-background bg-gradient-to-r from-[#e7fdff] to-[#a3dfff] sticky top-0 z-10"
             style={{ minWidth: TOTAL_MIN_WIDTH }}
@@ -553,6 +510,7 @@ export function CRMBoard({ clients, reloadClients, search = '' }: CRMBoardProps)
             ))}
           </div>
 
+          {/* Grouped rows */}
           {groupedClients.map((group) => (
             <React.Fragment key={group.status}>
               <div className="flex items-center gap-2.5 px-2 py-0.4 text-sm bg-gray-50 border-y border-gray-100">
@@ -573,6 +531,14 @@ export function CRMBoard({ clients, reloadClients, search = '' }: CRMBoardProps)
                   <ClientRow
                     key={client.id}
                     client={client}
+                    isExpanded={expandedIds.has(client.id)}
+                    onToggleExpand={() =>
+                      setExpandedIds((prev) => {
+                        const next = new Set(prev);
+                        next.has(client.id) ? next.delete(client.id) : next.add(client.id);
+                        return next;
+                      })
+                    }
                     isSelected={selectedIds.has(client.id)}
                     onToggleSelect={() => toggleSelect(client.id)}
                     onUpdate={(updates) => updateClient(client.id, updates)}

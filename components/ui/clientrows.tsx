@@ -71,6 +71,8 @@ export const CHANNEL_COLORS: Record<string, string> = {
 type ClientRowProps = {
     client: Client;
     isSelected: boolean;
+    isExpanded: boolean;
+    onToggleExpand: () => void;
     onToggleSelect: () => void;
     onUpdate: (u: Partial<Client>) => void;
     onUpdateSubitem: (subitemId: string, u: Partial<Subitem>) => void;
