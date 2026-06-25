@@ -55,7 +55,7 @@ export async function saveClientAssignees(
 
     const rows = selectedProfileIds.map((profileId) => ({
         client_id: clientId,
-        profile_id: profileId,
+        user_id: profileId,
         assigned_by: currentUserId ?? null,
     }));
 
@@ -82,7 +82,7 @@ export async function saveSubitemAssignees(
 
     const rows = selectedProfileIds.map((profileId) => ({
         subitem_id: subitemId,
-        profile_id: profileId,
+        user_id: profileId,
         assigned_by: currentUserId ?? null,
     }));
 
