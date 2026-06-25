@@ -103,7 +103,6 @@ export function ClientRow({
     const importanceOpts = ["High", "Medium", "Low"];
     const channelOpts = ["Forms", "Email", "Referral", "Whatsapp", "E-comm", "Direct"];
     const subitemCount = client.subitems.length;
-
     const [showCloseDialog, setShowCloseDialog] = useState(false);
     const [pendingStatus, setPendingStatus] = useState<ClientStatus | null>(null);
     const [closeFiles, setCloseFiles] = useState<File[]>([]);

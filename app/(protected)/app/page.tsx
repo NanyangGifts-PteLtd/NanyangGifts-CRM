@@ -5,7 +5,7 @@ import type { Client } from '../../types';
 import { fetchClientsWithSubitems } from '@/lib/crm';
 import { CRMBoard } from '@/components/CRMBoard';
 import Sidebar, { type SidePanel } from '../../../components/Sidebar';
-import Topbar from '../../../components/TopBar';
+import TopBar from '../../../components/TopBar';
 import type { User } from '@supabase/supabase-js';
 import { createClient as createSupabaseClient } from '@/lib/supabase/client';
 import { ReportsPanel } from '@/components/ReportsPanel';
@@ -98,7 +98,7 @@ export default function Page() {
       />
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <Topbar
+        <TopBar
           value={search}
           onChange={setSearch}
           onMarkAllRead={() => { }}

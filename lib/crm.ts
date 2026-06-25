@@ -3,7 +3,7 @@
 // map client/subitem updates back into db column names
 // expose crud functions
 import { createClient } from '@/lib/supabase/client';
-import type { Client, Subitem } from '@/app/types';
+import type { Client, Subitem, ActivityEntry } from '@/app/types';
 
 const supabase = createClient();
 
@@ -75,9 +75,35 @@ type Clients = {
     date_created: string | null;
     expanded: boolean | null;
     color: string | null;
-    activity_log: any[] | null;
+    activity_log?: ActivityLogRow[] | null;
     subitems?: Subitems[];
 };
+
+type ActivityLogRow = {
+    id: string;
+    client_id: string;
+    subitem_id: string | null;
+    actor_name: string | null;
+    action: string;
+    field_name: string | null;
+    old_value: string | null;
+    new_value: string | null;
+    subitem_name: string | null;
+    created_at: string;
+};
+
+function mapActivityEntry(row: ActivityLogRow) {
+    return {
+        id: row.id,
+        actorName: row.actor_name ?? 'Unknown user',
+        action: row.action as ActivityEntry['action'],
+        fieldName: row.field_name ?? '',
+        oldValue: row.old_value ?? '',
+        newValue: row.new_value ?? '',
+        subitemName: row.subitem_name ?? '',
+        createdAt: row.created_at,
+    };
+}
 
 function mapSubitems(row: Subitems): Subitem {
     return {
@@ -149,14 +175,44 @@ function mapClients(row: Clients): Client {
         dateCreated: row.date_created ?? '',
         expanded: row.expanded ?? false,
         color: row.color ?? '#7BCBD5',
-        activityLog: row.activity_log ?? [],
+        activityLog: (row.activity_log ?? []).map(mapActivityEntry),
         subitems: (row.subitems ?? []).map(mapSubitems),
     };
 }
 // client functions
+async function insertActivityLog(params: {
+    clientId: string;
+    subitemId?: string | null;
+    action: 'field_changed' | 'subitem_added' | 'subitem_deleted' | 'subitem_field_changed';
+    fieldName?: string | null;
+    oldValue?: unknown;
+    newValue?: unknown;
+    subitemName?: string | null;
+}) {
+    const {
+        data: { user },
+    } = await supabase.auth.getUser();
 
+    const actorEmail = user?.email ?? 'Unknown user';
+
+    const { error } = await supabase.from('activity_log').insert({
+        client_id: params.clientId,
+        subitem_id: params.subitemId ?? null,
+        actor_name: actorEmail,
+        action: params.action,
+        field_name: params.fieldName ?? null,
+        old_value: params.oldValue ?? null,
+        new_value: params.newValue ?? null,
+        subitem_name: params.subitemName ?? null,
+        created_at: new Date().toISOString(),
+    });
+
+    if (error) {
+        console.error('insertActivityLog error:', error);
+    }
+}
 export async function fetchClientsWithSubitems() {
-    const { data, error } = await supabase
+    const { data: clientsData, error: clientsError } = await supabase
         .from('clients')
         .select(`
       *,
@@ -164,11 +220,35 @@ export async function fetchClientsWithSubitems() {
     `)
         .order('date_created', { ascending: false });
 
-    if (error) {console.error('fetchClientsWithSubitems error:', error);
-                throw error;
-            }
+    if (clientsError) {
+        console.error('fetchClientsWithSubitems clients error:', clientsError);
+        throw clientsError;
+    }
 
-    return (data ?? []).map((row) => mapClients(row as Clients));
+    const { data: activityData, error: activityError } = await supabase
+        .from('activity_log')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+    if (activityError) {
+        console.error('fetchClientsWithSubitems activity error:', activityError);
+        throw activityError;
+    }
+
+    const activityByClientId = new Map<string, ActivityLogRow[]>();
+
+    for (const row of activityData ?? []) {
+        const list = activityByClientId.get(row.client_id) ?? [];
+        list.push(row as ActivityLogRow);
+        activityByClientId.set(row.client_id, list);
+    }
+
+    return (clientsData ?? []).map((row) =>
+        mapClients({
+            ...(row as Clients),
+            activity_log: activityByClientId.get((row as Clients).id) ?? [],
+        })
+    );
 }
 export async function createClientRow() {
     const { data, error } = await supabase
@@ -203,6 +283,14 @@ export async function createClientRow() {
 }
 
 export async function updateClientRow(clientId: string, updates: Partial<Client>) {
+    const { data: existing, error: fetchError } = await supabase
+        .from('clients')
+        .select('*')
+        .eq('id', clientId)
+        .single();
+
+    if (fetchError) throw fetchError;
+
     const payload = {
         ...(updates.name !== undefined ? { name: updates.name } : {}),
         ...(updates.people !== undefined ? { people: updates.people } : {}),
@@ -232,6 +320,27 @@ export async function updateClientRow(clientId: string, updates: Partial<Client>
         .eq('id', clientId);
 
     if (error) throw error;
+
+    for (const [key, value] of Object.entries(updates)) {
+        const oldValue =
+            existing[
+            key === 'replyStatus' ? 'reply_status' :
+            key === 'followUp' ? 'follow_up' :
+            key === 'totalPrice' ? 'total_price' :
+            key === 'companyAddress' ? 'company_address' :
+            key === 'billingAddress' ? 'billing_address' :
+            key === 'dateCreated' ? 'date_created' :
+            key
+            ];
+
+        await insertActivityLog({
+            clientId,
+            action: 'field_changed',
+            fieldName: key,
+            oldValue,
+            newValue: value,
+        });
+    }
 }
 
 export async function deleteClientRow(clientId: string) {
@@ -255,7 +364,7 @@ export async function createSubitemRow(clientId: string) {
         { id: crypto.randomUUID(), name: 'NBD', person: '', remarks: '', subProgress: '', timelineStart: '', timelineEnd: '', duration: '', dependency: '', status: '' },
     ];
 
-    const { error } = await supabase
+    const { data, error } = await supabase
         .from('subitems')
         .insert({
             client_id: clientId,
@@ -301,12 +410,31 @@ export async function createSubitemRow(clientId: string) {
             sample_order_status: '',
             sample_status: '',
             sample_type: '',
-        });
+        })
+        .select('*')
+        .single();
 
     if (error) throw error;
+
+    await insertActivityLog({
+        clientId,
+        subitemId: data.id,
+        subitemName: data.name,
+        action: 'subitem_added',
+    });
+
+    return data;
 }
 
 export async function updateSubitemRow(subitemId: string, updates: Partial<Subitem>) {
+    const { data: existing, error: fetchError } = await supabase
+        .from('subitems')
+        .select('*')
+        .eq('id', subitemId)
+        .single();
+
+    if (fetchError) throw fetchError;
+
     const payload = {
         ...(updates.name !== undefined ? { name: updates.name } : {}),
         ...(updates.people !== undefined ? { people: updates.people } : {}),
@@ -358,13 +486,67 @@ export async function updateSubitemRow(subitemId: string, updates: Partial<Subit
         .eq('id', subitemId);
 
     if (error) throw error;
+
+    for (const [key, value] of Object.entries(updates)) {
+        const oldValue =
+            existing[
+            key === 'localOverseas' ? 'local_overseas' :
+            key === 'tcSgd' ? 'tc_sgd' :
+            key === 'numOfCartons' ? 'num_of_cartons' :
+            key === 'cnTracking' ? 'cn_tracking' :
+            key === 'sgTracking' ? 'sg_tracking' :
+            key === 'paymentStatus' ? 'payment_status' :
+            key === 'lsRmb' ? 'ls_rmb' :
+            key === 'totalC' ? 'total_c' :
+            key === 'modeOfPayment' ? 'mode_of_payment' :
+            key === 'orderNumber' ? 'order_number' :
+            key === 'quantityProduced' ? 'quantity_produced' :
+            key === 'qtyFor' ? 'qty_for' :
+            key === 'paymentAmount' ? 'payment_amount' :
+            key === 'paymentRemarks' ? 'payment_remarks' :
+            key === 'timelineRows' ? 'timeline_rows' :
+            key === 'showTimeline' ? 'show_timeline' :
+            key === 'showPayments' ? 'show_payments' :
+            key === 'showSample' ? 'show_sample' :
+            key === 'sampleRows' ? 'sample_rows' :
+            key === 'sampleOrderStatus' ? 'sample_order_status' :
+            key === 'sampleStatus' ? 'sample_status' :
+            key === 'sampleType' ? 'sample_type' :
+            key
+            ];
+
+        await insertActivityLog({
+            clientId: existing.client_id,
+            subitemId,
+            subitemName: existing.name,
+            action: 'subitem_field_changed',
+            fieldName: key,
+            oldValue,
+            newValue: value,
+        });
+    }
 }
 
 export async function deleteSubitemRow(subitemId: string) {
+    const { data: existing, error: fetchError } = await supabase
+        .from('subitems')
+        .select('*')
+        .eq('id', subitemId)
+        .single();
+
+    if (fetchError) throw fetchError;
+
     const { error } = await supabase
         .from('subitems')
         .delete()
         .eq('id', subitemId);
 
     if (error) throw error;
+
+    await insertActivityLog({
+        clientId: existing.client_id,
+        subitemId,
+        subitemName: existing.name,
+        action: 'subitem_deleted',
+    });
 }
