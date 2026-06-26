@@ -5,7 +5,7 @@
 
 import { createClient } from '@/lib/supabase/client';
 import type { TimelineRow, Client, Subitem, ActivityEntry, ClientAssigneeMap } from '@/app/types';
-import { isEqual } from 'date-fns';
+
 
 const supabase = createClient();
 
