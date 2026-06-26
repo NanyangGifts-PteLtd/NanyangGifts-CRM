@@ -4,7 +4,8 @@
 // expose crud functions
 
 import { createClient } from '@/lib/supabase/client';
-import type { Client, Subitem, ActivityEntry, ClientAssigneeMap } from '@/app/types';
+import type { TimelineRow, Client, Subitem, ActivityEntry, ClientAssigneeMap } from '@/app/types';
+import { isEqual } from 'date-fns';
 
 const supabase = createClient();
 
@@ -18,6 +19,7 @@ const SUBITEM_LOG_IGNORE_FIELDS = new Set<keyof Subitem>([
     'showTimeline',
     'showPayments',
     'showSample',
+    'timelineRows'
 ]);
 type Subitems = {
     id: string;
@@ -104,6 +106,15 @@ type ActivityLogRow = {
     created_at: string;
 };
 
+const TIMELINE_LOG_FIELDS: Array<keyof TimelineRow> = [
+    'person',
+    'remarks',
+    'subProgress',
+    'timelineStart',
+    'timelineEnd',
+    'duration',
+    'dependency'
+]
 function isEqualForLog(a: unknown, b: unknown){
     return JSON.stringify(a) === JSON.stringify(b);
 }
@@ -117,6 +128,64 @@ function formatValueForLog(value: unknown): unknown {
 
     return value;
 }
+async function logTimelineRowDiffs(params: {
+    clientId: string;
+    subitemId: string;
+    subitemName: string;
+    oldRows: TimelineRow[];
+    newRows: TimelineRow[];
+}) {
+    const oldMap = new Map(params.oldRows.map((row) => [row.id, row]));
+    const newMap = new Map(params.newRows.map((row) => [row.id, row]));
+
+    for (const [rowId, newRow] of newMap.entries()){
+        const oldRow = oldMap.get(rowId);
+
+        if (!oldRow){
+            await insertActivityLog({
+                clientId: params.clientId,
+                subitemId: params.subitemId,
+                subitemName: params.subitemName,
+                action: 'subitem_field_changed',
+                fieldName: 'timeline row ${newRow.name ?? rowId} added',
+                oldValue: null,
+                newValue: newRow,
+            });
+            continue;
+        }
+
+        for (const field of TIMELINE_LOG_FIELDS){
+            const oldValue = oldRow[field] ?? '';
+            const newValue = newRow[field] ?? '';
+
+            if (isEqualForLog(oldValue, newValue)) continue;
+
+            await insertActivityLog({
+                clientId: params.clientId,
+                subitemId: params.subitemId,
+                subitemName: params.subitemName,
+                action: 'subitem_field_changed',
+                fieldName: `timeline: ${newRow.name ?? rowId}:${String(field)}`,
+                oldValue,
+                newValue
+            });
+        }
+    }
+    for (const [rowId, oldRow] of oldMap.entries()) {
+        if (newMap.has(rowId)) continue;
+
+        await insertActivityLog({
+            clientId: params.clientId,
+            subitemId: params.subitemId,
+            subitemName: params.subitemName,
+            action: 'subitem_field_changed',
+            fieldName: `timeline row ${oldRow.name ?? rowId} removed`,
+            oldValue: oldRow,
+            newValue: null,
+        });
+    }
+}
+
 
 function mapActivityEntry(row: ActivityLogRow) {
     return {
@@ -471,7 +540,16 @@ export async function updateSubitemRow(subitemId: string, updates: Partial<Subit
         .single();
 
     if (fetchError) throw fetchError;
-
+    
+    if (updates.timelineRows !== undefined){
+        await logTimelineRowDiffs({
+            clientId: existing.client_id,
+            subitemId,
+            subitemName: existing.name ?? 'Subitem',
+            oldRows: (existing.timeline_rows ?? []) as TimelineRow[],
+            newRows: updates.timelineRows as TimelineRow[],
+        })
+    }
     const payload = {
         ...(updates.name !== undefined ? { name: updates.name } : {}),
         ...(updates.people !== undefined ? { people: updates.people } : {}),

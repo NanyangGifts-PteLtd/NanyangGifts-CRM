@@ -116,11 +116,11 @@ export function ClientRow({
     function displayLogValue(value: unknown){
         if (value == null || value === '') return 'empty';
 
-        if (Array.isArray(value)){
+        if (Array.isArray(value)) {
             return `${value.length} item(s)`;
         }
 
-        if (typeof value === 'object'){
+        if (typeof value === 'object') {
             return JSON.stringify(value);
         }
 
@@ -150,12 +150,28 @@ export function ClientRow({
         }
 
         if (entry.action === "subitem_field_changed") {
+            const fieldName = entry.fieldName ?? "";
+
+            if (fieldName.startsWith("timeline:")) {
+                const [, rowName, changedField] = fieldName.split(":");
+
+                return (
+                    <>
+                        changed subitem <span className="font-medium">{entry.subitemName ?? "Subitem"}</span>{" "}
+                        timeline row <span className="font-medium">{rowName}</span>{" "}
+                        field <span className="font-medium">{changedField}</span> from{" "}
+                        <span className="text-gray-600">{displayLogValue(entry.oldValue)}</span> to{" "}
+                        <span className="text-gray-600">{displayLogValue(entry.newValue)}</span>
+                    </>
+                );
+            }
+
             return (
                 <>
                     changed subitem <span className="font-medium">{entry.subitemName ?? "Subitem"}</span>{" "}
                     field <span className="font-medium">{entry.fieldName}</span> from{" "}
-                    <span className="text-gray-600">{displayLogValue(entry.oldValue ?? "empty")}</span> to{" "}
-                    <span className="text-gray-600">{displayLogValue(entry.newValue ?? "empty")}</span>
+                    <span className="text-gray-600">{displayLogValue(entry.oldValue)}</span> to{" "}
+                    <span className="text-gray-600">{displayLogValue(entry.newValue)}</span>
                 </>
             );
         }
