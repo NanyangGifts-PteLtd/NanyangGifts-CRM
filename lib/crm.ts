@@ -7,6 +7,17 @@ import type { Client, Subitem, ActivityEntry } from '@/app/types';
 
 const supabase = createClient();
 
+const CLIENT_LOG_IGNORE_FIELDS = new Set<keyof Client>([
+    'expanded',
+    'activityLog',
+    'color',
+    'subitems',
+]);
+const SUBITEM_LOG_IGNORE_FIELDS = new Set<keyof Subitem>([
+    'showTimeline',
+    'showPayments',
+    'showSample',
+]);
 type Subitems = {
     id: string;
     client_id: string;
@@ -91,6 +102,20 @@ type ActivityLogRow = {
     subitem_name: string | null;
     created_at: string;
 };
+
+function isEqualForLog(a: unknown, b: unknown){
+    return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function formatValueForLog(value: unknown): unknown {
+    if (value == null) return null;
+
+    if (Array.isArray(value)){
+        return value;
+    }
+
+    return value;
+}
 
 function mapActivityEntry(row: ActivityLogRow) {
     return {
@@ -321,7 +346,10 @@ export async function updateClientRow(clientId: string, updates: Partial<Client>
 
     if (error) throw error;
 
-    for (const [key, value] of Object.entries(updates)) {
+    for (const [key, value] of Object.entries(updates) as [keyof Client, unknown][]) {
+        if (CLIENT_LOG_IGNORE_FIELDS.has(key)) continue;
+        
+        
         const oldValue =
             existing[
             key === 'replyStatus' ? 'reply_status' :
@@ -333,12 +361,14 @@ export async function updateClientRow(clientId: string, updates: Partial<Client>
             key
             ];
 
+        if (isEqualForLog(oldValue, value)) continue;
+
         await insertActivityLog({
             clientId,
             action: 'field_changed',
             fieldName: key,
-            oldValue,
-            newValue: value,
+            oldValue: formatValueForLog(oldValue),
+            newValue: formatValueForLog(value),
         });
     }
 }
@@ -487,7 +517,9 @@ export async function updateSubitemRow(subitemId: string, updates: Partial<Subit
 
     if (error) throw error;
 
-    for (const [key, value] of Object.entries(updates)) {
+    for (const [key, value] of Object.entries(updates) as [keyof Subitem, unknown][]) {
+        if (SUBITEM_LOG_IGNORE_FIELDS.has(key)) continue;
+
         const oldValue =
             existing[
             key === 'localOverseas' ? 'local_overseas' :
@@ -514,16 +546,19 @@ export async function updateSubitemRow(subitemId: string, updates: Partial<Subit
             key === 'sampleType' ? 'sample_type' :
             key
             ];
-
+        if (isEqualForLog(oldValue, value)) continue;
+        
         await insertActivityLog({
             clientId: existing.client_id,
             subitemId,
             subitemName: existing.name,
             action: 'subitem_field_changed',
             fieldName: key,
-            oldValue,
-            newValue: value,
+            oldValue: formatValueForLog(oldValue),
+            newValue: formatValueForLog(value),
         });
+
+        
     }
 }
 

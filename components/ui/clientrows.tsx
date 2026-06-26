@@ -90,6 +90,8 @@ type ClientRowProps = {
 export function ClientRow({
     client,
     isSelected,
+    isExpanded,
+    onToggleExpand,
     onToggleSelect,
     onUpdate,
     onUpdateSubitem,
@@ -110,14 +112,31 @@ export function ClientRow({
     const [closeFiles, setCloseFiles] = useState<File[]>([]);
     const [closeConfirmed, setCloseConfirmed] = useState(false);
     const [showActivityLog, setShowActivityLog] = useState(false);
+     
+    function displayLogValue(value: unknown){
+        if (value == null || value === '') return 'empty';
 
+        if (Array.isArray(value)){
+            return `${value.length} item(s)`;
+        }
+
+        if (typeof value === 'object'){
+            return JSON.stringify(value);
+        }
+
+        if (typeof value === 'boolean') {
+            return value ? 'true' : 'false';
+        }
+
+        return String(value);
+    }
     function renderActivityText(entry: ActivityEntry) {
         if (entry.action === "field_changed") {
             return (
                 <>
                     changed <span className="font-medium">{entry.fieldName}</span> from{" "}
-                    <span className="text-gray-600">{String(entry.oldValue ?? "empty")}</span> to{" "}
-                    <span className="text-gray-600">{String(entry.newValue ?? "empty")}</span>
+                    <span className="text-gray-600">{displayLogValue(entry.oldValue ?? "empty")}</span> to{" "}
+                    <span className="text-gray-600">{displayLogValue(entry.newValue ?? "empty")}</span>
                 </>
             );
         }
@@ -135,8 +154,8 @@ export function ClientRow({
                 <>
                     changed subitem <span className="font-medium">{entry.subitemName ?? "Subitem"}</span>{" "}
                     field <span className="font-medium">{entry.fieldName}</span> from{" "}
-                    <span className="text-gray-600">{String(entry.oldValue ?? "empty")}</span> to{" "}
-                    <span className="text-gray-600">{String(entry.newValue ?? "empty")}</span>
+                    <span className="text-gray-600">{displayLogValue(entry.oldValue ?? "empty")}</span> to{" "}
+                    <span className="text-gray-600">{displayLogValue(entry.newValue ?? "empty")}</span>
                 </>
             );
         }
@@ -161,10 +180,10 @@ export function ClientRow({
                         className="w-3 h-3 rounded cursor-pointer accent-[#7BCBD5] transition transform active:scale-150 duration-200"
                     />
                     <button
-                        onClick={() => onUpdate({ expanded: !client.expanded })}
+                        onClick={onToggleExpand}
                         className="text-gray-400 hover:text-gray-700 transition-colors"
                     >
-                        {client.expanded ? (
+                        {isExpanded ? (
                             <ChevronDown size={14} className="transition transform active:scale-150 duration-100" />
                         ) : (
                             <ChevronRight size={14} className="transition transform active:scale-150 duration-100" />
@@ -498,7 +517,7 @@ export function ClientRow({
                 </div>
             </div>
 
-            {client.expanded && (
+            {isExpanded && (
                 <SubitemsTable
                     clientId={client.id}
                     subitems={client.subitems}
