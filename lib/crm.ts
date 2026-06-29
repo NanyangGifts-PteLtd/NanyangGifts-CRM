@@ -5,6 +5,7 @@
 
 import { createClient } from '@/lib/supabase/client';
 import type { TimelineRow, Client, Subitem, ActivityEntry, ClientAssigneeMap } from '@/app/types';
+import { addClientAssignee } from './assignments';
 
 
 const supabase = createClient();
@@ -21,6 +22,51 @@ const SUBITEM_LOG_IGNORE_FIELDS = new Set<keyof Subitem>([
     'showSample',
     'timelineRows'
 ]);
+
+export type RoundRobinQueueRow = {
+    user_id: string;
+    full_name: string | null;
+    email: string | null;
+    position: number;
+    is_active: boolean;
+    is_current: boolean;
+}
+
+export async function getSalesRoundRobinQueue() {
+    const supabase = createClient();
+    const { data, error } = await supabase.rpc('get_sales_round_robin_queue');
+
+    if (error) throw error;
+    return (data ?? []) as RoundRobinQueueRow[];
+}
+
+export async function getNextSalesAssignee() {
+    const supabase = createClient();
+    const { data, error } = await supabase.rpc('get_next_sales_assignee');
+
+    if (error) throw error;
+    return (data?.[0] ?? null) as { user_id: string; position: number} | null;
+}
+
+export async function swapSalesRoundRobinFunctions(firstUserId: string, secondUserId: string) {
+    const supabase = createClient();
+    const { error } = await supabase.rpc('swap_sales_round_robin_positions', {
+        first_user_id: firstUserId,
+        second_user_id: secondUserId,
+    });
+
+    if (error) throw error;
+}
+
+export async function setSalesRoundRobinActive(userId: string, isActive: boolean){
+    const supabase = createClient();
+    const { error } = await supabase
+    .from('sales_round_robin_pool')
+    .update({ is_active: isActive })
+    .eq('user_id', userId);
+
+    if (error) throw error;
+}
 type Subitems = {
     id: string;
     client_id: string;
@@ -274,7 +320,7 @@ function mapClients(row: Clients): Client {
         subitems: (row.subitems ?? []).map(mapSubitems),
     };
 }
-// client functions
+
 async function insertActivityLog(params: {
     clientId: string;
     subitemId?: string | null;
@@ -351,7 +397,8 @@ export async function fetchClientsWithSubitems() {
         })
     );
 }
-export async function createClientRow() {
+
+export async function createClientRow(currentUserId?: string | null) {
     const { data, error } = await supabase
         .from('clients')
         .insert({
@@ -380,6 +427,12 @@ export async function createClientRow() {
         .single();
 
     if (error) throw error;
+
+    const nextAssignee = await getNextSalesAssignee();
+    
+    if (nextAssignee?.user_id) {
+        await addClientAssignee(data.id, nextAssignee.user_id, currentUserId);
+    }
     return data;
 }
 

@@ -1,8 +1,8 @@
 'use client';
 
 import React from 'react';
-import { LayoutGrid, Mail, BarChart2, Users, SquareChartGantt, Star, Building2 } from 'lucide-react';
-export type SidePanel = 'crm' | 'emails' | 'reports' | 'ganttchart';
+import { LayoutGrid, Mail, BarChart2, Users, SquareChartGantt, BotMessageSquare, Star, Building2 } from 'lucide-react';
+export type SidePanel = 'crm' | 'emails' | 'reports' | 'ganttchart' | 'roundrobin';
 import logo from "./logo.png";
 import Image from 'next/image';
 import type { User } from "@supabase/supabase-js";
@@ -17,10 +17,11 @@ interface SidebarProps {
 }
 
 const navItems: { id: SidePanel; icon: React.ReactNode; label: string }[] = [
-  { id: 'crm', icon: <LayoutGrid size={17.5} />, label: 'CRM Board' },
-  { id: 'emails', icon: <Mail size={17.5} />, label: 'Emails' },
+  { id: 'crm', icon: <LayoutGrid size={16.5} />, label: 'CRM Board' },
+  { id: 'emails', icon: <Mail size={16.5} />, label: 'Emails' },
   { id: 'reports', icon: <BarChart2 size={17.5} />, label: 'Reports & KPI' },
   { id: 'ganttchart', icon: <SquareChartGantt size={17.5} />, label: 'Gantt Chart' },
+  { id: 'roundrobin', icon: <BotMessageSquare size={17.5} />, label: 'Round Robin' }
 ];
 
 export default function Sidebar({
@@ -94,8 +95,7 @@ export default function Sidebar({
 
         {[
           { icon: <Users size={17.5} />, label: 'Teams' },
-          { icon: <Building2 size={17.5} />, label: 'Companies' },
-          { icon: <Star size={17.5} />, label: 'Starred' },
+          { icon: <Building2 size={17.5} />, label: 'Companies' }
         ].map(item => (
           <button
             key={item.label}

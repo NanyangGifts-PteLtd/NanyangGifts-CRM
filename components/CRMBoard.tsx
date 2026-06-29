@@ -1,40 +1,12 @@
 'use client';
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import {
-  ChevronDown,
-  Plus,
-  Trash2,
-  Filter,
-  ChevronsDown,
-  ChevronsUp,
-  X,
-} from 'lucide-react';
-import {
-  Client,
-  Subitem,
-  ClientStatus,
-  Profile,
-  ClientAssigneeMap,
-  SubitemAssigneeMap,
-} from '../app/types';
+import { ChevronDown, Plus, Trash2, Filter, ChevronsDown, ChevronsUp, X } from 'lucide-react';
+import { Client, Subitem, ClientStatus, Profile, ClientAssigneeMap, SubitemAssigneeMap } from '../app/types';
 import { createClient as createSupabaseClient } from '@/lib/supabase/client';
 import { ClientRow, CLIENT_STATUSES, STATUS_COLORS } from './ui/clientrows';
-import {
-  fetchProfiles,
-  fetchClientAssigneeIds,
-  fetchSubitemAssigneeIds,
-  saveClientAssignees,
-  saveSubitemAssignees,
-} from '@/lib/assignments';
-import {
-  createClientRow,
-  updateClientRow,
-  deleteClientRow,
-  createSubitemRow,
-  updateSubitemRow,
-  deleteSubitemRow,
-} from '@/lib/crm';
+import { fetchProfiles, saveClientAssignees, saveSubitemAssignees } from '@/lib/assignments';
+import { createClientRow, updateClientRow, deleteClientRow, createSubitemRow, updateSubitemRow, deleteSubitemRow } from '@/lib/crm';
 
 const CLIENT_HEADER_COLS = [
   { label: '', width: 60 },
@@ -106,7 +78,6 @@ export function CRMBoard({ clients, reloadClients, search = '' }: CRMBoardProps)
 
   const [localClients, setLocalClients] = useState<Client[]>(clients);
 
-  // Sync when parent reloads (e.g. initial load or hard refresh)
   useEffect(() => {
     setLocalClients(clients);
   }, [clients]);
@@ -140,8 +111,8 @@ export function CRMBoard({ clients, reloadClients, search = '' }: CRMBoardProps)
         ] = await Promise.all([
           fetchProfiles(),
           supabase.auth.getUser(),
-          fetchAllClientAssignees(),   // 1 bulk query instead of N
-          fetchAllSubitemAssignees(),  // 1 bulk query instead of N×M
+          fetchAllClientAssignees(),
+          fetchAllSubitemAssignees(),
         ]);
 
         setProfiles(profilesData);
@@ -266,7 +237,6 @@ export function CRMBoard({ clients, reloadClients, search = '' }: CRMBoardProps)
 
   const updateClient = useCallback(
     async (clientId: string, updates: Partial<Client>) => {
-      // 1. Update UI instantly
       setLocalClients((prev) =>
         prev.map((c) => (c.id === clientId ? { ...c, ...updates } : c))
       );
@@ -282,7 +252,6 @@ export function CRMBoard({ clients, reloadClients, search = '' }: CRMBoardProps)
 
   const updateSubitem = useCallback(
     async (_clientId: string, subitemId: string, updates: Partial<Subitem>) => {
-      // 1. Update UI instantly
       setLocalClients((prev) =>
         prev.map((c) => ({
           ...c,
@@ -303,8 +272,7 @@ export function CRMBoard({ clients, reloadClients, search = '' }: CRMBoardProps)
 
   const addClient = useCallback(async () => {
     try {
-      // Create in DB first to get the real ID, then reload once
-      await createClientRow();
+      await createClientRow(currentUserId ?? null);
       await reloadClients();
     } catch (error: any) {
       console.error('Failed to add client', error);
@@ -313,7 +281,6 @@ export function CRMBoard({ clients, reloadClients, search = '' }: CRMBoardProps)
 
   const deleteClient = useCallback(
     async (clientId: string) => {
-      // 1. Remove from UI instantly
       setLocalClients((prev) => prev.filter((c) => c.id !== clientId));
       setSelectedIds((prev) => {
         const next = new Set(prev);
@@ -332,7 +299,6 @@ export function CRMBoard({ clients, reloadClients, search = '' }: CRMBoardProps)
 
   const deleteSelected = useCallback(async () => {
     const ids = [...selectedIds];
-    // 1. Remove from UI instantly
     setLocalClients((prev) => prev.filter((c) => !selectedIds.has(c.id)));
     setSelectedIds(new Set());
     try {
@@ -357,7 +323,6 @@ export function CRMBoard({ clients, reloadClients, search = '' }: CRMBoardProps)
 
   const deleteSubitem = useCallback(
     async (_clientId: string, subitemId: string) => {
-      // 1. Remove from UI instantly
       setLocalClients((prev) =>
         prev.map((c) => ({
           ...c,

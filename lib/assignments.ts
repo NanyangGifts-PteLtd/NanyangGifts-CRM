@@ -9,6 +9,23 @@ export type ProfileOption = {
     avatar_url?: string | null;
 };
 
+
+export async function addClientAssignee(
+    clientId: string,
+    userId: string,
+    currentUserId?: string | null
+) {
+    const { error } = await supabase
+        .from('client_assignees')
+        .insert({
+            client_id: clientId,
+            user_id: userId,
+            assigned_by: currentUserId ?? null,
+        });
+
+    if (error) throw error;
+}
+
 export async function fetchProfiles() {
     const { data, error } = await supabase
         .from('profiles')

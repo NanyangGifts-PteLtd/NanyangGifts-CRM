@@ -9,7 +9,7 @@ import TopBar from '../../../components/TopBar';
 import type { User } from '@supabase/supabase-js';
 import { createClient as createSupabaseClient } from '@/lib/supabase/client';
 import { ReportsPanel } from '@/components/ReportsPanel';
-import { EmailPanel } from '@/components/EmailPanel';
+import { RoundRobinAdminPanel } from '@/components/RoundRobinPanel';
 import GanttChart from '@/components/Gantt-Chart';
 
 export default function Page() {
@@ -82,6 +82,14 @@ export default function Page() {
               <ReportsPanel clients={clients} />
           </div>
         );
+
+      case 'roundrobin':
+        return (
+          <div className="flex h-full items-center justify-center text-sm text-gray-500">
+              <RoundRobinAdminPanel />
+          </div>
+
+        )
 
       default:
         return null;

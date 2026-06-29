@@ -1,3 +1,4 @@
+// for rendering client rows
 "use client";
 
 import { Client, Subitem, ClientStatus, ReplyStatus, ActivityEntry, Profile } from "../../app/types";
@@ -7,16 +8,7 @@ import { EditableCell } from "./editablecell";
 import { StatusBadge } from "./statusbadge";
 import { SubitemsTable } from "./subitems";
 import { AssigneeMultiSelect } from "./assignee-multiselect";
-import {
-    AlertDialog,
-    AlertDialogContent,
-    AlertDialogHeader,
-    AlertDialogTitle,
-    AlertDialogDescription,
-    AlertDialogFooter,
-    AlertDialogCancel,
-    AlertDialogAction,
-} from "../ui/alert-dialog";
+import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from "../ui/alert-dialog";
 
 export const CLIENT_STATUSES: ClientStatus[] = [
     "New Lead",
@@ -36,35 +28,35 @@ export const REPLY_STATUSES: ReplyStatus[] = ["Waiting...", "Replied"];
 
 export const REPLY_STATUS_COLORS: Record<string, string> = {
     "Waiting...": "#b9f7e0",
-    Replied: "#00cdb6",
+    "Replied": "#00cdb6",
 };
 
 export const STATUS_COLORS: Record<string, string> = {
     "New Lead": "#7ae9f0",
-    Contacted: "#5accf3",
-    Quoted: "#67aaea",
-    Failed: "#d4102d",
-    Overdue: "#a13762",
+    "Contacted": "#5accf3",
+    "Quoted": "#67aaea",
+    "Failed": "#d4102d",
+    "Overdue": "#a13762",
     "Follow Up": "#9D4393",
     Shortlisted: "#a159cf",
     "Project Started": "#a05d9f",
     "Project Done": "#dcb0ff",
-    Closed: "#0D1821",
-    Unqualified: "#8985ce",
+    "Closed": "#0D1821",
+    "Unqualified": "#8985ce",
 };
 
 export const IMPORTANCE_COLORS: Record<string, string> = {
-    High: "#ff6f9c",
-    Medium: "#ff99b6",
-    Low: "#ffd0e4",
+    "High": "#ff6f9c",
+    "Medium": "#ff99b6",
+    "Low": "#ffd0e4",
 };
 
 export const CHANNEL_COLORS: Record<string, string> = {
-    Forms: "#82E1C2",
-    Email: "#70b5f6",
-    Referral: "#0085c8",
-    Direct: "#1eadd1",
-    Whatsapp: "#67e284",
+    "Forms": "#82E1C2",
+    "Email": "#70b5f6",
+    "Referral": "#0085c8",
+    "Direct": "#1eadd1",
+    "Whatsapp": "#67e284",
     "E-comm": "#1cdcbc",
 };
 
@@ -79,7 +71,6 @@ type ClientRowProps = {
     onAddSubitem: () => void;
     onDeleteSubitem: (id: string) => void;
     onDelete: () => void;
-
     profiles: Profile[];
     clientAssignedIds: string[];
     onChangeClientAssignees: (ids: string[]) => void;
@@ -112,7 +103,7 @@ export function ClientRow({
     const [closeFiles, setCloseFiles] = useState<File[]>([]);
     const [closeConfirmed, setCloseConfirmed] = useState(false);
     const [showActivityLog, setShowActivityLog] = useState(false);
-
+// for activity log text
     function displayLogValue(value: unknown){
         if (value == null || value === '') return 'empty';
 
@@ -270,7 +261,6 @@ export function ClientRow({
                                                                 <span className="font-medium">{entry.actorName}</span>{" "}
                                                                 {renderActivityText(entry)}
                                                             </p>
-
                                                             <p className="mt-1 text-xs text-gray-500">
                                                                 {new Date(entry.createdAt).toLocaleString()}
                                                             </p>
