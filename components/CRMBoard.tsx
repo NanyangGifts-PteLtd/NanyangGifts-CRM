@@ -49,6 +49,7 @@ const GROUP_ORDER: ClientStatus[] = [
 
 interface CRMBoardProps {
   clients: Client[];
+  setClients: React.Dispatch<React.SetStateAction<Client[]>>;
   reloadClients: () => Promise<void>;
   search?: string;
 }
@@ -65,13 +66,7 @@ export async function fetchAllSubitemAssignees(): Promise<SubitemAssigneeMap> {
   }, {} as SubitemAssigneeMap)
 }
 
-export function CRMBoard({ clients, reloadClients, search = '' }: CRMBoardProps) {
-
-  const [localClients, setLocalClients] = useState<Client[]>(clients);
-
-  useEffect(() => {
-    setLocalClients(clients);
-  }, [clients]);
+export function CRMBoard({ clients, setClients, reloadClients, search = '' }: CRMBoardProps) {
 
   const [filterStatus, setFilterStatus] = useState<ClientStatus | 'All'>('All');
   const [showFilter, setShowFilter] = useState(false);
@@ -79,7 +74,7 @@ export function CRMBoard({ clients, reloadClients, search = '' }: CRMBoardProps)
   const [expandedIds, setExpandedIds] = useState<Set<string>>(
     () => new Set(clients.filter((c) => c.expanded).map((c) => c.id))
   );
-  const allExpanded = expandedIds.size === localClients.length && localClients.length > 0;
+  const allExpanded = expandedIds.size === clients.length && clients.length > 0;
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -130,7 +125,7 @@ export function CRMBoard({ clients, reloadClients, search = '' }: CRMBoardProps)
     return () => document.removeEventListener('mousedown', handler);
   }, [showFilter]);
 
-  const displayedClients = localClients.filter((client) => {
+  const displayedClients = clients.filter((client) => {
     const matchesStatus = filterStatus === 'All' || client.status === filterStatus;
     const q = search.trim().toLowerCase();
 
@@ -158,7 +153,7 @@ export function CRMBoard({ clients, reloadClients, search = '' }: CRMBoardProps)
   })).filter((g) => g.clients.length > 0);
 
   const filteredClients =
-    filterStatus === 'All' ? localClients : localClients.filter((c) => c.status === filterStatus);
+    filterStatus === 'All' ? clients : clients.filter((c) => c.status === filterStatus);
 
   const allFilteredSelected =
     filteredClients.length > 0 && filteredClients.every((c) => selectedIds.has(c.id));
@@ -168,9 +163,9 @@ export function CRMBoard({ clients, reloadClients, search = '' }: CRMBoardProps)
     if (allExpanded) {
       setExpandedIds(new Set());
     } else {
-      setExpandedIds(new Set(localClients.map((c) => c.id)));
+      setExpandedIds(new Set(clients.map((c) => c.id)));
     }
-  }, [allExpanded, localClients]);
+  }, [allExpanded, clients]);
 
   const toggleGroup = useCallback((groupStatus: string) => {
     setCollapsedGroups((prev) => ({ ...prev, [groupStatus]: !prev[groupStatus] }));
@@ -229,13 +224,13 @@ export function CRMBoard({ clients, reloadClients, search = '' }: CRMBoardProps)
 
   const updateClient = useCallback(
     async (clientId: string, updates: Partial<Client>) => {
-      setLocalClients((prev) =>
+      setClients((prev) =>
         prev.map((c) => (c.id === clientId ? { ...c, ...updates } : c))
       );
       try {
         await updateClientRow(clientId, updates);
       } catch (error: any) {
-        setLocalClients(clients);
+        setClients(clients);
         console.error('Failed to update client', error);
       }
     },
@@ -244,7 +239,7 @@ export function CRMBoard({ clients, reloadClients, search = '' }: CRMBoardProps)
 
   const updateSubitem = useCallback(
     async (_clientId: string, subitemId: string, updates: Partial<Subitem>) => {
-      setLocalClients((prev) =>
+      setClients((prev) =>
         prev.map((c) => ({
           ...c,
           subitems: c.subitems.map((s) =>
@@ -255,30 +250,56 @@ export function CRMBoard({ clients, reloadClients, search = '' }: CRMBoardProps)
       try {
         await updateSubitemRow(subitemId, updates);
       } catch (error: any) {
-        setLocalClients(clients);
+        setClients(clients);
         console.error('Failed to update subitem', error);
       }
     },
     [clients]
   );
 
-  const addClient = useCallback(async () => {
-    try {
-      await createClientRow(currentUserId ?? null);
-      const [assigneeMap] = await Promise.all([
-        fetchClientAssigneeMap(),
-        reloadClients(),
-      ]);
-      setClientAssignees(assigneeMap);
-      await reloadClients();
-    } catch (error: any) {
-      console.error('Failed to add client', error);
-    }
-  }, [currentUserId, reloadClients]);
+const addClient = useCallback(async () => {
+  try {
+    const createdClient = await createClientRow(currentUserId ?? null);
+
+    const newClient: Client = {
+      id: createdClient.id,
+      name: createdClient.name ?? '',
+      people: createdClient.people ?? '',
+      replyStatus: createdClient.reply_status ?? '',
+      followUp: createdClient.follow_up ?? '',
+      status: (createdClient.status as ClientStatus) ?? 'New Lead',
+      channel: createdClient.channel ?? '',
+      importance: createdClient.importance ?? '',
+      company: createdClient.company ?? '',
+      email: createdClient.email ?? '',
+      phone: createdClient.phone ?? '',
+      requirements: createdClient.requirements ?? '',
+      qty: createdClient.qty ?? '',
+      nbd: createdClient.nbd ?? '',
+      totalPrice: createdClient.total_price ?? '',
+      companyAddress: createdClient.company_address ?? '',
+      billingAddress: createdClient.billing_address ?? '',
+      dateCreated: createdClient.date_created ?? '',
+      expanded: createdClient.expanded ?? true,
+      color: createdClient.color ?? '#7BCBD5',
+      subitems: [],
+      activityLog: [],
+    };
+
+    setClients((prev) => [newClient, ...prev]);
+    setExpandedIds((prev) => new Set(prev).add(newClient.id));
+
+    fetchClientAssigneeMap()
+      .then((assigneeMap) => setClientAssignees(assigneeMap))
+      .catch((error) => console.error('Failed to refresh client assignees', error));
+  } catch (error: any) {
+    console.error('Failed to add client', error);
+  }
+}, [currentUserId, setClients]);
 
   const deleteClient = useCallback(
     async (clientId: string) => {
-      setLocalClients((prev) => prev.filter((c) => c.id !== clientId));
+      setClients((prev) => prev.filter((c) => c.id !== clientId));
       setSelectedIds((prev) => {
         const next = new Set(prev);
         next.delete(clientId);
@@ -287,7 +308,7 @@ export function CRMBoard({ clients, reloadClients, search = '' }: CRMBoardProps)
       try {
         await deleteClientRow(clientId);
       } catch (error: any) {
-        setLocalClients(clients);
+        setClients(clients);
         console.error('Failed to delete client', error);
       }
     },
@@ -296,12 +317,12 @@ export function CRMBoard({ clients, reloadClients, search = '' }: CRMBoardProps)
 
   const deleteSelected = useCallback(async () => {
     const ids = [...selectedIds];
-    setLocalClients((prev) => prev.filter((c) => !selectedIds.has(c.id)));
+    setClients((prev) => prev.filter((c) => !selectedIds.has(c.id)));
     setSelectedIds(new Set());
     try {
       await Promise.all(ids.map((id) => deleteClientRow(id)));
     } catch (error: any) {
-      setLocalClients(clients);
+      setClients(clients);
       console.error('Failed to delete selected clients', error);
     }
   }, [selectedIds, clients]);
@@ -320,7 +341,7 @@ export function CRMBoard({ clients, reloadClients, search = '' }: CRMBoardProps)
 
   const deleteSubitem = useCallback(
     async (_clientId: string, subitemId: string) => {
-      setLocalClients((prev) =>
+      setClients((prev) =>
         prev.map((c) => ({
           ...c,
           subitems: c.subitems.filter((s) => s.id !== subitemId),
@@ -329,7 +350,7 @@ export function CRMBoard({ clients, reloadClients, search = '' }: CRMBoardProps)
       try {
         await deleteSubitemRow(subitemId);
       } catch (error: any) {
-        setLocalClients(clients);
+        setClients(clients);
         console.error('Failed to delete subitem', error);
       }
     },
@@ -387,7 +408,7 @@ export function CRMBoard({ clients, reloadClients, search = '' }: CRMBoardProps)
                 >
                   <span className="w-2.5 h-2.5 rounded-sm" style={{ background: STATUS_COLORS[st] }} />
                   <span className="flex-1">{st}</span>
-                  <span className="text-gray-400">{localClients.filter((c) => c.status === st).length}</span>
+                  <span className="text-gray-400">{clients.filter((c) => c.status === st).length}</span>
                   {filterStatus === st && <span className="text-blue-500 ml-1">✓</span>}
                 </button>
               ))}
@@ -397,7 +418,7 @@ export function CRMBoard({ clients, reloadClients, search = '' }: CRMBoardProps)
 
         <div className="flex items-center gap-1">
           {CLIENT_STATUSES.map((st) => {
-            const count = localClients.filter((c) => c.status === st).length;
+            const count = clients.filter((c) => c.status === st).length;
             if (!count) return null;
             return (
               <button

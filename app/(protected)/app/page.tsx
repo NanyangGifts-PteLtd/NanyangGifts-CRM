@@ -53,6 +53,7 @@ export default function Page() {
         return (
           <CRMBoard
             clients={clients}
+            setClients = {setClients}
             reloadClients={reloadClients}
             search={search}
           />
