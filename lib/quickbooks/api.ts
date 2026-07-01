@@ -5,8 +5,8 @@ export async function qboRequest(path: string, init?: RequestInit) {
 
   const baseUrl =
       conn.environment === 'production'
-      ? 'https://sandbox-quickbooks.api.intuit.com'
-      : 'https://quickbooks.api.intuit.com';
+      ? 'https://quickbooks.api.intuit.com'
+      : 'https://sandbox-quickbooks.api.intuit.com';
 
   const separator = path.includes('?') ? '&' : '?';
 
@@ -15,7 +15,7 @@ export async function qboRequest(path: string, init?: RequestInit) {
   console.log('QB baseUrl:', baseUrl);
 
   const res = await fetch(
-    `${baseUrl}/v3/company/${conn.realm_id}${path}${separator}?minorversion=75`,
+    `${baseUrl}/v3/company/${conn.realm_id}${path}${separator}minorversion=75`,
     {
       ...init,
       headers: {

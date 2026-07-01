@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server';
 
 export async function getValidQuickBooksConnection() {
     const supabase = await createClient();
+    
 
     const { data: connection, error } = await supabase
         .from('quickbooks_connections')
@@ -13,6 +14,12 @@ export async function getValidQuickBooksConnection() {
     if (error || !connection) {
         throw new Error('QuickBooks not connected');
     }
+    console.log('Using QB connection:', {
+        id: connection.id,
+        realm_id: connection.realm_id,
+        environment: connection.environment,
+        updated_at: connection.updated_at,
+    });
 
     const expiresAt = new Date(connection.access_token_expires_at).getTime();
     const needsRefresh = Date.now() > expiresAt - 5 * 60 * 1000;
