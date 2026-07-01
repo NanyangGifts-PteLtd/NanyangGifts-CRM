@@ -1,3 +1,5 @@
+// to get income account ids
+
 import { NextResponse } from 'next/server';
 import { qboQuery } from '@/lib/quickbooks/api';
 

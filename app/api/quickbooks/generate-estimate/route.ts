@@ -16,6 +16,8 @@ async function getOrCreateCustomer(client: any) {
         `SELECT * FROM Customer WHERE DisplayName = '${esc(client.company)}'`
     );
 
+    console.log('hi');
+
     const found = existing?.QueryResponse?.Customer?.[0];
     if (found) return found;
 
@@ -115,6 +117,9 @@ export async function POST(req: NextRequest) {
                     },
                     Qty: Number.isFinite(qty) ? qty : 1,
                     UnitPrice: Number.isFinite(unitPrice) ? unitPrice : 0,
+                    TaxCodeRef: {
+                        value: '59',
+                    }
                 },
             });
         }
