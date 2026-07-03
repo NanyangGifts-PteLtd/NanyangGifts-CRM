@@ -10,6 +10,8 @@ import { SubitemsTable } from "./subitems";
 import { AssigneeMultiSelect } from "./assignee-multiselect";
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from "../ui/alert-dialog";
 import { useGenerateEstimate } from '../hooks/use-generate-estimate-button';
+import { Tooltip  } from "radix-ui";
+
 export const CLIENT_STATUSES: ClientStatus[] = [
     "New Lead",
     "Contacted",
@@ -107,6 +109,7 @@ export function ClientRow({
         handleGenerateEstimate,
         isGeneratingEstimate,
         estimateError,
+        estimateSuccess,
     } = useGenerateEstimate();
 
 // for activity log text
@@ -219,13 +222,26 @@ export function ClientRow({
                             {subitemCount}
                         </span>
                     )}
-                    <button
-                        type="button"
-                        onClick={() => setShowActivityLog(true)}
-                        className="px-2 py-1 text-[10px] font-medium text-cyan-500 hover:bg-gray-50 hover:text-cyan-600 transition transform active:scale-95 duration-150"
-                    >
-                        <Activity size={10} className="transition transform active:scale-150 duration-200" />
-                    </button>
+                    <Tooltip.Provider>
+                        <Tooltip.Root>
+                            <Tooltip.Trigger asChild>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowActivityLog(true)}
+                                    className="px-2 py-1 text-[10px] font-medium text-cyan-500 hover:bg-gray-50 hover:text-cyan-600 transition transform active:scale-95 duration-150"
+                                >
+                                    <Activity size={10} className="transition transform active:scale-150 duration-200" />
+                                </button>
+                            </Tooltip.Trigger>
+                            <Tooltip.Portal>
+                            <Tooltip.Content className="TooltipContent">
+                                View activity log<Tooltip.Arrow className="TooltipArrow" />
+                            </Tooltip.Content>
+                            </Tooltip.Portal>
+                        </Tooltip.Root>
+                    </Tooltip.Provider>
+                    
+                    
 
                     {showActivityLog && (
                         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
@@ -279,15 +295,28 @@ export function ClientRow({
                             </div>
                         </div>
                     )}
-                        <button
-                            onClick={() => handleGenerateEstimate(client.id)}
-                            disabled={isGeneratingEstimate}
-                            className="px-2 py-1 text-[10px] font-medium text-cyan-500 hover:bg-gray-50 hover:text-cyan-600 transition transform active:scale-95 duration-150"
-                        >
-                            {isGeneratingEstimate ? 'Generating...' : ''}<ReceiptText size={15} />
-                        </button>
+                    <Tooltip.Provider>
+                        <Tooltip.Root>
+                            <Tooltip.Trigger asChild>
+                                <button
+                                    onClick={() => handleGenerateEstimate(client.id)}
+                                    disabled={isGeneratingEstimate}
+                                    className="px-2 py-2 text-[10px] font-medium text-teal-500"
+                                >
+                                    {isGeneratingEstimate ? 'Generating...' : ''}<ReceiptText size={15} color="#7BCBD5" className="transition transform active:scale-150 duration-200" />
+                                </button>
+                            </Tooltip.Trigger>
+                            <Tooltip.Portal>
+                                <Tooltip.Content className="TooltipContent">Generate an estimate<Tooltip.Arrow className="TooltipArrow" /></Tooltip.Content>
+                                    
+                            </Tooltip.Portal>
+                        </Tooltip.Root>
+                    </Tooltip.Provider>
                         {estimateError && (
                             <div className="mt-1 text-[11px] text-red-600">{estimateError}</div>
+                        )}
+                        {estimateSuccess && (
+                            <div className="mt-1 text-[11px] text-teal-600">Successfully generated</div>
                         )}
                     
                 </div>

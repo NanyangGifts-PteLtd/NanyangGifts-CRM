@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { Client } from '../../types';
 import { fetchClientsWithSubitems } from '@/lib/crm';
 import { CRMBoard } from '@/components/CRMBoard';
