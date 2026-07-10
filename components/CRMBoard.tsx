@@ -11,7 +11,7 @@ import { fetchClientAssigneeMap } from '@/lib/assignments';
 import { GenerateOcfModal } from './Generate-OCF-Modal';
 const CLIENT_HEADER_COLS = [
   { label: '', width: 60 },
-  { label: 'Client', width: 180 },
+  { label: 'Client', width: 220 },
   { label: 'People', width: 90 },
   { label: 'Reply Status', width: 90 },
   { label: 'Follow Up', width: 100 },

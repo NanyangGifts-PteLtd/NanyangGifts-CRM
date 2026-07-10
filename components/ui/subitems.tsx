@@ -219,7 +219,7 @@ export function SubitemsTable({
                                         />
                                     </td>
                                     {/* Name + timeline, payment, sample buttons */}
-                                    <td className="px-2 py-1 border-r border-gray-200" style={{ minWidth: 300 }}>
+                                    <td className="px-2 py-1 border-r border-gray-200" style={{ minWidth: 500 }}>
                                         <div className="flex items-center gap-1">
                                             <FileText size={11} className="text-gray-400 flex-shrink-0" />
                                             <EditableCell value={sub.name} onChange={v => onUpdateSubitem(sub.id, { name: v })} placeholder="Subitem name" />
