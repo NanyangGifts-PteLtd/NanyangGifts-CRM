@@ -1,73 +1,29 @@
-import { notFound } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
-import ClientOcfView from "./client-ocf-view";
+import { Suspense } from "react";
+import OcfContent from "./ocf-content";
 
 type PageProps = {
     params: Promise<{ token: string }>;
 };
 
-export default async function ClientOcfPage({ params }: PageProps) {
-    const { token } = await params;
-    const supabase = await createClient();
-
-    const { data: ocf, error } = await supabase
-        .from("order_confirmations")
-        .select(`
-        id,
-        client_token,
-        status,
-        generated_at,
-        estimated_delivery_date,
-        estimated_delivery_notes,
-        remarks_for_delivery,
-        restricted_area,
-        same_address_for_all_items,
-        important_notes,
-        client_name_snapshot,
-        company_snapshot,
-        delivery_address,
-        client_contact_number,
-        recipient_name,
-        salesperson_name,
-        salesperson_email,
-        salesperson_contact_number,
-        client_signed_at,
-        client_submitted_at,
-        client_ip,
-        locked_at,
-        order_confirmation_items (
-        id,
-        qty,
-        item_name,
-        remarks,
-        image_path
-        )
-    `)
-        .eq("client_token", token)
-        .single();
-
-    if (error || !ocf) {
-        notFound();
-    }
-
-    const items = await Promise.all(
-        (ocf.order_confirmation_items ?? []).map(async (item: any) => {
-            let imageUrl: string | null = null;
-
-            if (item.image_path) {
-                const { data } = await supabase.storage
-                    .from("order-confirmation-files")
-                    .createSignedUrl(item.image_path, 60 * 60);
-
-                imageUrl = data?.signedUrl ?? null;
-            }
-
-            return {
-                ...item,
-                image_url: imageUrl,
-            };
-        })
+function LoadingFallback() {
+    return (
+        <main className="min-h-screen bg-[#f3f4f6] px-4 py-8">
+            <div className="mx-auto max-w-5xl bg-white p-6 shadow-lg">
+                <div className="animate-pulse space-y-4">
+                    <div className="h-8 w-64 rounded bg-gray-200" />
+                    <div className="h-24 rounded bg-gray-200" />
+                    <div className="h-64 rounded bg-gray-200" />
+                    <div className="h-40 rounded bg-gray-200" />
+                </div>
+            </div>
+        </main>
     );
+}
 
-    return <ClientOcfView ocf={{ ...ocf, order_confirmation_items: items }} />;
+export default function ClientOcfPage({ params }: PageProps) {
+    return (
+        <Suspense fallback={<LoadingFallback />}>
+            <OcfContent params={params} />
+        </Suspense>
+    );
 }
