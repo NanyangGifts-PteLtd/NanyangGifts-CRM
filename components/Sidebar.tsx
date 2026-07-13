@@ -1,11 +1,27 @@
 'use client';
 
 import React from 'react';
-import { LayoutGrid, Mail, BarChart2, Users, SquareChartGantt, BotMessageSquare, PackageSearch } from 'lucide-react';
-export type SidePanel = 'crm' | 'emails' | 'reports' | 'ganttchart' | 'roundrobin' | 'supplier';
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import {
+  LayoutGrid,
+  Mail,
+  BarChart2,
+  SquareChartGantt,
+  BotMessageSquare,
+  PackageSearch,
+} from 'lucide-react';
 import logo from "./logo.png";
 import Image from 'next/image';
 import type { User } from "@supabase/supabase-js";
+
+export type SidePanel =
+  | 'crm'
+  | 'emails'
+  | 'reports'
+  | 'ganttchart'
+  | 'roundrobin'
+  | 'supplier';
 
 interface SidebarProps {
   activePanel: SidePanel;
@@ -16,13 +32,13 @@ interface SidebarProps {
   user: User | null;
 }
 
-const navItems: { id: SidePanel; icon: React.ReactNode; label: string }[] = [
+const navItems: { id: SidePanel; icon: React.ReactNode; label: string; href?: string }[] = [
   { id: 'crm', icon: <LayoutGrid size={16.5} />, label: 'CRM Board' },
   { id: 'emails', icon: <Mail size={16.5} />, label: 'Emails' },
   { id: 'reports', icon: <BarChart2 size={17.5} />, label: 'Reports & KPI' },
   { id: 'ganttchart', icon: <SquareChartGantt size={17.5} />, label: 'Gantt Chart' },
   { id: 'roundrobin', icon: <BotMessageSquare size={17.5} />, label: 'Round Robin' },
-  { id: 'supplier', icon: <PackageSearch size={17.5} />, label: 'Supplier' }
+  { id: 'supplier', icon: <PackageSearch size={17.5} />, label: 'Supplier', href: '/app/supplier' },
 ];
 
 export default function Sidebar({
@@ -33,6 +49,8 @@ export default function Sidebar({
   onToggleCollapsed,
   user,
 }: SidebarProps) {
+  const pathname = usePathname();
+
   const displayName =
     user?.user_metadata?.full_name ||
     user?.user_metadata?.name ||
@@ -40,9 +58,13 @@ export default function Sidebar({
     'User';
 
   const userEmail = user?.email || 'No email';
+  const initial = displayName?.trim()?.charAt(0)?.toUpperCase() || 'U';
 
-  const initial =
-    displayName?.trim()?.charAt(0)?.toUpperCase() || 'U';
+  const itemClass = (active: boolean) =>
+    `w-full flex items-center gap-3 px-2 py-2 rounded-md text-left group relative transition transform active:scale-95 duration-150 ${active
+      ? 'bg-[#7BCBD5] text-white'
+      : 'text-gray-500 hover:bg-[#7BCBD5] hover:text-white'
+    }`;
 
   return (
     <div
@@ -68,31 +90,54 @@ export default function Sidebar({
       </div>
 
       <nav className="flex-1 py-3 px-2 space-y-0.5">
-        {navItems.map(item => (
-          <button
-            key={item.id}
-            onClick={() => onChangePanel(item.id)}
-            className={`w-full flex items-center gap-3 px-2 py-2 rounded-md text-left group relative transition transform active:scale-95 duration-150 ${
-              activePanel === item.id
-                ? 'bg-[#7BCBD5] text-white'
-                : 'text-gray-500 hover:bg-[#7BCBD5] hover:text-white'
-            }`}
-          >
-            <span className="flex-shrink-0">{item.icon}</span>
-            <span className="text-xs font-medium hidden lg:block truncate">{item.label}</span>
-            {item.id === 'emails' && emailUnread > 0 && (
-              <span
-                className="ml-auto bg-red-500 text-white rounded-full text-xs px-1.5 py-0.5 hidden lg:flex items-center justify-center min-w-5 leading-none"
-                style={{ fontSize: '10px' }}
+        {navItems.map((item) => {
+          const isRouteItem = !!item.href;
+          const isActive = isRouteItem
+            ? pathname === item.href
+            : activePanel === item.id;
+
+          if (isRouteItem) {
+            return (
+              <Link
+                key={item.id}
+                href={item.href!}
+                className={itemClass(isActive)}
               >
-                {emailUnread}
+                <span className="flex-shrink-0">{item.icon}</span>
+                <span className="text-xs font-medium hidden lg:block truncate">
+                  {item.label}
+                </span>
+                <div className="absolute left-full ml-2 px-2 py-1 bg-gray-800 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 lg:hidden">
+                  {item.label}
+                </div>
+              </Link>
+            );
+          }
+
+          return (
+            <button
+              key={item.id}
+              onClick={() => onChangePanel(item.id)}
+              className={itemClass(isActive)}
+            >
+              <span className="flex-shrink-0">{item.icon}</span>
+              <span className="text-xs font-medium hidden lg:block truncate">
+                {item.label}
               </span>
-            )}
-            <div className="absolute left-full ml-2 px-2 py-1 bg-gray-800 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 lg:hidden">
-              {item.label}
-            </div>
-          </button>
-        ))}
+              {item.id === 'emails' && emailUnread > 0 && (
+                <span
+                  className="ml-auto bg-red-500 text-white rounded-full text-xs px-1.5 py-0.5 hidden lg:flex items-center justify-center min-w-5 leading-none"
+                  style={{ fontSize: '10px' }}
+                >
+                  {emailUnread}
+                </span>
+              )}
+              <div className="absolute left-full ml-2 px-2 py-1 bg-gray-800 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 lg:hidden">
+                {item.label}
+              </div>
+            </button>
+          );
+        })}
       </nav>
 
       <div className="p-2 border-t border-[#f2f8ff]">

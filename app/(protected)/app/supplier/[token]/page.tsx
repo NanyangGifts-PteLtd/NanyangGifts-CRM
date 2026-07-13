@@ -1,11 +1,8 @@
-"use client";
-
 import { notFound } from "next/navigation";
 import { getSupplierByToken } from "@/lib/supplier/get-supplier-by-token";
 import { getSupplierSubitems } from "@/lib/supplier/get-supplier-subitems";
 import SupplierGrid from "./SupplierGrid";
 
-export const dynamic = "force-dynamic";
 
 export default async function SupplierPage({
     params,

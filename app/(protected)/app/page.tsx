@@ -11,8 +11,6 @@ import { createClient as createSupabaseClient } from '@/lib/supabase/client';
 import { ReportsPanel } from '@/components/ReportsPanel';
 import { RoundRobinAdminPanel } from '@/components/RoundRobinPanel';
 import GanttChart from '@/components/Gantt-Chart';
-import SupplierGrid from '@/app/supplier/[token]/SupplierGrid';
-import { SupplierRow } from '@/app/supplier/[token]/SupplierGrid';
 
 export default function Page() {
   const [clients, setClients] = useState<Client[]>([]);
@@ -20,7 +18,6 @@ export default function Page() {
   const [user, setUser] = useState<User | null>(null);
   const [activePanel, setActivePanel] = useState<SidePanel>('crm');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [supplierRows, setSupplierRows] = useState<SupplierRow[]>([]);
 
   const reloadClients = useCallback(async () => {
     try {
@@ -91,14 +88,6 @@ export default function Page() {
         return (
           <div className="flex h-full items-center justify-center text-sm text-gray-500">
               <RoundRobinAdminPanel />
-          </div>
-
-        )
-
-        case 'supplier':
-        return (
-          <div className="flex h-full items-center justify-center text-sm text-gray-500">
-              <SupplierGrid rows={supplierRows} />
           </div>
 
         )
