@@ -1,8 +1,8 @@
 'use client';
 
 import React from 'react';
-import { LayoutGrid, Mail, BarChart2, Users, SquareChartGantt, BotMessageSquare, Star, Building2 } from 'lucide-react';
-export type SidePanel = 'crm' | 'emails' | 'reports' | 'ganttchart' | 'roundrobin';
+import { LayoutGrid, Mail, BarChart2, Users, SquareChartGantt, BotMessageSquare, PackageSearch } from 'lucide-react';
+export type SidePanel = 'crm' | 'emails' | 'reports' | 'ganttchart' | 'roundrobin' | 'supplier';
 import logo from "./logo.png";
 import Image from 'next/image';
 import type { User } from "@supabase/supabase-js";
@@ -21,7 +21,8 @@ const navItems: { id: SidePanel; icon: React.ReactNode; label: string }[] = [
   { id: 'emails', icon: <Mail size={16.5} />, label: 'Emails' },
   { id: 'reports', icon: <BarChart2 size={17.5} />, label: 'Reports & KPI' },
   { id: 'ganttchart', icon: <SquareChartGantt size={17.5} />, label: 'Gantt Chart' },
-  { id: 'roundrobin', icon: <BotMessageSquare size={17.5} />, label: 'Round Robin' }
+  { id: 'roundrobin', icon: <BotMessageSquare size={17.5} />, label: 'Round Robin' },
+  { id: 'supplier', icon: <PackageSearch size={17.5} />, label: 'Supplier' }
 ];
 
 export default function Sidebar({
@@ -88,22 +89,6 @@ export default function Sidebar({
               </span>
             )}
             <div className="absolute left-full ml-2 px-2 py-1 bg-gray-800 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 lg:hidden">
-              {item.label}
-            </div>
-          </button>
-        ))}
-
-        {[
-          { icon: <Users size={17.5} />, label: 'Teams' },
-          { icon: <Building2 size={17.5} />, label: 'Companies' }
-        ].map(item => (
-          <button
-            key={item.label}
-            className="w-full flex items-center gap-4.5 px-2 py-1.5 rounded-md text-gray-500 hover:bg-[#7BCBD5] hover:text-white group relative transition transform active:scale-95 duration-150"
-          >
-            <span className="flex-shrink-0 mr-3.5">{item.icon}</span>
-            <span className="text-xs font-semibold hidden lg:block">{item.label}</span>
-            <div className="absolute left-full bg-gray-800 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 lg:hidden">
               {item.label}
             </div>
           </button>
