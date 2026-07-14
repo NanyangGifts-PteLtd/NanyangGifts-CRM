@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
 import type { Profile } from '../../app/types';
 import { Plus, X } from 'lucide-react';
 
@@ -46,7 +46,28 @@ export function AssigneeMultiSelect({ profiles, selectedIds, onChange }: Props) 
         }
     };
 
+    const containerRef = useRef<HTMLDivElement | null>(null);
+
+    useEffect(() => {
+        if (!open) return;
+
+        const handleClickOutside = (event: MouseEvent) => {
+            if (
+                containerRef.current &&
+                !containerRef.current.contains(event.target as Node)
+            ) {
+                setOpen(false);
+            }
+        };
+
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, [open]);
+
     return (
+    <div ref={containerRef} className="relative">
         <div className="relative">
             <button
                 type="button"
@@ -115,7 +136,7 @@ export function AssigneeMultiSelect({ profiles, selectedIds, onChange }: Props) 
                                             {p.email || ''}
                                         </div>
                                     </div>
-                                    
+
                                 </button>
                             );
                         })}
@@ -126,6 +147,7 @@ export function AssigneeMultiSelect({ profiles, selectedIds, onChange }: Props) 
                     </div>
                 </div>
             )}
+        </div>
         </div>
     );
 }

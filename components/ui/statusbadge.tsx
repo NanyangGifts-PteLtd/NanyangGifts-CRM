@@ -15,7 +15,6 @@ export function StatusBadge({
     const btnRef = useRef<HTMLButtonElement>(null);
     const menuRef = useRef<HTMLDivElement>(null);
 
-    // Close on any outside click
     useEffect(() => {
         if (!open) return;
         const h = (e: MouseEvent) => {
