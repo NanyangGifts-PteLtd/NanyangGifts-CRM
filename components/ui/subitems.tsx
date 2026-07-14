@@ -10,6 +10,7 @@ import { SamplesSection } from './sample';
 import type { Profile } from "../../app/types";
 import { AssigneeMultiSelect } from "./assignee-multiselect";
 import { TimelineSection, DEFAULT_TIMELINE_ROWS } from './timeline';
+import { parse } from 'path';
 
 const SUBITEM_STATUS_COLORS: Record<string, string> = {
     'To Quote': '#5cc9d5',
@@ -78,6 +79,7 @@ export function SubitemsTable({
     const statusOpts = ['', 'To Quote', 'Verified', 'Awarded', 'Initial Quote', 'Quoted', 'Shortlisted', 'Failed'];
     const localOverseasOpts = ['Local', 'Overseas'];
     const shipperOpts = ['', '小李 - AIR', '小李 - SEA', 'Tiger - Sea', 'Tiger - AIR', '东莞 - SEA', 'WORLD ASIA', 'A5 汇荣', 'Kalinda - AIR',  'Kalinda - SEA', 'David - DPS', 'Local Singapore', 'Local China', '霸王车', '义乌', 'SF', 'DHL', '恒瀚', 'Easy Parcel', 'Local Destination', 'UPS', 'FedEx', '宇涵 - Air', '宇涵 - Sea' ];
+    const currencyOpts = ['MYR', 'SGD', 'RMB'];
     const newSubitem = {
         id: crypto.randomUUID(),
         name: '',
@@ -111,10 +113,10 @@ export function SubitemsTable({
         { key: 'manpower', label: 'Manpower', w: 70 },
         { key: 'ls', label: 'LS', w: 50 },
         { key: 'os', label: 'OS', w: 50 },
-        { key: 'tc', label: 'T.C', w: 50 },
-        { key: 'uc', label: 'U.C', w: 50 },
+        { key: 'tc', label: 'T.C', w: 70 },
+        { key: 'uc', label: 'U.C', w: 60 },
         { key: 'tcSgd', label: 'TC-SGD', w: 54 },
-        { key: 'price', label: 'Price', w: 50 },
+        { key: 'price', label: 'Price', w: 60 },
         { key: 'up', label: 'U.P', w: 50 },
         { key: 'numOfCartons', label: 'No. of Cartons', w: 89 },
         { key: 'cnTracking', label: 'CN Tracking #', w: 120 },
@@ -187,7 +189,7 @@ export function SubitemsTable({
                             {cols.map(col => (
                                 <th key={col.key}
                                     style={{ minWidth: col.w, width: col.w }}
-                                    className="text-left px-2 py-1 text-[11px] font-semibold text-gray-500 border-r border-gray-500 last:border-r-0 whitespace-nowrap">
+                                    className="text-center px-2 py-1 text-[11px] font-semibold text-gray-500 border-r border-gray-500 last:border-r-0 whitespace-nowrap">
                                     {col.label}
                                 </th>
                             ))}
@@ -231,7 +233,20 @@ export function SubitemsTable({
                                 </button>
                             </div>
                         )}
-                        {subitems.map(sub => (
+                        {subitems.map(sub => {
+                            const tc =
+                            parseNumber(sub.cost)+
+                            parseNumber(sub.manpower)+
+                            parseNumber(sub.ls)+
+                            parseNumber(sub.os)+
+                            parseNumber(sub.tcSgd);
+
+                            const qty = parseNumber(sub.qty);
+                            const uc = qty > 0 ? tc / qty : null;
+
+                            const price = parseNumber(sub.up) * qty;
+
+                            return(
                             <React.Fragment key={sub.id}>
                                 <tr className="border-b border-gray-500 hover:bg-blue-50/30 group">
                                     <td className="px-2 py-1 border-r border-gray-200 text-center">
@@ -321,54 +336,55 @@ export function SubitemsTable({
                                         multiline
                                         />
                                     </td>
-                                    <td className="px-2 py-1 border-r border-gray-500" style={{ minWidth: 80 }}>
+                                    <td className="px-2 py-1 border-r border-gray-500 text-center" style={{ minWidth: 80 }}>
                                         <StatusBadge value={sub.shipper} onChange={v => onUpdateSubitem(sub.id, { shipper: v })} options={shipperOpts} colorMap={SHIPPER_COLORS} small />
                                     </td>
-                                    <td className="px-2 py-1 border-r border-gray-500" style={{ minWidth: 120 }}>
+                                    <td className="px-2 py-1 border-r border-gray-500 text-center" style={{ minWidth: 120 }}>
                                         <EditableCell value={sub.supplier} onChange={v => onUpdateSubitem(sub.id, { supplier: v })} />
                                     </td>
-                                    <td className="px-2 py-1 border-r border-gray-500" style={{ minWidth: 60 }}>
+                                    <td className="px-2 py-1 border-r border-gray-500 text-center" style={{ minWidth: 60 }}>
                                         <EditableCell value={sub.cost} onChange={v => onUpdateSubitem(sub.id, { cost: v })} type="number" />
                                     </td>
-                                    <td className="px-2 py-1 border-r border-gray-500" style={{ minWidth: 50 }}>
+                                    <td className="px-2 py-1 border-r border-gray-500 text-center" style={{ minWidth: 50 }}>
                                         <EditableCell value={sub.manpower} onChange={v => onUpdateSubitem(sub.id, { manpower: v })} type="number" />
                                     </td>
-                                    <td className="px-2 py-1 border-r border-gray-500" style={{ minWidth: 50 }}>
+                                    <td className="px-2 py-1 border-r border-gray-500 text-center" style={{ minWidth: 50 }}>
                                         <EditableCell value={sub.ls} onChange={v => onUpdateSubitem(sub.id, { ls: v })} type="number" />
                                     </td>
-                                    <td className="px-2 py-1 border-r border-gray-500" style={{ minWidth: 50 }}>
+                                    <td className="px-2 py-1 border-r border-gray-500 text-center" style={{ minWidth: 50 }}>
                                         <EditableCell value={sub.os} onChange={v => onUpdateSubitem(sub.id, { os: v })} type="number" />
                                     </td>
-                                    <td className="px-2 py-1 border-r border-gray-500" style={{ minWidth: 70 }}>
-                                        <div className="px-2 py-1 text-xs text-gray-800"> {Number(sub.cost || 0) + Number(sub.manpower || 0) + Number(sub.ls || 0) + Number(sub.os || 0) + Number(sub.tcSgd || 0)}
+                                    <td className="px-2 py-1 border-r border-gray-500 text-center" style={{ minWidth: 70 }}>
+                                        <div className="px-2 py-1 text-xs text-gray-800"> {tc.toFixed(2)}
                                         </div>
                                     </td>
-                                    <td className="px-2 py-1 border-r border-gray-500" style={{ minWidth: 60 }}>
-                                        <EditableCell value={sub.uc} onChange={v => onUpdateSubitem(sub.id, { uc: v })} type="number" />
+                                    <td className="px-2 py-1 border-r border-gray-500 text-center" style={{ minWidth: 60 }}>
+                                        <div className="px-2 py-1 text-xs text-gray-800"> {uc == null ? '' : uc.toFixed(2)}
+                                        </div>
                                     </td>
-                                    <td className="px-2 py-1 border-r border-gray-500" style={{ minWidth: 70 }}>
+                                    <td className="px-2 py-1 border-r border-gray-500 text-center" style={{ minWidth: 70 }}>
                                         <EditableCell value={sub.tcSgd} onChange={v => onUpdateSubitem(sub.id, { tcSgd: v })} type="number" />
                                     </td>
-                                    <td className="px-2 py-1 border-r border-gray-500" style={{ minWidth: 70 }}>
-                                        <div className="px-2 py-1 text-xs text-gray-800"> {Number(sub.up || 0) * Number(sub.qty || 0)}
+                                    <td className="px-2 py-1 border-r border-gray-500 text-center" style={{ minWidth: 70 }}>
+                                        <div className="px-2 py-1 text-xs text-gray-800"> {price.toFixed(2)}
                                         </div>
                                     </td>
-                                    <td className="px-2 py-1 border-r border-gray-500" style={{ minWidth: 55 }}>
+                                    <td className="px-2 py-1 border-r border-gray-500 text-center" style={{ minWidth: 55 }}>
                                         <EditableCell value={sub.up} onChange={v => onUpdateSubitem(sub.id, { up: v })} type="number" />
                                     </td>
-                                    <td className="px-2 py-1 border-r border-gray-500" style={{ minWidth: 75 }}>
+                                    <td className="px-2 py-1 border-r border-gray-500 text-center" style={{ minWidth: 75 }}>
                                         <EditableCell value={sub.numOfCartons} onChange={v => onUpdateSubitem(sub.id, { numOfCartons: v })} type="number" />
                                     </td>
-                                    <td className="px-2 py-1 border-r border-gray-500" style={{ minWidth: 55 }}>
+                                    <td className="px-2 py-1 border-r border-gray-500 text-center" style={{ minWidth: 55 }}>
                                         <EditableCell value={sub.cnTracking} onChange={v => onUpdateSubitem(sub.id, { cnTracking: v })} />
                                     </td>
-                                    <td className="px-2 py-1 border-r border-gray-500" style={{ minWidth: 55 }}>
+                                    <td className="px-2 py-1 border-r border-gray-500 text-center" style={{ minWidth: 55 }}>
                                         <EditableCell value={sub.sgTracking} onChange={v => onUpdateSubitem(sub.id, { sgTracking: v })} />
                                     </td>
-                                    <td className="px-2 py-1 border-r border-gray-500" style={{ minWidth: 50 }}>
+                                    <td className="px-2 py-1 border-r border-gray-500 text-center" style={{ minWidth: 50 }}>
                                         <EditableCell value={sub.pl ?? ''} onChange={v => onUpdateSubitem(sub.id, { pl: v })} type="number" />
                                     </td>
-                                    <td className="px-2 py-1 border-r border-gray-500" style={{ minWidth: 50 }}>
+                                    <td className="px-2 py-1 border-r border-gray-500 text-center" style={{ minWidth: 50 }}>
                                         <EditableCell value={sub.sl ?? ''} onChange={v => onUpdateSubitem(sub.id, { sl: v })} type="number" />
                                     </td>
 
@@ -376,7 +392,7 @@ export function SubitemsTable({
 
                                 {sub.showTimeline && (
                                     <tr>
-                                        <td colSpan={18} className="p-0 bg-blue-50/20">
+                                        <td colSpan={cols.length+1} className="p-0 bg-blue-50/20">
                                             <TimelineSection
                                                 rows={sub.timelineRows?.length ? sub.timelineRows : DEFAULT_TIMELINE_ROWS}
                                                 onUpdate={(rows) => onUpdateSubitem(sub.id, { timelineRows: rows })}
@@ -400,7 +416,8 @@ export function SubitemsTable({
                                     </tr>
                                 )}
                             </React.Fragment>
-                        ))}
+                            );
+                        })}
                         <tr>
                             <td colSpan={18} className="px-3 py-1.5">
                                 <button
