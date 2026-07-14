@@ -224,7 +224,7 @@ export function GenerateOcfModal({
                         </div>
                     ) : (
                         <>
-                            <div className="mb-5 grid grid-cols-1 gap-4 md:grid-cols-2">
+                            <div className="mb-5 grid grid-cols-1 gap-1 md:grid-cols-1">
                                 <div>
                                     <label className="mb-1 block text-xs font-medium text-gray-700">
                                         Important notes
@@ -237,7 +237,7 @@ export function GenerateOcfModal({
                                         placeholder="Terms and conditions"
                                     />
                                     <label className="mb-1 block text-xs font-medium text-gray-700">
-                                        Delivery notes
+                                        Estimated delivery:
                                     </label>
                                     <textarea
                                         value={estimatedDeliveryNotes}
