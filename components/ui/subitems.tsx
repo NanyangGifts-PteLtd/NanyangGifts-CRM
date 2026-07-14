@@ -86,12 +86,14 @@ export function SubitemsTable({
         { key: 'os', label: 'OS', w: 50 },
         { key: 'tc', label: 'T.C', w: 50 },
         { key: 'uc', label: 'U.C', w: 50 },
-        { key: 'tcSgd', label: 'TC-SGD', w: 50 },
+        { key: 'tcSgd', label: 'TC-SGD', w: 54 },
         { key: 'price', label: 'Price', w: 50 },
         { key: 'up', label: 'U.P', w: 50 },
-        { key: 'numOfCartons', label: 'No. of Cartons', w: 80 },
+        { key: 'numOfCartons', label: 'No. of Cartons', w: 89 },
         { key: 'cnTracking', label: 'CN Tracking #', w: 120 },
-        { key: 'sgTracking', label: 'SG Tracking #', w: 120 }
+        { key: 'sgTracking', label: 'SG Tracking #', w: 120 },
+        { key: 'pl', label: 'PL', w: 50 },
+        { key: 'sl', label: 'SL', w: 50 }
     ];
     const [selectedSubitemIds, setSelectedSubitemIds] = useState<string[]>([]);
     const [selectionBox, setSelectionBox] = useState({ x: 0, y: 0, visible: false });
@@ -149,7 +151,7 @@ export function SubitemsTable({
     }, [selectedSubitems]);
 
     return (
-        <div className="mb-2 ml-6 w-[1100px] max-w-[calc(100vw-80px)]" style={{ borderLeft: `7px solid ${clientColor}` }}>
+        <div className="mb-2 ml-7 w-[1100px] max-w-[calc(100vw-80px)]" style={{ borderLeft: `7px solid ${clientColor}` }}>
             <div className="max-h-[500px]">
                 <table className="border-collapse table-fixed w-full">
                     <thead>
@@ -331,6 +333,12 @@ export function SubitemsTable({
                                     </td>
                                     <td className="px-2 py-1 border-r border-gray-500" style={{ minWidth: 55 }}>
                                         <EditableCell value={sub.sgTracking} onChange={v => onUpdateSubitem(sub.id, { sgTracking: v })} />
+                                    </td>
+                                    <td className="px-2 py-1 border-r border-gray-500" style={{ minWidth: 50 }}>
+                                        <EditableCell value={sub.pl ?? ''} onChange={v => onUpdateSubitem(sub.id, { pl: v })} type="number" />
+                                    </td>
+                                    <td className="px-2 py-1 border-r border-gray-500" style={{ minWidth: 50 }}>
+                                        <EditableCell value={sub.sl ?? ''} onChange={v => onUpdateSubitem(sub.id, { sl: v })} type="number" />
                                     </td>
 
                                 </tr>

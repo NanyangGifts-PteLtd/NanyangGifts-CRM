@@ -228,8 +228,8 @@ export function ClientRow({
                     }`}
             >
                 <div
-                    className="flex items-center px-2 gap-1.5 flex-shrink-0 border-r border-gray-500"
-                    style={{ minWidth: 60, width: 60 }}
+                    className="flex items-center px-1 gap-1.5 flex-shrink-0 border-r border-gray-500"
+                    style={{ minWidth: 20, width: 20 }}
                 >
                     <input
                         type="checkbox"
@@ -257,7 +257,7 @@ export function ClientRow({
                         value={client.name}
                         onChange={(v) => onUpdate({ name: v })}
                         placeholder="Client name"
-                        className="font-semibold text-gray-800"
+                        className="font-semibold text-gray-800 px-5"
                     />
                     {subitemCount > 0 && (
                         <span className="text-xs text-[#7BCBD5] bg-[#e7fdff] rounded-full px-1.5 py-0.5 flex-shrink-0">

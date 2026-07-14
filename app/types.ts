@@ -82,6 +82,8 @@ export interface Subitem {
   numOfCartons: string;
   cnTracking: string;
   sgTracking: string;
+  pl: string;
+  sl: string;
   
   // Payment fields
   owner: string;
