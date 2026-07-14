@@ -28,6 +28,7 @@ const LOCALOVERSEAS_COLORS: Record<string, string> = {
 }
 
 const SHIPPER_COLORS: Record<string, string> = {
+    '': '#eeeded',
     '小李 - AIR': '#f88fc1',
     '小李 - SEA': '#ff97ab',
     'Tiger - Sea': '#ffa791',
@@ -76,7 +77,7 @@ export function SubitemsTable({
 }) {
     const statusOpts = ['', 'To Quote', 'Verified', 'Awarded', 'Initial Quote', 'Quoted', 'Shortlisted', 'Failed'];
     const localOverseasOpts = ['Local', 'Overseas'];
-    const shipperOpts = ['小李 - AIR', '小李 - SEA', 'Tiger - Sea', 'Tiger - AIR', '东莞 - SEA', 'WORLD ASIA', 'A5 汇荣', 'Kalinda - AIR',  'Kalinda - SEA', 'David - DPS', 'Local Singapore', 'Local China', '霸王车', '义乌', 'SF', 'DHL', '恒瀚', 'Easy Parcel', 'Local Destination', 'UPS', 'FedEx', '宇涵 - Air', '宇涵 - Sea' ];
+    const shipperOpts = ['', '小李 - AIR', '小李 - SEA', 'Tiger - Sea', 'Tiger - AIR', '东莞 - SEA', 'WORLD ASIA', 'A5 汇荣', 'Kalinda - AIR',  'Kalinda - SEA', 'David - DPS', 'Local Singapore', 'Local China', '霸王车', '义乌', 'SF', 'DHL', '恒瀚', 'Easy Parcel', 'Local Destination', 'UPS', 'FedEx', '宇涵 - Air', '宇涵 - Sea' ];
     const newSubitem = {
         id: crypto.randomUUID(),
         name: '',
@@ -102,9 +103,9 @@ export function SubitemsTable({
         { key: 'localOverseas', label: 'Local/Overseas', w: 90 },
         { key: 'status', label: 'Status', w: 70 },
         { key: 'qty', label: 'Qty', w: 55 },
-        { key: 'description', label: 'Description', w: 80 },
-        { key: 'remarks', label: 'Remarks', w: 140 },
-        { key: 'shipper', label: 'Shipper', w: 120 },
+        { key: 'description', label: 'Description', w: 120 },
+        { key: 'remarks', label: 'Remarks', w: 110 },
+        { key: 'shipper', label: 'Shipper', w: 115 },
         { key: 'supplier', label: 'Supplier', w: 120 },
         { key: 'cost', label: 'Cost', w: 60 },
         { key: 'manpower', label: 'Manpower', w: 70 },

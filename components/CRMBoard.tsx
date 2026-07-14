@@ -27,7 +27,7 @@ const CLIENT_HEADER_COLS = [
   { label: 'Company Address', width: 115 },
   { label: 'Billing Address', width: 115 },
   { label: 'Date Created', width: 90 },
-  { label: '', width: 455 },
+  { label: '', width: 465 },
 ];
 
 const TOTAL_MIN_WIDTH = CLIENT_HEADER_COLS.reduce((s, c) => s + c.width, 0);

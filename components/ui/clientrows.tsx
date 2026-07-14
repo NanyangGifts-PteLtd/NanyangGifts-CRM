@@ -251,7 +251,7 @@ export function ClientRow({
 
                 <div
                     className="flex items-center gap-1.5 px-1 py-2 border-r border-gray-500 flex-shrink-0"
-                    style={{ height: 30, minWidth: 220, width: 100 }}
+                    style={{ height: 30, minWidth: 260, width: 260 }}
                 >
                     <EditableCell
                         value={client.name}
