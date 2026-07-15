@@ -10,7 +10,7 @@ import { SamplesSection } from './sample';
 import type { Profile } from "../../app/types";
 import { AssigneeMultiSelect } from "./assignee-multiselect";
 import { TimelineSection, DEFAULT_TIMELINE_ROWS } from './timeline';
-import { parse } from 'path';
+
 
 const SUBITEM_STATUS_COLORS: Record<string, string> = {
     'To Quote': '#5cc9d5',

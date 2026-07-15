@@ -5,7 +5,7 @@
 // expose crud functions
 
 import { createClient } from '@/lib/supabase/client';
-import type { TimelineRow, Client, Subitem, ActivityEntry, ClientAssigneeMap } from '@/app/types';
+import type { TimelineRow, Client, Subitem, ActivityEntry } from '@/app/types';
 import { addClientAssignee } from './assignments';
 
 

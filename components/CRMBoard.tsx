@@ -9,6 +9,7 @@ import { fetchProfiles, saveClientAssignees, saveSubitemAssignees } from '@/lib/
 import { createClientRow, updateClientRow, deleteClientRow, createSubitemRow, updateSubitemRow, deleteSubitemRow } from '@/lib/crm';
 import { fetchClientAssigneeMap } from '@/lib/assignments';
 import { GenerateOcfModal } from './Generate-OCF-Modal';
+
 const CLIENT_HEADER_COLS = [
   { label: '', width: 60 },
   { label: 'Client', width: 220 },
