@@ -79,6 +79,7 @@ export type ClientRowProps = {
     onChangeClientAssignees: (ids: string[]) => void;
     subitemAssigneeMap: Record<string, string[]>;
     onChangeSubitemAssignees: (subitemId: string, ids: string[]) => void;
+    colWidth: Record<string, number>;
 };
 
 export function ClientRow({
@@ -98,6 +99,7 @@ export function ClientRow({
     onChangeClientAssignees,
     subitemAssigneeMap,
     onChangeSubitemAssignees,
+    colWidth
 }: ClientRowProps) {
     const importanceOpts = ["High", "Medium", "Low"];
     const channelOpts = ["Forms", "Email", "Referral", "Whatsapp", "E-comm", "Direct"];
@@ -113,7 +115,7 @@ export function ClientRow({
         estimateError,
         estimateSuccess,
     } = useGenerateEstimate();
-
+    
     // for estimate success message
     const [showEstimateSuccess, setShowEstimateSuccess] = useState(false);
     const [fadeEstimateSuccess, setFadeEstimateSuccess] = useState(false);
@@ -229,7 +231,7 @@ export function ClientRow({
             >
                 <div
                     className="flex items-center px-1 gap-1.5 flex-shrink-0 border-r border-gray-500"
-                    style={{ minWidth: 20, width: 20 }}
+                    style={{ minWidth: colWidth.selectCheckbox, width: colWidth.selectCheckbox }}
                 >
                     <input
                         type="checkbox"
@@ -251,7 +253,7 @@ export function ClientRow({
 
                 <div
                     className="flex items-center gap-1 px-3 py-2 border-r border-gray-500 flex-shrink-0"
-                    style={{ height: 30, minWidth: 260, width: 260 }}
+                    style={{ height: 30, minWidth: colWidth.client, width: colWidth.client }}
                 >
                     <EditableCell
                         value={client.name}
@@ -390,7 +392,7 @@ export function ClientRow({
                 </div>
                 <div
                     className="flex-row px-3 border-r border-gray-500 flex-shrink-0"
-                    style={{ minWidth: 60, width: 60 }}
+                    style={{ minWidth: colWidth.people, width: colWidth.people }}
                 >
                     <AssigneeMultiSelect
                         profiles={profiles}
@@ -401,7 +403,7 @@ export function ClientRow({
 
                 <div
                     className="flex items-center px-2 border-r border-gray-500 transition transform active:scale-95 duration-150"
-                    style={{ minWidth: 80, width: 80 }}
+                    style={{ minWidth: colWidth.replyStatus, width: colWidth.replyStatus }}
                 >
                     <StatusBadge
                         value={client.replyStatus}
@@ -413,7 +415,7 @@ export function ClientRow({
 
                 <div
                     className="flex items-center px-2 border-r border-gray-500 transition transform active:scale-95 duration-150"
-                    style={{ minWidth: 100, width: 100 }}
+                    style={{ minWidth: colWidth.followUp, width: colWidth.followUp }}
                 >
                     <input
                         type="date"
@@ -425,7 +427,7 @@ export function ClientRow({
 
                 <div
                     className="flex items-center px-2 border-r border-gray-500 flex-shrink-0 transition transform active:scale-95 duration-150"
-                    style={{ minWidth: 80, width: 80 }}
+                    style={{ minWidth: colWidth.status, width: colWidth.status }}
                 >
                     <StatusBadge
                         value={client.status}
@@ -543,7 +545,7 @@ export function ClientRow({
 
                 <div
                     className="flex items-center px-2 border-r border-gray-500 flex-shrink-0 transition transform active:scale-95 duration-150"
-                    style={{ minWidth: 80, width: 80 }}
+                    style={{ minWidth: colWidth.channel, width: colWidth.channel }}
                 >
                     <StatusBadge
                         value={client.channel}
@@ -556,7 +558,7 @@ export function ClientRow({
 
                 <div
                     className="flex items-center px-2 border-r border-gray-500 flex-shrink-0 transition transform active:scale-95 duration-150"
-                    style={{ minWidth: 80, width: 80 }}
+                    style={{ minWidth: colWidth.importance, width: colWidth.importance }}
                 >
                     <StatusBadge
                         value={client.importance}
@@ -567,19 +569,19 @@ export function ClientRow({
                     />
                 </div>
 
-                <div className="flex items-center px-2 border-r border-gray-500" style={{ minWidth: 80, width: 80 }}>
+                <div className="flex items-center px-2 border-r border-gray-500" style={{ minWidth: colWidth.company, width: colWidth.company }}>
                     <EditableCell value={client.company} onChange={(v) => onUpdate({ company: v })} placeholder="Company" />
                 </div>
 
-                <div className="flex items-center px-2 border-r border-gray-500" style={{ minWidth: 80, width: 80 }}>
+                <div className="flex items-center px-2 border-r border-gray-500" style={{ minWidth: colWidth.email, width: colWidth.email }}>
                     <EditableCell value={client.email} onChange={(v) => onUpdate({ email: v })} placeholder="Email" />
                 </div>
 
-                <div className="flex items-center px-2 border-r border-gray-500" style={{ minWidth: 80, width: 80 }}>
+                <div className="flex items-center px-2 border-r border-gray-500" style={{ minWidth: colWidth.phone, width: colWidth.phone }}>
                     <EditableCell value={client.phone} onChange={(v) => onUpdate({ phone: v })} placeholder="Phone" />
                 </div>
 
-                <div className="flex items-center px-2 border-r border-gray-500" style={{ minWidth: 90, width: 90 }}>
+                <div className="flex items-center px-2 border-r border-gray-500" style={{ minWidth: colWidth.requirements, width: colWidth.requirements }}>
                     <EditableCell
                         value={client.requirements}
                         onChange={(v) => onUpdate({ requirements: v })}
@@ -588,7 +590,7 @@ export function ClientRow({
                 </div>
                 <div
                     className="flex items-center px-2 border-r border-gray-500 transition transform active:scale-95 duration-150"
-                    style={{ minWidth: 80, width: 80 }}
+                    style={{ minWidth: colWidth.nbd, width: colWidth.nbd }}
                 >
                     <input
                         type="date"
@@ -598,29 +600,29 @@ export function ClientRow({
                     />
                 </div>
 
-                <div className="flex items-center px-2 border-r border-gray-500" style={{ minWidth: 80, width: 80 }}>
+                <div className="flex items-center px-2 border-r border-gray-500" style={{ minWidth: colWidth.totalPrice, width: colWidth.totalPrice }}>
                     <EditableCell value={client.totalPrice} onChange={(v) => onUpdate({ totalPrice: v })} />
                 </div>
 
-                <div className="flex items-center px-2 border-r border-gray-500" style={{ minWidth: 115, width: 115 }}>
+                <div className="flex items-center px-2 border-r border-gray-500" style={{ minWidth: colWidth.companyAddress, width: colWidth.companyAddress }}>
                     <EditableCell
                         value={client.companyAddress}
                         onChange={(v) => onUpdate({ companyAddress: v })}
                     />
                 </div>
 
-                <div className="flex items-center px-2 border-r border-gray-500" style={{ minWidth: 115, width: 115 }}>
+                <div className="flex items-center px-2 border-r border-gray-500" style={{ minWidth: colWidth.billingAddress, width: colWidth.billingAddress }}>
                     <EditableCell
                         value={client.billingAddress}
                         onChange={(v) => onUpdate({ billingAddress: v })}
                     />
                 </div>
 
-                <div className="flex items-center px-2 border-r border-gray-500" style={{ minWidth: 90, width: 90 }}>
+                <div className="flex items-center px-2 border-r border-gray-500" style={{ minWidth: colWidth.dateCreated, width: colWidth.dateCreated }}>
                     <EditableCell value={client.dateCreated} onChange={(v) => onUpdate({ dateCreated: v })} />
                 </div>
 
-                <div className="flex items-center px-2 flex-shrink-0" style={{ minWidth: 36, width: 36 }}>
+                <div className="flex items-center px-2 flex-shrink-0" style={{ minWidth: colWidth.empty, width: colWidth.empty }}>
                     <button
                         onClick={onDelete}
                         title="Delete client"

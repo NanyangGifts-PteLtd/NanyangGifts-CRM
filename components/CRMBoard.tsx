@@ -11,27 +11,26 @@ import { fetchClientAssigneeMap } from '@/lib/assignments';
 import { GenerateOcfModal } from './Generate-OCF-Modal';
 
 const CLIENT_HEADER_COLS = [
-  { label: '', width: 60 },
-  { label: 'Client', width: 220 },
-  { label: 'People', width: 60 },
-  { label: 'Reply Status', width: 80 },
-  { label: 'Follow Up', width: 100 },
-  { label: 'Status', width: 80 },
-  { label: 'Channel', width: 80 },
-  { label: 'Importance', width: 80 },
-  { label: 'Company', width: 80 },
-  { label: 'Email', width: 80 },
-  { label: 'Phone', width: 80 },
-  { label: 'Requirements', width: 90 },
-  { label: 'NBD', width: 80 },
-  { label: 'Total Price', width: 80 },
-  { label: 'Company Address', width: 115 },
-  { label: 'Billing Address', width: 115 },
-  { label: 'Date Created', width: 90 },
-  { label: '', width: 560 },
+  { key: 'selectCheckbox', label: '', width: 60, minWidth: 10 },
+  { key: 'client', label: 'Client', width: 220, minWidth: 10 },
+  { key: 'people', label: 'People', width: 60, minWidth: 10 },
+  { key: 'replyStatus', label: 'Reply Status', width: 80, minWidth: 10 },
+  { key: 'followUp', label: 'Follow Up', width: 100, minWidth: 10 },
+  { key: 'status', label: 'Status', width: 80, minWidth: 10 },
+  { key: 'channel', label: 'Channel', width: 80, minWidth: 10 },
+  { key: 'importance', label: 'Importance', width: 80, minWidth: 10 },
+  { key: 'company', label: 'Company', width: 80, minWidth: 10 },
+  { key: 'email', label: 'Email', width: 80, minWidth: 10 },
+  { key: 'phone', label: 'Phone', width: 80, minWidth: 10 },
+  { key: 'requirements', label: 'Requirements', width: 90, minWidth: 10 },
+  { key: 'nbd', label: 'NBD', width: 80, minWidth: 10 },
+  { key: 'totalPrice', label: 'Total Price', width: 80, minWidth: 10 },
+  { key: 'companyAddress', label: 'Company Address', width: 115, minWidth: 10 },
+  { key: 'billingAddress', label: 'Billing Address', width: 115, minWidth: 10 },
+  { key: 'dateCreated', label: 'Date Created', width: 90, minWidth: 10 },
+  { key: 'empty', label: '', width: 560, minWidth: 10 },
 ];
 
-const TOTAL_MIN_WIDTH = CLIENT_HEADER_COLS.reduce((s, c) => s + c.width, 0);
 
 const GROUP_ORDER: ClientStatus[] = [
   'New Lead',
@@ -85,6 +84,42 @@ export function CRMBoard({ clients, expandedIds, setExpandedIds, setClients, rel
   const filterRef = useRef<HTMLDivElement>(null);
   const [ocfClient, setOcfClient] = useState<Client | null>(null);
   const [isOcfModalOpen, setIsOcfModalOpen] = useState(false);
+
+  const [headerCols, setHeaderCols] = useState(CLIENT_HEADER_COLS);
+
+  const totalMinWidth = headerCols.reduce((sum, col) => sum + col.width, 0);
+
+  const colWidth = React.useMemo(
+    () => Object.fromEntries(headerCols.map((c) => [c.key, c.width])),
+    [headerCols]
+  );
+
+  const startResize = (key: string, startX: number) => {
+    const startCol = headerCols.find((col) => col.key === key);
+    if (!startCol) return;
+
+    const startWidth = startCol.width;
+
+    const onMouseMove = (e: MouseEvent) => {
+      const delta = e.clientX - startX;
+
+      setHeaderCols((prev) =>
+        prev.map((col) =>
+          col.key === key
+            ? { ...col, width: Math.max(col.minWidth ?? 60, startWidth + delta) }
+            : col
+        )
+      );
+    };
+
+    const onMouseUp = () => {
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+    };
+
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+  };
 
   function handleOpenOcfModal(client: Client) {
     setOcfClient(client);
@@ -307,7 +342,7 @@ export function CRMBoard({ clients, expandedIds, setExpandedIds, setClients, rel
     } catch (error: any) {
       console.error('Failed to add client', error);
     }
-  }, [currentUserId, setClients]);
+  }, [currentUserId, setClients, setExpandedIds]);
 
   const deleteClient = useCallback(
     async (clientId: string) => {
@@ -475,15 +510,15 @@ export function CRMBoard({ clients, expandedIds, setExpandedIds, setClients, rel
 
       {/* Table */}
       <div className="flex-1 overflow-auto text-gray-500 font-semibold">
-        <div style={{ minWidth: TOTAL_MIN_WIDTH }}>
+        <div style={{ minWidth: totalMinWidth }}>
           {/* Header */}
           <div
             className="flex items-center flex-shrink-0 border-b border-gray-200 animated-background bg-gradient-to-r from-[#e7fdff] to-[#a3dfff] sticky top-0 z-10"
-            style={{ minWidth: TOTAL_MIN_WIDTH }}
+            style={{ minWidth: totalMinWidth }}
           >
             <div
               className="flex items-center px-2 gap-1.5 flex-shrink-0 border-r border-gray-200"
-              style={{ minWidth: 60, width: 60 }}
+              style={{ minWidth: colWidth.selectCheckbox, width: colWidth.selectCheckbox }}
             >
               <input
                 type="checkbox"
@@ -494,13 +529,20 @@ export function CRMBoard({ clients, expandedIds, setExpandedIds, setClients, rel
               />
             </div>
 
-            {CLIENT_HEADER_COLS.slice(1).map((col, i) => (
+            {headerCols.slice(1).map((col, i) => (
               <div
-                key={i}
-                className="flex items-center px-2 py-1.5 border-r border-gray-500 last:border-r-0 text-[11px] font-semibold text-gray-500 whitespace-nowrap flex-shrink-0"
+                key={col.key}
+                className="relative flex items-center px-2 py-1.5 border-r border-gray-500 last:border-r-0 text-[11px] font-semibold text-gray-500 whitespace-nowrap flex-shrink-0"
                 style={{ minWidth: col.width, width: col.width }}
               >
                 {col.label}
+                <div
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    startResize(col.key, e.clientX);
+                  }}
+                  className="absolute top-0 right-0 h-full w-2 cursor-col-resize hover:bg-[#7BCBD5]/20"
+                />
               </div>
             ))}
           </div>
@@ -551,6 +593,7 @@ export function CRMBoard({ clients, expandedIds, setExpandedIds, setClients, rel
                     }
                     subitemAssigneeMap={subitemAssignees}
                     onChangeSubitemAssignees={handleSubitemAssigneesChange}
+                    colWidth={colWidth}
                   />
                 ))}
               <GenerateOcfModal

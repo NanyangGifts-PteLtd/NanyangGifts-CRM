@@ -72,7 +72,7 @@ export function AssigneeMultiSelect({ profiles, selectedIds, onChange }: Props) 
             <button
                 type="button"
                 onClick={() => setOpen((v) => !v)}
-                className="min-h-[28px] w-full rounded-md px-1 py-1 text-left hover:bg-gray-50"
+                className="min-h-[28px] w-full rounded-md px-1 py-1 text-center hover:bg-gray-50"
             >
                 {selectedProfiles.length > 0 ? (
                     <div className="flex w-10 h-6 rounded-full">
@@ -88,7 +88,7 @@ export function AssigneeMultiSelect({ profiles, selectedIds, onChange }: Props) 
                         ))}
                     </div>
                 ) : (
-                    <div className="w-6 h-6 rounded-sm border-2 border-dashed border-gray-300 flex items-center justify-center hover:border-blue-400">
+                    <div className=" transition transform active:scale-95 duration-150 w-7 h-7 mx-auto rounded-full border-2 border-dashed border-gray-300 flex items-center justify-center hover:border-blue-400">
                         <Plus size={9} className="text-gray-500" />
                     </div>
                 )}

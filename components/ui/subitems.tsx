@@ -331,10 +331,10 @@ export function SubitemsTable({
                                             onChange={(ids) => onChangeSubitemAssignees(sub.id, ids)}
                                         />
                                     </td>
-                                    <td className="px-2 py-1 border-r border-gray-500" style={{ minWidth: 80 }}>
+                                    <td className="px-2 py-1 border-r border-gray-500 !text-center " style={{ minWidth: 80 }}>
                                         <StatusBadge value={sub.localOverseas || 'Local'} onChange={v => onUpdateSubitem(sub.id, { localOverseas: v })} options={localOverseasOpts} colorMap={LOCALOVERSEAS_COLORS} small />
                                     </td>
-                                    <td className="px-2 py-1 border-r border-gray-500" style={{ minWidth: 80 }}>
+                                    <td className="px-2 py-1 border-r border-gray-500 !text-center" style={{ minWidth: 80 }}>
                                         <StatusBadge value={sub.status} onChange={v => onUpdateSubitem(sub.id, { status: v })} options={statusOpts} colorMap={SUBITEM_STATUS_COLORS} small />
                                     </td>
                                     <td className="px-2 py-1 border-r border-gray-500" style={{ minWidth: 55 }}>
