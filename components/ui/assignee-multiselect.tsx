@@ -88,7 +88,7 @@ export function AssigneeMultiSelect({ profiles, selectedIds, onChange }: Props) 
                         ))}
                     </div>
                 ) : (
-                    <div className=" transition transform active:scale-95 duration-150 w-7 h-7 rounded-full border-2 border-dashed border-gray-300 flex items-center justify-center hover:border-blue-400">
+                    <div className=" transition transform active:scale-95 duration-150 w-7 h-7 rounded-full border-2 border-dashed border-gray-300 flex items-center justify-center mx-auto hover:border-blue-400">
                         <Plus size={9} className="text-gray-500" />
                     </div>
                 )}
