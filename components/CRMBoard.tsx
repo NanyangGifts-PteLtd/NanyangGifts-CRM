@@ -12,7 +12,7 @@ import { GenerateOcfModal } from './Generate-OCF-Modal';
 
 const CLIENT_HEADER_COLS = [
   { key: 'selectCheckbox', label: '', width: 60, minWidth: 10 },
-  { key: 'client', label: 'Client', width: 220, minWidth: 10 },
+  { key: 'client', label: 'Client', width: 250, minWidth: 10 },
   { key: 'people', label: 'People', width: 60, minWidth: 10 },
   { key: 'replyStatus', label: 'Reply Status', width: 80, minWidth: 10 },
   { key: 'followUp', label: 'Follow Up', width: 100, minWidth: 10 },
@@ -23,7 +23,7 @@ const CLIENT_HEADER_COLS = [
   { key: 'email', label: 'Email', width: 80, minWidth: 10 },
   { key: 'phone', label: 'Phone', width: 80, minWidth: 10 },
   { key: 'requirements', label: 'Requirements', width: 90, minWidth: 10 },
-  { key: 'nbd', label: 'NBD', width: 80, minWidth: 10 },
+  { key: 'nbd', label: 'NBD', width: 100, minWidth: 10 },
   { key: 'totalPrice', label: 'Total Price', width: 80, minWidth: 10 },
   { key: 'companyAddress', label: 'Company Address', width: 115, minWidth: 10 },
   { key: 'billingAddress', label: 'Billing Address', width: 115, minWidth: 10 },
