@@ -11,24 +11,24 @@ import { fetchClientAssigneeMap } from '@/lib/assignments';
 import { GenerateOcfModal } from './Generate-OCF-Modal';
 
 const CLIENT_HEADER_COLS = [
-  { key: 'selectCheckbox', label: '', width: 60, minWidth: 0 },
-  { key: 'client', label: 'Client', width: 250, minWidth: 0 },
-  { key: 'people', label: 'People', width: 60, minWidth: 10 },
-  { key: 'replyStatus', label: 'Reply Status', width: 80, minWidth: 10 },
-  { key: 'followUp', label: 'Follow Up', width: 100, minWidth: 10 },
-  { key: 'status', label: 'Status', width: 80, minWidth: 10 },
-  { key: 'channel', label: 'Channel', width: 80, minWidth: 10 },
-  { key: 'importance', label: 'Importance', width: 80, minWidth: 10 },
-  { key: 'company', label: 'Company', width: 80, minWidth: 10 },
-  { key: 'email', label: 'Email', width: 80, minWidth: 10 },
-  { key: 'phone', label: 'Phone', width: 80, minWidth: 10 },
-  { key: 'requirements', label: 'Requirements', width: 90, minWidth: 10 },
-  { key: 'nbd', label: 'NBD', width: 100, minWidth: 10 },
-  { key: 'totalPrice', label: 'Total Price', width: 80, minWidth: 10 },
-  { key: 'companyAddress', label: 'Company Address', width: 115, minWidth: 10 },
-  { key: 'billingAddress', label: 'Billing Address', width: 115, minWidth: 10 },
-  { key: 'dateCreated', label: 'Date Created', width: 90, minWidth: 10 },
-  { key: 'empty', label: '', width: 560, minWidth: 10 },
+  { key: 'selectCheckbox', label: '', width: 60, minWidth: 7 },
+  { key: 'client', label: 'Client', width: 250, minWidth: 7 },
+  { key: 'people', label: 'People', width: 60, minWidth: 7 },
+  { key: 'replyStatus', label: 'Reply Status', width: 80, minWidth: 7 },
+  { key: 'followUp', label: 'Follow Up', width: 100, minWidth: 7 },
+  { key: 'status', label: 'Status', width: 80, minWidth: 7 },
+  { key: 'channel', label: 'Channel', width: 80, minWidth: 7 },
+  { key: 'importance', label: 'Importance', width: 80, minWidth: 7 },
+  { key: 'company', label: 'Company', width: 80, minWidth: 7 },
+  { key: 'email', label: 'Email', width: 80, minWidth: 7 },
+  { key: 'phone', label: 'Phone', width: 80, minWidth: 7 },
+  { key: 'requirements', label: 'Requirements', width: 90, minWidth: 7 },
+  { key: 'nbd', label: 'NBD', width: 100, minWidth: 7 },
+  { key: 'totalPrice', label: 'Total Price', width: 80, minWidth: 7 },
+  { key: 'companyAddress', label: 'Company Address', width: 115, minWidth: 7 },
+  { key: 'billingAddress', label: 'Billing Address', width: 115, minWidth: 7 },
+  { key: 'dateCreated', label: 'Date Created', width: 90, minWidth: 7 },
+  { key: 'empty', label: '', width: 560, minWidth: 7 },
 ];
 
 
@@ -509,11 +509,11 @@ export function CRMBoard({ clients, expandedIds, setExpandedIds, setClients, rel
       </div>
 
       {/* Table */}
-      <div className="box-border flex overflow-hidden min-w-0 text-gray-500 font-semibold">
+      <div className="box-border flex overflow-x min-w-0 text-gray-500 font-semibold">
         <div style={{ minWidth: totalMinWidth }}>
           {/* Header */}
           <div
-            className="box-border flex items-center min-w-0 flex-shrink-0 border-r border-gray-500 overflow-hidden animated-background bg-gradient-to-r from-[#e7fdff] to-[#a3dfff] sticky top-0 z-10"
+            className="box-border flex items-center justify-center w-full min-w-0 flex-shrink-0 border-r border-gray-500 overflow-hidden animated-background bg-gradient-to-r from-[#e7fdff] to-[#a3dfff] sticky top-0 z-10"
             style={{ minWidth: totalMinWidth }}
           >
             <div
@@ -532,7 +532,7 @@ export function CRMBoard({ clients, expandedIds, setExpandedIds, setClients, rel
             {headerCols.slice(1).map((col, i) => (
               <div
                 key={col.key}
-                className="relative box-border flex min-w-0 overflow-hidden items-center px-0 py-1.5 border-r border-gray-500 last:border-r-0 text-[11px] font-semibold text-gray-500 whitespace-nowrap flex-shrink-0"
+                className="relative box-border flex min-w-0 overflow-hidden items-center px-1 py-1.5 border-r border-gray-500 last:border-r-0 text-[11px] font-semibold text-gray-500 whitespace-nowrap flex-shrink"
                 style={{ minWidth: col.width, width: col.width }}
               >
                 {col.label}

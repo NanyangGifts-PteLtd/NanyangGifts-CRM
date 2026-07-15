@@ -72,10 +72,10 @@ export function AssigneeMultiSelect({ profiles, selectedIds, onChange }: Props) 
             <button
                 type="button"
                 onClick={() => setOpen((v) => !v)}
-                className="min-h-[28px] w-full rounded-md px-1 py-1 text-center hover:bg-gray-50"
+                className="min-h-[28px] w-full rounded-md py-1 !text-center hover:bg-gray-50"
             >
                 {selectedProfiles.length > 0 ? (
-                    <div className="flex w-10 h-6 rounded-full">
+                    <div className="flex w-full h-6 items-center justify-center -space-x-2 rounded-full">
                         {selectedProfiles.map((p, i) => (
                             <div
                                 key={p.id}
@@ -88,7 +88,7 @@ export function AssigneeMultiSelect({ profiles, selectedIds, onChange }: Props) 
                         ))}
                     </div>
                 ) : (
-                    <div className=" transition transform active:scale-95 duration-150 w-7 h-7 mx-auto rounded-full border-2 border-dashed border-gray-300 flex items-center justify-center hover:border-blue-400">
+                    <div className=" transition transform active:scale-95 duration-150 w-7 h-7 rounded-full border-2 border-dashed border-gray-300 flex items-center justify-center hover:border-blue-400">
                         <Plus size={9} className="text-gray-500" />
                     </div>
                 )}

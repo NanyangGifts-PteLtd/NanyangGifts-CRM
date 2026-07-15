@@ -226,7 +226,7 @@ export function ClientRow({
     return (
         <div className="mb-3">
             <div
-                className={`flex items-stretch border-b border-gray-500 hover:bg-gray-50 group transition-colors ${isSelected ? "bg-blue-50" : ""
+                className={`box-border border-b flex items-center flex-shrink-0 border-r border-gray-500 hover:blue-50 group transition-colors ${isSelected ? "bg-blue-50" : ""
                     }`}
             >
                 <div
@@ -252,7 +252,7 @@ export function ClientRow({
                 </div>
 
                 <div
-                    className="box-border flex items-center min-w-0 flex-shrink-0 border-r border-gray-500 overflow-hidden"
+                    className="box-border px-1 flex items-center min-w-0 flex-shrink-0 border-r border-gray-500 overflow-hidden"
                     style={{ height: 30, minWidth: colWidth.client, width: colWidth.client }}
                 >
                     <EditableCell
@@ -391,7 +391,7 @@ export function ClientRow({
                     </Tooltip.Provider>
                 </div>
                 <div
-                    className="flex-row flex-1 min-w-0 overflow-hidden whitespace-nowrap text-ellipsis px-3 border-r border-gray-500 flex-shrink-0"
+                    className="flex-1 min-w-0 overflow-hidden whitespace-nowrap text-ellipsis border-r border-gray-500"
                     style={{ minWidth: colWidth.people, width: colWidth.people }}
                 >
                     <AssigneeMultiSelect
@@ -402,7 +402,7 @@ export function ClientRow({
                 </div>
 
                 <div
-                    className="flex-1 min-w-0 overflow-hidden whitespace-nowrap text-ellipsis !text-center px-2 border-r border-gray-500 transition transform active:scale-95 duration-150"
+                    className="flex-1 min-w-0 overflow-hidden whitespace-nowrap text-ellipsis !text-center border-r border-gray-500 transition transform active:scale-95 duration-150"
                     style={{ minWidth: colWidth.replyStatus, width: colWidth.replyStatus }}
                 >
                     <StatusBadge
@@ -414,7 +414,7 @@ export function ClientRow({
                 </div>
 
                 <div
-                    className="flex-1 min-w-0 overflow-hidden whitespace-nowrap text-ellipsis !text-center px-2 border-r border-gray-500 transition transform active:scale-95 duration-150"
+                    className="flex-1 min-w-0 overflow-hidden whitespace-nowrap text-ellipsis !text-center border-r border-gray-500 transition transform active:scale-95 duration-150"
                     style={{ minWidth: colWidth.followUp, width: colWidth.followUp }}
                 >
                     <input
@@ -426,7 +426,7 @@ export function ClientRow({
                 </div>
 
                 <div
-                    className="flex-1 min-w-0 overflow-hidden whitespace-nowrap text-ellipsis !text-center px-2 border-r border-gray-500 flex-shrink-0 transition transform active:scale-95 duration-150"
+                    className="flex-1 min-w-0 overflow-hidden whitespace-nowrap text-ellipsis !text-center border-r border-gray-500 flex-shrink-0 transition transform active:scale-95 duration-150"
                     style={{ minWidth: colWidth.status, width: colWidth.status }}
                 >
                     <StatusBadge
@@ -544,7 +544,7 @@ export function ClientRow({
                 </div>
 
                 <div
-                    className="flex-1 min-w-0 items-center px-2 border-r border-gray-500 overflow-hidden whitespace-nowrap !text-center text-ellipsis flex-shrink-0 transition transform active:scale-95 duration-150"
+                    className="flex-1 min-w-0 items-center border-r border-gray-500 overflow-hidden whitespace-nowrap !text-center text-ellipsis flex-shrink-0 transition transform active:scale-95 duration-150"
                     style={{ minWidth: colWidth.channel, width: colWidth.channel }}
                 >
                     <StatusBadge
@@ -557,7 +557,7 @@ export function ClientRow({
                 </div>
 
                 <div
-                    className="flex-1 min-w-0 items-center px-2 border-r border-gray-500 overflow-hidden whitespace-nowrap text-ellipsis !text-center flex-shrink-0 transition transform active:scale-95 duration-150"
+                    className="flex-1 min-w-0 items-center border-r border-gray-500 overflow-hidden whitespace-nowrap text-ellipsis !text-center flex-shrink-0 transition transform active:scale-95 duration-150"
                     style={{ minWidth: colWidth.importance, width: colWidth.importance }}
                 >
                     <StatusBadge
@@ -569,19 +569,19 @@ export function ClientRow({
                     />
                 </div>
 
-                <div className="flex-1 min-w-0 items-center px-2 border-r border-gray-500 overflow-hidden whitespace-nowrap text-ellipsis" style={{ minWidth: colWidth.company, width: colWidth.company }}>
+                <div className="min-w-0 w-full overflow-hidden border-r border-gray-500 whitespace-nowrap text-ellipsis" style={{ minWidth: colWidth.company, width: colWidth.company }}>
                     <EditableCell value={client.company} onChange={(v) => onUpdate({ company: v })} placeholder="Company" />
                 </div>
 
-                <div className="flex-1 min-w-0 items-center px-2 border-r border-gray-500 overflow-hidden whitespace-nowrap text-ellipsis" style={{ minWidth: colWidth.email, width: colWidth.email }}>
+                <div className="flex-1 min-w-0 items-center border-r border-gray-500 overflow-hidden whitespace-nowrap text-ellipsis" style={{ minWidth: colWidth.email, width: colWidth.email }}>
                     <EditableCell value={client.email} onChange={(v) => onUpdate({ email: v })} placeholder="Email" />
                 </div>
 
-                <div className="flex-1 min-w-0 items-center px-2 border-r border-gray-500 overflow-hidden whitespace-nowrap text-ellipsis" style={{ minWidth: colWidth.phone, width: colWidth.phone }}>
+                <div className="flex-1 min-w-0 items-center border-r border-gray-500 overflow-hidden whitespace-nowrap text-ellipsis" style={{ minWidth: colWidth.phone, width: colWidth.phone }}>
                     <EditableCell value={client.phone} onChange={(v) => onUpdate({ phone: v })} placeholder="Phone" />
                 </div>
 
-                <div className="flex-1 min-w-0 items-center px-2 border-r border-gray-500 overflow-hidden whitespace-nowrap text-ellipsis" style={{ minWidth: colWidth.requirements, width: colWidth.requirements }}>
+                <div className="flex-1 min-w-0 items-center border-r border-gray-500 overflow-hidden whitespace-nowrap text-ellipsis" style={{ minWidth: colWidth.requirements, width: colWidth.requirements }}>
                     <EditableCell
                         value={client.requirements}
                         onChange={(v) => onUpdate({ requirements: v })}
@@ -589,7 +589,7 @@ export function ClientRow({
                     />
                 </div>
                 <div
-                    className="flex items-center px-2 border-r border-gray-500 transition transform active:scale-95 duration-150"
+                    className="flex items-center border-r border-gray-500 transition transform active:scale-95 duration-150"
                     style={{ minWidth: colWidth.nbd, width: colWidth.nbd }}
                 >
                     <input
@@ -600,29 +600,29 @@ export function ClientRow({
                     />
                 </div>
 
-                <div className="flex items-center px-2 border-r border-gray-500" style={{ minWidth: colWidth.totalPrice, width: colWidth.totalPrice }}>
+                <div className="flex items-center border-r border-gray-500" style={{ minWidth: colWidth.totalPrice, width: colWidth.totalPrice }}>
                     <EditableCell value={client.totalPrice} onChange={(v) => onUpdate({ totalPrice: v })} />
                 </div>
 
-                <div className="flex items-center px-2 border-r border-gray-500" style={{ minWidth: colWidth.companyAddress, width: colWidth.companyAddress }}>
+                <div className="flex items-center border-r border-gray-500" style={{ minWidth: colWidth.companyAddress, width: colWidth.companyAddress }}>
                     <EditableCell
                         value={client.companyAddress}
                         onChange={(v) => onUpdate({ companyAddress: v })}
                     />
                 </div>
 
-                <div className="flex items-center px-2 border-r border-gray-500" style={{ minWidth: colWidth.billingAddress, width: colWidth.billingAddress }}>
+                <div className="flex items-center border-r border-gray-500" style={{ minWidth: colWidth.billingAddress, width: colWidth.billingAddress }}>
                     <EditableCell
                         value={client.billingAddress}
                         onChange={(v) => onUpdate({ billingAddress: v })}
                     />
                 </div>
 
-                <div className="flex items-center px-2 border-r border-gray-500" style={{ minWidth: colWidth.dateCreated, width: colWidth.dateCreated }}>
+                <div className="flex items-center border-r border-gray-500" style={{ minWidth: colWidth.dateCreated, width: colWidth.dateCreated }}>
                     <EditableCell value={client.dateCreated} onChange={(v) => onUpdate({ dateCreated: v })} />
                 </div>
 
-                <div className="flex items-center px-2 flex-shrink-0" style={{ minWidth: colWidth.empty, width: colWidth.empty }}>
+                <div className="flex items-center flex-shrink-0" style={{ minWidth: colWidth.empty, width: colWidth.empty }}>
                     <button
                         onClick={onDelete}
                         title="Delete client"

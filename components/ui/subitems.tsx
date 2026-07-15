@@ -193,6 +193,8 @@ export function SubitemsTable({
         );
     }, [selectedSubitems]);
 
+    
+
     return (
         <div className="mb-2 ml-7 w-[1100px] max-w-[calc(100vw-80px)]" style={{ borderLeft: `7px solid ${clientColor}` }}>
             <div className="max-h-[500px]">
