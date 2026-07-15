@@ -296,7 +296,7 @@ export function SubitemsTable({
                                             </div>
                                             <button
                                                 onClick={() => onUpdateSubitem(sub.id, { showTimeline: !sub.showTimeline, showPayments: false, showSample: false })}
-                                                className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium transition-colors whitespace-nowrap flex-shrink-0 transition transform active:scale-95 duration-2 ${sub.showTimeline ? 'bg-[#7BCBD5] text-white' : 'bg-transparent text-[#6db6bf] hover:bg-teal-100 border border-teal-200'
+                                                className={`flex items-center gap-1 px-1 py-1 rounded-sm transition-colors whitespace-nowrap flex-shrink-0 transition transform active:scale-95 duration-2 ${sub.showTimeline ? 'bg-[#7BCBD5] text-white' : 'bg-transparent text-[#6db6bf] hover:bg-teal-100 border border-teal-200'
                                                     }`}
                                             >
                                                 <Calendar size={15} />
@@ -310,14 +310,14 @@ export function SubitemsTable({
                                                         showSample: false,
                                                     })
                                                 }
-                                                className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium transition-colors whitespace-nowrap flex-shrink-0 transition transform active:scale-95 duration-2  ${sub.showPayments ? 'bg-[#f291b6] text-white' : 'bg-transparent text-[#e87da6] hover:bg-pink-100 border border-pink-200'
+                                                className={`flex items-center gap-1 px-1 py-1 rounded-sm transition-colors whitespace-nowrap flex-shrink-0 transition transform active:scale-95 duration-2  ${sub.showPayments ? 'bg-[#f291b6] text-white' : 'bg-transparent text-[#e87da6] hover:bg-pink-100 border border-pink-200'
                                                     }`}
                                             >
                                                 <CreditCard size={15} />
                                             </button>
                                             <button
                                                 onClick={() => onUpdateSubitem(sub.id, { showPayments: false, showTimeline: false, showSample: !sub.showSample })}
-                                                className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium transition-colors whitespace-nowrap flex-shrink-0 transition transform active:scale-95 duration-2 ${sub.showSample ? 'bg-[#d5a5ec] text-white' : 'bg-transparent text-[#ac7ec2] hover:bg-purple-100 border border-purple-200'
+                                                className={`flex items-center gap-1 px-1 py-1 rounded-sm transition-colors whitespace-nowrap flex-shrink-0 transition transform active:scale-95 duration-2 ${sub.showSample ? 'bg-[#d5a5ec] text-white' : 'bg-transparent text-[#ac7ec2] hover:bg-purple-100 border border-purple-200'
                                                     }`}
                                             >
                                                 <Package size={15} />
