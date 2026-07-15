@@ -67,19 +67,21 @@ export function AssigneeMultiSelect({ profiles, selectedIds, onChange }: Props) 
     }, [open]);
 
     return (
-    <div ref={containerRef} className="relative">
+    <div ref={containerRef} className="relative overflow-visible">
         <div className="relative">
             <button
                 type="button"
-                onClick={() => setOpen((v) => !v)}
-                className="min-h-[25px] w-full rounded-md !text-center hover:bg-gray-50"
+                onClick={(e) => {
+                    e.stopPropagation();
+                    setOpen((v) => !v)}}
+                className="min-h-[25px] w-full rounded-md !text-center hover:bg-gray-50 transition transform active:scale-95 duration-150"
             >
                 {selectedProfiles.length > 0 ? (
                     <div className="flex w-full h-6 items-center justify-center -space-x-2 rounded-full">
                         {selectedProfiles.map((p, i) => (
                             <div
                                 key={p.id}
-                                className="w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-bol"
+                                className="w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-bold"
                                 style={{ background: ['#8babeb', '#b0fff1', '#ba9ef7', '#f776aa'][i % 4] }}
                                 title={getLabel(p)}
                             >
@@ -95,12 +97,13 @@ export function AssigneeMultiSelect({ profiles, selectedIds, onChange }: Props) 
             </button>
 
             {open && (
-                <div className="absolute left-0 top-full z-50 mt-1 w-72 rounded-lg border border-gray-200 bg-white p-2 shadow-xl">
+                <div className="fixed left-[500px] right-[200px] z-[9999] w-72 rounded-lg border border-gray-200 bg-white p-2 shadow-xl">
                     <input
                         value={query}
                         onChange={(e) => setQuery(e.target.value)}
                         placeholder="Search people..."
-                        className="mb-2 w-full rounded-md border px-2 py-1.5 text-xs outline-none focus:border-[#7BCBD5]"
+                        className="mb-2 w-full rounded-md border px-2 py-1.5 text-xs outline-none u focus:border-[#7BCBD5]"
+                        onClick={(e) => e.stopPropagation()}
                     />
 
                     {selectedProfiles.length > 0 && (
