@@ -32,7 +32,7 @@ const CLIENT_HEADER_COLS = [
 ];
 
 
-const GROUP_ORDER: ClientStatus[] = [
+const DEFAULT_GROUP_ORDER: ClientStatus[] = [
   'New Lead',
   'Contacted',
   'Quoted',
@@ -69,7 +69,7 @@ export async function fetchAllSubitemAssignees(): Promise<SubitemAssigneeMap> {
 
 export function CRMBoard({ clients, expandedIds, setExpandedIds, setClients, reloadClients, search = '' }: CRMBoardProps) {
 
-  const [filterStatus, setFilterStatus] = useState<ClientStatus | 'All'>('All');
+  const [filterStatus, setFilterStatus] = useState<string | 'All'>('All');
   const [showFilter, setShowFilter] = useState(false);
 
   const expandedIdSet = React.useMemo(() => new Set(expandedIds), [expandedIds]);
@@ -84,9 +84,30 @@ export function CRMBoard({ clients, expandedIds, setExpandedIds, setClients, rel
   const filterRef = useRef<HTMLDivElement>(null);
   const [ocfClient, setOcfClient] = useState<Client | null>(null);
   const [isOcfModalOpen, setIsOcfModalOpen] = useState(false);
+  
+  // Add group
+  const [groupOrder, setGroupOrder] = useState<string[]>(DEFAULT_GROUP_ORDER);
+  const addGroup = useCallback(() => {
+  const name = window.prompt('Enter new group name');
+  if (!name) return;
 
+  const trimmed = name.trim();
+  if (!trimmed) return;
+
+  const exists = groupOrder.some(
+    (group) => group.toLowerCase() === trimmed.toLowerCase()
+  );
+
+  if (exists) {
+    window.alert('Group already exists');
+    return;
+  }
+
+  setGroupOrder((prev) => [...prev, trimmed]);
+}, [groupOrder]);
+  
   const [headerCols, setHeaderCols] = useState(CLIENT_HEADER_COLS);
-
+  
   const totalMinWidth = headerCols.reduce((sum, col) => sum + col.width, 0);
 
   const colWidth = React.useMemo(
@@ -194,10 +215,10 @@ export function CRMBoard({ clients, expandedIds, setExpandedIds, setClients, rel
     return matchesStatus && matchesSearch;
   });
 
-  const groupedClients = GROUP_ORDER.map((status) => ({
+  const groupedClients = groupOrder.map((status) => ({
     status,
     clients: displayedClients.filter((c) => c.status === status),
-  })).filter((g) => g.clients.length > 0);
+  }));
 
   const filteredClients =
     filterStatus === 'All' ? clients : clients.filter((c) => c.status === filterStatus);
@@ -321,7 +342,6 @@ export function CRMBoard({ clients, expandedIds, setExpandedIds, setClients, rel
         email: createdClient.email ?? '',
         phone: createdClient.phone ?? '',
         requirements: createdClient.requirements ?? '',
-        qty: createdClient.qty ?? '',
         nbd: createdClient.nbd ?? '',
         totalPrice: createdClient.total_price ?? '',
         companyAddress: createdClient.company_address ?? '',
@@ -415,6 +435,13 @@ export function CRMBoard({ clients, expandedIds, setExpandedIds, setClients, rel
           <Plus size={12} />
           Add Client
         </button>
+        <button
+          onClick={addGroup}
+          className="flex items-center gap-1 px-2 py-1 bg-[#7BCBD5] hover:bg-[#61a5ad] text-white rounded-md text-[10px] font-medium transition-colors transition transform active:scale-95 duration-150"
+        >
+          <Plus size={12} />
+          Add Group
+        </button>
 
         <button
           onClick={toggleExpandAll}
@@ -447,7 +474,7 @@ export function CRMBoard({ clients, expandedIds, setExpandedIds, setClients, rel
 
               <div className="border-t border-gray-100 my-1" />
 
-              {CLIENT_STATUSES.map((st) => (
+              {groupOrder.map((st) => (
                 <button
                   key={st}
                   onClick={() => { setFilterStatus(st); setShowFilter(false); }}
@@ -464,7 +491,7 @@ export function CRMBoard({ clients, expandedIds, setExpandedIds, setClients, rel
         </div>
 
         <div className="flex items-center gap-1">
-          {CLIENT_STATUSES.map((st) => {
+          {groupOrder.map((st) => {
             const count = clients.filter((c) => c.status === st).length;
             if (!count) return null;
             return (
@@ -558,7 +585,7 @@ export function CRMBoard({ clients, expandedIds, setExpandedIds, setClients, rel
                 <div>
                   <div className="font-semibold text-slate-700">{group.status}</div>
                   <div className="text-xs italic font-normal text-slate-500">
-                    {group.clients.length} Clients
+                    {group.clients.length} {group.clients.length === 1 ? 'Client' : 'Clients' }
                   </div>
                 </div>
               </div>

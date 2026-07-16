@@ -144,7 +144,6 @@ export interface Client {
   email: string;
   phone: string;
   requirements: string;
-  qty: string;
   nbd: string;
   totalPrice: string;
   companyAddress: string;
