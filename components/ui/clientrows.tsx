@@ -252,17 +252,21 @@ export function ClientRow({
                 </div>
 
                 <div
-                    className="box-border px-0 flex items-center min-w-0 flex-shrink-0 border-r border-[#D0D4E4] overflow-hidden"
+                    className="box-border flex items-center min-w-0 px-1 border-r border-[#D0D4E4] overflow-hidden"
                     style={{ height: 32, minWidth: colWidth.client, width: colWidth.client }}
                 >
+
+                <div className="min-w-0 flex items-left">
                     <EditableCell
                         value={client.name}
                         onChange={(v) => onUpdate({ name: v })}
                         placeholder="Client name"
-                        className="font-semibold text-gray-800 !text-left"
+                        className="font-semibold text-gray-800"
                     />
+                </div>
+                <div className="ml-auto flex items-center justify-start gap-1 flex-shrink-0">
                     {subitemCount > 0 && (
-                        <span className="text-xs text-[#7BCBD5] bg-[#e7fdff] rounded-full px-1.5 py-0.5 flex-shrink-0">
+                        <span className="text-xs text-[#7BCBD5] items-left justify-left bg-[#e7fdff] rounded-full px-1.5 py-0.5 flex-shrink-0">
                             {subitemCount}
                         </span>
                     )}
@@ -284,9 +288,6 @@ export function ClientRow({
                             </Tooltip.Portal>
                         </Tooltip.Root>
                     </Tooltip.Provider>
-
-
-
                     {showActivityLog && (
                         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
                             <div className="w-full max-w-2xl rounded-xl bg-white p-4 shadow-xl">
@@ -304,7 +305,6 @@ export function ClientRow({
                                         Close
                                     </button>
                                 </div>
-
                                 <div className="max-h-[420px] space-y-3 overflow-y-auto">
                                     {(client.activityLog?.length ?? 0) === 0 ? (
                                         <div className="rounded-lg border border-dashed border-gray-200 p-6 text-center text-sm text-gray-500">
@@ -382,13 +382,14 @@ export function ClientRow({
                                 <button
                                     onClick={() => onOpenOcfModal(client)}
                                     className="px-2 py-2 text-[10px] font-medium text-teal-500"
-                                > <FileBox size={15} color="#7BCBD5" className="transition transform active:scale-150 duration-200" /></button>
+                                > <FileBox size={15} color="#7BCBD5" className= "transition transform active:scale-150 duration-200" /></button>
                             </Tooltip.Trigger>
                             <Tooltip.Portal>
                                 <Tooltip.Content className="TooltipContent">Generate Order Confirmation Form<Tooltip.Arrow className="TooltipArrow" /></Tooltip.Content>
                             </Tooltip.Portal>
                         </Tooltip.Root>
                     </Tooltip.Provider>
+                </div>
                 </div>
                 <div
                     className="flex-1 min-w-0 py-1 overflow-hidden whitespace-nowrap text-ellipsis border-r border-[#D0D4E4]"
@@ -570,22 +571,22 @@ export function ClientRow({
                 </div>
 
                 <div className="min-w-0 py-1 w-full overflow-hidden border-r border-[#D0D4E4] whitespace-nowrap text-ellipsis" style={{ height: 32, minWidth: colWidth.company, width: colWidth.company }}>
-                    <EditableCell value={client.company} onChange={(v) => onUpdate({ company: v })} placeholder="Company" />
+                    <EditableCell value={client.company} onChange={(v) => onUpdate({ company: v })} placeholder="" />
                 </div>
 
                 <div className="flex-1 min-w-0 items-center py-1 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height: 32, minWidth: colWidth.email, width: colWidth.email }}>
-                    <EditableCell value={client.email} onChange={(v) => onUpdate({ email: v })} placeholder="Email" />
+                    <EditableCell value={client.email} onChange={(v) => onUpdate({ email: v })} placeholder="" />
                 </div>
 
                 <div className="flex-1 min-w-0 py-1 items-center border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height: 32, minWidth: colWidth.phone, width: colWidth.phone }}>
-                    <EditableCell value={client.phone} onChange={(v) => onUpdate({ phone: v })} placeholder="Phone" />
+                    <EditableCell value={client.phone} onChange={(v) => onUpdate({ phone: v })} placeholder="" />
                 </div>
 
                 <div className="flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height: 32,  minWidth: colWidth.requirements, width: colWidth.requirements }}>
                     <EditableCell
                         value={client.requirements}
                         onChange={(v) => onUpdate({ requirements: v })}
-                        placeholder="Requirements"
+                        placeholder=""
                     />
                 </div>
                 <div
@@ -597,26 +598,24 @@ export function ClientRow({
                         className="text-xs border-none outline-none bg-transparent cursor-pointer w-full"
                     />
                 </div>
-
-                <div className="flex items-center border-r border-[#D0D4E4]" style={{ height: 32, minWidth: colWidth.totalPrice, width: colWidth.totalPrice }}>
-                    <EditableCell value={client.totalPrice} onChange={(v) => onUpdate({ totalPrice: v })} />
+                <div className="flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height: 32, minWidth: colWidth.totalPrice, width: colWidth.totalPrice }}>
+                    <EditableCell className="!px-8" value={client.totalPrice} onChange={(v) => onUpdate({ totalPrice: v })} type="Number"/>
                 </div>
-
-                <div className="flex items-center border-r border-[#D0D4E4]" style={{ height:32, minWidth: colWidth.companyAddress, width: colWidth.companyAddress }}>
+                <div className="flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height:32, minWidth: colWidth.companyAddress, width: colWidth.companyAddress }}>
                     <EditableCell
                         value={client.companyAddress}
                         onChange={(v) => onUpdate({ companyAddress: v })}
                     />
                 </div>
 
-                <div className="flex items-center border-r border-[#D0D4E4]" style={{ height:32, minWidth: colWidth.billingAddress, width: colWidth.billingAddress }}>
+                <div className="flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height:32, minWidth: colWidth.billingAddress, width: colWidth.billingAddress }}>
                     <EditableCell
                         value={client.billingAddress}
                         onChange={(v) => onUpdate({ billingAddress: v })}
                     />
                 </div>
 
-                <div className="flex items-center border-r border-[#D0D4E4]" style={{ height:32, minWidth: colWidth.dateCreated, width: colWidth.dateCreated }}>
+                <div className="flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height:32, minWidth: colWidth.dateCreated, width: colWidth.dateCreated }}>
                     <EditableCell value={client.dateCreated} onChange={(v) => onUpdate({ dateCreated: v })} />
                 </div>
 

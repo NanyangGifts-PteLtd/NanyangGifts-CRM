@@ -10,6 +10,8 @@ const PAYMENT_STATUS_COLORS: Record<string, string> = {
     'Overdue': '#ac2865',
     '': 'transparent',
 };
+
+
 export function PaymentsSection({ subitem, onUpdate, onUpdateClientStatus }: { subitem: Subitem; onUpdate: (u: Partial<Subitem>) => void; onUpdateClientStatus: (status: ClientStatus) => void }) {
     const paymentOpts = ['', 'Paid', 'To Pay', 'Partial', 'Overdue'];
     const modeOpts = ['', 'AliPay', '1688', 'Bank Transfer', 'PayPal', 'Stripe', 'Cash', 'Cheque', 'Wise'];

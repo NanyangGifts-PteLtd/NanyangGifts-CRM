@@ -88,6 +88,7 @@ export interface Subitem {
   pl: string;
   sl: string;
   
+  
   // Payment fields
   owner: string;
   paymentStatus: PaymentStatus | string;

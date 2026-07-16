@@ -81,7 +81,7 @@ export function StatusBadge({
             <button
                 ref={btnRef}
                 onClick={handleOpen}
-                className={`rounded font-medium whitespace-nowrap leading-none ${small ? 'mx-auto py-1 text-[10px]' : 'mx-auto px-1 py-1 text-[10px]'} transition transform active:scale-95 duration-150`}
+                className={`mx-auto rounded font-medium whitespace-nowrap leading-none ${small ? ' px-1 py-1 text-[10px]' : 'mx-auto px-1 py-1 text-[10px]'} transition transform active:scale-95 duration-150`}
                 style={{ background: bg, color: '#ffffff', minWidth: 50 }}
             >
                 {value || <span style={{ opacity: 0.5 }}>Set</span>}

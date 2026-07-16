@@ -20,7 +20,7 @@ const CLIENT_HEADER_COLS = [
   { key: 'channel', label: 'Channel', width: 80, minWidth: 7 },
   { key: 'importance', label: 'Importance', width: 80, minWidth: 7 },
   { key: 'company', label: 'Company', width: 80, minWidth: 7 },
-  { key: 'email', label: 'Email', width: 80, minWidth: 7 },
+  { key: 'email', label: 'Email', width: 90, minWidth: 7 },
   { key: 'phone', label: 'Phone', width: 80, minWidth: 7 },
   { key: 'requirements', label: 'Requirements', width: 90, minWidth: 7 },
   { key: 'nbd', label: 'NBD', width: 100, minWidth: 7 },
@@ -532,7 +532,7 @@ export function CRMBoard({ clients, expandedIds, setExpandedIds, setClients, rel
             {headerCols.slice(1).map((col, i) => (
               <div
                 key={col.key}
-                className="relative flex min-w-0 overflow-hidden items-center px-1 py-1.5 border-r border-[#D0D4E4] last:border-r-0 text-[11px] font-semibold text-gray-500 whitespace-nowrap flex-shrink"
+                className="relative flex min-w-0 overflow-hidden items-center justify-center text-ellipsis px-1 py-1.5 border-r border-[#D0D4E4] last:border-r-0 text-[11px] font-semibold text-gray-600 whitespace-nowrap"
                 style={{ minWidth: col.width, width: col.width }}
               >
                 {col.label}
