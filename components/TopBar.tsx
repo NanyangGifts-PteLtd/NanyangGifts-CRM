@@ -60,7 +60,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
         value={value}
         onChange={handleChange}
         placeholder={placeholder}
-        className="w-full text-gray text-xs font-semibold pl-8 pr-3 py-1.5 rounded-md border focus:outline-none focus:border-[#7BCBD5] placeholder-gray-500 bg-[#e7fdff] animated-background bg-gradient-to-r from-[#e7fdff] to-[#a3dfff]"
+        className="w-full text-white text-xs font-semibold pl-8 pr-3 py-1.5 rounded-md border focus:outline-none focus:border-[#7BCBD5] placeholder-gray-500 bg-[#e7fdff] animated-background bg-gradient-to-r from-[#e7fdff] to-[#a3dfff]"
       />
     </div>
   );
@@ -122,7 +122,7 @@ export default function TopBar({
             setShowProfile(false);
             setShowSettings(false);
           }}
-          className="relative p-2 rounded-md hover:bg-[#7BCBD5] text-black-300 hover:text-white transition-colors transition transform active:scale-95 duration-150"
+          className="relative p-2 rounded-md hover:bg-[#a0e2eb] text-black-300 hover:text-white transition-colors transition transform active:scale-95 duration-150"
         >
           <Bell size={16} />
           {unreadCount > 0 && (
@@ -176,7 +176,7 @@ export default function TopBar({
             setShowNotifs(false);
             setShowProfile(false);
           }}
-          className="p-2 rounded-md hover:bg-[#7BCBD5] text-black-300 hover:text-white transition-colors transition transform active:scale-95 duration-150"
+          className="p-2 rounded-md hover:bg-[#a0e2eb] text-black-300 hover:text-white transition-colors transition transform active:scale-95 duration-150"
         >
           <Settings size={16} />
         </button>
@@ -204,12 +204,12 @@ export default function TopBar({
             setShowNotifs(false);
             setShowSettings(false);
           }}
-          className="flex items-center gap-1.5 px-2 py-1.5 rounded-md hover:bg-[#7BCBD5] transition-colors transition transform active:scale-95 duration-150"
+          className="flex text-black hover:text-white items-center gap-1.5 px-2 py-1.5 rounded-md hover:bg-[#a0e2eb] transition-colors transition transform active:scale-95 duration-150"
         >
           <div className="w-6 h-6 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center text-white text-xs font-semibold">
             {initial}
           </div>
-          <span className="text-black font-semibold text-xs hidden lg:block truncate max-w-28">
+          <span className="font-semibold text-xs hidden lg:block truncate max-w-28">
             {displayName}
           </span>
           <ChevronDown size={12} className="text-black hidden lg:block" />

@@ -9,6 +9,7 @@ import { fetchProfiles, saveClientAssignees, saveSubitemAssignees } from '@/lib/
 import { createClientRow, updateClientRow, deleteClientRow, createSubitemRow, updateSubitemRow, deleteSubitemRow } from '@/lib/crm';
 import { fetchClientAssigneeMap } from '@/lib/assignments';
 import { GenerateOcfModal } from './Generate-OCF-Modal';
+import { AddGroupModal } from './Add-Group-Modal';
 
 const CLIENT_HEADER_COLS = [
   { key: 'selectCheckbox', label: '', width: 60, minWidth: 7 },
@@ -84,7 +85,7 @@ export function CRMBoard({ clients, expandedIds, setExpandedIds, setClients, rel
   const filterRef = useRef<HTMLDivElement>(null);
   const [ocfClient, setOcfClient] = useState<Client | null>(null);
   const [isOcfModalOpen, setIsOcfModalOpen] = useState(false);
-  
+  const [showAddGroupModal, setShowAddGroupModal ] = useState(false);
   // Fetch group, add groups
   const [groups, setGroups] = useState<CRMGroup[]>([]);
   
@@ -99,9 +100,7 @@ export function CRMBoard({ clients, expandedIds, setExpandedIds, setClients, rel
   if (error) throw error;
   return data ?? [];
 }
-  const addGroup = useCallback(async () => {
-  const name = window.prompt('Enter new group name');
-  if (!name) return;
+  const handleAddGroup = useCallback(async (name: string) => {
   
   const trimmed = name.trim();
   if (!trimmed) return;
@@ -474,22 +473,27 @@ console.log('first client group fields', clients[0]?.groupId, clients[0]?.groupI
       <div className="flex items-center gap-2 px-2 py-1 border-b border-gray-200 bg-white flex-shrink-0">
         <button
           onClick={addClient}
-          className="flex items-center gap-1 px-2 py-1 bg-[#7BCBD5] hover:bg-[#61a5ad] text-white rounded-md text-[10px] font-medium transition-colors transition transform active:scale-95 duration-150"
+          className="flex items-center gap-1 px-2 py-1 bg-[#a0e2eb] hover:bg-[#7BCBD5] text-white rounded-md text-[10px] font-medium transition-colors transition transform active:scale-95 duration-150"
         >
           <Plus size={12} />
           Add Client
         </button>
         <button
-          onClick={addGroup}
-          className="flex items-center gap-1 px-2 py-1 bg-[#7BCBD5] hover:bg-[#61a5ad] text-white rounded-md text-[10px] font-medium transition-colors transition transform active:scale-95 duration-150"
+          onClick={() => {setShowAddGroupModal(true)}}
+          className="flex items-center gap-1 px-2 py-1 bg-[#a0e2eb] hover:bg-[#7BCBD5] text-white rounded-md text-[10px] font-medium transition-colors transition transform active:scale-95 duration-150"
         >
           <Plus size={12} />
           Add Group
         </button>
+        <AddGroupModal
+        open={showAddGroupModal}
+        onClose={() => setShowAddGroupModal(false)}
+        onSubmit={handleAddGroup}
+        />
 
         <button
           onClick={toggleExpandAll}
-          className="flex items-center gap-1 px-2 py-1 bg-[#7BCBD5] hover:bg-[#61a5ad] text-white rounded-md text-[10px] font-medium transition-colors transition transform active:scale-95 duration-150"
+          className="flex items-center gap-1 px-2 py-1 bg-[#a0e2eb] hover:bg-[#7BCBD5] text-white rounded-md text-[10px] font-medium transition-colors transition transform active:scale-95 duration-150"
         >
           {allExpanded ? <ChevronsUp size={12} /> : <ChevronsDown size={12} />}
           {allExpanded ? 'Collapse All' : 'Expand All'}
@@ -498,7 +502,7 @@ console.log('first client group fields', clients[0]?.groupId, clients[0]?.groupI
         <div ref={filterRef} className="relative">
           <button
             onClick={() => setShowFilter(!showFilter)}
-            className="flex items-center gap-1 px-2 py-1 bg-[#7BCBD5] hover:bg-[#61a5ad] text-white rounded-md text-[10px] font-medium transition-colors transition transform active:scale-95 duration-150"
+            className="flex items-center gap-1 px-2 py-1 bg-[#a0e2eb] hover:bg-[#7BCBD5] text-white rounded-md text-[10px] font-medium transition-colors transition transform active:scale-95 duration-150"
           >
             <Filter size={12} />
             {filterStatus === 'All' ? 'Filter by Status' : filterStatus}
@@ -580,7 +584,7 @@ console.log('first client group fields', clients[0]?.groupId, clients[0]?.groupI
       </div>
 
       {/* Table */}
-      <div className=" flex overflow-x min-w-0 text-gray-500 font-semibold">
+      <div className=" flex min-w-0 text-gray-500 font-semibold">
         <div style={{ minWidth: totalMinWidth }}>
           {/* Header */}
           <div
@@ -621,7 +625,7 @@ console.log('first client group fields', clients[0]?.groupId, clients[0]?.groupI
           {/* Grouped rows */}
           {groupedClients.map(({ group, clients: groupClients }) => (
             <React.Fragment key={group.id}>
-              <div className="flex items-center gap-2.5 px-2 py-0.4 text-sm bg-gray-50 border-y border-gray-100">
+              <div className="flex items-center gap-2.5 px-2 py-1 text-sm bg-gray-50 border-y border-gray-100">
                 <button onClick={() => toggleGroup(group.id)} className="text-sm text-gray-500">
                   {collapsedGroups[group.id] ? '▷' : '▼'}
                 </button>
