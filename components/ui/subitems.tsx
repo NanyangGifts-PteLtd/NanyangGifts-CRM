@@ -109,7 +109,7 @@ const PAYMENT_COLS: ColumnDef[] = [
     { key: "qty", label: "Qty", width: 55, minWidth: 7 },
     { key: "cost", label: "Cost", width: 60, minWidth: 7 },
     { key: "total", label: "Total", width: 70, minWidth: 7 },
-    { key: "manpower", label: "Manpower", width: 70, minWidth: 7 },
+    { key: "manpower", label: "Manpower", width: 80, minWidth: 7 },
     { key: "lsRmb", label: "LS (RMB)", width: 80, minWidth: 7 },
     { key: "totalC", label: "Total Cost", width: 90, minWidth: 7 },
     { key: "modeOfPayment", label: "Mode of Payment", width: 140, minWidth: 7 },
@@ -452,6 +452,7 @@ const renderNameCell = (sub: Subitem) => (
             case "description":
                 return (
                     <EditableCell
+                        className="!justify-start"
                         value={sub.description}
                         onChange={(v) => onUpdateSubitem(sub.id, { description: v })}
                         multiline
@@ -596,7 +597,7 @@ const renderNameCell = (sub: Subitem) => (
                 return <EditableCell value={sub.supplier} onChange={(v) => onUpdateSubitem(sub.id, { supplier: v })} />;
 
             case "description":
-                return <EditableCell value={sub.description} onChange={(v) => onUpdateSubitem(sub.id, { description: v })} multiline />;
+                return <EditableCell className="!justify-start" value={sub.description} onChange={(v) => onUpdateSubitem(sub.id, { description: v })} multiline />;
 
             case "qty":
                 return <EditableCell value={sub.qty} onChange={(v) => onUpdateSubitem(sub.id, { qty: v })} type="number" />;
