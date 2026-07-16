@@ -41,8 +41,8 @@ export const STATUS_COLORS: Record<string, string> = {
     "Overdue": "#a13762",
     "Follow Up": "#9D4393",
     Shortlisted: "#a159cf",
-    "Project Started": "#a05d9f",
-    "Project Done": "#dcb0ff",
+    "Project Started": "#e974d0",
+    "Project Done": "#8feebe",
     "Closed": "#0D1821",
     "Unqualified": "#8985ce",
 };
