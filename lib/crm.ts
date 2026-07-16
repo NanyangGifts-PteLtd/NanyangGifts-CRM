@@ -468,7 +468,6 @@ export async function createClientRow(currentUserId?: string | null) {
             email: '',
             phone: '',
             requirements: '',
-            qty: '',
             nbd: '',
             total_price: '',
             company_address: '',
