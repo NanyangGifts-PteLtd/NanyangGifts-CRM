@@ -82,7 +82,7 @@ export function AssigneeMultiSelect({ profiles, selectedIds, onChange }: Props) 
                             <div
                                 key={p.id}
                                 className="w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-bold"
-                                style={{ background: ['#8babeb', '#b0fff1', '#ba9ef7', '#f776aa'][i % 4] }}
+                                style={{ background: ['#76d8f8', '#ffb0d6', '#ba9ef7', '#76f7a1'][i % 4] }}
                                 title={getLabel(p)}
                             >
                                 {initials(p)}
