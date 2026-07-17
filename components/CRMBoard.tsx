@@ -86,6 +86,8 @@ export function CRMBoard({ clients, expandedIds, setExpandedIds, setClients, rel
   const [ocfClient, setOcfClient] = useState<Client | null>(null);
   const [isOcfModalOpen, setIsOcfModalOpen] = useState(false);
   const [showAddGroupModal, setShowAddGroupModal] = useState(false);
+
+  
   // Fetch group, add groups
   const [groups, setGroups] = useState<CRMGroup[]>([]);
 
@@ -138,12 +140,62 @@ export function CRMBoard({ clients, expandedIds, setExpandedIds, setClients, rel
       console.error('Failed to add group', error);
     }
   }, [groups, currentUserId]);
+  
+
+  // delete group
+  const [groupToDelete, setGroupToDelete] = useState<CRMGroup | null>(null);
+  const [isDeletingGroup, setIsDeletingGroup] = useState(false);
+  const [confirmGroupName, setConfirmGroupName] = useState('');
+  const canDelete = confirmGroupName.trim() === groupToDelete?.name;
+
+  const handleDeleteGroup = useCallback(async () => {
+  if (!groupToDelete) return;
+
+  try {
+    setIsDeletingGroup(true);
+
+    const supabase = createSupabaseClient();
+
+    const clientIdsInGroup = clients
+      .filter((client) => client.groupId === groupToDelete.id)
+      .map((client) => client.id);
+
+    if (clientIdsInGroup.length > 0) {
+      const { error: deleteClientsError } = await supabase
+        .from('clients')
+        .delete()
+        .in('id', clientIdsInGroup);
+
+      if (deleteClientsError) throw deleteClientsError;
+    }
+
+    const { error: deleteGroupError } = await supabase
+      .from('crm_groups')
+      .delete()
+      .eq('id', groupToDelete.id);
+
+    if (deleteGroupError) throw deleteGroupError;
+
+    setClients((prev) => prev.filter((client) => client.groupId !== groupToDelete.id));
+    setGroups((prev) => prev.filter((group) => group.id !== groupToDelete.id));
+    setCollapsedGroups((prev) => {
+      const next = { ...prev };
+      delete next[groupToDelete.id];
+      return next;
+    });
+    setGroupToDelete(null);
+  } catch (error) {
+    console.error('Failed to delete group and clients', error);
+  } finally {
+    setIsDeletingGroup(false);
+  }
+}, [groupToDelete, clients]);
 
 
+  // for resizing cols
+  
   const [headerCols, setHeaderCols] = useState(CLIENT_HEADER_COLS);
-
   const totalMinWidth = headerCols.reduce((sum, col) => sum + col.width, 0);
-
   const colWidth = React.useMemo(
     () => Object.fromEntries(headerCols.map((c) => [c.key, c.width])),
     [headerCols]
@@ -175,6 +227,8 @@ export function CRMBoard({ clients, expandedIds, setExpandedIds, setClients, rel
     document.addEventListener('mousemove', onMouseMove);
     document.addEventListener('mouseup', onMouseUp);
   };
+
+  // ocf
 
   function handleOpenOcfModal(client: Client) {
     setOcfClient(client);
@@ -709,7 +763,50 @@ export function CRMBoard({ clients, expandedIds, setExpandedIds, setClients, rel
                     {groupClients.length} {groupClients.length === 1 ? 'Client' : 'Clients'}
                   </div>
                 </div>
+                <button
+                  onClick={() => setGroupToDelete(group)}
+                  className="rounded-md mb-auto p-1.5 text-gray-300 hover:bg-red-50 hover:text-red-600 transition-colors"
+                  aria-label={`Delete ${group.name} group`}
+                  title="Delete group"
+                >
+                  <Trash2 size={14} />
+                </button>
               </div>
+              {groupToDelete && (
+  <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/20 backdrop-blur-[2px] px-4">
+    <div className="w-full max-w-md rounded-2xl border border-gray-200 bg-white shadow-2xl">
+      <div className="border-b border-gray-100 px-5 py-4">
+        <h2 className="text-sm font-semibold text-gray-900">Delete group</h2>
+        <p className="mt-1 text-xs text-gray-500">
+          This will permanently delete <span className="font-semibold text-gray-700">{groupToDelete.name}</span>.
+        </p>
+      </div>
+
+      <div className="px-5 py-4">
+        <p className="text-sm text-gray-600">
+          This will permanently delete this group and the clients belonging to it.
+        </p>
+      </div>
+
+      <div className="flex items-center justify-end gap-2 border-t border-gray-100 px-5 py-4">
+        <button
+          onClick={() => setGroupToDelete(null)}
+          disabled={isDeletingGroup}
+          className="rounded-xl border border-gray-200 px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={handleDeleteGroup}
+          disabled={isDeletingGroup}
+          className="rounded-xl bg-red-500 px-3 py-2 text-sm font-medium text-white hover:bg-red-600 disabled:opacity-50"
+        >
+          {isDeletingGroup ? 'Deleting...' : 'Delete group'}
+        </button>
+      </div>
+    </div>
+  </div>
+)}
 
               {!collapsedGroups[group.id] &&
                 groupClients.map((client) => (
