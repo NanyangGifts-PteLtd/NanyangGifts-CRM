@@ -44,7 +44,7 @@ export function SignUpForm({
         email,
         password,
         options: {
-          emailRedirectTo: `${window.location.origin}/`,
+          emailRedirectTo: `https://nanyanggifts.vercel.app/auth/callback`,
         },
       });
       if (error) throw error;
