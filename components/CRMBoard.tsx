@@ -80,6 +80,7 @@ export function CRMBoard({ clients, expandedIds, setExpandedIds, setClients, rel
   const [localOverseasEntries, setLocalOverseasEntries] = useState<OptionEntry[]>([]);
   const [subitemStatusEntries, setSubitemStatusEntries] = useState<OptionEntry[]>([]);
   const [currencyEntries, setCurrencyEntries] = useState<OptionEntry[]>([]);
+  const [subitemSubprogressEntries, setSubitemSubprogressEntries] = useState<OptionEntry[]>([]);
   
   const replyStatuses = replyStatusEntries.map((e) => e.value);
   const clientStatuses = clientStatusEntries.map((e) => e.value);
@@ -140,6 +141,8 @@ export function CRMBoard({ clients, expandedIds, setExpandedIds, setClients, rel
           localOverseasOpts,
           subitemStatusOpts,
           currencyOpts,
+          subitemSubprogressOpts,
+
         ] = await Promise.all([
           fetchProfiles(),
           supabase.auth.getUser(),
@@ -156,6 +159,7 @@ export function CRMBoard({ clients, expandedIds, setExpandedIds, setClients, rel
           fetchOptions('local_overseas'),
           fetchOptions('subitem_status'),
           fetchOptions('currency'),
+          fetchOptions('subitem_subprogress'),
         ]);
 
         setProfiles(profilesData);
@@ -173,6 +177,7 @@ export function CRMBoard({ clients, expandedIds, setExpandedIds, setClients, rel
         setLocalOverseasEntries(localOverseasOpts);
         setSubitemStatusEntries(subitemStatusOpts);
         setCurrencyEntries(currencyOpts);
+        setSubitemSubprogressEntries(subitemSubprogressOpts)
 
       } catch (error: any) {
         console.error('Failed to load assignments', error);
@@ -307,6 +312,20 @@ const handleAddCurrency = useCallback(
 const handleDeleteCurrency = useCallback(
   async (name: string) => {
     await deleteOptionValue('currency', name, setCurrencyEntries);
+  },
+  [deleteOptionValue]
+);
+
+const handleAddSubitemSubprogress = useCallback(
+  async (name: string) => {
+    await insertOptionValue('subitem_subprogress', name, subitemSubprogressEntries, setSubitemSubprogressEntries);
+  },
+  [insertOptionValue, subitemSubprogressEntries]
+);
+
+const handleDeleteSubitemSubprogress = useCallback(
+  async (name: string) => {
+    await deleteOptionValue('subitem_subprogress', name, setSubitemSubprogressEntries);
   },
   [deleteOptionValue]
 );
@@ -819,6 +838,9 @@ const handleDeleteModeOfPayment = useCallback(
                   localOverseasOptions={localOverseasEntries}
                   subitemStatusOptions={subitemStatusEntries}
                   currencyOptions={currencyEntries}
+                  subitemSubprogressOptions={subitemSubprogressEntries}
+                  onAddSubitemSubprogress={handleAddSubitemSubprogress}
+                  onDeleteSubitemSubprogress={handleDeleteSubitemSubprogress}
                   onAddCurrency={handleAddCurrency}
                   onDeleteCurrency={handleDeleteCurrency}
                   onAddSubitemStatus={handleAddSubitemStatus}

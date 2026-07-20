@@ -53,6 +53,9 @@ export type ClientRowProps = {
     localOverseasOptions: OptionEntry[];
     subitemStatusOptions: OptionEntry[];
     currencyOptions: OptionEntry[];
+    subitemSubprogressOptions: OptionEntry[];
+    onAddSubitemSubprogress: (name: string) => void | Promise<void>;
+    onDeleteSubitemSubprogress: (name: string) => void | Promise<void>;
     onAddCurrency: (name: string) => void | Promise<void>;
     onDeleteCurrency: (name: string) => void | Promise<void>;
     onAddSubitemStatus: (name: string) => void | Promise<void>;
@@ -108,6 +111,9 @@ export function ClientRow({
     localOverseasOptions,
     subitemStatusOptions,
     currencyOptions,
+    subitemSubprogressOptions,
+    onAddSubitemSubprogress,
+    onDeleteSubitemSubprogress,
     onAddCurrency,
     onDeleteCurrency,
     onAddSubitemStatus,
@@ -676,6 +682,9 @@ export function ClientRow({
                     localOverseasOptions={localOverseasOptions}
                     subitemStatusOptions={subitemStatusOptions}
                     currencyOptions={currencyOptions}
+                    subitemSubprogressOptions={subitemSubprogressOptions}
+                    onAddSubitemSubprogress={onAddSubitemSubprogress}
+                    onDeleteSubitemSubprogress={onDeleteSubitemSubprogress}
                     onAddCurrency={onAddCurrency}
                     onDeleteCurrency={onDeleteCurrency}
                     onAddSubitemStatus={onAddSubitemStatus}

@@ -9,12 +9,6 @@ import { SamplesSection } from "./sample";
 import { AssigneeMultiSelect } from "./assignee-multiselect";
 import { TimelineSection, DEFAULT_TIMELINE_ROWS } from "./timeline";
 
-const CURRENCY_COLORS: Record<string, string> = {
-    MYR: "#b37ed2",
-    SGD: "#5fc1cc",
-    RMB: "#e375a1",
-};
-
 const CURRENCY_RATES: Record<string, number> = {
     RMB: 0.2,
     SGD: 1,
@@ -100,6 +94,9 @@ type SubitemProps = {
     localOverseasOptions: OptionEntry[];
     subitemStatusOptions: OptionEntry[];
     currencyOptions: OptionEntry[];
+    subitemSubprogressOptions: OptionEntry[];
+    onAddSubitemSubprogress?: (name: string) => void | Promise<void>;
+    onDeleteSubitemSubprogress?: (name: string) => void | Promise<void>;
     onAddCurrency?: (name: string) => void | Promise<void>;
     onDeleteCurrency?: (name: string) => void | Promise<void>;
     onAddSubitemStatus?: (name: string) => void | Promise<void>;
@@ -170,6 +167,9 @@ export function SubitemsTable({
     localOverseasOptions,
     subitemStatusOptions,
     currencyOptions,
+    subitemSubprogressOptions,
+    onAddSubitemSubprogress,
+    onDeleteSubitemSubprogress,
     onAddCurrency,
     onDeleteCurrency,
     onAddSubitemStatus,
@@ -780,6 +780,10 @@ const renderNameCell = (sub: Subitem) => (
                                         <TimelineSection
                                             rows={sub.timelineRows?.length ? sub.timelineRows : DEFAULT_TIMELINE_ROWS}
                                             onUpdate={(rows) => onUpdateSubitem(sub.id, { timelineRows: rows })}
+                                            timelineProgressOptions={subitemSubprogressOptions}
+                                            onAddTimelineProgress={onAddSubitemSubprogress}
+                                            onDeleteTimelineProgress={onDeleteSubitemSubprogress}
+
                                         />
                                     </ExpandedRow>
                                 )}

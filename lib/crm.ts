@@ -738,10 +738,17 @@ export async function updateSubitemRow(subitemId: string, updates: Partial<Subit
         ...(updates.sampleType !== undefined ? { sample_type: updates.sampleType } : {}),
     };
 
-    const { error } = await supabase
+    const { data, error } = await supabase
         .from('subitems')
         .update(payload)
-        .eq('id', subitemId);
+        .eq('id', subitemId)
+        .select('id, timeline_rows')
+        .single();
+
+    console.log('updateSubitemRow subitemId:', subitemId);
+    console.log('updateSubitemRow payload:', payload);
+    console.log('updateSubitemRow result:', data);
+    console.log('updateSubitemRow error:', error);
 
     if (error) throw error;
 
