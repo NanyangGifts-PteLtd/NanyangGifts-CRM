@@ -20,10 +20,6 @@ const SUBITEM_STATUS_COLORS: Record<string, string> = {
     "Set": "#eeeded",
 };
 
-const LOCALOVERSEAS_COLORS: Record<string, string> = {
-    Local: "#a856a6",
-    Overseas: "#8b81da",
-};
 
 
 const CURRENCY_COLORS: Record<string, string> = {
@@ -99,7 +95,7 @@ const PAYMENT_COLS: ColumnDef[] = [
 
 
 const statusOpts = ["", "To Quote", "Verified", "Awarded", "Initial Quote", "Quoted", "Shortlisted", "Failed"];
-const localOverseasOpts = ["Local", "Overseas"];
+
 
 const currencyOpts = ["MYR", "SGD", "RMB"];
 type TableMode = "subitem" | "payment" | "timeline";
@@ -119,8 +115,11 @@ type SubitemProps = {
     paymentStatusOptions: OptionEntry[];
     modeOfPaymentOptions: OptionEntry[];
     shipperOptions: OptionEntry[];
+    localOverseasOptions: OptionEntry[];
     onAddShipper?: (name: string) => void | Promise<void>;
     onDeleteShipper?: (name: string) => void | Promise<void>;
+    onAddLocalOverseas?: (name: string) => void | Promise<void>;
+    onDeleteLocalOverseas?:  (name: string) => void | Promise<void>;
     onAddPaymentStatus?: (name: string) => void | Promise<void>;
     onDeletePaymentStatus?: (name: string) => void | Promise<void>;
     onAddModeOfPayment?: (name: string) => void | Promise<void>;
@@ -180,6 +179,9 @@ export function SubitemsTable({
     paymentStatusOptions,
     modeOfPaymentOptions,
     shipperOptions,
+    localOverseasOptions,
+    onAddLocalOverseas,
+    onDeleteLocalOverseas,
     onAddShipper,
     onDeleteShipper,
     onAddPaymentStatus,
@@ -385,12 +387,15 @@ const renderNameCell = (sub: Subitem) => (
                 return (
                     <div className="flex items-center">
                     <StatusBadge
-                        value={sub.localOverseas || "Local"}
+                        value={sub.localOverseas ?? ""}
                         onChange={(v) => onUpdateSubitem(sub.id, { localOverseas: v })}
-                        options={localOverseasOpts}
-                        
-                        
-                    /></div>
+                        options={localOverseasOptions}
+                        onAddOption={onAddLocalOverseas}
+                        onDeleteOption={onDeleteLocalOverseas}
+                        manageLabel="local overseas"
+                        small
+                    />
+                    </div>
                 );
 
             case "status":

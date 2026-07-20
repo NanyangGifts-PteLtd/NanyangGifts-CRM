@@ -77,6 +77,8 @@ export function CRMBoard({ clients, expandedIds, setExpandedIds, setClients, rel
   const [paymentStatusEntries, setPaymentStatusEntries] = useState<OptionEntry[]>([]);
   const [modeOfPaymentEntries, setModeOfPaymentEntries] = useState<OptionEntry[]>([]);
   const [shipperEntries, setShipperEntries] = useState<OptionEntry[]>([]);
+  const [localOverseasEntries, setLocalOverseasEntries] = useState<OptionEntry[]>([]);
+  
   const replyStatuses = replyStatusEntries.map((e) => e.value);
   const clientStatuses = clientStatusEntries.map((e) => e.value);
   const channelOptions = channelEntries.map((e) => e.value);
@@ -133,6 +135,7 @@ export function CRMBoard({ clients, expandedIds, setExpandedIds, setClients, rel
           paymentStatusOpts,
           modeOfPaymentOpts,
           shipperOpts,
+          localOverseasOpts,
         ] = await Promise.all([
           fetchProfiles(),
           supabase.auth.getUser(),
@@ -146,6 +149,7 @@ export function CRMBoard({ clients, expandedIds, setExpandedIds, setClients, rel
           fetchOptions('payment_status'),
           fetchOptions('mode_of_payment'),
           fetchOptions('shipper'),
+          fetchOptions('local_overseas'),
         ]);
 
         setProfiles(profilesData);
@@ -160,6 +164,7 @@ export function CRMBoard({ clients, expandedIds, setExpandedIds, setClients, rel
         setPaymentStatusEntries(paymentStatusOpts);
         setModeOfPaymentEntries(modeOfPaymentOpts);
         setShipperEntries(shipperOpts);
+        setLocalOverseasEntries(localOverseasOpts);
 
       } catch (error: any) {
         console.error('Failed to load assignments', error);
@@ -269,6 +274,21 @@ const handleDeleteShipper = useCallback(
   },
   [deleteOptionValue]
 );
+
+const handleAddLocalOverseas = useCallback(
+  async (name: string) => {
+    await insertOptionValue('local_overseas', name, localOverseasEntries, setLocalOverseasEntries);
+  },
+  [insertOptionValue, shipperEntries]
+);
+
+const handleDeleteLocalOverseas = useCallback(
+  async (name: string) => {
+    await deleteOptionValue('local_overseas', name, setLocalOverseasEntries);
+  },
+  [deleteOptionValue]
+);
+
 const handleAddPaymentStatus = useCallback(
   async (name: string) => {
     await insertOptionValue('payment_status', name, paymentStatusEntries, setPaymentStatusEntries);
@@ -760,6 +780,9 @@ const handleDeleteModeOfPayment = useCallback(
                   paymentStatusOptions={paymentStatusEntries}
                   modeOfPaymentOptions={modeOfPaymentEntries}
                   shipperOptions={shipperEntries}
+                  localOverseasOptions={localOverseasEntries}
+                  onAddLocalOverseas={handleAddLocalOverseas}
+                  onDeleteLocalOverseas={handleDeleteLocalOverseas}
                   onAddShipper={handleAddShipper}
                   onDeleteShipper={handleDeleteShipper}
                   onAddReplyStatus={handleAddReplyStatus}
