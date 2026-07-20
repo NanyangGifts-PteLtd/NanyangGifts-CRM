@@ -81,7 +81,7 @@ export function StatusBadge({
             <div
                 ref={menuRef}
                 style={menuStyle}
-                className="bg-white border border-gray-200 rounded-xl shadow-2xl py-1 max-h-100 overflow-y-auto"
+                className="bg-white border border-gray-200 rounded-xl shadow-2xl py-1 max-h-80 overflow-y-auto"
             >
                 {options.map((opt) => {
                     const allowDelete = canDeleteOption ? canDeleteOption(opt.value) : true;
@@ -120,7 +120,7 @@ export function StatusBadge({
                 })}
 
                 {onAddOption && (
-                    <div className="mt-1 border-t border-gray-100 px-2 pt-2 pb-1">
+                    <div className="mt-1 border-t border-gray-100 pt-2 pb-1">
                         <div className="flex items-center gap-2">
                             <input
                                 value={newOption}
@@ -136,7 +136,7 @@ export function StatusBadge({
                                     await onAddOption(trimmed);
                                     setNewOption('');
                                 }}
-                                className="inline-flex items-center rounded-lg bg-[#7BCBD5] px-2 py-1 text-[10px] font-semibold text-white hover:bg-[#6bc0ca]"
+                                className="inline-flex items-center rounded-lg bg-[#7BCBD5] px-1 py-1 text-[10px] font-semibold text-white hover:bg-[#6bc0ca]"
                             >
                                 <Plus size={10} />
                                 Add

@@ -25,32 +25,6 @@ const LOCALOVERSEAS_COLORS: Record<string, string> = {
     Overseas: "#8b81da",
 };
 
-const SHIPPER_COLORS: Record<string, string> = {
-    "Set": "#eeeded",
-    "小李 - AIR": "#f88fc1",
-    "小李 - SEA": "#ff97ab",
-    "Tiger - Sea": "#ffa791",
-    "Tiger - AIR": "#ffbf7a",
-    "东莞 - SEA": "#c28adc",
-    "WORLD ASIA": "#628ce8",
-    "A5 汇荣": "#008bd8",
-    "Kalinda - AIR": "#0083aa",
-    "Kalinda - SEA": "#007467",
-    "David - DPS": "#a58eae",
-    "Local Singapore": "#775785",
-    "Local China": "#3b313e",
-    "霸王车": "#801f55",
-    "义乌": "#99005c",
-    SF: "#84429b",
-    DHL: "#426bc6",
-    恒瀚: "#008bd3",
-    "Easy Parcel": "#00a4c7",
-    "Local Destination": "#00b8ad",
-    UPS: "#a8a3ff",
-    FedEx: "#95e8ff",
-    "宇涵 - Air": "#43adcb",
-    "宇涵 - Sea": "#2f9179",
-};
 
 const CURRENCY_COLORS: Record<string, string> = {
     MYR: "#b37ed2",
@@ -126,32 +100,7 @@ const PAYMENT_COLS: ColumnDef[] = [
 
 const statusOpts = ["", "To Quote", "Verified", "Awarded", "Initial Quote", "Quoted", "Shortlisted", "Failed"];
 const localOverseasOpts = ["Local", "Overseas"];
-const shipperOpts = [
-    "",
-    "小李 - AIR",
-    "小李 - SEA",
-    "Tiger - Sea",
-    "Tiger - AIR",
-    "东莞 - SEA",
-    "WORLD ASIA",
-    "A5 汇荣",
-    "Kalinda - AIR",
-    "Kalinda - SEA",
-    "David - DPS",
-    "Local Singapore",
-    "Local China",
-    "霸王车",
-    "义乌",
-    "SF",
-    "DHL",
-    "恒瀚",
-    "Easy Parcel",
-    "Local Destination",
-    "UPS",
-    "FedEx",
-    "宇涵 - Air",
-    "宇涵 - Sea",
-];
+
 const currencyOpts = ["MYR", "SGD", "RMB"];
 type TableMode = "subitem" | "payment" | "timeline";
 
@@ -167,9 +116,11 @@ type SubitemProps = {
     profiles: Profile[];
     subitemAssigneeMap: Record<string, string[]>;
     onChangeSubitemAssignees: (subitemId: string, ids: string[]) => void;
-
     paymentStatusOptions: OptionEntry[];
     modeOfPaymentOptions: OptionEntry[];
+    shipperOptions: OptionEntry[];
+    onAddShipper?: (name: string) => void | Promise<void>;
+    onDeleteShipper?: (name: string) => void | Promise<void>;
     onAddPaymentStatus?: (name: string) => void | Promise<void>;
     onDeletePaymentStatus?: (name: string) => void | Promise<void>;
     onAddModeOfPayment?: (name: string) => void | Promise<void>;
@@ -228,6 +179,9 @@ export function SubitemsTable({
     onChangeSubitemAssignees,
     paymentStatusOptions,
     modeOfPaymentOptions,
+    shipperOptions,
+    onAddShipper,
+    onDeleteShipper,
     onAddPaymentStatus,
     onDeletePaymentStatus,
     onAddModeOfPayment,
@@ -480,7 +434,7 @@ const renderNameCell = (sub: Subitem) => (
                     <StatusBadge
                         value={sub.shipper ?? ""}
                         onChange={(v) => onUpdateSubitem(sub.id, { shipper: v })}
-                        options={shipperOpts}
+                        options={shipperOptions}
                         
                         small
                     />
@@ -594,7 +548,10 @@ const renderNameCell = (sub: Subitem) => (
                     <StatusBadge
                         value={sub.shipper ?? ""}
                         onChange={(v) => onUpdateSubitem(sub.id, { shipper: v })}
-                        options={shipperOpts}
+                        options={shipperOptions}
+                        onAddOption={onAddShipper}
+                        onDeleteOption={onDeleteShipper}
+                        manageLabel="payment status"
                         small
                     />
                     </div>

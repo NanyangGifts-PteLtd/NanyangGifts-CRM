@@ -49,6 +49,9 @@ export type ClientRowProps = {
     onDeleteImportance?: (name: string) => void | Promise<void>;
     paymentStatusOptions: OptionEntry[];
     modeOfPaymentOptions: OptionEntry[];
+    shipperOptions: OptionEntry[];
+    onAddShipper?: (name: string) => void | Promise<void>;
+    onDeleteShipper?: (name: string) => void | Promise<void>;
     onAddPaymentStatus?: (name: string) => void | Promise<void>;
     onDeletePaymentStatus?: (name: string) => void | Promise<void>;
     onAddModeOfPayment?: (name: string) => void | Promise<void>;
@@ -92,6 +95,9 @@ export function ClientRow({
     onDeleteImportance,
     paymentStatusOptions,
     modeOfPaymentOptions,
+    shipperOptions,
+    onAddShipper,
+    onDeleteShipper,
     onAddPaymentStatus,
     onDeletePaymentStatus,
     onAddModeOfPayment,
@@ -648,6 +654,9 @@ export function ClientRow({
                     onChangeSubitemAssignees={onChangeSubitemAssignees}
                     paymentStatusOptions={paymentStatusOptions}
                     modeOfPaymentOptions={modeOfPaymentOptions}
+                    shipperOptions={shipperOptions}
+                    onAddShipper={onAddShipper}
+                    onDeleteShipper={onDeleteShipper}
                     onAddPaymentStatus={onAddPaymentStatus}
                     onDeletePaymentStatus={onDeletePaymentStatus}
                     onAddModeOfPayment={onAddModeOfPayment}

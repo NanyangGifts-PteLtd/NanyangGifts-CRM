@@ -76,6 +76,7 @@ export function CRMBoard({ clients, expandedIds, setExpandedIds, setClients, rel
   const [importanceEntries, setImportanceEntries] = useState<OptionEntry[]>([]);
   const [paymentStatusEntries, setPaymentStatusEntries] = useState<OptionEntry[]>([]);
   const [modeOfPaymentEntries, setModeOfPaymentEntries] = useState<OptionEntry[]>([]);
+  const [shipperEntries, setShipperEntries] = useState<OptionEntry[]>([]);
   const replyStatuses = replyStatusEntries.map((e) => e.value);
   const clientStatuses = clientStatusEntries.map((e) => e.value);
   const channelOptions = channelEntries.map((e) => e.value);
@@ -131,6 +132,7 @@ export function CRMBoard({ clients, expandedIds, setExpandedIds, setClients, rel
           importanceOpts,
           paymentStatusOpts,
           modeOfPaymentOpts,
+          shipperOpts,
         ] = await Promise.all([
           fetchProfiles(),
           supabase.auth.getUser(),
@@ -143,6 +145,7 @@ export function CRMBoard({ clients, expandedIds, setExpandedIds, setClients, rel
           fetchOptions('importance'),
           fetchOptions('payment_status'),
           fetchOptions('mode_of_payment'),
+          fetchOptions('shipper'),
         ]);
 
         setProfiles(profilesData);
@@ -156,6 +159,7 @@ export function CRMBoard({ clients, expandedIds, setExpandedIds, setClients, rel
         setImportanceEntries(importanceOpts);
         setPaymentStatusEntries(paymentStatusOpts);
         setModeOfPaymentEntries(modeOfPaymentOpts);
+        setShipperEntries(shipperOpts);
 
       } catch (error: any) {
         console.error('Failed to load assignments', error);
@@ -252,6 +256,19 @@ const deleteOptionValue = useCallback(
   [getOptionGroupId]
 );
 
+const handleAddShipper = useCallback(
+  async (name: string) => {
+    await insertOptionValue('shipper', name, shipperEntries, setShipperEntries);
+  },
+  [insertOptionValue, shipperEntries]
+);
+
+const handleDeleteShipper = useCallback(
+  async (name: string) => {
+    await deleteOptionValue('shipper', name, setShipperEntries);
+  },
+  [deleteOptionValue]
+);
 const handleAddPaymentStatus = useCallback(
   async (name: string) => {
     await insertOptionValue('payment_status', name, paymentStatusEntries, setPaymentStatusEntries);
@@ -742,6 +759,9 @@ const handleDeleteModeOfPayment = useCallback(
                   importanceOptions={importanceEntries}
                   paymentStatusOptions={paymentStatusEntries}
                   modeOfPaymentOptions={modeOfPaymentEntries}
+                  shipperOptions={shipperEntries}
+                  onAddShipper={handleAddShipper}
+                  onDeleteShipper={handleDeleteShipper}
                   onAddReplyStatus={handleAddReplyStatus}
                   onDeleteReplyStatus={handleDeleteReplyStatus}
                   onAddStatus={handleAddStatus}
