@@ -9,19 +9,6 @@ import { SamplesSection } from "./sample";
 import { AssigneeMultiSelect } from "./assignee-multiselect";
 import { TimelineSection, DEFAULT_TIMELINE_ROWS } from "./timeline";
 
-const SUBITEM_STATUS_COLORS: Record<string, string> = {
-    "To Quote": "#5cc9d5",
-    Verified: "#00C2C7",
-    Awarded: "#00C875",
-    "Initial Quote": "#8b81da",
-    Quoted: "#5fe0cf",
-    Shortlisted: "#ad7de7",
-    Failed: "#ac2865",
-    "Set": "#eeeded",
-};
-
-
-
 const CURRENCY_COLORS: Record<string, string> = {
     MYR: "#b37ed2",
     SGD: "#5fc1cc",
@@ -116,6 +103,9 @@ type SubitemProps = {
     modeOfPaymentOptions: OptionEntry[];
     shipperOptions: OptionEntry[];
     localOverseasOptions: OptionEntry[];
+    subitemStatusOptions: OptionEntry[];
+    onAddSubitemStatus?: (name: string) => void | Promise<void>;
+    onDeleteSubitemStatus?: (name: string) => void | Promise<void>;
     onAddShipper?: (name: string) => void | Promise<void>;
     onDeleteShipper?: (name: string) => void | Promise<void>;
     onAddLocalOverseas?: (name: string) => void | Promise<void>;
@@ -180,6 +170,9 @@ export function SubitemsTable({
     modeOfPaymentOptions,
     shipperOptions,
     localOverseasOptions,
+    subitemStatusOptions,
+    onAddSubitemStatus,
+    onDeleteSubitemStatus,
     onAddLocalOverseas,
     onDeleteLocalOverseas,
     onAddShipper,
@@ -404,9 +397,11 @@ const renderNameCell = (sub: Subitem) => (
                     <StatusBadge
                         value={sub.status ?? ""}
                         onChange={(v) => onUpdateSubitem(sub.id, { status: v })}
-                        options={statusOpts}
-                        
-                        
+                        options={subitemStatusOptions}
+                        onAddOption={onAddSubitemStatus}
+                        onDeleteOption={onDeleteSubitemStatus}
+                        manageLabel="subitem status"
+                        small
                     />
                     </div>
                 );

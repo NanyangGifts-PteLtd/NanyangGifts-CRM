@@ -78,6 +78,7 @@ export function CRMBoard({ clients, expandedIds, setExpandedIds, setClients, rel
   const [modeOfPaymentEntries, setModeOfPaymentEntries] = useState<OptionEntry[]>([]);
   const [shipperEntries, setShipperEntries] = useState<OptionEntry[]>([]);
   const [localOverseasEntries, setLocalOverseasEntries] = useState<OptionEntry[]>([]);
+  const [subitemStatusEntries, setSubitemStatusEntries] = useState<OptionEntry[]>([]);
   
   const replyStatuses = replyStatusEntries.map((e) => e.value);
   const clientStatuses = clientStatusEntries.map((e) => e.value);
@@ -136,6 +137,7 @@ export function CRMBoard({ clients, expandedIds, setExpandedIds, setClients, rel
           modeOfPaymentOpts,
           shipperOpts,
           localOverseasOpts,
+          subitemStatusOpts,
         ] = await Promise.all([
           fetchProfiles(),
           supabase.auth.getUser(),
@@ -150,6 +152,7 @@ export function CRMBoard({ clients, expandedIds, setExpandedIds, setClients, rel
           fetchOptions('mode_of_payment'),
           fetchOptions('shipper'),
           fetchOptions('local_overseas'),
+          fetchOptions('subitem_status'),
         ]);
 
         setProfiles(profilesData);
@@ -165,6 +168,7 @@ export function CRMBoard({ clients, expandedIds, setExpandedIds, setClients, rel
         setModeOfPaymentEntries(modeOfPaymentOpts);
         setShipperEntries(shipperOpts);
         setLocalOverseasEntries(localOverseasOpts);
+        setSubitemStatusEntries(subitemStatusOpts);
 
       } catch (error: any) {
         console.error('Failed to load assignments', error);
@@ -285,6 +289,20 @@ const handleAddLocalOverseas = useCallback(
 const handleDeleteLocalOverseas = useCallback(
   async (name: string) => {
     await deleteOptionValue('local_overseas', name, setLocalOverseasEntries);
+  },
+  [deleteOptionValue]
+);
+
+const handleAddSubitemStatus = useCallback(
+  async (name: string) => {
+    await insertOptionValue('subitem_status', name, subitemStatusEntries, setSubitemStatusEntries);
+  },
+  [insertOptionValue, subitemStatusEntries]
+);
+
+const handleDeleteSubitemStatus = useCallback(
+  async (name: string) => {
+    await deleteOptionValue('subitem_status', name, setSubitemStatusEntries);
   },
   [deleteOptionValue]
 );
@@ -781,6 +799,9 @@ const handleDeleteModeOfPayment = useCallback(
                   modeOfPaymentOptions={modeOfPaymentEntries}
                   shipperOptions={shipperEntries}
                   localOverseasOptions={localOverseasEntries}
+                  subitemStatusOptions={subitemStatusEntries}
+                  onAddSubitemStatus={handleAddSubitemStatus}
+                  onDeleteSubitemStatus={handleDeleteSubitemStatus}
                   onAddLocalOverseas={handleAddLocalOverseas}
                   onDeleteLocalOverseas={handleDeleteLocalOverseas}
                   onAddShipper={handleAddShipper}
