@@ -559,11 +559,11 @@ const renderNameCell = (sub: Subitem) => (
     const renderPaymentCell = (sub: Subitem, key: string) => {
         const qty = parseNumber(sub.qty);
         const cost = parseNumber(sub.cost);
-        const total = cost * qty;
-        const manpower = parseNumber(sub.manpower);
+        const totalUc = cost * qty;
+        const manpowerSgd = parseNumber(sub.manpower);
         const manpowerRmb = parseNumber(sub.manpower) * 5;
-        const lsRmb = parseNumber(sub.ls);
-        const totalC = total + manpower + lsRmb;
+        const lsRmb = parseNumber(sub.ls) * 5 ;
+        const totalC = totalUc + manpowerRmb + lsRmb;
         const paymentAmount = parseNumber(sub.paymentAmount);
         const difference = paymentAmount - totalC;
 
@@ -612,20 +612,34 @@ const renderNameCell = (sub: Subitem) => (
 
             case "cost":
                 return<EditableCell className="" value={sub.cost} onChange={(v) => onUpdateSubitem(sub.id, { cost: v })} type="number" />;
-            case "total":
-                return <div className="px-2 py-1 text-xs text-gray-800">{formatMoney(total)}</div>;
+            
+            case "totalUc":
+                return <div className="px-2 py-1 text-xs text-gray-800">{formatMoney(totalUc)}</div>;
 
-            case "manpower":
+            case "manpowerSgd":
                 return <EditableCell value={sub.manpower} onChange={(v) => onUpdateSubitem(sub.id, { manpower: v })} type="number" />;
             
             case "manpowerRmb":
-                return <EditableCell value={sub.manpower} onChange={(v) => onUpdateSubitem(sub.id, { manpower: v })} type="number" />;
+                return <div className="flex justify-center text-xs text-gray-800">{formatMoney(manpowerRmb)}</div>
+
+            case "lsSgd":
+                return (
+                    <EditableCell
+                        value={sub.ls}
+                        onChange={(v) => onUpdateSubitem(sub.id, { lsSgd: v })}
+                        type="number"
+                    />
+                );
             
-                case "lsRmb":
-                return <EditableCell value={sub.ls} onChange={(v) => onUpdateSubitem(sub.id, { ls: v })} type="number" />;
+            case "lsRmb":
+                return (
+                    <div className="flex justify-center text-xs text-gray-800">
+                        {formatMoney(lsRmb)}
+                    </div>
+                );
 
             case "totalC":
-                return <div className="px-2 py-1 text-xs text-gray-800">{formatMoney(totalC)}</div>;
+                return <div className="flex justify-center text-xs text-gray-800">{formatMoney(totalC)}</div>;
 
             case "modeOfPayment":
                 return (
@@ -670,7 +684,7 @@ const renderNameCell = (sub: Subitem) => (
                 );
 
             case "difference":
-                return <div className="px-2 py-1 text-xs text-gray-800">{formatMoney(difference)}</div>;
+                return <div className="flex justify-center text-xs text-gray-800">{formatMoney(difference)}</div>;
 
             case "paymentRemarks":
                 return (

@@ -93,7 +93,10 @@ export interface Subitem {
   owner: string;
   paymentStatus: PaymentStatus | string;
   total: string;
+  lsSgd: string;
   lsRmb: string;
+  manpowerSgd: string;
+  manpowerRmb: string;
   totalC: string;
   modeOfPayment: string;
   orderNumber: string;
