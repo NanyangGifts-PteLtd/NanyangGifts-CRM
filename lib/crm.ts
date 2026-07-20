@@ -82,6 +82,7 @@ type Subitems = {
     supplier: string | null;
     cost: string | null;
     manpower: string | null;
+    manpower_rmb: string | null,
     ls: string | null;
     os: string | null;
     currency: string | null;
@@ -274,6 +275,7 @@ function mapSubitems(row: Subitems): Subitem {
         supplier: row.supplier ?? '',
         cost: row.cost ?? '',
         manpower: row.manpower ?? '',
+        manpowerRmb: row.manpower_rmb ?? '',
         ls: row.ls ?? '',
         os: row.os ?? '',
         currency: row.currency ?? '',
@@ -290,7 +292,7 @@ function mapSubitems(row: Subitems): Subitem {
         sl: row.sl ?? '',
         owner: row.owner ?? '',
         paymentStatus: row.payment_status ?? '',
-        total: row.total ?? '',
+        totalUc: row.total ?? '',
         lsRmb: row.ls_rmb ?? '',
         totalC: row.total_c ?? '',
         modeOfPayment: row.mode_of_payment ?? '',
@@ -601,6 +603,7 @@ export async function createSubitemRow(clientId: string) {
             supplier: '',
             cost: '',
             manpower: '',
+            manpower_rmb: '',
             ls: '',
             os: '',
             currency: '',
@@ -615,7 +618,7 @@ export async function createSubitemRow(clientId: string) {
             sg_tracking: '',
             owner: '',
             payment_status: '',
-            total: '',
+            total_uc: '',
             ls_rmb: '',
             total_c: '',
             mode_of_payment: '',
@@ -699,6 +702,7 @@ export async function updateSubitemRow(subitemId: string, updates: Partial<Subit
         ...(updates.supplier !== undefined ? { supplier: updates.supplier } : {}),
         ...(updates.cost !== undefined ? { cost: updates.cost } : {}),
         ...(updates.manpower !== undefined ? { manpower: updates.manpower } : {}),
+        ...(updates.manpowerRmb !== undefined ? { manpower_rmb: updates.manpowerRmb } : {}),
         ...(updates.ls !== undefined ? { ls: updates.ls } : {}),
         ...(updates.os !== undefined ? { os: updates.os } : {}),
         ...(updates.currency !== undefined ? { currency: updates.currency } : {}),
@@ -713,7 +717,7 @@ export async function updateSubitemRow(subitemId: string, updates: Partial<Subit
         ...(updates.sgTracking !== undefined ? { sg_tracking: updates.sgTracking } : {}),
         ...(updates.owner !== undefined ? { owner: updates.owner } : {}),
         ...(updates.paymentStatus !== undefined ? { payment_status: updates.paymentStatus } : {}),
-        ...(updates.total !== undefined ? { total: updates.total } : {}),
+        ...(updates.totalUc !== undefined ? { total_uc: updates.totalUc } : {}),
         ...(updates.lsRmb !== undefined ? { ls_rmb: updates.lsRmb } : {}),
         ...(updates.totalC !== undefined ? { total_c: updates.totalC } : {}),
         ...(updates.modeOfPayment !== undefined ? { mode_of_payment: updates.modeOfPayment } : {}),

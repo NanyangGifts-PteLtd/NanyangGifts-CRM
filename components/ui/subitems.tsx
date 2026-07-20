@@ -108,9 +108,9 @@ const PAYMENT_COLS: ColumnDef[] = [
     { key: "qty", label: "Qty", width: 55, minWidth: 7 },
     { key: "cost", label: "Cost", width: 60, minWidth: 7 },
     { key: "totalUc", label: "Total UC", width: 70, minWidth: 7 },
-    { key: "manpowerSgd", label: "Manpower / 版费 / Printing (SGD)", width:  120, minWidth: 7 },
+    { key: "manpower", label: "Manpower / 版费 / Printing (SGD)", width:  120, minWidth: 7 },
     { key: "manpowerRmb", label: "Manpower (RMB)", width:  120, minWidth: 7 },
-    { key: "lsSgd", label: "LS (SGD)", width: 80, minWidth: 7 },
+    { key: "ls", label: "LS (SGD)", width: 80, minWidth: 7 },
     { key: "lsRmb", label: "LS (RMB)", width: 80, minWidth: 7 },
     { key: "totalC", label: "Total Cost", width: 90, minWidth: 7 },
     { key: "modeOfPayment", label: "Mode of Payment", width: 140, minWidth: 7 },
@@ -560,7 +560,6 @@ const renderNameCell = (sub: Subitem) => (
         const qty = parseNumber(sub.qty);
         const cost = parseNumber(sub.cost);
         const totalUc = cost * qty;
-        const manpowerSgd = parseNumber(sub.manpower);
         const manpowerRmb = parseNumber(sub.manpower) * 5;
         const lsRmb = parseNumber(sub.ls) * 5 ;
         const totalC = totalUc + manpowerRmb + lsRmb;
@@ -614,19 +613,19 @@ const renderNameCell = (sub: Subitem) => (
                 return<EditableCell className="" value={sub.cost} onChange={(v) => onUpdateSubitem(sub.id, { cost: v })} type="number" />;
             
             case "totalUc":
-                return <div className="px-2 py-1 text-xs text-gray-800">{formatMoney(totalUc)}</div>;
+                return <div className="flex justify-center text-xs text-gray-800">{formatMoney(totalUc)}</div>;
 
-            case "manpowerSgd":
+            case "manpower":
                 return <EditableCell value={sub.manpower} onChange={(v) => onUpdateSubitem(sub.id, { manpower: v })} type="number" />;
             
             case "manpowerRmb":
                 return <div className="flex justify-center text-xs text-gray-800">{formatMoney(manpowerRmb)}</div>
 
-            case "lsSgd":
+            case "ls":
                 return (
                     <EditableCell
                         value={sub.ls}
-                        onChange={(v) => onUpdateSubitem(sub.id, { lsSgd: v })}
+                        onChange={(v) => onUpdateSubitem(sub.id, { ls: v })}
                         type="number"
                     />
                 );

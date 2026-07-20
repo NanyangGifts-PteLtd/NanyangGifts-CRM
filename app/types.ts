@@ -92,10 +92,8 @@ export interface Subitem {
   // Payment fields
   owner: string;
   paymentStatus: PaymentStatus | string;
-  total: string;
-  lsSgd: string;
+  totalUc: string;
   lsRmb: string;
-  manpowerSgd: string;
   manpowerRmb: string;
   totalC: string;
   modeOfPayment: string;
@@ -106,11 +104,13 @@ export interface Subitem {
   paymentAmount: string;
   difference: string;
   paymentRemarks: string;
+
   // Timeline
   timelineRows: TimelineRow[];
   showTimeline: boolean;
   showPayments: boolean;
   showSample: boolean;
+
   //Sample
   sampleRows: SampleRow[];
   sampleOrderStatus: SampleOrderStatus | string;
