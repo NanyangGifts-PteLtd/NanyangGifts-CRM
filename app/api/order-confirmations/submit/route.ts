@@ -21,6 +21,14 @@ function base64ToBuffer(dataUrl: string) {
     return Buffer.from(base64, "base64");
 }
 
+type SubmittedItem = {
+    id: string;
+    delivery_name?: string | null;
+    delivery_address?: string | null;
+    delivery_contact_number?: string | null;
+    delivery_remarks?: string | null;
+};
+
 export async function POST(request: NextRequest) {
     const supabase = await createClient();
 
@@ -33,7 +41,6 @@ export async function POST(request: NextRequest) {
             signatureDataUrl,
             company,
             recipientName,
-            remarksForDelivery,
             restrictedArea,
             sameAddressForAllItems,
             items,
@@ -49,14 +56,14 @@ export async function POST(request: NextRequest) {
         if (
             typeof company !== "string" ||
             typeof recipientName !== "string" ||
-            typeof remarksForDelivery !== "string" ||
             typeof restrictedArea !== "string" ||
-            typeof sameAddressForAllItems !== "boolean"
+            typeof sameAddressForAllItems !== "boolean" ||
+            !Array.isArray(items)
         ) {
             return NextResponse.json(
                 {
                     error:
-                        "company, recipientName, remarksForDelivery, restrictedArea, and sameAddressForAllItems are required",
+                        "company, recipientName, restrictedArea, sameAddressForAllItems, and items are required",
                 },
                 { status: 400 }
             );
@@ -119,15 +126,13 @@ export async function POST(request: NextRequest) {
         const now = new Date().toISOString();
         const clientIp = getClientIp(request);
 
-        const { data: updated, error: updateError } = await supabase
+        const { data: updatedOcf, error: updateOcfError } = await supabase
             .from("order_confirmations")
             .update({
                 company_snapshot: company.trim() || null,
                 recipient_name: recipientName.trim() || null,
-                remarks_for_delivery: remarksForDelivery.trim() || null,
                 restricted_area: restrictedArea,
                 same_address_for_all_items: sameAddressForAllItems,
-                items: items,
                 client_signature_path: filePath,
                 client_signed_at: now,
                 client_submitted_at: now,
@@ -142,29 +147,48 @@ export async function POST(request: NextRequest) {
         status,
         company_snapshot,
         recipient_name,
-        delivery_address,
-        remarks_for_delivery,
         restricted_area,
-        items,
         same_address_for_all_items,
         client_signed_at,
         client_submitted_at,
         client_ip,
         client_signature_path,
         locked_at
-        `)
+      `)
             .single();
 
-        if (updateError || !updated) {
+        if (updateOcfError || !updatedOcf) {
             return NextResponse.json(
-                { error: updateError?.message || "Failed to submit order confirmation" },
+                { error: updateOcfError?.message || "Failed to update order confirmation" },
                 { status: 500 }
             );
         }
 
+        for (const item of items as SubmittedItem[]) {
+            if (!item?.id) continue;
+
+            const { error: itemUpdateError } = await supabase
+                .from("order_confirmation_items")
+                .update({
+                    delivery_name: item.delivery_name?.trim() || null,
+                    delivery_address: item.delivery_address?.trim() || null,
+                    delivery_contact_number: item.delivery_contact_number?.trim() || null,
+                    delivery_remarks: item.delivery_remarks?.trim() || null,
+                })
+                .eq("id", item.id)
+                .eq("order_confirmation_id", ocf.id);
+
+            if (itemUpdateError) {
+                return NextResponse.json(
+                    { error: itemUpdateError.message || "Failed to update delivery information" },
+                    { status: 500 }
+                );
+            }
+        }
+
         return NextResponse.json({
             success: true,
-            ocf: updated,
+            ocf: updatedOcf,
         });
     } catch (error) {
         return NextResponse.json(

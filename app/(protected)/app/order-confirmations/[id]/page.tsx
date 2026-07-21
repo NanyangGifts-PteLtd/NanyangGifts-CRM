@@ -20,7 +20,6 @@ export default async function OrderConfirmationPage({ params }: PageProps) {
         generated_at,
         estimated_delivery_notes,
         same_address_for_all_items,
-        remarks_for_delivery,
         restricted_area,
         important_notes,
         client_name_snapshot,
@@ -42,7 +41,8 @@ export default async function OrderConfirmationPage({ params }: PageProps) {
         delivery_name,
         delivery_address,
         delivery_contact_number,
-        delivery_remarks
+        delivery_remarks,
+        remarks
         )
     `)
         .eq("id", id)
