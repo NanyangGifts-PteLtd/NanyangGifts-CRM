@@ -87,6 +87,7 @@ export interface Subitem {
   sgTracking: string;
   pl: string;
   sl: string;
+  customFields?: Record<string, string>
   
   
   // Payment fields
@@ -158,6 +159,7 @@ export interface Client {
   subitems: Subitem[];
   activityLog?: ActivityEntry[];
   assignedProfileIds?: string[];
+  customFields?: Record<string, string>
 }
 export type ClientAssigneeMap = Record<string, string[]>;
 

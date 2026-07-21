@@ -310,6 +310,8 @@ function mapSubitems(row: Subitems): Subitem {
         sampleOrderStatus: row.sample_order_status ?? '',
         sampleStatus: row.sample_status ?? '',
         sampleType: row.sample_type ?? '',
+        customFields: (row as any).custom_fields ?? {},
+
     };
 }
 
@@ -337,6 +339,8 @@ function mapClients(row: Clients): Client {
         color: row.color ?? '#7BCBD5',
         activityLog: (row.activity_log ?? []).map(mapActivityEntry),
         subitems: (row.subitems ?? []).map(mapSubitems),
+        customFields: (row as any).custom_fields ?? {},
+
     };
 }
 
@@ -529,6 +533,7 @@ export async function updateClientRow(clientId: string, updates: Partial<Client>
         ...(updates.expanded !== undefined ? { expanded: updates.expanded } : {}),
         ...(updates.color !== undefined ? { color: updates.color } : {}),
         ...(updates.activityLog !== undefined ? { activity_log: updates.activityLog } : {}),
+        ...(updates.customFields !== undefined ? { custom_fields: updates.customFields } : {}),
     };
 
     const { error } = await supabase
@@ -738,6 +743,7 @@ export async function updateSubitemRow(subitemId: string, updates: Partial<Subit
         ...(updates.sampleOrderStatus !== undefined ? { sample_order_status: updates.sampleOrderStatus } : {}),
         ...(updates.sampleStatus !== undefined ? { sample_status: updates.sampleStatus } : {}),
         ...(updates.sampleType !== undefined ? { sample_type: updates.sampleType } : {}),
+        ...(updates.customFields !== undefined ? { custom_fields: updates.customFields } : {}),
     };
 
     const { data, error } = await supabase

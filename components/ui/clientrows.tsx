@@ -11,6 +11,8 @@ import { AssigneeMultiSelect } from "./assignee-multiselect";
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from "../ui/alert-dialog";
 import { useGenerateEstimate } from '../hooks/use-generate-estimate-button';
 import { Tooltip } from "radix-ui";
+import type { CustomColumn } from '@/lib/custom-columns';
+
 
 type OptionEntry = { value: string; color: string };
 
@@ -41,7 +43,7 @@ export type ClientRowProps = {
     importanceOptions: OptionEntry[];
     onAddReplyStatus?: (name: string) => void | Promise<void>;
     onDeleteReplyStatus?: (name: string) => void | Promise<void>;
-    onAddStatus?: (name:string) => void | Promise<void>;
+    onAddStatus?: (name: string) => void | Promise<void>;
     onDeleteStatus?: (name: string) => void | Promise<void>;
     onAddChannel?: (name: string) => void | Promise<void>;
     onDeleteChannel?: (name: string) => void | Promise<void>;
@@ -68,6 +70,10 @@ export type ClientRowProps = {
     onDeletePaymentStatus?: (name: string) => void | Promise<void>;
     onAddModeOfPayment?: (name: string) => void | Promise<void>;
     onDeleteModeOfPayment?: (name: string) => void | Promise<void>;
+    clientCustomCols: CustomColumn[];
+    subitemCustomCols: CustomColumn[];
+    onDeleteCustomColumn: (id: string) => void;
+    onRequestAddSubitemCol: () => void;
 
 
 };
@@ -126,6 +132,10 @@ export function ClientRow({
     onDeletePaymentStatus,
     onAddModeOfPayment,
     onDeleteModeOfPayment,
+    clientCustomCols,
+    subitemCustomCols,
+    onDeleteCustomColumn,
+    onRequestAddSubitemCol
 
 
 }: ClientRowProps) {
@@ -285,140 +295,140 @@ export function ClientRow({
                     style={{ height: 32, minWidth: colWidth.client, width: colWidth.client }}
                 >
 
-                <div className="min-w-0 flex items-left">
-                    <EditableCell
-                        value={client.name}
-                        onChange={(v) => onUpdate({ name: v })}
-                        placeholder="Client name"
-                        className="font-semibold text-gray-800"
-                    />
-                </div>
-                <div className="ml-auto flex items-center justify-start gap-1 flex-shrink-0">
-                    {subitemCount > 0 && (
-                        <span className="text-xs text-[#7BCBD5] items-left justify-left bg-[#e7fdff] rounded-full px-1.5 py-0.5 flex-shrink-0">
-                            {subitemCount}
-                        </span>
-                    )}
-                    <Tooltip.Provider>
-                        <Tooltip.Root>
-                            <Tooltip.Trigger asChild>
-                                <button
-                                    type="button"
-                                    onClick={() => setShowActivityLog(true)}
-                                    className="flex whitespace-nowrap px-2 py-1 text-[10px] font-medium text-cyan-500 hover:bg-gray-50 hover:text-cyan-600 transition transform active:scale-95 duration-150"
-                                >
-                                    <Activity size={10} className="transition transform active:scale-150 duration-200" />
-                                </button>
-                            </Tooltip.Trigger>
-                            <Tooltip.Portal>
-                                <Tooltip.Content className="TooltipContent">
-                                    View activity log<Tooltip.Arrow className="TooltipArrow" />
-                                </Tooltip.Content>
-                            </Tooltip.Portal>
-                        </Tooltip.Root>
-                    </Tooltip.Provider>
-                    {showActivityLog && (
-                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
-                            <div className="w-full max-w-2xl rounded-xl bg-white p-4 shadow-xl">
-                                <div className="mb-4 flex items-center justify-between">
-                                    <div>
-                                        <h2 className="text-sm font-semibold text-gray-900">Activity Log</h2>
-                                        <p className="text-xs text-gray-500">{client.name}</p>
-                                    </div>
-
+                    <div className="min-w-0 flex items-left">
+                        <EditableCell
+                            value={client.name}
+                            onChange={(v) => onUpdate({ name: v })}
+                            placeholder="Client name"
+                            className="font-semibold text-gray-800"
+                        />
+                    </div>
+                    <div className="ml-auto flex items-center justify-start gap-1 flex-shrink-0">
+                        {subitemCount > 0 && (
+                            <span className="text-xs text-[#7BCBD5] items-left justify-left bg-[#e7fdff] rounded-full px-1.5 py-0.5 flex-shrink-0">
+                                {subitemCount}
+                            </span>
+                        )}
+                        <Tooltip.Provider>
+                            <Tooltip.Root>
+                                <Tooltip.Trigger asChild>
                                     <button
                                         type="button"
-                                        onClick={() => setShowActivityLog(false)}
-                                        className="text-xs text-gray-500 hover:text-gray-700"
+                                        onClick={() => setShowActivityLog(true)}
+                                        className="flex whitespace-nowrap px-2 py-1 text-[10px] font-medium text-cyan-500 hover:bg-gray-50 hover:text-cyan-600 transition transform active:scale-95 duration-150"
                                     >
-                                        Close
+                                        <Activity size={10} className="transition transform active:scale-150 duration-200" />
                                     </button>
-                                </div>
-                                <div className="max-h-[420px] space-y-3 overflow-y-auto">
-                                    {(client.activityLog?.length ?? 0) === 0 ? (
-                                        <div className="rounded-lg border border-dashed border-gray-200 p-6 text-center text-sm text-gray-500">
-                                            No activity yet.
+                                </Tooltip.Trigger>
+                                <Tooltip.Portal>
+                                    <Tooltip.Content className="TooltipContent">
+                                        View activity log<Tooltip.Arrow className="TooltipArrow" />
+                                    </Tooltip.Content>
+                                </Tooltip.Portal>
+                            </Tooltip.Root>
+                        </Tooltip.Provider>
+                        {showActivityLog && (
+                            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
+                                <div className="w-full max-w-2xl rounded-xl bg-white p-4 shadow-xl">
+                                    <div className="mb-4 flex items-center justify-between">
+                                        <div>
+                                            <h2 className="text-sm font-semibold text-gray-900">Activity Log</h2>
+                                            <p className="text-xs text-gray-500">{client.name}</p>
                                         </div>
-                                    ) : (
-                                        [...(client.activityLog ?? [])]
-                                            .sort(
-                                                (a, b) =>
-                                                    new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-                                            )
-                                            .map((entry) => (
-                                                <div
-                                                    key={entry.id}
-                                                    className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2"
-                                                >
-                                                    <div className="flex items-start justify-between gap-3">
-                                                        <div>
-                                                            <p className="text-sm text-gray-800">
-                                                                {entry.actorName ? (
-                                                                    <>
-                                                                        <span className="font-medium">{entry.actorName}</span>{" "}
-                                                                    </>
-                                                                ) : null}
-                                                                {renderActivityText(entry)}
-                                                            {entry.link ? (
-                                                                <a
-                                                                    href={entry.link}
-                                                                    target="_blank"
-                                                                    rel="noopener noreferrer"
-                                                                    className="ml-4 inline-flex items-center rounded-md bg-teal-100 px-2 py-1 text-xs font-medium text-teal-500 hover:bg-teal-200"
-                                                                >
-                                                                    Open OCF
-                                                                </a>
-                                                                ) : null}
-                                                            </p>
-                                                            <p className="mt-1 text-xs text-gray-500">
-                                                                {new Date(entry.createdAt).toLocaleString()}
-                                                            </p>
+
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowActivityLog(false)}
+                                            className="text-xs text-gray-500 hover:text-gray-700"
+                                        >
+                                            Close
+                                        </button>
+                                    </div>
+                                    <div className="max-h-[420px] space-y-3 overflow-y-auto">
+                                        {(client.activityLog?.length ?? 0) === 0 ? (
+                                            <div className="rounded-lg border border-dashed border-gray-200 p-6 text-center text-sm text-gray-500">
+                                                No activity yet.
+                                            </div>
+                                        ) : (
+                                            [...(client.activityLog ?? [])]
+                                                .sort(
+                                                    (a, b) =>
+                                                        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+                                                )
+                                                .map((entry) => (
+                                                    <div
+                                                        key={entry.id}
+                                                        className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2"
+                                                    >
+                                                        <div className="flex items-start justify-between gap-3">
+                                                            <div>
+                                                                <p className="text-sm text-gray-800">
+                                                                    {entry.actorName ? (
+                                                                        <>
+                                                                            <span className="font-medium">{entry.actorName}</span>{" "}
+                                                                        </>
+                                                                    ) : null}
+                                                                    {renderActivityText(entry)}
+                                                                    {entry.link ? (
+                                                                        <a
+                                                                            href={entry.link}
+                                                                            target="_blank"
+                                                                            rel="noopener noreferrer"
+                                                                            className="ml-4 inline-flex items-center rounded-md bg-teal-100 px-2 py-1 text-xs font-medium text-teal-500 hover:bg-teal-200"
+                                                                        >
+                                                                            Open OCF
+                                                                        </a>
+                                                                    ) : null}
+                                                                </p>
+                                                                <p className="mt-1 text-xs text-gray-500">
+                                                                    {new Date(entry.createdAt).toLocaleString()}
+                                                                </p>
+                                                            </div>
                                                         </div>
                                                     </div>
-                                                </div>
-                                            ))
-                                    )}
+                                                ))
+                                        )}
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                    )}
-                    <Tooltip.Provider>
-                        <Tooltip.Root>
-                            <Tooltip.Trigger asChild>
-                                <button
-                                    onClick={() => handleGenerateEstimate(client.id)}
-                                    disabled={isGeneratingEstimate}
-                                    className="px-2 py-2 text-[10px] font-medium text-teal-500"
-                                >
-                                    {isGeneratingEstimate ? 'Generating...' : ''}<ReceiptText size={15} color="#7BCBD5" className="transition transform active:scale-150 duration-200" />
-                                </button>
-                            </Tooltip.Trigger>
-                            <Tooltip.Portal>
-                                <Tooltip.Content className="TooltipContent">Generate estimate<Tooltip.Arrow className="TooltipArrow" /></Tooltip.Content>
+                        )}
+                        <Tooltip.Provider>
+                            <Tooltip.Root>
+                                <Tooltip.Trigger asChild>
+                                    <button
+                                        onClick={() => handleGenerateEstimate(client.id)}
+                                        disabled={isGeneratingEstimate}
+                                        className="px-2 py-2 text-[10px] font-medium text-teal-500"
+                                    >
+                                        {isGeneratingEstimate ? 'Generating...' : ''}<ReceiptText size={15} color="#7BCBD5" className="transition transform active:scale-150 duration-200" />
+                                    </button>
+                                </Tooltip.Trigger>
+                                <Tooltip.Portal>
+                                    <Tooltip.Content className="TooltipContent">Generate estimate<Tooltip.Arrow className="TooltipArrow" /></Tooltip.Content>
 
-                            </Tooltip.Portal>
-                        </Tooltip.Root>
-                    </Tooltip.Provider>
-                    {estimateError && (
-                        <div className="mt-1 text-[11px] text-red-600">{estimateError}</div>
-                    )}
-                    {showEstimateSuccess && (
-                        <div className={`mt-1 text-[11px] text-teal-500 transition-opacity duration-500 ${fadeEstimateSuccess ? "opacity-0" : "opacity-100"}`}>Successfully generated!</div>
-                    )}
-                    <Tooltip.Provider>
-                        <Tooltip.Root>
-                            <Tooltip.Trigger asChild>
-                                <button
-                                    onClick={() => onOpenOcfModal(client)}
-                                    className="px-2 py-2 text-[10px] font-medium text-teal-500"
-                                > <FileBox size={15} color="#7BCBD5" className= "transition transform active:scale-150 duration-200" /></button>
-                            </Tooltip.Trigger>
-                            <Tooltip.Portal>
-                                <Tooltip.Content className="TooltipContent">Generate Order Confirmation Form<Tooltip.Arrow className="TooltipArrow" /></Tooltip.Content>
-                            </Tooltip.Portal>
-                        </Tooltip.Root>
-                    </Tooltip.Provider>
-                </div>
+                                </Tooltip.Portal>
+                            </Tooltip.Root>
+                        </Tooltip.Provider>
+                        {estimateError && (
+                            <div className="mt-1 text-[11px] text-red-600">{estimateError}</div>
+                        )}
+                        {showEstimateSuccess && (
+                            <div className={`mt-1 text-[11px] text-teal-500 transition-opacity duration-500 ${fadeEstimateSuccess ? "opacity-0" : "opacity-100"}`}>Successfully generated!</div>
+                        )}
+                        <Tooltip.Provider>
+                            <Tooltip.Root>
+                                <Tooltip.Trigger asChild>
+                                    <button
+                                        onClick={() => onOpenOcfModal(client)}
+                                        className="px-2 py-2 text-[10px] font-medium text-teal-500"
+                                    > <FileBox size={15} color="#7BCBD5" className="transition transform active:scale-150 duration-200" /></button>
+                                </Tooltip.Trigger>
+                                <Tooltip.Portal>
+                                    <Tooltip.Content className="TooltipContent">Generate Order Confirmation Form<Tooltip.Arrow className="TooltipArrow" /></Tooltip.Content>
+                                </Tooltip.Portal>
+                            </Tooltip.Root>
+                        </Tooltip.Provider>
+                    </div>
                 </div>
                 <div
                     className="flex-1 min-w-0 py-1 overflow-hidden whitespace-nowrap text-ellipsis border-r border-[#D0D4E4]"
@@ -617,7 +627,7 @@ export function ClientRow({
                     <EditableCell value={client.phone} onChange={(v) => onUpdate({ phone: v })} placeholder="" />
                 </div>
 
-                <div className="flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height: 32,  minWidth: colWidth.requirements, width: colWidth.requirements }}>
+                <div className="flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height: 32, minWidth: colWidth.requirements, width: colWidth.requirements }}>
                     <EditableCell
                         value={client.requirements}
                         onChange={(v) => onUpdate({ requirements: v })}
@@ -625,7 +635,7 @@ export function ClientRow({
                     />
                 </div>
                 <div
-                    className="flex items-center border-r border-[#D0D4E4] transition transform active:scale-95 duration-150" style={{ height:32, minWidth: colWidth.nbd, width: colWidth.nbd }}>
+                    className="flex items-center border-r border-[#D0D4E4] transition transform active:scale-95 duration-150" style={{ height: 32, minWidth: colWidth.nbd, width: colWidth.nbd }}>
                     <input
                         type="date"
                         value={client.nbd}
@@ -634,23 +644,23 @@ export function ClientRow({
                     />
                 </div>
                 <div className="flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height: 32, minWidth: colWidth.totalPrice, width: colWidth.totalPrice }}>
-                    <EditableCell className="!px-8" value={client.totalPrice} onChange={(v) => onUpdate({ totalPrice: v })} type="Number"/>
+                    <EditableCell className="!px-8" value={client.totalPrice} onChange={(v) => onUpdate({ totalPrice: v })} type="Number" />
                 </div>
-                <div className="flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height:32, minWidth: colWidth.companyAddress, width: colWidth.companyAddress }}>
+                <div className="flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height: 32, minWidth: colWidth.companyAddress, width: colWidth.companyAddress }}>
                     <EditableCell
                         value={client.companyAddress}
                         onChange={(v) => onUpdate({ companyAddress: v })}
                     />
                 </div>
 
-                <div className="flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height:32, minWidth: colWidth.billingAddress, width: colWidth.billingAddress }}>
+                <div className="flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height: 32, minWidth: colWidth.billingAddress, width: colWidth.billingAddress }}>
                     <EditableCell
                         value={client.billingAddress}
                         onChange={(v) => onUpdate({ billingAddress: v })}
                     />
                 </div>
 
-                <div className="flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height:32, minWidth: colWidth.dateCreated, width: colWidth.dateCreated }}>
+                <div className="flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height: 32, minWidth: colWidth.dateCreated, width: colWidth.dateCreated }}>
                     <EditableCell value={client.dateCreated} onChange={(v) => onUpdate({ dateCreated: v })} />
                 </div>
 
@@ -663,6 +673,38 @@ export function ClientRow({
                         <Trash2 size={13} />
                     </button>
                 </div>
+                {clientCustomCols.map((col) => (
+                    <div
+                        key={col.id}
+                        className="flex-shrink-0 py-1 border-r border-[#D0D4E4] overflow-hidden bg-teal-50/20"
+                        style={{ height: 32, minWidth: 120, width: 120 }}
+                    >
+                        {col.field_type === 'date' ? (
+                            <input
+                                type="date"
+                                value={(client.customFields?.[col.id] ?? '')}
+                                onChange={(e) =>
+                                    onUpdate({
+                                        customFields: { ...(client.customFields ?? {}), [col.id]: e.target.value },
+                                    })
+                                }
+                                className="text-xs border-none outline-none bg-transparent cursor-pointer w-full px-1"
+                            />
+                        ) : (
+                            <EditableCell
+                                value={client.customFields?.[col.id] ?? ''}
+                                onChange={(v) =>
+                                    onUpdate({
+                                        customFields: { ...(client.customFields ?? {}), [col.id]: v },
+                                    })
+                                }
+                                type={col.field_type}
+                                placeholder="—"
+                            />
+                        )}
+                    </div>
+                ))}
+
             </div>
 
             {isExpanded && (
@@ -697,6 +739,9 @@ export function ClientRow({
                     onDeletePaymentStatus={onDeletePaymentStatus}
                     onAddModeOfPayment={onAddModeOfPayment}
                     onDeleteModeOfPayment={onDeleteModeOfPayment}
+                    subitemCustomCols={subitemCustomCols}
+                    onDeleteSubitemCustomCol={onDeleteCustomColumn}
+                    onRequestAddSubitemCol={onRequestAddSubitemCol}
 
 
                 />

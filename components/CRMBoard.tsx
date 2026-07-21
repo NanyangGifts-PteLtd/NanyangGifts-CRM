@@ -10,6 +10,8 @@ import { createClientRow, updateClientRow, deleteClientRow, createSubitemRow, up
 import { fetchClientAssigneeMap } from '@/lib/assignments';
 import { GenerateOcfModal } from './Generate-OCF-Modal';
 import { AddGroupModal } from './Add-Group-Modal';
+import { fetchCustomColumns, addCustomColumn, deleteCustomColumn, type CustomColumn } from '@/lib/custom-columns'
+
 
 type OptionEntry = { value: string; color: string };
 
@@ -31,7 +33,7 @@ const CLIENT_HEADER_COLS = [
   { key: 'companyAddress', label: 'Company Address', width: 115, minWidth: 7 },
   { key: 'billingAddress', label: 'Billing Address', width: 115, minWidth: 7 },
   { key: 'dateCreated', label: 'Date Created', width: 90, minWidth: 7 },
-  { key: 'empty', label: '', width: 778, minWidth: 7 },
+  { key: 'empty', label: '', width: 800, minWidth: 7 },
 ];
 
 interface CRMBoardProps {
@@ -98,6 +100,16 @@ export function CRMBoard({ clients, expandedIds, setExpandedIds, setClients, rel
   const [draggedClientId, setDraggedClientId] = useState<string | null>(null);
   const [dragOverGroupId, setDragOverGroupId] = useState<string | null>(null);
   const [headerCols, setHeaderCols] = useState(CLIENT_HEADER_COLS);
+  
+  // User custom columns
+  const [customColumns, setCustomColumns] = useState<CustomColumn[]>([]);
+  const [showAddColModal, setShowAddColModal] = useState<'client' | 'subitem' | null>(null);
+  const [newColName, setNewColName] = useState('');
+  const [newColType, setNewColType] = useState<'text' | 'number' | 'date'>('text');
+  const [isAddingCol, setIsAddingCol] = useState(false);
+
+  const clientCustomCols = customColumns.filter((c) => c.target === 'client');
+  const subitemCustomCols = customColumns.filter((c) => c.target === 'subitem');
 
   const totalMinWidth = headerCols.reduce((sum, col) => sum + col.width, 0);
   const colWidth = React.useMemo(
@@ -146,6 +158,7 @@ export function CRMBoard({ clients, expandedIds, setExpandedIds, setClients, rel
           subitemStatusOpts,
           currencyOpts,
           subitemSubprogressOpts,
+          customColumnsData
 
         ] = await Promise.all([
           fetchProfiles(),
@@ -164,6 +177,7 @@ export function CRMBoard({ clients, expandedIds, setExpandedIds, setClients, rel
           fetchOptions('subitem_status'),
           fetchOptions('currency'),
           fetchOptions('subitem_subprogress'),
+          fetchCustomColumns(),
         ]);
 
         setProfiles(profilesData);
@@ -181,7 +195,8 @@ export function CRMBoard({ clients, expandedIds, setExpandedIds, setClients, rel
         setLocalOverseasEntries(localOverseasOpts);
         setSubitemStatusEntries(subitemStatusOpts);
         setCurrencyEntries(currencyOpts);
-        setSubitemSubprogressEntries(subitemSubprogressOpts)
+        setSubitemSubprogressEntries(subitemSubprogressOpts);
+        setCustomColumns(customColumnsData);
 
       } catch (error: any) {
         console.error('Failed to load assignments', error);
@@ -512,6 +527,40 @@ export function CRMBoard({ clients, expandedIds, setExpandedIds, setClients, rel
       setIsDeletingGroup(false);
     }
   }, [groupToDelete, clients, setClients]);
+
+
+  // Custom col handlers
+
+  const handleAddCustomColumn = useCallback(async () => {
+  const trimmed = newColName.trim();
+  if (!trimmed || !showAddColModal) return;
+  setIsAddingCol(true);
+  try {
+    const col = await addCustomColumn(
+      trimmed,
+      showAddColModal,
+      newColType,
+      customColumns.filter((c) => c.target === showAddColModal).length
+    );
+    setCustomColumns((prev) => [...prev, col]);
+    setNewColName('');
+    setNewColType('text');
+    setShowAddColModal(null);
+  } catch (e) {
+    console.error('Failed to add column', e);
+  } finally {
+    setIsAddingCol(false);
+  }
+}, [newColName, newColType, showAddColModal, customColumns]);
+
+const handleDeleteCustomColumn = useCallback(async (id: string) => {
+  try {
+    await deleteCustomColumn(id);
+    setCustomColumns((prev) => prev.filter((c) => c.id !== id));
+  } catch (e) {
+    console.error('Failed to delete column', e);
+  }
+}, []);
 
   // --- Resize ---
   const startResize = (key: string, startX: number) => {
@@ -847,6 +896,33 @@ export function CRMBoard({ clients, expandedIds, setExpandedIds, setClients, rel
               </div>
             ))}
           </div>
+          {clientCustomCols.map((col) => (
+  <div
+    key={col.id}
+    className="relative flex items-center justify-center gap-1 px-2 py-1.5 border-r border-[#D0D4E4] text-[11px] font-semibold text-gray-600 whitespace-nowrap bg-teal-50/40"
+    style={{ minWidth: 120, width: 120 }}
+  >
+    <span className="truncate">{col.name}</span>
+    <button
+      onClick={() => handleDeleteCustomColumn(col.id)}
+      className="text-gray-300 hover:text-red-400 flex-shrink-0"
+      title="Remove column"
+    >
+      ×
+    </button>
+  </div>
+))}
+
+{/* + Add client column button */}
+<div className="flex items-center px-2 border-r border-[#D0D4E4]" style={{ minWidth: 32, width: 32 }}>
+  <button
+    onClick={() => setShowAddColModal('client')}
+    className="text-gray-300 hover:text-[#7BCBD5] text-lg leading-none"
+    title="Add client column"
+  >
+    +
+  </button>
+</div>
 
           {groupedClients.map(({ group, clients: groupClients }) => (
             <React.Fragment key={group.id}>
@@ -942,6 +1018,11 @@ export function CRMBoard({ clients, expandedIds, setExpandedIds, setClients, rel
                   onDeletePaymentStatus={handleDeletePaymentStatus}
                   onAddModeOfPayment={handleAddModeOfPayment}
                   onDeleteModeOfPayment={handleDeleteModeOfPayment}
+                  clientCustomCols={clientCustomCols}
+                  subitemCustomCols={subitemCustomCols}
+                  onDeleteCustomColumn={handleDeleteCustomColumn}
+                  onRequestAddSubitemCol={handleAddCustomColumn}
+
 
                 />
               ))}
@@ -956,6 +1037,55 @@ export function CRMBoard({ clients, expandedIds, setExpandedIds, setClients, rel
           ))}
         </div>
       </div>
+      {showAddColModal && (
+  <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/30">
+    <div className="w-full max-w-sm rounded-2xl border border-gray-200 bg-white shadow-2xl p-5">
+      <h2 className="text-sm font-semibold text-gray-900 mb-4">
+        Add {showAddColModal} column
+      </h2>
+      <div className="space-y-3">
+        <div>
+          <label className="text-xs text-gray-500 font-medium">Column name</label>
+          <input
+            autoFocus
+            value={newColName}
+            onChange={(e) => setNewColName(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') handleAddCustomColumn(); }}
+            placeholder="e.g. Contract Value"
+            className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-[#7BCBD5] focus:ring-2 focus:ring-[#7BCBD5]/20"
+          />
+        </div>
+        <div>
+          <label className="text-xs text-gray-500 font-medium">Type</label>
+          <select
+            value={newColType}
+            onChange={(e) => setNewColType(e.target.value as 'text' | 'number' | 'date')}
+            className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-[#7BCBD5]"
+          >
+            <option value="text">Text</option>
+            <option value="number">Number</option>
+            <option value="date">Date</option>
+          </select>
+        </div>
+      </div>
+      <div className="flex justify-end gap-2 mt-5">
+        <button
+          onClick={() => { setShowAddColModal(null); setNewColName(''); }}
+          className="rounded-xl border border-gray-200 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={handleAddCustomColumn}
+          disabled={isAddingCol || !newColName.trim()}
+          className="rounded-xl bg-[#7BCBD5] px-4 py-2 text-sm font-medium text-white hover:bg-[#6bc0ca] disabled:opacity-50"
+        >
+          {isAddingCol ? 'Adding...' : 'Add Column'}
+        </button>
+      </div>
+    </div>
+  </div>
+)}
     </div>
   );
 }
