@@ -12,6 +12,10 @@ type OcfItem = {
     remarks: string | null;
     image_path: string | null;
     image_url: string | null;
+    contact_number?: string | null;
+    delivery_address?: string | null;
+    pl?: string | null;
+    sl?: string | null;
 };
 
 type Ocf = {
@@ -116,10 +120,11 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
                 <table className="w-full border border-black text-sm">
                     <thead>
                         <tr className="bg-gray-100 text-left">
-                            <th className="w-[18%] border border-black px-2 py-2 font-semibold">Item Name</th>
-                            <th className="w-[12%] border border-black px-2 py-2 font-semibold">Quantity</th>
-                            <th className="w-[45%] border border-black px-2 py-2 font-semibold">Product Details</th>
-                            <th className="w-[25%] border border-black px-2 py-2 font-semibold">Remarks</th>
+                            <th className="border border-black px-2 py-2 font-semibold">Item Name</th>
+                            <th className="border border-black px-2 py-2 font-semibold">Qty</th>
+                            <th className="border border-black px-2 py-2 font-semibold">Contact Number</th>
+                            <th className="border border-black px-2 py-2 font-semibold">Remarks Per Item</th>
+                            <th className="border border-black px-2 py-2 font-semibold">Delivery Address</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -128,26 +133,16 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
                                 <tr key={item.id} className="align-top">
                                     <td className="border border-black px-2 py-3">{item.item_name || "-"}</td>
                                     <td className="border border-black px-2 py-3">{item.qty || "-"}</td>
-                                    <td className="border border-black px-2 py-3">
-                                        <div className="space-y-3">
-                                            <div>{item.remarks || "-"}</div>
-                                            {item.image_url ? (
-                                                <img
-                                                    src={item.image_url}
-                                                    alt={item.item_name || "Uploaded item"}
-                                                    className="max-h-72 rounded border border-gray-300 object-contain"
-                                                />
-                                            ) : (
-                                                <div className="text-gray-400">No image uploaded</div>
-                                            )}
-                                        </div>
-                                    </td>
+                                    <td className="border border-black px-2 py-3">{item.contact_number || "-"}</td>
                                     <td className="border border-black px-2 py-3">{item.remarks || "-"}</td>
+                                    <td className="border border-black px-2 py-3">
+                                        {item.delivery_address || ocf.delivery_address || "-"}
+                                    </td>
                                 </tr>
                             ))
                         ) : (
                             <tr>
-                                <td colSpan={4} className="border border-black px-3 py-4 text-center text-gray-500">
+                                <td colSpan={5} className="border border-black px-3 py-4 text-center text-gray-500">
                                     No awarded items found.
                                 </td>
                             </tr>
@@ -169,28 +164,7 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
                             </td>
                             <td className="px-3 py-2">{ocf.recipient_name || "-"}</td>
                         </tr>
-                        <tr className="border-b border-black">
-                            <td className="border-r border-black bg-[#eef2ff] px-3 py-2 font-semibold align-top">
-                                Delivery Address:
-                            </td>
-                            <td className="px-3 py-2">
-                                <div className="space-y-3">
-                                    <label className="flex items-center gap-2 text-sm text-gray-700">
-                                        <input
-                                            type="checkbox"
-                                            checked={Boolean(ocf.same_address_for_all_items)}
-                                            readOnly
-                                            className="h-4 w-4"
-                                        />
-                                        <span>Same address for all items?</span>
-                                    </label>
-
-                                    <div className="whitespace-pre-wrap">
-                                        {ocf.delivery_address || "-"}
-                                    </div>
-                                </div>
-                            </td>
-                        </tr>
+                        
                         <tr className="border-b border-black">
                             <td className="border-r border-black bg-[#eef2ff] px-3 py-2 font-semibold">
                                 Contact Number For Delivery:
@@ -264,7 +238,7 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
                         Back
                     </button>
                 </div>
-                
+
 
                 <div className="mt-6 border-t border-gray-200 pt-4 text-sm text-gray-700">
                     <p><span className="font-semibold">Signed at:</span> {ocf.client_signed_at ? new Date(ocf.client_signed_at).toLocaleString() : "-"}</p>
@@ -272,6 +246,25 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
                     <p><span className="font-semibold">Client IP:</span> {ocf.client_ip || "-"}</p>
                     <p><span className="font-semibold">Locked at:</span> {ocf.locked_at ? new Date(ocf.locked_at).toLocaleString() : "-"}</p>
                 </div>
+            </div>
+            <div className="mt-10 break-before-page print:break-before-page">
+                {ocf.order_confirmation_items
+                    .filter((item) => item.image_url)
+                    .map((item) => (
+                        <section key={item.id} className="mb-10">
+                            <div className="relative mx-auto flex min-h-[85vh] w-full max-w-[1030px] items-center justify-center overflow-hidden rounded border border-gray-300 bg-white p-4 pt-12 print:min-h-[92vh]">
+                                <h1 className="absolute text-center top-4 text-base font-normal text-black">
+                                    {item.item_name || "Item image"}
+                                </h1>
+
+                                <img
+                                    src={item.image_url!}
+                                    alt={item.item_name || "Uploaded item"}
+                                    className="max-h-[80vh] w-auto max-w-full object-contain print:max-h-[88vh]"
+                                />
+                            </div>
+                        </section>
+                    ))}
             </div>
         </main>
     );

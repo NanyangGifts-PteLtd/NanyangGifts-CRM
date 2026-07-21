@@ -7,11 +7,15 @@ type Props = {
     clientToken: string;
     company: string;
     recipientName: string;
-    deliveryAddress: string;
     contactNumber: string;
     remarksForDelivery: string;
     restrictedArea: string;
     sameAddressForAllItems: boolean;
+    items: {
+        id: string;
+        contact_number?: string | null;
+        delivery_address?: string | null;
+    }[];
 };
 
 type SignatureMode = "draw" | "type";
@@ -21,11 +25,11 @@ export default function SignatureForm({
     clientToken,
     company,
     recipientName,
-    deliveryAddress,
     contactNumber,
     remarksForDelivery,
     restrictedArea,
     sameAddressForAllItems,
+    items,
 }: Props) {
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
     const wrapperRef = useRef<HTMLDivElement | null>(null);
@@ -219,11 +223,11 @@ export default function SignatureForm({
                     typedInitials: typedInitials.trim() || null,
                     company,
                     recipientName,
-                    deliveryAddress,
                     contactNumber,
                     remarksForDelivery,
                     restrictedArea,
                     sameAddressForAllItems,
+                    items,
                 }),
             });
 

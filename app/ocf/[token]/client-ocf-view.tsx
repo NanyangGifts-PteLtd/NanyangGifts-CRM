@@ -12,6 +12,10 @@ type OcfItem = {
     remarks: string | null;
     image_path: string | null;
     image_url: string | null;
+    contact_number?: string | null;
+    delivery_address?: string | null;
+    pl?: string | null;
+    sl?: string | null;
 };
 
 type Ocf = {
@@ -54,6 +58,33 @@ export default function ClientOcfView({ ocf }: { ocf: Ocf }) {
     const [sameAddressForAllItems, setSameAddressForAllItems] = useState(
         Boolean(ocf.same_address_for_all_items)
     );
+    const [sharedAddress, setSharedAddress] = useState(ocf.delivery_address ?? "");
+
+    const [items, setItems] = useState(
+        ocf.order_confirmation_items.map((item) => ({
+            ...item,
+            contact_number: item.contact_number ?? ocf.client_contact_number ?? "",
+            delivery_address: item.delivery_address ?? "",
+        }))
+    );
+
+    function syncAllAddressesFromFirstRow(nextFirstAddress: string) {
+        setItems((prev) =>
+            prev.map((row, index) => ({
+                ...row,
+                delivery_address: index === 0 ? nextFirstAddress : nextFirstAddress,
+            }))
+        );
+    }
+
+    function handleToggleSameAddress(checked: boolean) {
+        setSameAddressForAllItems(checked);
+
+        if (checked) {
+            const firstRowAddress = items[0]?.delivery_address ?? "";
+            syncAllAddressesFromFirstRow(firstRowAddress);
+        }
+    }
 
     return (
         <main className="min-h-screen bg-[#f3f4f6] px-4 py-8">
@@ -101,44 +132,73 @@ export default function ClientOcfView({ ocf }: { ocf: Ocf }) {
                 <table className="w-full border border-black text-sm">
                     <thead>
                         <tr className="bg-gray-100 text-left">
-                            <th className="w-[18%] border border-black px-2 py-2 font-semibold">Item Name</th>
-                            <th className="w-[12%] border border-black px-2 py-2 font-semibold">Quantity</th>
-                            <th className="w-[45%] border border-black px-2 py-2 font-semibold">Product Details</th>
-                            <th className="w-[25%] border border-black px-2 py-2 font-semibold">Remarks</th>
+                            <th className="border border-black px-2 py-2 font-semibold">Item Name</th>
+                            <th className="border border-black px-2 py-2 font-semibold">Qty</th>
+                            <th className="border border-black px-2 py-2 font-semibold">Contact Number</th>
+                            <th className="border border-black px-2 py-2 font-semibold">Remarks Per Item</th>
+                            <th className="border border-black px-2 py-2 font-semibold">Delivery Address</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {ocf.order_confirmation_items.length > 0 ? (
-                            ocf.order_confirmation_items.map((item) => (
-                                <tr key={item.id} className="align-top">
-                                    <td className="border border-black px-2 py-3">{item.item_name || "-"}</td>
-                                    <td className="border border-black px-2 py-3">{item.qty || "-"}</td>
-                                    <td className="border border-black px-2 py-3">
-                                        <div className="space-y-3">
-                                            <div>{item.remarks || "-"}</div>
-                                            {item.image_url ? (
-                                                <img
-                                                    src={item.image_url}
-                                                    alt={item.item_name || "Uploaded item"}
-                                                    className="max-h-72 w-auto rounded border border-gray-300 object-contain"
-                                                />
-                                            ) : (
-                                                <div className="text-gray-400">No image uploaded</div>
-                                            )}
-                                        </div>
-                                    </td>
-                                    <td className="border border-black px-2 py-3">{item.remarks || "-"}</td>
-                                </tr>
-                            ))
-                        ) : (
-                            <tr>
-                                <td colSpan={4} className="border border-black px-3 py-4 text-center text-gray-500">
-                                    No awarded items found.
+                        {items.map((item, index) => (
+                            <tr key={item.id} className="align-top">
+                                <td className="border border-black px-2 py-3">{item.item_name || "-"}</td>
+                                <td className="border border-black px-2 py-3">{item.qty || "-"}</td>
+                                <td className="border border-black px-2 py-3">
+                                    <input
+                                        value={item.contact_number ?? ""}
+                                        onChange={(e) =>
+                                            setItems((prev) =>
+                                                prev.map((row, i) =>
+                                                    i === index ? { ...row, contact_number: e.target.value } : row
+                                                )
+                                            )
+                                        }
+                                        disabled={isLocked}
+                                        className="w-full rounded border border-gray-300 px-2 py-1 disabled:bg-gray-100"
+                                    />
+                                </td>
+                                <td className="border border-black px-2 py-3">{item.remarks || "-"}</td>
+                                <td className="border border-black px-2 py-3">
+                                    <textarea
+                                        value={item.delivery_address ?? ""}
+                                        onChange={(e) => {
+                                            const value = e.target.value;
+
+                                            setItems((prev) =>
+                                                prev.map((row, i) => {
+                                                    if (sameAddressForAllItems) {
+                                                        return { ...row, delivery_address: value };
+                                                    }
+
+                                                    return i === index ? { ...row, delivery_address: value } : row;
+                                                })
+                                            );
+                                        }}
+                                        disabled={isLocked || (sameAddressForAllItems && index !== 0)}
+                                        rows={3}
+                                        className="w-full rounded border border-gray-300 px-2 py-1 disabled:bg-gray-100"
+                                    />
                                 </td>
                             </tr>
-                        )}
+                        ))}
                     </tbody>
                 </table>
+                <div className="mt-3 rounded-md border border-gray-200 bg-gray-50 px-4 py-3">
+                    <label className="flex items-center gap-2 text-sm text-gray-700">
+                        <input
+                            type="checkbox"
+                            checked={sameAddressForAllItems}
+                            onChange={(e) => handleToggleSameAddress(e.target.checked)}
+                            disabled={isLocked || items.length === 0}
+                            className="h-4 w-4"
+                        />
+                        <span>All same address?</span>
+                    </label>
+                    <p className="mt-1 text-xs text-gray-500">
+                        If checked, the first item&apos;s delivery address will be applied to all items.
+                    </p>
+                </div>
 
                 <table className="mt-4 w-full border border-black text-sm">
                     <tbody>
@@ -169,35 +229,6 @@ export default function ClientOcfView({ ocf }: { ocf: Ocf }) {
                                 />
                             </td>
                         </tr>
-
-                        <tr className="border-b border-black">
-                            <td className="border-r border-black bg-[#eef2ff] px-3 py-2 font-semibold align-top">
-                                Delivery Address:
-                            </td>
-                            <td className="px-3 py-2">
-                                <div className="space-y-3">
-                                    <label className="flex items-center gap-2 text-sm text-gray-700">
-                                        <input
-                                            type="checkbox"
-                                            checked={sameAddressForAllItems}
-                                            onChange={(e) => setSameAddressForAllItems(e.target.checked)}
-                                            disabled={isLocked}
-                                            className="h-4 w-4"
-                                        />
-                                        <span>Same address for all items?</span>
-                                    </label>
-
-                                    <textarea
-                                        value={deliveryAddress}
-                                        onChange={(e) => setDeliveryAddress(e.target.value)}
-                                        disabled={isLocked}
-                                        rows={3}
-                                        className="w-full rounded border border-gray-300 px-3 py-2 disabled:bg-gray-100"
-                                    />
-                                </div>
-                            </td>
-                        </tr>
-
                         <tr className="border-b border-black">
                             <td className="border-r border-black bg-[#eef2ff] px-3 py-2 font-semibold">
                                 Contact Number For Delivery:
@@ -290,7 +321,7 @@ export default function ClientOcfView({ ocf }: { ocf: Ocf }) {
                             clientToken={ocf.client_token}
                             company={company}
                             recipientName={recipientName}
-                            deliveryAddress={deliveryAddress}
+                            items={items}
                             contactNumber={contactNumber}
                             remarksForDelivery={remarksForDelivery}
                             restrictedArea={restrictedArea}
@@ -298,6 +329,25 @@ export default function ClientOcfView({ ocf }: { ocf: Ocf }) {
                         />
                     )}
                 </div>
+            </div>
+            <div className="mt-10 break-before-page print:break-before-page">
+                {ocf.order_confirmation_items
+                    .filter((item) => item.image_url)
+                    .map((item) => (
+                        <section key={item.id} className="mb-10">
+                            <div className="relative mx-auto flex min-h-[85vh] w-full max-w-[1030px] items-center justify-center overflow-hidden rounded border border-gray-300 bg-white p-4 pt-12 print:min-h-[92vh]">
+                                <h1 className="absolute text-center top-4 text-base font-normal text-black">
+                                    {item.item_name || "Item image"}
+                                </h1>
+
+                                <img
+                                    src={item.image_url!}
+                                    alt={item.item_name || "Uploaded item"}
+                                    className="max-h-[80vh] w-auto max-w-full object-contain print:max-h-[88vh]"
+                                />
+                            </div>
+                        </section>
+                    ))}
             </div>
         </main>
     );
