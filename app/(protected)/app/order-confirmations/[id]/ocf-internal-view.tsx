@@ -327,10 +327,10 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
                 </div>
 
                 <div className="mt-6 border-t border-gray-200 pt-4 text-sm text-gray-700">
-                    <p><span className="font-semibold">Signed at:</span> {ocf.client_signed_at ? new Date(ocf.client_signed_at).toLocaleString() : "-"}</p>
-                    <p><span className="font-semibold">Submitted at:</span> {ocf.client_submitted_at ? new Date(ocf.client_submitted_at).toLocaleString() : "-"}</p>
+                    <p><span className="font-semibold">Signed at:</span> {ocf.client_signed_at ? new Date(ocf.client_signed_at).toLocaleString('en-SG') : "-"}</p>
+                    <p><span className="font-semibold">Submitted at:</span> {ocf.client_submitted_at ? new Date(ocf.client_submitted_at).toLocaleString('en-SG') : "-"}</p>
                     <p><span className="font-semibold">Client IP:</span> {ocf.client_ip || "-"}</p>
-                    <p><span className="font-semibold">Locked at:</span> {ocf.locked_at ? new Date(ocf.locked_at).toLocaleString() : "-"}</p>
+                    <p><span className="font-semibold">Locked at:</span> {ocf.locked_at ? new Date(ocf.locked_at).toLocaleString('en-SG') : "-"}</p>
                 </div>
             </div>
 

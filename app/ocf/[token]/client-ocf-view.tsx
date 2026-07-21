@@ -137,7 +137,7 @@ export default function ClientOcfView({ ocf }: { ocf: Ocf }) {
                         <h1 className="text-base font-bold tracking-wide">ORDER CONFIRMATION FORM</h1>
                         <p className="mt-3">
                             <span className="font-semibold">Date:</span>{" "}
-                            {ocf.generated_at ? new Date(ocf.generated_at).toLocaleDateString() : "-"}
+                            {ocf.generated_at ? new Date(ocf.generated_at).toLocaleDateString('en-SG') : "-"}
                         </p>
                     </div>
                 </div>
