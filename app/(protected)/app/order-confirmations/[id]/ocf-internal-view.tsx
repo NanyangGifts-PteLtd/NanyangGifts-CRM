@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import logo from "./nanyanggifts-gifts-and-merch.png";
 import { DEFAULT_IMPORTANT_NOTES } from "@/components/Important-Notes";
@@ -28,11 +28,9 @@ type Ocf = {
     generated_at: string | null;
     estimated_delivery_notes: string | null;
     same_address_for_all_items: boolean | null;
-    restricted_area: string | null;
     important_notes: string | null;
     client_name_snapshot: string | null;
     company_snapshot: string | null;
-    recipient_name: string | null;
     salesperson_name: string | null;
     salesperson_email: string | null;
     salesperson_contact_number: string | null;
@@ -64,6 +62,15 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
         if (!ocf.client_token || typeof window === "undefined") return "";
         return `${window.location.origin}/ocf/${ocf.client_token}`;
     }, [ocf.client_token]);
+
+    const deliveryNotesRef = useRef<HTMLTextAreaElement | null>(null);
+
+    useEffect(() => {
+        const el = deliveryNotesRef.current;
+        if (!el) return;
+        el.style.height = "0px";
+        el.style.height = `${el.scrollHeight}px`;
+    }, [deliveryNotes]);
 
     async function copyClientLink() {
         if (!clientUrl) return;
@@ -130,7 +137,7 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
     }
 
     return (
-        <main className="min-h-screen bg-[#f3f4f6] px-4 py-8">
+        <main className="min-h-screen bg-[#f3f4f6] ">
             <div className="mx-auto max-w-5xl bg-white p-6 shadow-lg">
                 <div className="mb-4 flex items-start justify-between gap-4 border-b border-black pb-4">
                     <div>
@@ -148,7 +155,7 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
                 </div>
 
                 <div className="mb-4 bg-[#eef2ff] px-4 py-3">
-                    <table className="w-full border-collapse text-sm">
+                    <table className="w-full border-collapse text-[10px]">
                         <tbody>
                             <tr>
                                 <td className="w-[18%] py-1 font-semibold text-black">Project Name:</td>
@@ -172,7 +179,7 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
                     </table>
                 </div>
 
-                <table className="w-full table-fixed border border-black text-sm">
+                <table className="w-full table-fixed border border-black text-[11px]">
                     <thead>
                         <tr className="bg-gray-100 text-left">
                             <th className="w-[22%] border border-black px-2 py-2 font-semibold">Item Name</th>
@@ -197,7 +204,7 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
                                         />
                                     </td>
                                     <td className="border border-black px-2 py-3">
-                                        <div className="space-y-2 text-sm text-gray-800">
+                                        <div className="space-y-2 text-[11px] text-gray-800">
                                             <div>
                                                 <span className="font-semibold">Name:</span> {item.delivery_name || "-"}
                                             </div>
@@ -225,22 +232,8 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
                     </tbody>
                 </table>
 
-                <table className="mt-4 w-full border border-black text-sm">
+                <table className="mt-4 w-full border border-black text-[11px]">
                     <tbody>
-                        <tr className="border-b border-black">
-                            <td className="w-56 border-r border-black bg-[#eef2ff] px-3 py-2 font-semibold">
-                                Client&apos;s Company Name:
-                            </td>
-                            <td className="px-3 py-2">{ocf.company_snapshot || "-"}</td>
-                        </tr>
-
-                        <tr className="border-b border-black">
-                            <td className="border-r border-black bg-[#eef2ff] px-3 py-2 font-semibold">
-                                Recipient Name:
-                            </td>
-                            <td className="px-3 py-2">{ocf.recipient_name || "-"}</td>
-                        </tr>
-
                         <tr className="border-b border-black">
                             <td className="border-r border-black bg-[#eef2ff] px-3 py-2 font-semibold">
                                 Same delivery information for all items?
@@ -252,34 +245,27 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
 
                         <tr className="border-b border-black">
                             <td className="border-r border-black bg-[#eef2ff] px-3 py-2 font-semibold">
-                                Estimated Delivery Notes:
+                                Estimated Delivery Date:
                             </td>
                             <td className="px-3 py-2">
                                 <textarea
-                                            value={deliveryNotes ?? ""}
-                                            onChange={(e) => setDeliveryNotes(e.target.value)}
-                                            rows={4}
-                                            className="w-full min-w-0 rounded border border-gray-300 px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-teal-500 focus:ring-offset-2"
-                                            placeholder="Estimated delivery notes"
-                                        />
+                                    ref={deliveryNotesRef}
+                                    value={deliveryNotes}
+                                    onChange={(e) => setDeliveryNotes(e.target.value)}
+                                    rows={1}
+                                    className="w-full min-w-0 resize-none overflow-hidden rounded border border-gray-300 px-2 py-1.5 whitespace-pre-wrap focus:outline-none focus:ring-1 focus:ring-teal-500 focus:ring-offset-2"
+                                    placeholder="Estimated delivery notes"
+                                />
                             </td>
                         </tr>
+                        </tbody>
+</table>
+                        
+            <div className="mt-10 break-before-page print:break-before-page max-w-5xl">
+                    <span className="flex bg-[#eef2ff] px-1 rounded-sm py-3 text-black items-center justify-center text-[11px]">𝐈𝐦𝐩𝐨𝐫𝐭𝐚𝐧𝐭 𝐧𝐨𝐭𝐞𝐬, 𝐩𝐥𝐞𝐚𝐬𝐞 𝐫𝐞𝐚𝐝 𝐜𝐚𝐫𝐞𝐟𝐮𝐥𝐥𝐲: </span>
 
-                        <tr className="border-b border-black">
-                            <td className="border-r border-black bg-[#eef2ff] px-3 py-2 font-semibold">
-                                Restricted Area?
-                            </td>
-                            <td className="px-3 py-2 whitespace-pre-wrap">{ocf.restricted_area || "-"}</td>
-                        </tr>
-
-                        <tr className="border-b border-black">
-                            <td className="border-r border-black bg-[#eef2ff] px-3 py-2 font-semibold">
-                                Important Notes:
-                            </td>
-                            <td className="px-3 py-2 whitespace-pre-wrap">{importantNotes}</td>
-                        </tr>
-                    </tbody>
-                </table>
+                    <td className="px-3 py-2 whitespace-pre-wrap text-[11px]">{importantNotes}</td>
+                </div>
 
                 {ocf.client_signature_url ? (
                     <div className="mt-3">

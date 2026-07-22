@@ -1,4 +1,5 @@
-export const DEFAULT_IMPORTANT_NOTES = `𝐂𝐨𝐥𝐨𝐮𝐫 𝐀𝐜𝐜𝐮𝐫𝐚𝐜𝐲
+export const DEFAULT_IMPORTANT_NOTES = `
+𝐂𝐨𝐥𝐨𝐮𝐫 𝐀𝐜𝐜𝐮𝐫𝐚𝐜𝐲
 Colors may vary slightly due to screen settings and device calibration. Actual product colors may differ from what you see on your screen.
 Color shades can vary between production batches. For accurate colors, request physical swatches or samples. Reasonable color variations are not defects. Please understand that reasonable color variations do not constitute defects or grounds for returns.
 

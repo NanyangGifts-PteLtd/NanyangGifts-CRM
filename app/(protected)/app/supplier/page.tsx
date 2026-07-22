@@ -7,7 +7,7 @@ export default async function SupplierMasterPage() {
 
     return (
         <main className="p-4">
-            <h1 className="mb-4 text-lg font-semibold">All Suppliers — Master View</h1>
+            <h1 className="mb-4 text-lg font-semibold">All Suppliers — PM Master View</h1>
             <SupplierGrid rows={rows} />
         </main>
     );

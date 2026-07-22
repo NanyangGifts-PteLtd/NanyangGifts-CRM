@@ -1,10 +1,11 @@
 "use client";
 
 import Image from "next/image";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import SignatureForm from "./signature-form";
 import logo from "./nanyanggifts-gifts-and-merch.png";
 import { DEFAULT_IMPORTANT_NOTES } from "@/components/Important-Notes";
+
 
 type OcfItem = {
     id: string;
@@ -55,14 +56,12 @@ export default function ClientOcfView({ ocf }: { ocf: Ocf }) {
         ocf.status === "submitted" ||
         ocf.status === "locked" ||
         Boolean(ocf.locked_at);
-    
+
     const importantNotes = ocf.important_notes?.trim() || DEFAULT_IMPORTANT_NOTES;
     const [company, setCompany] = useState(ocf.company_snapshot ?? "");
-    const [recipientName, setRecipientName] = useState(ocf.recipient_name ?? "");
-    const [restrictedArea, setRestrictedArea] = useState(ocf.restricted_area ?? "No");
     const [sameAddressForAllItems, setSameAddressForAllItems] = useState(
-        Boolean(ocf.same_address_for_all_items)
-    );
+        ocf.same_address_for_all_items ?? true
+);
 
     const [items, setItems] = useState<EditableItem[]>(
         ocf.order_confirmation_items.map((item) => ({
@@ -74,56 +73,97 @@ export default function ClientOcfView({ ocf }: { ocf: Ocf }) {
         }))
     );
 
-    function syncAllDeliveryFieldsFromFirstRow() {
-        const firstRow = items[0];
-        if (!firstRow) return;
+    useEffect(() => {
+  if (sameAddressForAllItems && items.length > 0) {
+    mirrorAllDeliveryFieldsFromFirstRow(items);
+  }
+}, []);
 
-        setItems((prev) =>
-            prev.map((row) => ({
-                ...row,
-                delivery_name: firstRow.delivery_name,
-                delivery_address: firstRow.delivery_address,
-                delivery_contact_number: firstRow.delivery_contact_number,
-                delivery_remarks: firstRow.delivery_remarks,
-            }))
-        );
+    function mirrorAllDeliveryFieldsFromFirstRow(nextItems?: EditableItem[]) {
+  const source = nextItems ?? items;
+  const firstRow = source[0];
+  if (!firstRow) return;
+
+  setItems(
+    source.map((row, index) =>
+      index === 0
+        ? row
+        : {
+            ...row,
+            delivery_name: firstRow.delivery_name,
+            delivery_address: firstRow.delivery_address,
+            delivery_contact_number: firstRow.delivery_contact_number,
+            delivery_remarks: firstRow.delivery_remarks,
+          }
+    )
+  );
+}
+
+function clearOtherDeliveryFields() {
+  setItems((prev) =>
+    prev.map((row, index) =>
+      index === 0
+        ? row
+        : {
+            ...row,
+            delivery_name: "",
+            delivery_address: "",
+            delivery_contact_number: "",
+            delivery_remarks: "",
+          }
+    )
+  );
+}
+
+function handleToggleSameAddress(checked: boolean) {
+  setSameAddressForAllItems(checked);
+
+  if (checked) {
+    mirrorAllDeliveryFieldsFromFirstRow();
+  } else {
+    clearOtherDeliveryFields();
+  }
+}
+function updateItemField(
+  index: number,
+  field: keyof Pick<
+    EditableItem,
+    "delivery_name" | "delivery_address" | "delivery_contact_number" | "delivery_remarks"
+  >,
+  value: string
+) {
+  setItems((prev) => {
+    const updated = prev.map((row, i) =>
+      i === index
+        ? {
+            ...row,
+            [field]: value,
+          }
+        : row
+    );
+
+    if (sameAddressForAllItems) {
+      const firstRow = index === 0 ? updated[0] : prev[0];
+      if (!firstRow) return updated;
+
+      return updated.map((row, i) =>
+        i === 0
+          ? {
+              ...updated[0],
+            }
+          : {
+              ...row,
+              delivery_name: firstRow.delivery_name,
+              delivery_address: firstRow.delivery_address,
+              delivery_contact_number: firstRow.delivery_contact_number,
+              delivery_remarks: firstRow.delivery_remarks,
+            }
+      );
     }
 
-    function handleToggleSameAddress(checked: boolean) {
-        setSameAddressForAllItems(checked);
-
-        if (checked) {
-            syncAllDeliveryFieldsFromFirstRow();
-        }
-    }
-
-    function updateItemField(
-        index: number,
-        field: keyof Pick<
-            EditableItem,
-            "delivery_name" | "delivery_address" | "delivery_contact_number" | "delivery_remarks"
-        >,
-        value: string
-    ) {
-        setItems((prev) =>
-            prev.map((row, i) => {
-                if (sameAddressForAllItems) {
-                    return {
-                        ...row,
-                        [field]: value,
-                    };
-                }
-
-                return i === index
-                    ? {
-                        ...row,
-                        [field]: value,
-                    }
-                    : row;
-            })
-        );
-    }
-
+    return updated;
+  });
+}
     return (
         <main className="min-h-screen bg-[#f3f4f6] px-4 py-8">
             <div className="mx-auto max-w-5xl bg-white p-6 shadow-lg">
@@ -173,7 +213,21 @@ export default function ClientOcfView({ ocf }: { ocf: Ocf }) {
                             <th className="w-[22%] border border-black px-2 py-2 font-semibold">Item Name</th>
                             <th className="w-[10%] border border-black px-2 py-2 font-semibold">Qty</th>
                             <th className="w-[18%] border border-black px-2 py-2 font-semibold">Remarks</th>
-                            <th className="w-[50%] border border-black px-2 py-2 font-semibold">Delivery Information</th>
+                            <th className="w-[50%] border border-black px-2 py-2 font-semibold">
+                                <div className="flex items-center justify-between gap-3">
+                                    <span>Delivery Information</span>
+                                    <label className="flex items-center gap-2 text-[11px] font-medium text-gray-700">
+                                        <input
+                                            type="checkbox"
+                                            checked={sameAddressForAllItems}
+                                            onChange={(e) => handleToggleSameAddress(e.target.checked)}
+                                            disabled={isLocked || items.length === 0}
+                                            className="h-4 w-4"
+                                        />
+                                        <span>Same address for all items?</span>
+                                    </label>
+                                </div>
+                            </th>
                         </tr>
                     </thead>
                     <tbody>
@@ -249,96 +303,32 @@ export default function ClientOcfView({ ocf }: { ocf: Ocf }) {
                     </tbody>
                 </table>
 
-                <div className="mt-3 rounded-md border border-gray-200 bg-gray-50 px-4 py-3">
-                    <label className="flex items-center gap-2 text-sm text-gray-700">
-                        <input
-                            type="checkbox"
-                            checked={sameAddressForAllItems}
-                            onChange={(e) => handleToggleSameAddress(e.target.checked)}
-                            disabled={isLocked || items.length === 0}
-                            className="h-4 w-4"
-                        />
-                        <span>All items use the same delivery information?</span>
-                    </label>
-                    <p className="mt-1 text-xs text-gray-500">
-                        If checked, the first item&apos;s name, address, contact number, and remarks will be applied
-                        to all items.
-                    </p>
-                </div>
 
                 <table className="mt-4 w-full border border-black text-sm">
                     <tbody>
                         <tr className="border-b border-black">
-                            <td className="w-56 border-r border-black bg-[#eef2ff] px-3 py-2 font-semibold">
-                                Client&apos;s Company Name:
-                            </td>
-                            <td className="px-3 py-2">
-                                <input
-                                    value={company}
-                                    onChange={(e) => setCompany(e.target.value)}
-                                    disabled={isLocked}
-                                    className="w-full rounded border border-gray-300 px-3 py-2 disabled:bg-gray-100"
-                                />
-                            </td>
-                        </tr>
-
-                        <tr className="border-b border-black">
                             <td className="border-r border-black bg-[#eef2ff] px-3 py-2 font-semibold">
-                                Recipient Name:
-                            </td>
-                            <td className="px-3 py-2">
-                                <input
-                                    value={recipientName}
-                                    onChange={(e) => setRecipientName(e.target.value)}
-                                    disabled={isLocked}
-                                    className="w-full rounded border border-gray-300 px-3 py-2 disabled:bg-gray-100"
-                                />
-                            </td>
-                        </tr>
-
-                        <tr className="border-b border-black">
-                            <td className="border-r border-black bg-[#eef2ff] px-3 py-2 font-semibold">
-                                Estimated Delivery:
+                                Estimated Delivery Date:
                             </td>
                             <td className="px-3 py-2">
                                 <div className="space-y-z">
                                     <textarea
                                         value={ocf.estimated_delivery_notes || ""}
                                         disabled
-                                        rows={4}
+                                        rows={10}
                                         className="w-full whitespace-prewrap rounded border border-gray-300 bg-gray-100 px-3 py-2 text-gray-700"
                                     />
                                 </div>
                             </td>
                         </tr>
-
-                        <tr className="border-b border-black">
-                            <td className="border-r border-black bg-[#eef2ff] px-3 py-2 font-semibold">
-                                Restricted Area?
-                            </td>
-                            <td className="px-3 py-2">
-                                <select
-                                    value={restrictedArea}
-                                    onChange={(e) => setRestrictedArea(e.target.value)}
-                                    disabled={isLocked}
-                                    className="w-full rounded border border-gray-300 px-3 py-2 disabled:bg-gray-100"
-                                >
-                                    <option value="No">No</option>
-                                    <option value="Yes, additional fees apply. Please check with salesperson.">
-                                        Yes, additional fees apply. Please check with salesperson.
-                                    </option>
-                                </select>
-                            </td>
-                        </tr>
-
-                        <tr className="border-b border-black">
-                            <td className="border-r border-black bg-[#eef2ff] px-3 py-2 font-semibold">
-                                Important Notes:
-                            </td>
-                            <td className="px-3 py-2 whitespace-pre-wrap">{importantNotes}</td>
-                        </tr>
                     </tbody>
                 </table>
+
+                <div className="mt-10 break-before-page print:break-before-page max-w-5xl">
+                    <span className="flex bg-[#eef2ff] px-1 rounded-sm py-3 text-black items-center justify-center text-[15px]">𝐈𝐦𝐩𝐨𝐫𝐭𝐚𝐧𝐭 𝐧𝐨𝐭𝐞𝐬, 𝐩𝐥𝐞𝐚𝐬𝐞 𝐫𝐞𝐚𝐝 𝐜𝐚𝐫𝐞𝐟𝐮𝐥𝐥𝐲: </span>
+
+                    <span className="px-3 py-2 whitespace-pre-wrap text-[13px]">{importantNotes}</span>
+                </div>
 
                 <div className="mt-6">
                     {isLocked ? (
@@ -361,9 +351,7 @@ export default function ClientOcfView({ ocf }: { ocf: Ocf }) {
                             ocfId={ocf.id}
                             clientToken={ocf.client_token}
                             company={company}
-                            recipientName={recipientName}
                             items={items}
-                            restrictedArea={restrictedArea}
                             sameAddressForAllItems={sameAddressForAllItems}
                         />
                     )}

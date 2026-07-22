@@ -6,8 +6,6 @@ type Props = {
     ocfId: string;
     clientToken: string;
     company: string;
-    recipientName: string;
-    restrictedArea: string;
     sameAddressForAllItems: boolean;
     items: {
         id: string;
@@ -24,8 +22,6 @@ export default function SignatureForm({
     ocfId,
     clientToken,
     company,
-    recipientName,
-    restrictedArea,
     sameAddressForAllItems,
     items,
 }: Props) {
@@ -220,8 +216,6 @@ export default function SignatureForm({
                     signatureMode,
                     typedInitials: typedInitials.trim() || null,
                     company,
-                    recipientName,
-                    restrictedArea,
                     sameAddressForAllItems,
                     items,
                 }),

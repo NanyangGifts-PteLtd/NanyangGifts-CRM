@@ -273,7 +273,7 @@ export function GenerateOcfModal({
                                         placeholder="Terms and conditions"
                                     />
                                     <label className="mb-1 block text-xs font-medium text-gray-700">
-                                        Estimated delivery:
+                                        Estimated delivery date:
                                     </label>
                                     <textarea
                                         value={estimatedDeliveryNotes}
