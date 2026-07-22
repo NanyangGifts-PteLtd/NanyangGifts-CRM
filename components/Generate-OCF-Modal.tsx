@@ -22,6 +22,8 @@ type GenerateOcfModalProps = {
     client: Client | null;
     onClose: () => void;
     onCreated?: (result: { ocfId: string; internalUrl: string; clientUrl: string }) => void;
+
+
 };
 function toLeadTimeNumber(value: string | number | null | undefined) {
     const num = Number(value);

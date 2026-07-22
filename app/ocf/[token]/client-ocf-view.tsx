@@ -222,7 +222,7 @@ function updateItemField(
                                             checked={sameAddressForAllItems}
                                             onChange={(e) => handleToggleSameAddress(e.target.checked)}
                                             disabled={isLocked || items.length === 0}
-                                            className="h-4 w-4"
+                                            className="h-4 w-4 accent-[#7BCBD5]"
                                         />
                                         <span>Same address for all items?</span>
                                     </label>

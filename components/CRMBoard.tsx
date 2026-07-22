@@ -978,7 +978,7 @@ export function CRMBoard({ clients, expandedIds, setExpandedIds, setClients, rel
                   <button
                     type="button"
                     onClick={() => setShowAddColModal('client')}
-                    className="mx-auto flex h-5 w-5 items-center justify-center rounded-md text-teal-500 hover:bg-teal-100 hover:text-teal-500"
+                    className="mx-auto flex h-5 w-5 items-center justify-center rounded-md text-teal-500 hover:bg-teal-100 hover:text-black"
                     title="Add client column"
                   >
                     <Plus size={14} />
