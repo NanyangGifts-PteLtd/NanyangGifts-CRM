@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { X } from "lucide-react";
 import { Client, Subitem } from "@/app/types";
 
@@ -65,7 +65,6 @@ export function GenerateOcfModal({
 }: GenerateOcfModalProps) {
     const [awardedSubitems, setAwardedSubitems] = useState<AwardedSubitem[]>([]);
     const [rows, setRows] = useState<UploadRow[]>([]);
-    const [importantNotes, setImportantNotes] = useState("");
     const [estimatedDeliveryDate, setEstimatedDeliveryDate] = useState("");
     const [estimatedDeliveryNotes, setEstimatedDeliveryNotes] = useState("");
     const [loadingItems, setLoadingItems] = useState(false);
@@ -73,6 +72,7 @@ export function GenerateOcfModal({
     const [formError, setFormError] = useState<string | null>(null);
 
     const clientId = client?.id ?? null;
+
 
     useEffect(() => {
         if (!open || !client) return;
@@ -106,7 +106,6 @@ export function GenerateOcfModal({
             }))
         );
 
-        setImportantNotes("");
         setEstimatedDeliveryDate("");
         setEstimatedDeliveryNotes(buildEstimatedDeliveryNotes(mappedAwarded));
         setFormError(null);
@@ -197,7 +196,6 @@ export function GenerateOcfModal({
             const payload = {
                 clientId,
                 estimatedDeliveryDate: estimatedDeliveryDate || null,
-                importantNotes: importantNotes || "",
                 estimatedDeliveryNotes: estimatedDeliveryNotes || "",
                 itemUploads: rows.map((row) => ({
                     subitemId: row.subitemId,
@@ -264,16 +262,7 @@ export function GenerateOcfModal({
                         <>
                             <div className="mb-5 grid grid-cols-1 gap-1 md:grid-cols-1">
                                 <div>
-                                    <label className="mb-1 block text-xs font-medium text-gray-700">
-                                        Important notes
-                                    </label>
-                                    <textarea
-                                        value={importantNotes}
-                                        onChange={(e) => setImportantNotes(e.target.value)}
-                                        rows={4}
-                                        className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-[#7BCBD5]"
-                                        placeholder="Terms and conditions"
-                                    />
+                                    
                                     <label className="mb-1 block text-xs font-medium text-gray-700">
                                         Estimated delivery date:
                                     </label>

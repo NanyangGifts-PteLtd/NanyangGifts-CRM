@@ -125,13 +125,13 @@ export default function SupplierGrid({ rows }: { rows: SupplierRow[] }) {
                                     <td className="border border-slate-300 px-3 py-2 text-center whitespace-nowrap">
                                         {display(row.qty)}
                                     </td>
-                                    <td className="border border-slate-300 bg-[#fff9a8] px-3 py-2 text-center whitespace-nowrap">
+                                    <td className="border border-slate-300 px-3 py-2 text-center whitespace-nowrap">
                                         {display(row.up)}
                                     </td>
                                     <td className="border border-slate-300 px-3 py-2 text-center whitespace-nowrap">
                                         {display(row.price)}
                                     </td>
-                                    <td className="border border-slate-300 bg-[#fff9a8] px-3 py-2 text-center whitespace-nowrap">
+                                    <td className="border border-slate-300 px-3 py-2 text-center whitespace-nowrap">
                                         {display(row.tc_sgd)}
                                     </td>
                                     <td className="border border-slate-300 px-3 py-2 text-center whitespace-nowrap">
