@@ -23,10 +23,49 @@ function display(value: unknown) {
 export default function SupplierGrid({ rows }: { rows: SupplierRow[] }) {
     return (
         <div className="w-full">
-            <div className="overflow-x-auto rounded-md border border-slate-300 bg-[#346beb] shadow-sm">
+            <div className="rounded-md border border-slate-300 bg-white shadow-sm">
                 <table className="min-w-[1800px] border-collapse text-[15px] text-white">
                     <thead>
                         <tr>
+                            <th className="sticky top-0 z-20 border border-slate-400 bg-[#ffffff] text-black px-3 py-2 text-center font-serif whitespace-nowrap">
+                                序号
+                            </th>
+                            <th className="sticky top-0 z-20 border border-slate-400 bg-[#ffffff] text-black px-3 py-2 text-center font-serif whitespace-nowrap">
+                                运单日期
+                            </th>
+                            <th className="sticky top-0 z-20 border border-slate-400 bg-[#fffffff] text-black px-3 py-2 text-center font-serif whitespace-nowrap">
+                                运单号码
+                            </th>
+                            <th className="sticky top-0 z-20 border border-slate-400 bg-[#fffffff] text-black px-3 py-2 text-center font-serif whitespace-nowrap">
+                                件数
+                            </th>
+                            <th className="sticky top-0 z-20 border border-slate-400 bg-[#fffffff] text-black px-3 py-2 text-center font-serif whitespace-nowrap">
+                                计费重量（KG）
+                            </th>
+                            <th className="sticky top-0 z-20 border border-slate-400 bg-[#fffffff] text-black px-3 py-2 text-center font-serif whitespace-nowrap">
+                                目的地
+                            </th>
+                            <th className="sticky top-0 z-20 border border-slate-400 bg-[#fffffff] text-black px-3 py-2 text-center font-serif whitespace-nowrap">
+                                单价
+                            </th>
+                            <th className="sticky top-0 z-20 border border-slate-400 bg-[#fffffff] text-black px-3 py-2 text-center font-serif whitespace-nowrap">
+                                运费
+                            </th>
+                            <th className="sticky top-0 z-20 border border-slate-400 bg-[#fffffff] text-black px-3 py-2 text-center font-serif whitespace-nowrap">
+                                消费税
+                            </th>
+                            <th className="sticky top-0 z-20 border border-slate-400 bg-[#fffffff] text-black px-3 py-2 text-center font-serif whitespace-nowrap">
+                                其他费用
+                            </th>
+                            <th className="sticky top-0 z-20 border border-slate-400 bg-[#fffffff] text-black px-3 py-2 text-center font-serif whitespace-nowrap">
+                                总计费用
+                            </th>
+                            <th className="sticky top-0 z-20 border border-slate-400 bg-[#fffffff] text-black px-3 py-2 text-center font-serif whitespace-nowrap">
+                                渠道
+                            </th>
+                            <th className="sticky top-0 z-20 border border-slate-400 bg-[#fffffff] text-black px-3 py-2 text-center font-serif whitespace-nowrap">
+                                备注
+                            </th>
                             <th className="sticky top-0 z-20 border border-slate-400 bg-[#4588ed] px-3 py-2 text-center font-serif whitespace-nowrap">
                                 谁下单
                                 <br />

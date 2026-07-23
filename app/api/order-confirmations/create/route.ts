@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { DEFAULT_IMPORTANT_NOTES } from "@/components/Important-Notes";
 
 type CreateOcfBody = {
     clientId: string;
-    importantNotes?: string | null;
     estimatedDeliveryNotes?: string | null;
     itemUploads: Array<{
         subitemId: string;
@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
         }
 
         const body = (await req.json()) as CreateOcfBody;
-        const { clientId, importantNotes, estimatedDeliveryNotes, itemUploads } = body;
+        const { clientId, estimatedDeliveryNotes, itemUploads } = body;
 
         if (!clientId) {
             return NextResponse.json({ error: "Missing clientId" }, { status: 400 });
@@ -78,10 +78,20 @@ export async function POST(req: NextRequest) {
             );
         }
 
+        const { data: importantNotesSetting, error: importantNotesError } = await supabase
+            .from("app_settings")
+            .select("value")
+            .eq("key", "ocf_important_notes")
+            .maybeSingle();
+
+        if (importantNotesError) {
+            return NextResponse.json({ error: importantNotesError.message }, { status: 500 });
+        }
+
+        const importantNotes = importantNotesSetting?.value?.trim() || DEFAULT_IMPORTANT_NOTES;
+
         const assignees =
-            client.client_assignees
-                ?.map((row: any) => row.profiles)
-                .filter(Boolean) ?? [];
+            client.client_assignees?.map((row: any) => row.profiles).filter(Boolean) ?? [];
 
         const defaultSalesperson =
             assignees.find((a: any) => a.id === user.id) ?? assignees[0] ?? null;
@@ -119,7 +129,7 @@ export async function POST(req: NextRequest) {
                 salesperson_email: defaultSalesperson?.email ?? "",
                 salesperson_contact_number: defaultSalesperson?.contact_number ?? "",
                 estimated_delivery_notes: estimatedDeliveryNotes ?? null,
-                important_notes: importantNotes ?? "",
+                important_notes: importantNotes,
                 status: "draft",
             })
             .select()
@@ -140,6 +150,7 @@ export async function POST(req: NextRequest) {
             remarks: item.description,
             image_path: uploadMap.get(item.id) ?? null,
         }));
+
         const internalUrl = `/app/order-confirmations/${ocf.id}`;
         const clientUrl = `/ocf/${ocf.client_token}`;
 
@@ -147,7 +158,7 @@ export async function POST(req: NextRequest) {
             .from("activity_log")
             .insert({
                 client_id: client.id,
-                actor_name: defaultSalesperson.email,
+                actor_name: defaultSalesperson?.email ?? user.email ?? "Unknown user",
                 action: "ocf_created",
                 title: "Order Confirmation Form created",
                 description: `OCF generated for ${client.name ?? "client"}`,
@@ -167,6 +178,7 @@ export async function POST(req: NextRequest) {
                 { status: 500 }
             );
         }
+
         const { error: itemsError } = await supabase
             .from("order_confirmation_items")
             .insert(itemRows);
@@ -183,8 +195,8 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({
             ok: true,
             ocfId: ocf.id,
-            internalUrl: `/app/order-confirmations/${ocf.id}`,
-            clientUrl: `/ocf/${ocf.client_token}`,
+            internalUrl,
+            clientUrl,
         });
     } catch (error: any) {
         return NextResponse.json(

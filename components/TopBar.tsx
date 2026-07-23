@@ -1,19 +1,11 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import {
-  Bell,
-  Settings,
-  Search,
-  ChevronDown,
-  Info,
-  AlertTriangle,
-  CheckCircle,
-  XCircle,
-} from 'lucide-react';
+import { Bell, Settings, Search, ChevronDown, Info, AlertTriangle, CheckCircle, XCircle } from 'lucide-react';
 import { Notification } from '../app/types';
 import { LogoutButton } from './logout-button';
 import type { User } from '@supabase/supabase-js';
+import OcfConfigurationSettingsModal from "@/components/OcfConfigurationSettingsModal"
 
 interface TopBarProps {
   value?: string;
@@ -23,6 +15,7 @@ interface TopBarProps {
   onMarkRead?: (id: string) => void;
   onMarkAllRead: () => void;
   user: User | null;
+  currentUserRole: string | null;
 }
 
 interface SearchBarProps {
@@ -67,19 +60,22 @@ export const SearchBar: React.FC<SearchBarProps> = ({
 };
 
 export default function TopBar({
-  value='',
-  onChange= () => {},
+  value = '',
+  onChange = () => { },
   placeholder = 'Search clients, items, people...',
-  notifications=[],
-  onMarkRead = () => {},
-  onMarkAllRead = () => {},
+  notifications = [],
+  onMarkRead = () => { },
+  onMarkAllRead = () => { },
   user,
+  currentUserRole
 }: TopBarProps) {
   const [showNotifs, setShowNotifs] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const notifsRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
+  const settingsRef = useRef<HTMLDivElement>(null);
+  const [showOcfSettings, setShowOcfSettings] = useState(false);
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
@@ -94,6 +90,7 @@ export default function TopBar({
   const initial =
     displayName?.trim()?.charAt(0)?.toUpperCase() || 'U';
 
+
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (notifsRef.current && !notifsRef.current.contains(e.target as Node)) {
@@ -101,6 +98,9 @@ export default function TopBar({
       }
       if (profileRef.current && !profileRef.current.contains(e.target as Node)) {
         setShowProfile(false);
+      }
+      if (settingsRef.current && !settingsRef.current.contains(e.target as Node)) {
+        setShowSettings(false);
       }
     };
     document.addEventListener('mousedown', handler);
@@ -151,9 +151,8 @@ export default function TopBar({
                   <button
                     key={n.id}
                     onClick={() => onMarkRead(n.id)}
-                    className={`w-full text-left px-4 py-3 border-b border-gray-50 hover:bg-gray-50 transition-colors flex gap-2.5 items-start ${
-                      !n.read ? 'bg-blue-50/50' : ''
-                    }`}
+                    className={`w-full text-left px-4 py-3 border-b border-gray-50 hover:bg-gray-50 transition-colors flex gap-2.5 items-start ${!n.read ? 'bg-blue-50/50' : ''
+                      }`}
                   >
                     <div className="mt-0.5 flex-shrink-0">{notifIcon(n.type)}</div>
                     <div className="flex-1 min-w-0">
@@ -169,7 +168,7 @@ export default function TopBar({
         )}
       </div>
 
-      <div className="relative">
+      <div ref={settingsRef} className="relative">
         <button
           onClick={() => {
             setShowSettings(!showSettings);
@@ -181,18 +180,31 @@ export default function TopBar({
           <Settings size={16} />
         </button>
         {showSettings && (
-          <div className="absolute right-0 top-full mt-1 w-56 bg-white font-semibold rounded-lg shadow-2xl border border-gray-200 z-50 overflow-hidden">
+          <div className="absolute right-0 top-full mt-1 w-64 bg-white font-semibold rounded-lg shadow-2xl border border-gray-200 z-50 overflow-hidden">
             <div className="px-4 py-2 bg-gray-50 border-b">
               <span className="text-xs font-semibold text-gray-700">Settings</span>
             </div>
-            {['General', 'Permissions', 'Notifications'].map(item => (
-              <button
-                key={item}
-                className="w-full text-left px-4 py-3 text-xs text-gray-700 hover:bg-gray-50 border-b border-gray-50"
-              >
-                {item}
-              </button>
-            ))}
+
+            <div className="px-2 py-2">
+              <p className="px-2 pb-1 text-[11px] uppercase tracking-wide text-gray-400">General</p>
+
+              {currentUserRole === "director" || "dev" ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowSettings(false);
+                    setShowOcfSettings(true);
+                  }}
+                  className="w-full rounded-md px-3 py-2 text-left text-xs text-gray-700 hover:bg-gray-50"
+                >
+                  Configure OCF
+                </button>
+              ) : (
+                <div className="px-3 py-2 text-xs text-gray-400">
+
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>
@@ -237,6 +249,12 @@ export default function TopBar({
           </div>
         )}
       </div>
+      <OcfConfigurationSettingsModal
+  open={showOcfSettings}
+  onClose={() => setShowOcfSettings(false)}
+  currentUserRole={currentUserRole}
+/>
     </div>
+    
   );
 }
