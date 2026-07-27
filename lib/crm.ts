@@ -428,7 +428,7 @@ export async function fetchClientsWithSubitems() {
         )
     )
     `)
-        .order('date_created', { ascending: false });
+        .order('date_created', { ascending: true });
 
     if (clientsError) {
         console.error('fetchClientsWithSubitems clients error:', clientsError);
