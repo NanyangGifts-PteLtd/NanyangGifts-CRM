@@ -215,7 +215,7 @@ export async function POST(req: NextRequest) {
         }
 
         const { error: assigneeInsertError } = await supabase
-            .from("clients_assignees")
+            .from("client_assignees")
             .insert({
                 client_id: client.id,
                 user_id: nextAssignee.user_id,
