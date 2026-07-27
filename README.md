@@ -1,5 +1,5 @@
 
-# NanyangGifts CRM Web app
+# [NanyangGifts CRM Web App](https://nanyanggifts.vercel.app)
 
 A custom CRM and operations workspace built with Next.js, React, TypeScript, Supabase, and modern component-driven UI patterns. The app is designed around a grouped board workflow similar to Monday.com, with client rows, nested subitems, assignments, activity tracking, document generation, and external collaboration flows for clients and suppliers.
 
@@ -21,8 +21,16 @@ A custom CRM and operations workspace built with Next.js, React, TypeScript, Sup
 - Follow-up date handling for timing-sensitive pipeline management.
 - Option management for status fields
 
-### Drag and drop function
-- For moving clients from group to group (and auto-changing of status according to the group name)
+### One source of truth: Project Manager and Sales Staff use 1 board 
+- Sales staff can access the subitem markup, qty, etc. columns while Project Managers can click on a payment icon to switch to their relevant columns and input the necessary information, or click on the timeline icon for tracking project timeline
+- Sales staff can select subitem(s) to view total price, total cost, total markup without scrolling to the right  
+
+
+
+### Drag and drop clients to move them to different groups
+- Status auto-changes if there is a group with the same name that exists
+<img width="800" height="250" alt="Screen Recording 2026-07-27 172146" src="https://github.com/user-attachments/assets/228bbf4c-6ac8-41e9-8c21-b1e0222e29c8" />
+
 
 ### Collaboration and assignments
 
@@ -40,8 +48,9 @@ A custom CRM and operations workspace built with Next.js, React, TypeScript, Sup
 
 - Generate Estimate workflow integrated with QuickBooks-oriented logic and external accounting considerations. Change 'Local/Overseas?' status to Oversas to apply Out of Scope tax, change to Local to apply SR 9% GST for the specific subitem.
 - Generate Order Confirmation Form workflow with a dedicated modal, internal page, and public client-facing signing/review flow.
-- OCF flow designed with editable internal fields, public tokenized sharing, and client-side review/signoff behavior.
+- Order Confirmation Form flow designed with editable internal fields, public tokenized sharing, and client-side review/signoff behavior.
 - Order confirmation form configuration settings page only visible to director to edit 'Important Notes' section of form
+
 
 ### Client collaboration
 
