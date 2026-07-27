@@ -3,8 +3,6 @@
 
 A custom CRM and operations workspace built with Next.js, React, TypeScript, Supabase, and modern component-driven UI patterns. The app is designed around a grouped board workflow similar to Monday.com, with client rows, nested subitems, assignments, activity tracking, document generation, and external collaboration flows for clients and suppliers.
 
-<img width="1888" height="971" alt="Screenshot 2026-07-27 175357" src="https://github.com/user-attachments/assets/76685da8-06c6-460c-b927-7d5783911dc4" />
-
 ## Core Features
 
 ### Board-based CRM
