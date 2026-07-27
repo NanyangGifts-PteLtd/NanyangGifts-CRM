@@ -21,6 +21,9 @@ A custom CRM and operations workspace built with Next.js, React, TypeScript, Sup
 - Follow-up date handling for timing-sensitive pipeline management.
 - Option management for status fields
 
+### Drag and drop function
+- For moving clients from group to group (and auto-changing of status according to the group name)
+
 ### Collaboration and assignments
 
 - Multi-user assignee support at both the client and subitem levels.
@@ -33,13 +36,14 @@ A custom CRM and operations workspace built with Next.js, React, TypeScript, Sup
 - Tracking for field updates, subitem creation, subitem deletion, and nested item changes.
 - Internal audit trail design to show who changed what and when across client records.
 
-### Document generation
+### Generate estimate in Quickbooks, generate Order Confirmation Form for internal view & client view 
 
-- Generate Estimate workflow integrated with QuickBooks-oriented logic and external accounting considerations.
+- Generate Estimate workflow integrated with QuickBooks-oriented logic and external accounting considerations. Change 'Local/Overseas?' status to Oversas to apply Out of Scope tax, change to Local to apply SR 9% GST for the specific subitem.
 - Generate Order Confirmation Form workflow with a dedicated modal, internal page, and public client-facing signing/review flow.
 - OCF flow designed with editable internal fields, public tokenized sharing, and client-side review/signoff behavior.
+- Order confirmation form configuration settings page only visible to director to edit 'Important Notes' section of form
 
-### External collaboration
+### Client collaboration
 
 - Public client-facing OCF page accessible through a tokenized link rather than requiring standard app authentication.
 - Shipper-facing site/view for Project Managers: a table-based external workflow for selected subitem data (when Project Manager clicks 'Push' button for selected subitem, shipper site syncs data.
