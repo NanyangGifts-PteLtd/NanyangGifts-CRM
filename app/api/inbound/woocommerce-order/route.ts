@@ -74,6 +74,14 @@ function normalizeItem(item: IncomingSubitem) {
     };
 }
 
+function todayForInput() {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const day = String(now.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+}
+
 function buildActivityLogEntry(payload: IncomingPayload, assignedUserId?: string) {
     return {
         type: "inbound_webhook",
@@ -127,8 +135,8 @@ export async function POST(req: NextRequest) {
         const billingAddress = asText(body.billingAddress);
         const orderTotal = asNumberString(body.orderTotal, "");
         const subitems = normalizeSubitems(body.subitems);
-        const today = new Date().toLocaleDateString('en-SG');
-        const followUp = addDays(today, 3);
+        const dateCreated = todayForInput();
+        const followUp = addDays(dateCreated, 3);
 
         if (!externalId) {
             return NextResponse.json({ error: "Missing externalId" }, { status: 400 });
@@ -213,7 +221,7 @@ export async function POST(req: NextRequest) {
             total_price: orderTotal,
             company_address: companyAddress,
             billing_address: billingAddress,
-            date_created: today,
+            date_created: dateCreated,
             expanded: false,
             color: "#7BCBD5",
             activity_log: [
