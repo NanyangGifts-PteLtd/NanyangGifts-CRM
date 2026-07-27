@@ -49,8 +49,11 @@ A custom CRM and operations workspace built with Next.js, React, TypeScript, Sup
 
 - Generate Estimate workflow integrated with QuickBooks-oriented logic and external accounting considerations. Change 'Local/Overseas?' status to Oversas to apply Out of Scope tax, change to Local to apply SR 9% GST for the specific subitem.
 - Generate Order Confirmation Form workflow with a dedicated modal, internal page, and public client-facing signing/review flow.
-- OCF flow designed with editable internal fields, public tokenized sharing, and client-side review/signoff behavior.
+- Order Confirmation Form flow designed with editable internal fields, public tokenized sharing, and client-side review/signoff behavior.
 - Order confirmation form configuration settings page only visible to director to edit 'Important Notes' section of form
+
+<img width="462" height="102" alt="Screenshot 2026-07-27 175512" src="https://github.com/user-attachments/assets/9cc601f7-11eb-4888-adaa-ca2042ac4bc1" />
+<img width="945" height="812" alt="Screenshot 2026-07-27 175614" src="https://github.com/user-attachments/assets/3729f621-9272-4ca0-ab1f-c62aaf397b86" />
 
 ### Client collaboration
 
