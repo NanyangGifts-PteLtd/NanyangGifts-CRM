@@ -29,7 +29,7 @@ A custom CRM and operations workspace built with Next.js, React, TypeScript, Sup
 
 ### Drag and drop function
 - For moving clients from group to group (and auto-changing of status according to the group name)
-<img width="800" height="350" alt="Screen Recording 2026-07-27 172146" src="https://github.com/user-attachments/assets/228bbf4c-6ac8-41e9-8c21-b1e0222e29c8" />
+<img width="800" height="250" alt="Screen Recording 2026-07-27 172146" src="https://github.com/user-attachments/assets/228bbf4c-6ac8-41e9-8c21-b1e0222e29c8" />
 
 
 ### Collaboration and assignments
