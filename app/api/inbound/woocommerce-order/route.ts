@@ -166,7 +166,7 @@ export async function POST(req: NextRequest) {
         const clientInsert = {
             name: customerName || companyName || "New Lead",
             people: "",
-            reply_status: "",
+            reply_status: "Waiting...",
             follow_up: "",
             status: "New Lead",
             channel: "E-comm",

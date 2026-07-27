@@ -30,22 +30,47 @@ function asNumberString(value: unknown, fallback = "") {
     return Number.isFinite(n) ? String(n) : fallback;
 }
 
-function formatDateText(value: unknown, fallback = "") {
+function formatDateForInput(value: unknown, fallback = "") {
     if (!value) return fallback;
 
     const date = value instanceof Date ? value : new Date(String(value));
     if (Number.isNaN(date.getTime())) return fallback;
 
-    return date.toLocaleDateString("en-SG");
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
 }
 
-function buildActivityLogEntry(payload: IncomingPayload) {
+function addDays(dateString: string, days: number) {
+    if (!dateString) return "";
+    const date = new Date(`${dateString}T00:00:00`);
+    if (Number.isNaN(date.getTime())) return "";
+
+    date.setDate(date.getDate() + days);
+
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+}
+
+function todayForInput() {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const day = String(now.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+}
+
+function buildActivityLogEntry(payload: IncomingPayload, assignedUserId?: string) {
     return {
         type: "inbound_webhook",
         source: payload.source ?? "wordpress-zapier",
         submissionType: payload.submissionType ?? "wpforms_order",
         externalId: payload.externalId ?? "",
         createdAt: new Date().toISOString(),
+        assignedUserId: assignedUserId ?? null,
         message: "Lead created from WordPress/WPForms via Zapier",
     };
 }
@@ -75,8 +100,9 @@ export async function POST(req: NextRequest) {
         const phone = asText(body.phone);
         const notes = asText(body.notes);
         const qty = asNumberString(body.qty, "");
-        const today = new Date().toLocaleDateString("en-SG");
-        const nbd = formatDateText(body.nbd, "");
+        const dateCreated = todayForInput();
+        const nbd = formatDateForInput(body.nbd, "");
+        const followUp = addDays(dateCreated, 3);
 
         if (!externalId) {
             return NextResponse.json({ error: "Missing externalId" }, { status: 400 });
@@ -126,11 +152,21 @@ export async function POST(req: NextRequest) {
             );
         }
 
+        const { data: nextAssigneeRows, error: assigneeError } = await supabase.rpc(
+            "get_next_sales_assignee"
+        );
+
+        if (assigneeError) {
+            return NextResponse.json({ error: assigneeError.message }, { status: 500 });
+        }
+
+        const nextAssignee = nextAssigneeRows?.[0] ?? null;
+
         const clientInsert = {
             name: customerName || companyName || "New Lead",
-            people: "",
-            reply_status: "",
-            follow_up: "",
+            people: nextAssignee?.user_id ?? "",
+            reply_status: "Waiting...",
+            follow_up: followUp,
             status: "New Lead",
             channel: "Forms",
             importance: "",
@@ -138,20 +174,22 @@ export async function POST(req: NextRequest) {
             email,
             phone,
             requirements: notes,
-            nbd: externalId,
+            nbd: nbd || externalId,
             total_price: "",
             company_address: "",
             billing_address: "",
-            date_created: today,
+            date_created: dateCreated,
             expanded: false,
             color: "#7BCBD5",
-            activity_log: [buildActivityLogEntry(body)],
+            activity_log: [buildActivityLogEntry(body, nextAssignee?.user_id)],
             group_id: newLeadGroup.id,
             custom_fields: {
                 source: body.source ?? "wordpress-zapier",
                 submissionType: body.submissionType ?? "wpforms_order",
+                external_id: externalId,
                 qty,
                 requested_nbd: nbd,
+                assigned_sales_user_id: nextAssignee?.user_id ?? null,
                 raw: body.raw ?? null,
             },
         };
@@ -169,6 +207,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({
             ok: true,
             clientId: client.id,
+            assignedUserId: nextAssignee?.user_id ?? null,
             message: "WPForms lead created successfully",
         });
     } catch (error: any) {
