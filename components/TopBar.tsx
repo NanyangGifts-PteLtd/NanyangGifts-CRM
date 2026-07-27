@@ -7,6 +7,7 @@ import { LogoutButton } from './logout-button';
 import type { User } from '@supabase/supabase-js';
 import OcfConfigurationSettingsModal from "@/components/OcfConfigurationSettingsModal"
 import { gradientForId } from './ui/assignee-multiselect';
+import ChangePasswordModal from './Change-Password-Modal';
 
 interface TopBarProps {
   value?: string;
@@ -77,6 +78,7 @@ export default function TopBar({
   const profileRef = useRef<HTMLDivElement>(null);
   const settingsRef = useRef<HTMLDivElement>(null);
   const [showOcfSettings, setShowOcfSettings] = useState(false);
+  const [showChangePassword, setShowChangePassword] = useState(false);
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
@@ -198,7 +200,7 @@ export default function TopBar({
                   }}
                   className="w-full rounded-md px-3 py-2 text-left text-xs text-gray-700 hover:bg-gray-50"
                 >
-                  Configure OCF
+                  OCF Configuration
                 </button>
               ) : (
                 <div className="px-3 py-2 text-xs text-gray-400">
@@ -220,7 +222,7 @@ export default function TopBar({
           className="flex text-black hover:text-white items-center gap-1.5 px-2 py-1.5 rounded-md hover:bg-[#a0e2eb] transition-colors transition transform active:scale-95 duration-150"
         >
           <div className="w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-semibold"
-              style={{ background: user?.id ? gradientForId(user.id) :  'linear-gradient(150deg, #76d8f8, #753eff)'}}>
+            style={{ background: user?.id ? gradientForId(user.id) : 'linear-gradient(150deg, #76d8f8, #753eff)' }}>
             {initial}
           </div>
           <span className="font-semibold text-xs hidden lg:block truncate max-w-28">
@@ -236,14 +238,14 @@ export default function TopBar({
               <p className="text-xs text-gray-500 mt-0.5 truncate">Online</p>
             </div>
 
-            {['My Profile', 'Account Settings', 'My Notifications'].map(item => (
-              <button
-                key={item}
-                className="w-full text-left px-4 py-2 text-xs hover:bg-[#e7fdff] text-gray-700"
-              >
-                {item}
-              </button>
-            ))}
+
+            <button
+              key="Account Settings"
+              onClick={() => { setShowProfile(false); setShowChangePassword(true); }}
+              className="w-full text-left px-4 py-2 text-xs hover:bg-[#e7fdff] text-gray-700"
+            >
+              Account Settings
+            </button>
 
             <div className="text-left">
               <LogoutButton className="w-full justify-start px-4 py-2 text-xs bg-white hover:bg-[#e7fdff] text-red-500" />
@@ -252,11 +254,15 @@ export default function TopBar({
         )}
       </div>
       <OcfConfigurationSettingsModal
-  open={showOcfSettings}
-  onClose={() => setShowOcfSettings(false)}
-  currentUserRole={currentUserRole}
-/>
+        open={showOcfSettings}
+        onClose={() => setShowOcfSettings(false)}
+        currentUserRole={currentUserRole}
+      />
+      <ChangePasswordModal
+        open={showChangePassword}
+        onClose={() => setShowChangePassword(false)}
+      />
     </div>
-    
+
   );
 }
