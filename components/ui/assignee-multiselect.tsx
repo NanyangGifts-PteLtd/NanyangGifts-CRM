@@ -11,12 +11,12 @@ type Props = {
 };
 
 const GRADIENTS = [
-    'linear-gradient(150deg, #7ae9f0, #ff4dac)',
-    'linear-gradient(150deg, #ffb0d6, #7bdeff)',
-    'linear-gradient(150deg, #d874ff, #caffd4)',
-    'linear-gradient(150deg, #ccffcc, #3c93db)',
+    'linear-gradient(150deg, #7ae9f0, #ff95cd)',
+    'linear-gradient(150deg, #f2ffb0, #ff7b7b)',
+    'linear-gradient(150deg, #74a2ff, #caffd4)',
+    'linear-gradient(150deg, #ccffcc, #51aaf3)',
     'linear-gradient(150deg, #f9a8d4, #818cf8)',
-    'linear-gradient(150deg, #923eff, rgb(151, 177, 255))',
+    'linear-gradient(150deg, #cba3ff, rgb(151, 177, 255))',
     'linear-gradient(150deg, #8985ce, #a13762)',
 ];
 
