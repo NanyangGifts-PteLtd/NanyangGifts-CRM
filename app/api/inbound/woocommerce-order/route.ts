@@ -85,6 +85,19 @@ function buildActivityLogEntry(payload: IncomingPayload) {
     };
 }
 
+function addDays(dateString: string, days: number) {
+    if (!dateString) return "";
+    const date = new Date(`${dateString}T00:00:00`);
+    if (Number.isNaN(date.getTime())) return "";
+
+    date.setDate(date.getDate() + days);
+
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+}
+
 export async function POST(req: NextRequest) {
     try {
         const authHeader = req.headers.get("authorization");
@@ -114,6 +127,7 @@ export async function POST(req: NextRequest) {
         const orderTotal = asNumberString(body.orderTotal, "");
         const subitems = normalizeSubitems(body.subitems);
         const today = new Date().toLocaleDateString('en-SG');
+        const followUp = addDays(today, 3);
 
         if (!externalId) {
             return NextResponse.json({ error: "Missing externalId" }, { status: 400 });
@@ -167,7 +181,7 @@ export async function POST(req: NextRequest) {
             name: customerName || companyName || "New Lead",
             people: "",
             reply_status: "Waiting...",
-            follow_up: "",
+            follow_up: followUp,
             status: "New Lead",
             channel: "E-comm",
             importance: "",
