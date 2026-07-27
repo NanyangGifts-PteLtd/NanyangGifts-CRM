@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useMemo, useState } from "react";
 import type { Profile, Subitem } from "../../app/types";
 import { Calendar, CreditCard, FileText, Package, Plus, Trash2 } from "lucide-react";
 import { StatusBadge } from "./statusbadge";

@@ -1,8 +1,8 @@
 // fetches clients with nested subitems
-// map db rows to client
-// map client/subitem updates back into db column names
+// maps db rows to client
+// maps client/subitem updates back into db column names
 // maps & fetches activity log
-// expose crud functions
+// exposes crud functions
 
 import { createClient } from '@/lib/supabase/client';
 import type { TimelineRow, Client, Subitem, ActivityEntry } from '@/app/types';

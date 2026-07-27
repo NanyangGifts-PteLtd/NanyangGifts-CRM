@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Mail, Search, Star, Trash2, Reply, Forward, RotateCcw, Send, Paperclip, ChevronLeft, Circle } from 'lucide-react';
 import { Email } from '../app/types';
 

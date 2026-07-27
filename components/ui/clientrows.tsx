@@ -513,7 +513,7 @@ export function ClientRow({
                         type="date"
                         value={toDateInputValue(client.followUp)}
                         onChange={(e) => onUpdate({ followUp: e.target.value })}
-                        className="text-xs border-none outline-none bg-transparent cursor-pointer w-full"
+                        className="text-xs px-1 border-none outline-none bg-transparent cursor-pointer w-full"
                     />
                 </div>
 
