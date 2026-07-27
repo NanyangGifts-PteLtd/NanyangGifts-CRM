@@ -49,10 +49,12 @@ function addOneDay(date: Date) {
 }
 
 function getColor(progress?: string) {
-    if (progress === "Done") return "#00C875";
-    if (progress === "Started") return "#24e2e8";
-    if (progress === "Pending") return "#bcbcf7";
-    if (progress === "Overdue") return "#d44858";
+    if (progress === "Done") return "#6cbaa2";
+    if (progress === "Started") return "#ff8e71";
+    if (progress === "Pending") return "#aba6dd";
+    if (progress === "Late") return "#aa0015";
+    if (progress === "Delivered") return "#0090c8";
+    if (progress === "Shipped out") return "#ff5ea1";
     return "#60a5fa";
 }
 
@@ -140,8 +142,8 @@ export default function GanttChart({ clients }: Props) {
                         zoom: 1,
                         lang: "en",
                         maxRecordsPerPage: 20,
-                        filterButtonState: 0,
-                        showThemeToggle: true,
+                        filterButtonState: -1,
+                        showThemeToggle: false,
                         showTooltip:false
                     }}
                 />

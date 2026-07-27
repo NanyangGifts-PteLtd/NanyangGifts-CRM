@@ -17,10 +17,10 @@ const GRADIENTS = [
     'linear-gradient(150deg, #ccffcc, #51aaf3)',
     'linear-gradient(150deg, #f9a8d4, #818cf8)',
     'linear-gradient(150deg, #cba3ff, rgb(151, 177, 255))',
-    'linear-gradient(150deg, #8985ce, #a13762)',
+    'linear-gradient(150deg, #59bdff, #7b64cc)',
 ];
 
-function gradientForId(id: string): string {
+export function gradientForId(id: string): string {
     let hash = 0;
     for (let i = 0; i < id.length; i++) {
         hash = (hash * 6 + id.charCodeAt(i)) >>> 0;

@@ -3,18 +3,11 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import {
-  LayoutGrid,
-  Mail,
-  BarChart2,
-  SquareChartGantt,
-  BotMessageSquare,
-  PackageSearch,
-} from 'lucide-react';
+import { LayoutGrid, Mail, BarChart2, SquareChartGantt, BotMessageSquare, PackageSearch } from 'lucide-react';
 import logo from "./logo.png";
 import Image from 'next/image';
 import type { User } from "@supabase/supabase-js";
-
+import { gradientForId } from './ui/assignee-multiselect';
 export type SidePanel =
   | 'crm'
   | 'emails'
@@ -140,9 +133,10 @@ export default function Sidebar({
         })}
       </nav>
 
-      <div className="p-2 border-t border-[#f2f8ff]">
-        <div className="flex items-center gap-2 px-2 py-2">
-          <div className="w-6 h-6 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center text-white text-xs font-semibold flex-shrink-0">
+      <div className="relative border-t border-[#f2f8ff]">
+        <div className="fixed bottom-0 flex items-center gap-2 px-2 py-2">
+          <div className="w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-semibold flex-shrink-0"
+          style={{ background: user?.id ? gradientForId(user.id) :  'linear-gradient(150deg, #76d8f8, #753eff)'  }}>
             {initial}
           </div>
           {!collapsed && (

@@ -6,6 +6,7 @@ import { Notification } from '../app/types';
 import { LogoutButton } from './logout-button';
 import type { User } from '@supabase/supabase-js';
 import OcfConfigurationSettingsModal from "@/components/OcfConfigurationSettingsModal"
+import { gradientForId } from './ui/assignee-multiselect';
 
 interface TopBarProps {
   value?: string;
@@ -218,7 +219,8 @@ export default function TopBar({
           }}
           className="flex text-black hover:text-white items-center gap-1.5 px-2 py-1.5 rounded-md hover:bg-[#a0e2eb] transition-colors transition transform active:scale-95 duration-150"
         >
-          <div className="w-6 h-6 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center text-white text-xs font-semibold">
+          <div className="w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-semibold"
+              style={{ background: user?.id ? gradientForId(user.id) :  'linear-gradient(150deg, #76d8f8, #753eff)'}}>
             {initial}
           </div>
           <span className="font-semibold text-xs hidden lg:block truncate max-w-28">
