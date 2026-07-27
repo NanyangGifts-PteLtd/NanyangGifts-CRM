@@ -11,7 +11,7 @@ import { fetchClientAssigneeMap } from '@/lib/assignments';
 import { GenerateOcfModal } from './Generate-OCF-Modal';
 import { AddGroupModal } from './Add-Group-Modal';
 import { fetchCustomColumns, addCustomColumn, deleteCustomColumn, type CustomColumn } from '@/lib/custom-columns'
-import { ClientsLiveRefresh } from './RealtimeRefresh';
+import ClientsLiveRefresh from './RealtimeRefresh';
 
 type OptionEntry = { value: string; color: string };
 type HeaderCol = {
@@ -53,6 +53,10 @@ interface CRMBoardProps {
   setClients: React.Dispatch<React.SetStateAction<Client[]>>;
   reloadClients: () => Promise<void>;
   search?: string;
+  clientAssignees: ClientAssigneeMap;
+  setClientAssignees: React.Dispatch<React.SetStateAction<ClientAssigneeMap>>;
+  subitemAssignees: SubitemAssigneeMap;
+  setSubitemAssignees: React.Dispatch<React.SetStateAction<SubitemAssigneeMap>>;
 }
 
 export async function fetchAllSubitemAssignees(): Promise<SubitemAssigneeMap> {
@@ -64,7 +68,18 @@ export async function fetchAllSubitemAssignees(): Promise<SubitemAssigneeMap> {
   }, {} as SubitemAssigneeMap);
 }
 
-export function CRMBoard({ clients, expandedIds, setExpandedIds, setClients, reloadClients, search = '' }: CRMBoardProps) {
+export function CRMBoard({ clients,
+  expandedIds,
+  setExpandedIds,
+  setClients,
+  reloadClients,
+  search = '',
+  clientAssignees,
+  setClientAssignees,
+  subitemAssignees,
+  setSubitemAssignees,
+}: CRMBoardProps) {
+
   const [filterStatus, setFilterStatus] = useState<string | 'All'>('All');
   const [showFilter, setShowFilter] = useState(false);
   const [filterSubprogress, setFilterSubprogress] = useState<string>('All');
@@ -75,8 +90,6 @@ export function CRMBoard({ clients, expandedIds, setExpandedIds, setClients, rel
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [profiles, setProfiles] = useState<Profile[]>([]);
-  const [clientAssignees, setClientAssignees] = useState<ClientAssigneeMap>({});
-  const [subitemAssignees, setSubitemAssignees] = useState<SubitemAssigneeMap>({});
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const filterRef = useRef<HTMLDivElement>(null);
@@ -199,14 +212,46 @@ export function CRMBoard({ clients, expandedIds, setExpandedIds, setClients, rel
   }
 
   useEffect(() => {
+  const supabase = createSupabaseClient();
+
+  const clientsChannel = supabase
+    .channel('crmboard-clients-live')
+    .on(
+      'postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'clients' },
+      async (payload) => {
+        console.log('Realtime client insert:', payload);
+      }
+    )
+    .subscribe((status) => {
+      console.log('Realtime status:', status);
+    });
+
+  const assigneesChannel = supabase
+    .channel('crmboard-clients-assignees-live')
+    .on(
+      'postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'client_assignees' },
+      async (payload) => {
+        console.log('Realtime assignee insert:', payload);
+        await reloadClients();
+      }
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(clientsChannel);
+    supabase.removeChannel(assigneesChannel);
+  };
+}, [reloadClients]);
+
+  useEffect(() => {
     const loadAssignments = async () => {
       try {
         const supabase = createSupabaseClient();
         const [
           profilesData,
           { data: { user } },
-          allClientAssigneeMap,
-          allSubitemAssigneeMap,
           groupsData,
           replyOpts,
           statusOpts,
@@ -224,8 +269,6 @@ export function CRMBoard({ clients, expandedIds, setExpandedIds, setClients, rel
         ] = await Promise.all([
           fetchProfiles(),
           supabase.auth.getUser(),
-          fetchClientAssigneeMap(),
-          fetchAllSubitemAssignees(),
           fetchGroups(),
           fetchOptions('reply_status'),
           fetchOptions('client_status'),
@@ -243,8 +286,6 @@ export function CRMBoard({ clients, expandedIds, setExpandedIds, setClients, rel
 
         setProfiles(profilesData);
         setCurrentUserId(user?.id ?? null);
-        setClientAssignees(allClientAssigneeMap);
-        setSubitemAssignees(allSubitemAssigneeMap);
         setGroups(groupsData);
         setReplyStatusEntries(replyOpts);
         setClientStatusEntries(statusOpts);

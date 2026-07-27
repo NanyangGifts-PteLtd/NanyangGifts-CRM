@@ -13,7 +13,6 @@ import { useGenerateEstimate } from '../hooks/use-generate-estimate-button';
 import { Tooltip } from "radix-ui";
 import type { CustomColumn } from '@/lib/custom-columns';
 
-
 type OptionEntry = { value: string; color: string };
 
 export type ClientRowProps = {
@@ -187,7 +186,48 @@ export function ClientRow({
             clearTimeout(hideTimer);
         };
     }, [estimateSuccess])
+    
+    // normalise dates
+    function toDateInputValue(value: unknown): string {
+        if (!value) return "";
 
+        if (typeof value === "string") {
+            if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+
+            if (/^\d+$/.test(value)) {
+                const serial = Number(value);
+                const excelEpoch = new Date(Date.UTC(1899, 11, 30));
+                const date = new Date(excelEpoch.getTime() + serial * 86400000);
+
+                const year = date.getUTCFullYear();
+                const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+                const day = String(date.getUTCDate()).padStart(2, "0");
+                return `${year}-${month}-${day}`;
+            }
+
+            const parsed = new Date(value);
+            if (!Number.isNaN(parsed.getTime())) {
+                const year = parsed.getFullYear();
+                const month = String(parsed.getMonth() + 1).padStart(2, "0");
+                const day = String(parsed.getDate()).padStart(2, "0");
+                return `${year}-${month}-${day}`;
+            }
+
+            return "";
+        }
+
+        if (typeof value === "number") {
+            const excelEpoch = new Date(Date.UTC(1899, 11, 30));
+            const date = new Date(excelEpoch.getTime() + value * 86400000);
+
+            const year = date.getUTCFullYear();
+            const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+            const day = String(date.getUTCDate()).padStart(2, "0");
+            return `${year}-${month}-${day}`;
+        }
+
+        return "";
+    }
     // activity log text
     function displayLogValue(value: unknown) {
         if (value == null || value === '') return 'empty';
@@ -301,7 +341,7 @@ export function ClientRow({
                     draggable
                     onDragStart={onDragStart}
                     onDragEnd={onDragEnd}
-                    className=" `... ${isDragging ? 'opacity-40' : ''}` box-border flex items-center min-w-0 px-1 border-r border-[#D0D4E4] overflow-hidden"
+                    className={`box-border flex items-center min-w-0 px-1 border-r border-[#D0D4E4] overflow-hidden ${isDragging ? "opacity-40" : ""}`}
                     style={{ height: 32, minWidth: colWidth.client, width: colWidth.client }}
                 >
 
@@ -471,7 +511,7 @@ export function ClientRow({
                 >
                     <input
                         type="date"
-                        value={client.followUp}
+                        value={toDateInputValue(client.followUp)}
                         onChange={(e) => onUpdate({ followUp: e.target.value })}
                         className="text-xs border-none outline-none bg-transparent cursor-pointer w-full"
                     />
@@ -644,7 +684,7 @@ export function ClientRow({
                     className="flex items-center border-r border-[#D0D4E4] transition transform active:scale-95 duration-150" style={{ height: 32, minWidth: colWidth.nbd, width: colWidth.nbd }}>
                     <input
                         type="date"
-                        value={client.nbd}
+                        value={toDateInputValue(client.nbd)}
                         onChange={(e) => onUpdate({ nbd: e.target.value })}
                         className="text-xs border-none outline-none bg-transparent cursor-pointer w-full"
                     />
@@ -683,7 +723,7 @@ export function ClientRow({
                         {col.field_type === "date" ? (
                             <input
                                 type="date"
-                                value={String(client.customFields?.[col.id] ?? "")}
+                                value={toDateInputValue(String(client.customFields?.[col.id] ?? ""))}
                                 onChange={(e) =>
                                     updateClientCustomField(client.id, col.id, e.target.value)
                                 }

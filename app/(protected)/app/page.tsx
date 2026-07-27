@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import type { Client } from '../../types';
+import type { Client, ClientAssigneeMap, SubitemAssigneeMap } from '../../types';
 import { fetchClientsWithSubitems } from '@/lib/crm';
 import { CRMBoard } from '@/components/CRMBoard';
 import Sidebar, { type SidePanel } from '../../../components/Sidebar';
@@ -11,6 +11,8 @@ import { createClient as createSupabaseClient } from '@/lib/supabase/client';
 import { ReportsPanel } from '@/components/ReportsPanel';
 import { RoundRobinAdminPanel } from '@/components/RoundRobinPanel';
 import GanttChart from '@/components/Gantt-Chart';
+import { fetchClientAssigneeMap } from '@/lib/assignments';
+import { fetchAllSubitemAssignees } from '@/components/CRMBoard';
 
 export default function Page() {
   const [clients, setClients] = useState<Client[]>([]);
@@ -20,12 +22,20 @@ export default function Page() {
   const [activePanel, setActivePanel] = useState<SidePanel>('crm');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [expandedClientIds, setExpandedClientIds] = useState<string[]>([]);
+  const [clientAssignees, setClientAssignees] = useState<ClientAssigneeMap>({});
+  const [subitemAssignees, setSubitemAssignees] = useState<SubitemAssigneeMap>({});
 
   const reloadClients = useCallback(async () => {
     try {
-      const rows = await fetchClientsWithSubitems();
-      console.log('Fetched clients:', rows);
+      const [rows, assigneeMap, subitemAssigneeMap] = await Promise.all([
+        fetchClientsWithSubitems(),
+        fetchClientAssigneeMap(),
+        fetchAllSubitemAssignees(),
+      ]);
+
       setClients(rows);
+      setClientAssignees(assigneeMap);
+      setSubitemAssignees(subitemAssigneeMap);
     } catch (error) {
       console.error('Failed to load clients', error);
     }
@@ -79,6 +89,10 @@ export default function Page() {
             setClients={setClients}
             reloadClients={reloadClients}
             search={search}
+            clientAssignees={clientAssignees}
+            setClientAssignees={setClientAssignees}
+            subitemAssignees={subitemAssignees}
+            setSubitemAssignees={setSubitemAssignees}
           />
         );
 

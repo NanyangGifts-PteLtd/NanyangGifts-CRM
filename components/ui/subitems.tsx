@@ -10,6 +10,8 @@ import { AssigneeMultiSelect } from "./assignee-multiselect";
 import { TimelineSection, DEFAULT_TIMELINE_ROWS } from "./timeline";
 import { CustomColumn } from "@/lib/custom-columns";
 
+export const dynamic = "force-dynamic";
+
 const CURRENCY_RATES: Record<string, number> = {
     RMB: 0.2,
     SGD: 1,
