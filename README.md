@@ -24,7 +24,6 @@ A custom CRM and operations workspace built with Next.js, React, TypeScript, Sup
 ### One source of truth: Project Manager and Sales Staff use 1 board 
 - Sales staff can access the subitem markup, qty, etc. columns while Project Managers can click on a payment icon to switch to their relevant columns and input the necessary information, or click on the timeline icon for tracking project timeline
 - Sales staff can select subitem(s) to view total price, total cost, total markup without scrolling to the right  
-<img width="461" height="283" alt="Screenshot 2026-07-27 174105" src="https://github.com/user-attachments/assets/e3cee982-22e3-450f-8db8-f7169bb796f4" class="align-center" />
 
 
 
@@ -52,8 +51,6 @@ A custom CRM and operations workspace built with Next.js, React, TypeScript, Sup
 - Order Confirmation Form flow designed with editable internal fields, public tokenized sharing, and client-side review/signoff behavior.
 - Order confirmation form configuration settings page only visible to director to edit 'Important Notes' section of form
 
-<img width="462" height="102" alt="Screenshot 2026-07-27 175512" src="https://github.com/user-attachments/assets/9cc601f7-11eb-4888-adaa-ca2042ac4bc1" />
-<img width="945" height="812" alt="Screenshot 2026-07-27 175614" src="https://github.com/user-attachments/assets/3729f621-9272-4ca0-ab1f-c62aaf397b86" />
 
 ### Client collaboration
 
