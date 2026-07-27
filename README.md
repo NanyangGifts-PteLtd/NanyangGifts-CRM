@@ -24,13 +24,12 @@ A custom CRM and operations workspace built with Next.js, React, TypeScript, Sup
 ### One source of truth: Project Manager and Sales Staff use 1 board 
 - Sales staff can access the subitem markup, qty, etc. columns while Project Managers can click on a payment icon to switch to their relevant columns and input the necessary information, or click on the timeline icon for tracking project timeline
 - Sales staff can select subitem(s) to view total price, total cost, total markup without scrolling to the right  
-<img width="800" height="238" alt="Screen Recording 2026-07-27 173054 (1)" src="https://github.com/user-attachments/assets/0ac9bf56-80cc-45ae-ae45-d433c18d882f" />
 
 
 
 ### Drag and drop function
 - For moving clients from group to group (and auto-changing of status according to the group name)
-<img width="800" height="400" alt="Screen Recording 2026-07-27 172146" src="https://github.com/user-attachments/assets/228bbf4c-6ac8-41e9-8c21-b1e0222e29c8" />
+<img width="800" height="350" alt="Screen Recording 2026-07-27 172146" src="https://github.com/user-attachments/assets/228bbf4c-6ac8-41e9-8c21-b1e0222e29c8" />
 
 
 ### Collaboration and assignments
