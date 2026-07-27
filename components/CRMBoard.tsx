@@ -11,7 +11,7 @@ import { fetchClientAssigneeMap } from '@/lib/assignments';
 import { GenerateOcfModal } from './Generate-OCF-Modal';
 import { AddGroupModal } from './Add-Group-Modal';
 import { fetchCustomColumns, addCustomColumn, deleteCustomColumn, type CustomColumn } from '@/lib/custom-columns'
-import { ClientsRealtimeRefresh } from './RealtimeRefresh';
+import { ClientsLiveRefresh } from './RealtimeRefresh';
 
 type OptionEntry = { value: string; color: string };
 type HeaderCol = {
@@ -1171,7 +1171,7 @@ export function CRMBoard({ clients, expandedIds, setExpandedIds, setClients, rel
           </div>
         </div>
       )}
-      <ClientsRealtimeRefresh />
+      <ClientsLiveRefresh />
     </div>
   );
 }

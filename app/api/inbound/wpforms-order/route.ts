@@ -152,7 +152,7 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        const { data: nextAssigneeRows, error: assigneeError } = await supabase.rpc(
+        const { data: assigneeData, error: assigneeError } = await supabase.rpc(
             "get_next_sales_assignee"
         );
 
@@ -160,12 +160,21 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: assigneeError.message }, { status: 500 });
         }
 
-        const nextAssignee = nextAssigneeRows?.[0] ?? null;
+        const nextAssignee = Array.isArray(assigneeData)
+            ? assigneeData[0] ?? null
+            : assigneeData ?? null;
+
+        if (!nextAssignee?.user_id) {
+            return NextResponse.json(
+                { error: "No sales assignee returned from round robin function" },
+                { status: 500 }
+            );
+        }
 
         const clientInsert = {
             name: customerName || companyName || "New Lead",
-            people: nextAssignee?.user_id ?? "",
-            reply_status: "Waiting...",
+            people: "",
+            reply_status: "",
             follow_up: followUp,
             status: "New Lead",
             channel: "Forms",
@@ -174,14 +183,16 @@ export async function POST(req: NextRequest) {
             email,
             phone,
             requirements: notes,
-            nbd: nbd || externalId,
+            nbd: nbd,
             total_price: "",
             company_address: "",
             billing_address: "",
             date_created: dateCreated,
             expanded: false,
             color: "#7BCBD5",
-            activity_log: [buildActivityLogEntry(body, nextAssignee?.user_id)],
+            activity_log: [
+                buildActivityLogEntry(body, nextAssignee.user_id)
+            ],
             group_id: newLeadGroup.id,
             custom_fields: {
                 source: body.source ?? "wordpress-zapier",
@@ -189,7 +200,6 @@ export async function POST(req: NextRequest) {
                 external_id: externalId,
                 qty,
                 requested_nbd: nbd,
-                assigned_sales_user_id: nextAssignee?.user_id ?? null,
                 raw: body.raw ?? null,
             },
         };
@@ -202,6 +212,24 @@ export async function POST(req: NextRequest) {
 
         if (clientError) {
             return NextResponse.json({ error: clientError.message }, { status: 500 });
+        }
+
+        const { error: assigneeInsertError } = await supabase
+            .from("clients_assignees")
+            .insert({
+                client_id: client.id,
+                user_id: nextAssignee.user_id,
+            });
+
+        if (assigneeInsertError) {
+            return NextResponse.json(
+                {
+                    error: assigneeInsertError.message,
+                    clientId: client.id,
+                    message: "Client created but assignee insert failed",
+                },
+                { status: 500 }
+            );
         }
 
         return NextResponse.json({
