@@ -61,7 +61,7 @@ export default function Sidebar({
 
   return (
     <div
-      className={`${collapsed ? 'w-12' : 'w-52'} bg-[#ffffff] flex flex-col border-r border-[#f2f8ff] flex-shrink-0 h-full transition-[width] duration-200 ease-in-out overflow-hidden`}
+      className={`${collapsed ? 'w-12' : 'w-52'} bg-[#ffffff] relative h-full flex flex-col border-r border-[#f2f8ff] flex-shrink-0 transition-[width] duration-200 ease-in-out overflow-hidden`}
     >
       <div className="h-12 flex items-center justify-between px-1 lg:px-4 border-b border-[#f2f8ff]">
         <div className="flex items-center gap-2 min-w-0">
@@ -82,7 +82,7 @@ export default function Sidebar({
         </button>
       </div>
 
-      <nav className="flex-1 py-3 px-2 space-y-0.5">
+      <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-0.5">
         {navItems.map((item) => {
           const isRouteItem = !!item.href;
           const isActive = isRouteItem
@@ -132,21 +132,6 @@ export default function Sidebar({
           );
         })}
       </nav>
-
-      <div className="relative border-t border-[#f2f8ff]">
-        <div className="fixed bottom-0 flex items-center gap-2 px-2 py-2">
-          <div className="w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-semibold flex-shrink-0"
-          style={{ background: user?.id ? gradientForId(user.id) :  'linear-gradient(150deg, #76d8f8, #753eff)'  }}>
-            {initial}
-          </div>
-          {!collapsed && (
-            <div className="min-w-0">
-              <p className="text-xs text-black truncate">{userEmail}</p>
-              <p className="text-xs text-gray-500 truncate">Online</p>
-            </div>
-          )}
-        </div>
-      </div>
     </div>
   );
 }
