@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from 'react';
-import type { Client, ClientAssigneeMap, SubitemAssigneeMap } from '../../types';
+import type { Client, ClientAssigneeMap, SubitemAssigneeMap, Profile } from '../../types';
 import { fetchClientsWithSubitems } from '@/lib/crm';
 import { CRMBoard } from '@/components/CRMBoard';
 import Sidebar, { type SidePanel } from '../../../components/Sidebar';
@@ -24,6 +24,7 @@ export default function Page() {
   const [expandedClientIds, setExpandedClientIds] = useState<string[]>([]);
   const [clientAssignees, setClientAssignees] = useState<ClientAssigneeMap>({});
   const [subitemAssignees, setSubitemAssignees] = useState<SubitemAssigneeMap>({});
+  const [profiles, setProfiles] = useState<Profile[]>([]);
 
   const reloadClients = useCallback(async () => {
     try {
@@ -150,6 +151,9 @@ export default function Page() {
           notifications={[]}
           user={user}
           currentUserRole={currentUserRole}
+          clients={clients}
+          clientAssignees={clientAssignees}
+          profiles={profiles}
         />
 
         <main className="min-h-0 flex-1">

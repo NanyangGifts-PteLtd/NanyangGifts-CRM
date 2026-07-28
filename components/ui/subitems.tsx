@@ -396,12 +396,13 @@ export function SubitemsTable({
         const manpower = parseNumber(sub.manpower);
         const ls = parseNumber(sub.ls);
         const os = parseNumber(sub.os);
-        const tcSgd = parseNumber(sub.tcSgd);
+        const cSgd = cost * (CURRENCY_RATES[sub.currency ?? "RMB"] ?? 0.2);
+        const tcSgd = cSgd * qty;
         const tc = cost + manpower + ls + os + tcSgd;
         const uc = qty > 0 ? tc / qty : null;
         const price = parseNumber(sub.up) * qty;
-        const cSgd = cost * (CURRENCY_RATES[sub.currency ?? "RMB"] ?? 0.2);
-
+    
+        
         switch (key) {
             case "name":
                 return renderNameCell(sub);
@@ -492,9 +493,9 @@ export function SubitemsTable({
             case "uc":
                 return <div className="flex justify-center text-xs text-gray-800">{formatMoney(uc)}</div>;
             case "tcSgd":
-                return <EditableCell value={sub.tcSgd} onChange={(v) => onUpdateSubitem(sub.id, { tcSgd: v })} type="number" />;
+                return <div className="flex justify-center text-xs text-gray-800">{formatMoney(tcSgd)}</div>;
             case "price":
-                return <div className="flex justify-center text-xs text-gray-800">{formatMoney(price)}</div>;
+                return <div className="flex justify-center text-xs text-gray-800">{formatMoney(price)} </div>;
             case "up":
                 return <EditableCell value={sub.up} onChange={(v) => onUpdateSubitem(sub.id, { up: v })} type="number" />;
             case "cnTracking":

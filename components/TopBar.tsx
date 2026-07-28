@@ -8,6 +8,8 @@ import type { User } from '@supabase/supabase-js';
 import OcfConfigurationSettingsModal from "@/components/OcfConfigurationSettingsModal"
 import { gradientForId } from './ui/assignee-multiselect';
 import ChangePasswordModal from './Change-Password-Modal';
+import { Client, ClientAssigneeMap, Profile } from '../app/types';
+
 
 interface TopBarProps {
   value?: string;
@@ -18,6 +20,9 @@ interface TopBarProps {
   onMarkAllRead: () => void;
   user: User | null;
   currentUserRole: string | null;
+  clients: Client[];
+  clientAssignees: ClientAssigneeMap;
+  profiles: Profile[];
 }
 
 interface SearchBarProps {
@@ -61,6 +66,79 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   );
 };
 
+function escapeCsv(value: unknown): string {
+  const str = String(value ?? "");
+  return `"${str.replace(/"/g, '""')}"`;
+}
+
+function downloadCsv(filename: string, rows: Record<string, unknown>[]) {
+  if (!rows.length) return;
+
+  const headers = Object.keys(rows[0]);
+  const csv = [
+    headers.join(","),
+    ...rows.map((row) => headers.map((h) => escapeCsv(row[h])).join(",")),
+  ].join("\n");
+
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+function buildClientSubitemCsvRows(
+  clients: Client[],
+  clientAssignees: ClientAssigneeMap,
+  profiles: Profile[]
+) {
+  const rows: Record<string, unknown>[] = [];
+
+  for (const client of clients) {
+    const clientAssigneeNames = (clientAssignees[client.id] ?? [])
+      .map((id) => profiles.find((p) => p.id === id)?.full_name ?? "")
+      .filter(Boolean)
+      .join("; ");
+
+    if (!client.subitems?.length) {
+      rows.push({
+        clientId: client.id,
+        clientName: client.name ?? "",
+        clientPeople: clientAssigneeNames,
+        clientStatus: client.status ?? "",
+        clientCompany: client.company ?? "",
+        clientEmail: client.email ?? "",
+        subitemId: "",
+        subitemName: "",
+        subitemStatus: "",
+        subitemAssignees: "",
+      });
+      continue;
+    }
+
+    for (const subitem of client.subitems) {
+      rows.push({
+        clientId: client.id,
+        clientName: client.name ?? "",
+        clientPeople: clientAssigneeNames,
+        clientStatus: client.status ?? "",
+        clientCompany: client.company ?? "",
+        clientEmail: client.email ?? "",
+        subitemId: subitem.id,
+        subitemName: subitem.name ?? "",
+        subitemStatus: subitem.status ?? "",
+        subitemAssignees: "",
+      });
+    }
+  }
+
+  return rows;
+}
+
 export default function TopBar({
   value = '',
   onChange = () => { },
@@ -69,7 +147,10 @@ export default function TopBar({
   onMarkRead = () => { },
   onMarkAllRead = () => { },
   user,
-  currentUserRole
+  currentUserRole,
+  clients,
+  clientAssignees,
+  profiles
 }: TopBarProps) {
   const [showNotifs, setShowNotifs] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
@@ -191,21 +272,31 @@ export default function TopBar({
             <div className="px-2 py-2">
               <p className="px-2 pb-1 text-[11px] uppercase tracking-wide text-gray-400">General</p>
 
-              {currentUserRole === "director" || "dev" ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowSettings(false);
-                    setShowOcfSettings(true);
-                  }}
-                  className="w-full rounded-md px-3 py-2 text-left text-xs text-gray-700 hover:bg-gray-50"
-                >
-                  OCF Configuration
-                </button>
-              ) : (
-                <div className="px-3 py-2 text-xs text-gray-400">
+              {(currentUserRole === "director" || currentUserRole === "dev") && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowSettings(false);
+                      setShowOcfSettings(true);
+                    }}
+                    className="w-full rounded-md px-3 py-2 text-left text-xs text-gray-700 hover:bg-gray-50"
+                  >
+                    OCF Configuration
+                  </button>
 
-                </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const rows = buildClientSubitemCsvRows(clients, clientAssignees, profiles);
+                      downloadCsv(`crm-export-${new Date().toISOString().slice(0, 10)}.csv`, rows);
+                      setShowSettings(false);
+                    }}
+                    className="w-full rounded-md px-3 py-2 text-left text-xs text-gray-700 hover:bg-gray-50"
+                  >
+                    Export board to CSV
+                  </button>
+                </>
               )}
             </div>
           </div>

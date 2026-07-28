@@ -681,6 +681,12 @@ export async function fetchOptionsByGroupCode(code: string): Promise<{ value: st
 }
 
 export async function updateSubitemRow(subitemId: string, updates: Partial<Subitem>) {
+    const nextUpdates = { ...updates };
+    if ("qty" in updates || "up" in updates) {
+        const qty = Number(updates.qty ?? 0);
+        const up = Number(updates.up ?? 0);
+        nextUpdates.price = String(qty * up);
+    }
     const { data: existing, error: fetchError } = await supabase
         .from('subitems')
         .select('*')
@@ -688,7 +694,8 @@ export async function updateSubitemRow(subitemId: string, updates: Partial<Subit
         .single();
 
     if (fetchError) throw fetchError;
-
+    
+    
     if (updates.timelineRows !== undefined) {
         await logTimelineRowDiffs({
             clientId: existing.client_id,
@@ -764,42 +771,43 @@ export async function updateSubitemRow(subitemId: string, updates: Partial<Subit
         const oldValue =
             existing[
             key === 'localOverseas' ? 'local_overseas' :
-                key === 'status' ? 'status' :
-                    key === 'qty' ? 'qty' :
-                        key === 'description' ? 'description' :
-                            key === 'remarks' ? 'remarks' :
-                                key === 'shipper' ? 'shipper' :
-                                    key === 'supplier' ? 'supplier' :
-                                        key === 'cost' ? 'cost' :
-                                            key === 'manpower' ? 'manpower' :
-                                                key === 'ls' ? 'ls' :
-                                                    key === 'os' ? 'os' :
-                                                        key === 'currency' ? 'currency' :
-                                                            key === 'tcSgd' ? 'tc_sgd' :
-                                                                key === 'up' ? 'up' :
-                                                                    key === 'pl' ? 'pl' :
-                                                                        key === 'sl' ? 'sl' :
-                                                                            key === 'numOfCartons' ? 'num_of_cartons' :
-                                                                                key === 'cnTracking' ? 'cn_tracking' :
-                                                                                    key === 'sgTracking' ? 'sg_tracking' :
-                                                                                        key === 'paymentStatus' ? 'payment_status' :
-                                                                                            key === 'lsRmb' ? 'ls_rmb' :
-                                                                                                key === 'totalC' ? 'total_c' :
-                                                                                                    key === 'modeOfPayment' ? 'mode_of_payment' :
-                                                                                                        key === 'orderNumber' ? 'order_number' :
-                                                                                                            key === 'quantityProduced' ? 'quantity_produced' :
-                                                                                                                key === 'qtyFor' ? 'qty_for' :
-                                                                                                                    key === 'paymentAmount' ? 'payment_amount' :
-                                                                                                                        key === 'paymentRemarks' ? 'payment_remarks' :
-                                                                                                                            key === 'timelineRows' ? 'timeline_rows' :
-                                                                                                                                key === 'showTimeline' ? 'show_timeline' :
-                                                                                                                                    key === 'showPayments' ? 'show_payments' :
-                                                                                                                                        key === 'showSample' ? 'show_sample' :
-                                                                                                                                            key === 'sampleRows' ? 'sample_rows' :
-                                                                                                                                                key === 'sampleOrderStatus' ? 'sample_order_status' :
-                                                                                                                                                    key === 'sampleStatus' ? 'sample_status' :
-                                                                                                                                                        key === 'sampleType' ? 'sample_type' :
-                                                                                                                                                            key
+            key === 'status' ? 'status' :
+            key === 'qty' ? 'qty' :
+            key === 'description' ? 'description' :
+            key === 'remarks' ? 'remarks' :
+            key === 'shipper' ? 'shipper' :
+            key === 'supplier' ? 'supplier' :
+            key === 'cost' ? 'cost' :
+            key === 'manpower' ? 'manpower' :
+            key === 'ls' ? 'ls' :
+            key === 'os' ? 'os' :
+            key === 'currency' ? 'currency' :
+            key === 'tcSgd' ? 'tc_sgd' :
+            key === 'price' ? 'price' :
+            key === 'up' ? 'up' :
+            key === 'pl' ? 'pl' :
+            key === 'sl' ? 'sl' :
+            key === 'numOfCartons' ? 'num_of_cartons' :
+            key === 'cnTracking' ? 'cn_tracking' :
+            key === 'sgTracking' ? 'sg_tracking' :
+            key === 'paymentStatus' ? 'payment_status' :
+            key === 'lsRmb' ? 'ls_rmb' :
+            key === 'totalC' ? 'total_c' :
+            key === 'modeOfPayment' ? 'mode_of_payment' :
+            key === 'orderNumber' ? 'order_number' :
+            key === 'quantityProduced' ? 'quantity_produced' :
+            key === 'qtyFor' ? 'qty_for' :
+            key === 'paymentAmount' ? 'payment_amount' :
+            key === 'paymentRemarks' ? 'payment_remarks' :
+            key === 'timelineRows' ? 'timeline_rows' :
+            key === 'showTimeline' ? 'show_timeline' :
+            key === 'showPayments' ? 'show_payments' :
+            key === 'showSample' ? 'show_sample' :
+            key === 'sampleRows' ? 'sample_rows' :
+            key === 'sampleOrderStatus' ? 'sample_order_status' :
+            key === 'sampleStatus' ? 'sample_status' :
+            key === 'sampleType' ? 'sample_type' :
+            key
             ];
         if (isEqualForLog(oldValue, value)) continue;
 
