@@ -696,6 +696,7 @@ export function ClientRow({
                     <EditableCell
                         value={client.companyAddress}
                         onChange={(v) => onUpdate({ companyAddress: v })}
+                        className="!justify-start px-1"
                     />
                 </div>
 
@@ -703,6 +704,7 @@ export function ClientRow({
                     <EditableCell
                         value={client.billingAddress}
                         onChange={(v) => onUpdate({ billingAddress: v })}
+                        className="!justify-start px-1"
                     />
                 </div>
 
