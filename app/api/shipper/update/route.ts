@@ -46,7 +46,7 @@ export async function PATCH(req: NextRequest) {
         }
 
         const { data: row, error: rowError } = await supabase
-            .from("shipper_items")
+            .from("shipper_rows")
             .select("id, shipper_id")
             .eq("id", body.rowId)
             .single();
@@ -64,7 +64,7 @@ export async function PATCH(req: NextRequest) {
         };
 
         const { error: updateError } = await supabase
-            .from("shipper_items")
+            .from("shipper_rows")
             .update(payload)
             .eq("id", body.rowId)
             .eq("shipper_id", shipper.id);

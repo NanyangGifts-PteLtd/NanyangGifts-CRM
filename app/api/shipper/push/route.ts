@@ -15,7 +15,7 @@ type OcfJoinRow = {
     order_confirmations: {
         id: string;
         client_submitted_at: string | null;
-    }[] | null;
+    } | null;
 };
 
 function buildDeliveryInfo(item?: {
@@ -96,21 +96,28 @@ export async function POST(req: NextRequest) {
         delivery_contact_number,
         delivery_address,
         order_confirmations!inner (
-        id,
-        client_submitted_at
+        id
         )
     `)
             .in("subitem_id", subitemIdList);
+            
 
         if (ocfItemsError) {
             return NextResponse.json({ error: ocfItemsError.message }, { status: 500 });
         }
 
-        const ocfItems = (ocfItemsRaw ?? []) as OcfJoinRow[];
+        const ocfItems = (ocfItemsRaw ?? []) as unknown as OcfJoinRow[];
         const latestSubmittedOcfItemBySubitemId = new Map<string, OcfJoinRow>();
+        const ocfItemBySubitemId = new Map<string, OcfJoinRow>();
+        for (const item of ocfItems) {
+            ocfItemBySubitemId.set(item.subitem_id, item);
+        }
 
         for (const item of ocfItems) {
-            const ocf = item.order_confirmations?.[0];
+            const ocf = item.order_confirmations as unknown as {
+                id: string;
+                client_submitted_at: string | null;
+            } | null;
             const submittedAt = ocf?.client_submitted_at;
 
             if (!submittedAt) continue;
@@ -122,7 +129,7 @@ export async function POST(req: NextRequest) {
                 continue;
             }
 
-            const existingSubmittedAt = existing.order_confirmations?.[0]?.client_submitted_at;
+            const existingSubmittedAt = existing.order_confirmations?.client_submitted_at;
             const existingDate = existingSubmittedAt ? new Date(existingSubmittedAt).getTime() : 0;
             const currentDate = new Date(submittedAt).getTime();
 
@@ -132,13 +139,14 @@ export async function POST(req: NextRequest) {
         }
 
         const rowsToUpsert = subitems.map((item) => {
-            const submittedOcfItem = latestSubmittedOcfItemBySubitemId.get(item.id);
-
+            
+            const ocfItem = ocfItemBySubitemId.get(item.id);
             return {
                 subitem_id: item.id,
                 client_id: item.client_id ?? null,
-                order_confirmation_item_id: submittedOcfItem?.id ?? null,
+                order_confirmation_item_id: ocfItem?.id ?? null,
                 pushed_by: user.id,
+                shipper_id: null,
 
                 waybill_date: null,
                 waybill_number: null,
@@ -158,16 +166,17 @@ export async function POST(req: NextRequest) {
                 cn_tracking_no: null,
                 cartons: null,
                 item_name: item.name ?? null,
-                delivery_info: buildDeliveryInfo(submittedOcfItem),
+                delivery_info: ocfItem?.delivery_address ?? null,
                 qty: item.qty ?? null,
                 up: item.up ?? null,
-                value: item.qty * item.up,
+                value: parseFloat(item.qty) * parseFloat(item.up),
                 sea_or_air: null,
                 tax_refund: null,
                 shipper_remarks: null,
                 samples_by_air: null,
             };
         });
+        
 
         const { data: pushedRows, error: upsertError } = await supabase
             .from("shipper_view_rows")
@@ -177,7 +186,16 @@ export async function POST(req: NextRequest) {
         if (upsertError) {
             return NextResponse.json({ error: upsertError.message }, { status: 500 });
         }
-
+console.log('subitemIdList:', subitemIdList);
+console.log('ocfItemsError:', ocfItemsError);
+console.log('ocfItemsRaw:', JSON.stringify(ocfItemsRaw, null, 2));
+console.log('ocfItemBySubitemId after loop:', JSON.stringify([...ocfItemBySubitemId.entries()], null, 2));
+console.log('rowsToUpsert delivery_info:', rowsToUpsert.map(r => ({
+    subitem_id: r.subitem_id,
+    delivery_info: r.delivery_info,
+    order_confirmation_item_id: r.order_confirmation_item_id
+})));
+console.log('upsertError:', upsertError);
         return NextResponse.json({
             ok: true,
             count: pushedRows?.length ?? 0,

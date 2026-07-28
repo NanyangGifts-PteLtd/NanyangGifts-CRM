@@ -21,7 +21,6 @@ export default async function OcfContent({ params }: Props) {
         important_notes,
         client_name_snapshot,
         company_snapshot,
-        recipient_name,
         salesperson_name,
         salesperson_email,
         salesperson_contact_number,
@@ -29,7 +28,6 @@ export default async function OcfContent({ params }: Props) {
         client_submitted_at,
         client_ip,
         locked_at,
-        restricted_area,
         same_address_for_all_items,
         order_confirmation_items (
         id,

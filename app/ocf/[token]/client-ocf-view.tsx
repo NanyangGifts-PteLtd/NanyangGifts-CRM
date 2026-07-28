@@ -31,7 +31,6 @@ type Ocf = {
     important_notes: string | null;
     client_name_snapshot: string | null;
     company_snapshot: string | null;
-    recipient_name: string | null;
     salesperson_name: string | null;
     salesperson_email: string | null;
     salesperson_contact_number: string | null;
@@ -39,7 +38,6 @@ type Ocf = {
     client_submitted_at: string | null;
     client_ip: string | null;
     locked_at: string | null;
-    restricted_area: string | null;
     same_address_for_all_items: boolean | null;
     order_confirmation_items: OcfItem[];
 };

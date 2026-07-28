@@ -126,15 +126,13 @@ export async function POST(request: NextRequest) {
         id,
         status,
         company_snapshot,
-        recipient_name,
-        restricted_area,
         same_address_for_all_items,
         client_signed_at,
         client_submitted_at,
         client_ip,
         client_signature_path,
         locked_at
-      `)
+        `)
             .single();
 
         if (updateOcfError || !updatedOcf) {
@@ -163,6 +161,28 @@ export async function POST(request: NextRequest) {
                     { error: itemUpdateError.message || "Failed to update delivery information" },
                     { status: 500 }
                 );
+            }
+            const ocfItemIds = (items as SubmittedItem[]).map((i) => i.id).filter(Boolean);
+
+            if (ocfItemIds.length > 0) {
+                const { data: ocfItemRows } = await supabase
+                    .from("order_confirmation_items")
+                    .select("id, subitem_id, delivery_address, delivery_contact_number")
+                    .in("id", ocfItemIds);
+
+                for (const ocfItem of ocfItemRows ?? []) {
+                    if (!ocfItem.subitem_id) continue;
+
+                    const deliveryInfo = [
+                        ocfItem.delivery_contact_number ? `Contact: ${ocfItem.delivery_contact_number}` : null,
+                        ocfItem.delivery_address ? `Address: ${ocfItem.delivery_address}` : null,
+                    ].filter(Boolean).join("\n") || null;
+
+                    await supabase
+                        .from("shipper_view_rows")
+                        .update({ delivery_info: deliveryInfo })
+                        .eq("subitem_id", ocfItem.subitem_id);
+                }
             }
         }
 
