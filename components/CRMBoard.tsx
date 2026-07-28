@@ -1005,7 +1005,7 @@ export function CRMBoard({ clients,
             {mergedHeaderCols.map((col) => (
               <div
                 key={col.key}
-                className="relative flex justify-center items-center border-[#D0D4E4] flex-shrink-0"
+                className="relative flex justify-center items-center border-[#D0D4E4] border-r flex-shrink-0"
                 style={{ minWidth: col.width, width: col.width }}
               >
                 {col.key === 'selectCheckbox' ? (
