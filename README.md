@@ -47,7 +47,7 @@ A custom CRM and operations workspace built with Next.js, React, TypeScript, Sup
 
 ### Auto-generate Order Confirmation Form, with editable web-form for staff and clients (client token link & internal link)
 - Sales staff can generate a Order Confirmation Form with just a click, view a dedicated modal with editable field (estimated delivery), internal page, and public client-facing signing/review flow.
-  <img width="943" height="805" alt="Screenshot 2026-07-28 162840" src="https://github.com/user-attachments/assets/c3fddeba-9c8f-4090-8547-bfd57a54df9e" />
+  <img width="471.5" height="402.5" alt="Screenshot 2026-07-28 162840" src="https://github.com/user-attachments/assets/c3fddeba-9c8f-4090-8547-bfd57a54df9e" />
 
 - Order Confirmation Form flow designed with editable internal fields, public tokenized sharing, and client-side review/signoff behavior.
 - Order confirmation form configuration settings page only visible to director to edit 'Important Notes' section of form
