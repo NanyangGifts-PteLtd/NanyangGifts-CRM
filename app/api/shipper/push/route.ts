@@ -161,7 +161,7 @@ export async function POST(req: NextRequest) {
                 delivery_info: buildDeliveryInfo(submittedOcfItem),
                 qty: item.qty ?? null,
                 up: item.up ?? null,
-                value: item.price ?? null,
+                value: item.qty * item.up,
                 sea_or_air: null,
                 tax_refund: null,
                 shipper_remarks: null,

@@ -283,7 +283,7 @@ export function SubitemsTable({
             if (onPushToShipperView) {
                 await onPushToShipperView(subitemId);
             } else {
-                const response = await fetch("/api/supplier/push", {
+                const response = await fetch("/api/shipper/push", {
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json",

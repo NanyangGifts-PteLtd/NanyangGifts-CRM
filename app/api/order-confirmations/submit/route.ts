@@ -39,9 +39,6 @@ export async function POST(request: NextRequest) {
             ocfId,
             clientToken,
             signatureDataUrl,
-            company,
-            recipientName,
-            restrictedArea,
             sameAddressForAllItems,
             items,
         } = body ?? {};
@@ -54,32 +51,18 @@ export async function POST(request: NextRequest) {
         }
 
         if (
-            typeof company !== "string" ||
-            typeof recipientName !== "string" ||
-            typeof restrictedArea !== "string" ||
             typeof sameAddressForAllItems !== "boolean" ||
             !Array.isArray(items)
         ) {
             return NextResponse.json(
                 {
                     error:
-                        "company, recipientName, restrictedArea, sameAddressForAllItems, and items are required",
+                        "sameAddressForAllItems is required",
                 },
                 { status: 400 }
             );
         }
 
-        const allowedRestrictedAreaValues = [
-            "No",
-            "Yes, additional fees apply. Please check with salesperson.",
-        ];
-
-        if (!allowedRestrictedAreaValues.includes(restrictedArea)) {
-            return NextResponse.json(
-                { error: "Invalid restrictedArea value" },
-                { status: 400 }
-            );
-        }
 
         const { data: ocf, error: ocfError } = await supabase
             .from("order_confirmations")
@@ -129,9 +112,6 @@ export async function POST(request: NextRequest) {
         const { data: updatedOcf, error: updateOcfError } = await supabase
             .from("order_confirmations")
             .update({
-                company_snapshot: company.trim() || null,
-                recipient_name: recipientName.trim() || null,
-                restricted_area: restrictedArea,
                 same_address_for_all_items: sameAddressForAllItems,
                 client_signature_path: filePath,
                 client_signed_at: now,
