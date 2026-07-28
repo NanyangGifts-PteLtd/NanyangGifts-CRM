@@ -25,12 +25,9 @@ A custom CRM and operations workspace built with Next.js, React, TypeScript, Sup
 - Sales staff can access the subitem markup, qty, etc. columns while Project Managers can click on a payment icon to switch to their relevant columns and input the necessary information, or click on the timeline icon for tracking project timeline
 - Sales staff can select subitem(s) to view total price, total cost, total markup without scrolling to the right  
 
-
-
 ### Drag and drop clients to move them to different groups
 - Status auto-changes if there is a group with the same name that exists
 <img width="800" height="250" alt="Screen Recording 2026-07-27 172146" src="https://github.com/user-attachments/assets/228bbf4c-6ac8-41e9-8c21-b1e0222e29c8" />
-
 
 ### Collaboration and assignments
 
@@ -44,19 +41,26 @@ A custom CRM and operations workspace built with Next.js, React, TypeScript, Sup
 - Tracking for field updates, subitem creation, subitem deletion, and nested item changes.
 - Internal audit trail design to show who changed what and when across client records.
 
-### Generate estimate in Quickbooks, generate Order Confirmation Form for internal view & client view 
+### Auto-generate estimate in Quickbooks
 
 - Generate Estimate workflow integrated with QuickBooks-oriented logic and external accounting considerations. Change 'Local/Overseas?' status to Oversas to apply Out of Scope tax, change to Local to apply SR 9% GST for the specific subitem.
-- Generate Order Confirmation Form workflow with a dedicated modal, internal page, and public client-facing signing/review flow.
+
+### Auto-generate Order Confirmation Form, with editable web-form for staff and clients (client token link & internal link)
+- Sales staff can generate a Order Confirmation Form with just a click, view a dedicated modal with editable field (estimated delivery), internal page, and public client-facing signing/review flow.
+- <br>
+  <img width="471.5" height="402.5" alt="Screenshot 2026-07-28 162840" src="https://github.com/user-attachments/assets/c3fddeba-9c8f-4090-8547-bfd57a54df9e" />
+
 - Order Confirmation Form flow designed with editable internal fields, public tokenized sharing, and client-side review/signoff behavior.
 - Order confirmation form configuration settings page only visible to director to edit 'Important Notes' section of form
-
 
 ### Client collaboration
 
 - Public client-facing OCF page accessible through a tokenized link rather than requiring standard app authentication.
 - Shipper-facing site/view for Project Managers: a table-based external workflow for selected subitem data (when Project Manager clicks 'Push' button for selected subitem, shipper site syncs data.
 - Shipper site only shows relevant fields for specific shipper using token links to protect internal operational data.
+
+### Export CRM board to CSV 
+- Only visible to Director for an easily accessible master-view of every client and their subitems
 
 ## Tech Stack
 
