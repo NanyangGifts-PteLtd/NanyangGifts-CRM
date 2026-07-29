@@ -14,13 +14,6 @@ A custom CRM and operations workspace built with Next.js, React, TypeScript, Sup
 - Search and filtering across client and subitem data.
 - Drag-and-drop movement of clients between groups, with status-aware grouping behavior discussed during implementation.
 
-### Status and workflow management
-
-- Custom client statuses such as New Lead, Contacted, Quoted, Follow Up, Shortlisted, Project Started, Project Done, Closed, and Unqualified were used as the core board workflow model during development.
-- Reply status tracking for outreach follow-up and reassignment flows.
-- Follow-up date handling for timing-sensitive pipeline management.
-- Option management for status fields
-
 ### One source of truth: Project Manager and Sales Staff use 1 board 
 
 - Sales staff can access the subitem markup, qty, etc. columns while Project Managers can click on a payment icon to switch to their relevant columns and input the necessary information, or click on the timeline icon for tracking project timeline
@@ -28,6 +21,14 @@ A custom CRM and operations workspace built with Next.js, React, TypeScript, Sup
 
 - Sales staff can select subitem(s) to view total price, total cost, total markup without scrolling to the right  
 <img width="706" height="266" alt="ScreenRecording2026-07-29141659-ezgif com-video-to-gif-converter" src="https://github.com/user-attachments/assets/d55e950c-aadb-44a2-9ef3-29e6a3613770" />
+
+### Status and workflow management
+
+- Custom client statuses such as New Lead, Contacted, Quoted, Follow Up, Shortlisted, Project Started, Project Done, Closed, and Unqualified were used as the core board workflow model during development.
+- Reply status tracking for outreach follow-up and reassignment flows.
+- Follow-up date handling for timing-sensitive pipeline management.
+- Option management for status fields.
+<img width="800" height="375" alt="ScreenRecording2026-07-29142353-ezgif com-video-to-gif-converter" src="https://github.com/user-attachments/assets/d4332abb-a569-40ca-a4cc-e2ad2a5ed827" />
 
 
 ### Drag and drop clients to move them to different groups
