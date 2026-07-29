@@ -80,10 +80,9 @@ A custom CRM and operations workspace built with Next.js, React, TypeScript, Sup
   <img width="800" height="418" alt="ScreenRecording2026-07-29151159-ezgif com-video-to-gif-converter" src="https://github.com/user-attachments/assets/7f8dacc8-d433-434f-b4b6-afe12eed729b" />
   
 
-### Client collaboration
+### Shipper sites for Project Managers to oversee shipping progress & liaise with shippers
 
-- Public client-facing OCF page accessible through a tokenized link rather than requiring standard app authentication.
-- Shipper-facing site/view for Project Managers: a table-based external workflow for selected subitem data (when Project Manager clicks 'Push' button for selected subitem, shipper site pulls relevant data).
+- Shipper-facing site/master-view for Project Managers: a table-based external workflow for selected subitem data (when Project Manager clicks 'Push' button for selected subitem, shipper site pulls subitem's corresponding name, quantity, unit price, value, tracking number).
   <br>
   <img width="800" height="379" alt="ScreenRecording2026-07-29141026-ezgif com-video-to-gif-converter" src="https://github.com/user-attachments/assets/c2709dd0-55dd-404b-9581-a9d5d301af77" />
 
