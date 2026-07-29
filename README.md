@@ -1,4 +1,4 @@
-<p align="center"> <img width="1520" height="432" alt="Screenshot 2026-07-29 160313" src="https://github.com/user-attachments/assets/6e1bcb00-fd11-4052-ac2d-bb682c3a2df7" />
+<p align="center"> <img width="760" height="216" alt="Screenshot 2026-07-29 160313" src="https://github.com/user-attachments/assets/6e1bcb00-fd11-4052-ac2d-bb682c3a2df7" />
 
 # 🌐 [NanyangGifts CRM Web App](https://nanyanggifts.vercel.app)
 
