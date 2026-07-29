@@ -5,7 +5,8 @@ export type ShipperRow = {
     subitem_id?: string | null;
     client_id?: string | null;
     shipper_id?: string | null;
-
+    
+    serial_number: string | null;
     waybill_date: string | null;
     waybill_number: string | null;
     pieces: number | string | null;
@@ -47,6 +48,7 @@ function display(value: unknown) {
 
 export default function ShipperGrid({ rows, mode, token }: ShipperGridProps) {
     const columns = [
+        { key: "serial_number", label: "序号", editableByPm: false, editableByShipper: true },
         { key: "waybill_date", label: "运单日期", editableByPm: false, editableByShipper: true },
         { key: "waybill_number", label: "运单号码", editableByPm: false, editableByShipper: true },
         { key: "pieces", label: "件数", editableByPm: false, editableByShipper: true },
@@ -90,9 +92,6 @@ export default function ShipperGrid({ rows, mode, token }: ShipperGridProps) {
                 <table className="min-w-[2400px] border-collapse text-[13px] text-black">
                     <thead>
                         <tr>
-                            <th className="sticky top-0 z-20 border border-slate-400 bg-white px-3 py-2 text-center whitespace-nowrap">
-                                序号
-                            </th>
 
                             {columns.map((col) => (
                                 <th
@@ -119,10 +118,6 @@ export default function ShipperGrid({ rows, mode, token }: ShipperGridProps) {
                         ) : (
                             rows.map((row, index) => (
                                 <tr key={row.id} className="bg-white text-black align-top">
-                                    <td className="border border-slate-300 px-3 py-2 text-center whitespace-nowrap">
-                                        {index + 1}
-                                    </td>
-
                                     {columns.map((col) => {
                                         const value = row[col.key as keyof ShipperRow];
                                         const editable =
