@@ -60,6 +60,8 @@ A custom CRM and operations workspace built with Next.js, React, TypeScript, Sup
   <img width="471.5" height="402.5" alt="Screenshot 2026-07-28 162840" src="https://github.com/user-attachments/assets/c3fddeba-9c8f-4090-8547-bfd57a54df9e" />
 
 - Order Confirmation Form flow designed with editable internal fields, public tokenized sharing, and client-side review/signoff behavior.
+<img width="800" height="727" alt="ScreenRecording2026-07-29143123-ezgif com-video-to-gif-converter" src="https://github.com/user-attachments/assets/7bd0b39e-1bac-4c56-bc0e-a12399636570" />
+
 - Order confirmation form configuration settings page only visible to director to edit 'Important Notes' section of form
 
 ### Client collaboration
