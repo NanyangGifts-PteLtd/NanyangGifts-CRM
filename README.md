@@ -25,9 +25,10 @@ A custom CRM and operations workspace built with Next.js, React, TypeScript, Sup
 - Sales staff can access the subitem markup, qty, etc. columns while Project Managers can click on a payment icon to switch to their relevant columns and input the necessary information, or click on the timeline icon for tracking project timeline
 - Sales staff can select subitem(s) to view total price, total cost, total markup without scrolling to the right  
 
-## Drag and drop clients to move them to different groups
+### Drag and drop clients to move them to different groups
 - Status auto-changes if there is a group with the same name that exists
 <img width="800" height="250" alt="Screen Recording 2026-07-27 172146" src="https://github.com/user-attachments/assets/228bbf4c-6ac8-41e9-8c21-b1e0222e29c8" />
+
 
 ### Collaboration and assignments
 
@@ -56,7 +57,9 @@ A custom CRM and operations workspace built with Next.js, React, TypeScript, Sup
 ### Client collaboration
 
 - Public client-facing OCF page accessible through a tokenized link rather than requiring standard app authentication.
-- Shipper-facing site/view for Project Managers: a table-based external workflow for selected subitem data (when Project Manager clicks 'Push' button for selected subitem, shipper site syncs data.
+- Shipper-facing site/view for Project Managers: a table-based external workflow for selected subitem data (when Project Manager clicks 'Push' button for selected subitem, shipper site pulls relevant data).
+  <img width="800" height="379" alt="ScreenRecording2026-07-29141026-ezgif com-video-to-gif-converter" src="https://github.com/user-attachments/assets/c2709dd0-55dd-404b-9581-a9d5d301af77" />
+
 - Shipper site only shows relevant fields for specific shipper using token links to protect internal operational data.
 
 ### Export CRM board to CSV 
