@@ -22,7 +22,7 @@ A custom CRM and operations workspace built with Next.js, React, TypeScript, Sup
   
   <img width="800" height="321" alt="ScreenRecording2026-07-29144352-ezgif com-video-to-gif-converter" src="https://github.com/user-attachments/assets/53779200-bd8b-4ad4-a97a-0ac8afb4c0b2" />
 
-- Sales staff can select subitem(s) to view total price, total cost, total markup without scrolling to the right
+- Sales staff can select subitem(s) to view total price, total cost, total markup without scrolling to the right.
   <br>
   <img width="706" height="266" alt="ScreenRecording2026-07-29141659-ezgif com-video-to-gif-converter" src="https://github.com/user-attachments/assets/d55e950c-aadb-44a2-9ef3-29e6a3613770" />
 
@@ -75,7 +75,10 @@ A custom CRM and operations workspace built with Next.js, React, TypeScript, Sup
 
 - After client submission, internal Order Confirmation Form page will be updated to include: client signed at (date & time), client submitted at (date & time) and client IP address.
 
-- Order confirmation form configuration settings page only visible to director to edit 'Important Notes' section of form
+- Order confirmation form configuration settings page only visible to director to edit 'Important Notes' section of form.
+
+  <img width="800" height="418" alt="ScreenRecording2026-07-29151159-ezgif com-video-to-gif-converter" src="https://github.com/user-attachments/assets/7f8dacc8-d433-434f-b4b6-afe12eed729b" />
+  
 
 ### Client collaboration
 
