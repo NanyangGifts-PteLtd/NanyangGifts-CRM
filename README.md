@@ -39,7 +39,7 @@ A custom CRM and operations workspace built with Next.js, React, TypeScript, Sup
 ### Drag and drop clients to move them to different groups
 
 - Status auto-changes if there is a group with the same name that exists
-<img width="800" height="250" alt="Screen Recording 2026-07-27 172146" src="https://github.com/user-attachments/assets/228bbf4c-6ac8-41e9-8c21-b1e0222e29c8" />
+  <img width="800" height="250" alt="Screen Recording 2026-07-27 172146" src="https://github.com/user-attachments/assets/228bbf4c-6ac8-41e9-8c21-b1e0222e29c8" />
 
 
 ### Users get assigned to clients/subitems in a round robin
