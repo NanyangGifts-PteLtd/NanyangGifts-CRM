@@ -161,7 +161,7 @@ export async function POST(req: NextRequest) {
                 actor_name: defaultSalesperson?.email ?? user.email ?? "Unknown user",
                 action: "ocf_created",
                 title: "Order Confirmation Form created",
-                description: `OCF generated for ${client.name ?? "client"}`,
+                description: ` for ${client.name ?? "client"}`,
                 link: internalUrl,
                 meta: {
                     ocfId: ocf.id,
