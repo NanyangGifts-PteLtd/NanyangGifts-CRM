@@ -73,6 +73,7 @@ A custom CRM and operations workspace built with Next.js, React, TypeScript, Sup
   <br>
   <img width="400" height="363.5" alt="ScreenRecording2026-07-29143123-ezgif com-video-to-gif-converter (2)" src="https://github.com/user-attachments/assets/517e7d24-ced2-40af-b60f-a5f56ca5ba16" />
 
+- After client submission, internal Order Confirmation Form page will be updated to include: client signed at (date & time), client submitted at (date & time) and client IP address.
 
 - Order confirmation form configuration settings page only visible to director to edit 'Important Notes' section of form
 
