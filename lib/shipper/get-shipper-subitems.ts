@@ -10,6 +10,7 @@ export async function getShipperSubitems(shipperId?: string): Promise<ShipperRow
         subitem_id,
         client_id,
         shipper_id,
+        serial_number,
         waybill_date,
         waybill_number,
         pieces,

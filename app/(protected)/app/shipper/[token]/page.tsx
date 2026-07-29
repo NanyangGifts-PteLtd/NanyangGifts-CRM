@@ -16,7 +16,7 @@ export default async function ShipperPage({
     const rows = await getShipperSubitems(shipper.id);
 
     return (
-        <main className="p-4">
+        <main className="p-2">
             <h1 className="mb-4 text-lg font-semibold">{shipper.name}</h1>
             <ShipperGrid rows={rows} mode="shipper" token={token} />
         </main>

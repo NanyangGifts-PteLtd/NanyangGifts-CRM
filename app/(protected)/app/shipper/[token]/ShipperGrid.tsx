@@ -5,7 +5,7 @@ export type ShipperRow = {
     subitem_id?: string | null;
     client_id?: string | null;
     shipper_id?: string | null;
-    
+
     serial_number: string | null;
     waybill_date: string | null;
     waybill_number: string | null;
@@ -76,14 +76,25 @@ export default function ShipperGrid({ rows, mode, token }: ShipperGridProps) {
         { key: "shipper_remarks", label: "备注 / Remarks", editableByPm: true, editableByShipper: false },
         { key: "samples_by_air", label: "发样品空运 / Samples to send by air", editableByPm: true, editableByShipper: false },
     ];
-    async function saveCell(rowId: string, field: string, value: string) {
-        if (mode !== "shipper" || !token) return;
+    async function saveCell(row: ShipperRow, field: string, value: string) {
+        if (!token && !row.shipper_id) return;
 
-        await fetch("/api/shipper/update", {
-            method: "PATCH",
+        const res = await fetch("/api/shipper/save", {
+            method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ token, rowId, field, value }),
+            body: JSON.stringify({
+                subitemId: row.subitem_id,
+                shipperId: row.shipper_id,
+                shipperToken: token,
+                field,
+                value,
+            }),
         });
+
+        const json = await res.json();
+        if (!res.ok) {
+            throw new Error(json.error || "Failed to save shipper view row");
+        }
     }
 
     return (
@@ -92,7 +103,6 @@ export default function ShipperGrid({ rows, mode, token }: ShipperGridProps) {
                 <table className="min-w-[2400px] border-collapse text-[13px] text-black">
                     <thead>
                         <tr>
-
                             {columns.map((col) => (
                                 <th
                                     key={col.key}
@@ -121,21 +131,21 @@ export default function ShipperGrid({ rows, mode, token }: ShipperGridProps) {
                                     {columns.map((col) => {
                                         const value = row[col.key as keyof ShipperRow];
                                         const editable =
-                                            ( (mode === "pm"|| mode === "dev") && col.editableByPm) ||
+                                            ((mode === "pm" || mode === "dev") && col.editableByPm) ||
                                             (mode === "shipper" && col.editableByShipper);
 
                                         return (
                                             <td
                                                 key={col.key}
-                                                className="border border-slate-300 px-3 py-2 whitespace-pre-wrap"
+                                                className="border border-slate-300 px-1 py-2 whitespace-pre-wrap"
                                             >
                                                 {editable ? (
                                                     <textarea
                                                         defaultValue={value == null ? "" : String(value)}
                                                         rows={col.key === "delivery_info" ? 5 : 2}
-                                                        className="w-full min-w-[120px] resize-y rounded border border-slate-200 px-2 py-1 text-[13px] outline-none focus:border-blue-400"
+                                                        className="w-full min-w-[50px] resize-y rounded border border-slate-200 px-1 py-1 text-[13px] outline-none focus:border-blue-400"
                                                         onBlur={(e) => {
-                                                            void saveCell(String(row.id), col.key, e.target.value);
+                                                            void saveCell(row, col.key, e.target.value);
                                                         }}
                                                     />
                                                 ) : (
