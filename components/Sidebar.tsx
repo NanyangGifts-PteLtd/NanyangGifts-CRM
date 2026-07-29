@@ -7,7 +7,7 @@ import { LayoutGrid, Mail, BarChart2, SquareChartGantt, BotMessageSquare, Packag
 import logo from "./logo.png";
 import Image from 'next/image';
 import type { User } from "@supabase/supabase-js";
-import { gradientForId } from './ui/assignee-multiselect';
+
 export type SidePanel =
   | 'crm'
   | 'emails'
@@ -25,13 +25,13 @@ interface SidebarProps {
   user: User | null;
 }
 
-const navItems: { id: SidePanel; icon: React.ReactNode; label: string; href?: string }[] = [
+const navItems: { id: SidePanel; icon: React.ReactNode; label: string; href?: string, external?: boolean }[] = [
   { id: 'crm', icon: <LayoutGrid size={16.5} />, label: 'CRM Board' },
   { id: 'emails', icon: <Mail size={16.5} />, label: 'Emails' },
   { id: 'reports', icon: <BarChart2 size={17.5} />, label: 'Reports & KPI' },
   { id: 'ganttchart', icon: <SquareChartGantt size={17.5} />, label: 'Gantt Chart' },
   { id: 'roundrobin', icon: <BotMessageSquare size={17.5} />, label: 'Round Robin' },
-  { id: 'shipper', icon: <PackageSearch size={17.5} />, label: 'Shipper', href: '/app/shipper'  },
+  { id: 'shipper', icon: <PackageSearch size={17.5} />, label: 'Shipper', href: '/app/shipper', external: true },
 ];
 
 export default function Sidebar({
@@ -88,6 +88,26 @@ export default function Sidebar({
           const isActive = isRouteItem
             ? pathname === item.href
             : activePanel === item.id;
+
+          if (item.external) {
+            return (
+              <a
+                key={item.id}
+                href={item.href!}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={itemClass(false)}
+              >
+                <span className="flex-shrink-0">{item.icon}</span>
+                <span className="text-xs font-medium hidden lg:block truncate">
+                  {item.label}
+                </span>
+                <div className="absolute left-full ml-2 px-2 py-1 bg-gray-800 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 lg:hidden">
+                  {item.label}
+                </div>
+              </a>
+            );
+          }
 
           if (isRouteItem) {
             return (
