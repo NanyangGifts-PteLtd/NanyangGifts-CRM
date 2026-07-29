@@ -22,7 +22,7 @@ A custom CRM and operations workspace built with Next.js, React, TypeScript, Sup
   
   <img width="800" height="321" alt="ScreenRecording2026-07-29144352-ezgif com-video-to-gif-converter" src="https://github.com/user-attachments/assets/53779200-bd8b-4ad4-a97a-0ac8afb4c0b2" />
 
-- Sales staff can select subitem(s) to view total price, total cost, total markup without scrolling to the right
+- Sales staff can select subitem(s) to view total price, total cost, total markup without scrolling to the right.
   <br>
   <img width="706" height="266" alt="ScreenRecording2026-07-29141659-ezgif com-video-to-gif-converter" src="https://github.com/user-attachments/assets/d55e950c-aadb-44a2-9ef3-29e6a3613770" />
 
@@ -34,6 +34,11 @@ A custom CRM and operations workspace built with Next.js, React, TypeScript, Sup
 - Option management for status fields.
   <br>
   <img width="800" height="375" alt="ScreenRecording2026-07-29142353-ezgif com-video-to-gif-converter" src="https://github.com/user-attachments/assets/d4332abb-a569-40ca-a4cc-e2ad2a5ed827" />
+
+### Filters for client status and subitem progress status
+- Sales staff can easily filter for clients and Project Managers can filter for late subitems, for example.
+
+  <img width="800" height="385" alt="ScreenRecording2026-07-29152536-ezgif com-video-to-gif-converter" src="https://github.com/user-attachments/assets/f1ce8bb9-cde1-40c3-8f7d-1364fbbb541e" />
 
 
 ### Drag and drop clients to move them to different groups
@@ -73,17 +78,27 @@ A custom CRM and operations workspace built with Next.js, React, TypeScript, Sup
   <br>
   <img width="400" height="363.5" alt="ScreenRecording2026-07-29143123-ezgif com-video-to-gif-converter (2)" src="https://github.com/user-attachments/assets/517e7d24-ced2-40af-b60f-a5f56ca5ba16" />
 
+- After client submission, internal Order Confirmation Form page will be updated to include: client signed at (date & time), client submitted at (date & time) and client IP address.
 
-- Order confirmation form configuration settings page only visible to director to edit 'Important Notes' section of form
+- Order confirmation form configuration settings page only visible to director to edit 'Important Notes' section of form.
 
-### Client collaboration
+  <img width="800" height="418" alt="ScreenRecording2026-07-29151159-ezgif com-video-to-gif-converter" src="https://github.com/user-attachments/assets/7f8dacc8-d433-434f-b4b6-afe12eed729b" />
+  
 
-- Public client-facing OCF page accessible through a tokenized link rather than requiring standard app authentication.
-- Shipper-facing site/view for Project Managers: a table-based external workflow for selected subitem data (when Project Manager clicks 'Push' button for selected subitem, shipper site pulls relevant data).
+### Shipper sites for Project Managers to oversee shipping progress & liaise with shippers
+
+- Shipper-facing site/master-view for Project Managers: a table-based external workflow for selected subitem data (when Project Manager clicks 'Push' button for selected subitem, shipper site pulls subitem's corresponding name, quantity, unit price, value, tracking number).
   <br>
   <img width="800" height="379" alt="ScreenRecording2026-07-29141026-ezgif com-video-to-gif-converter" src="https://github.com/user-attachments/assets/c2709dd0-55dd-404b-9581-a9d5d301af77" />
 
 - Shipper site only shows relevant fields for specific shipper using token links to protect internal operational data.
+
+### Gantt Chart view synced with subitem timeline for Project Managers (using [Bitnoise React Scheduler](https://github.com/Bitnoise/react-scheduler))
+- Gantt chart syncs with subitem and its subprogress as well as its status (Awarded, Quoted, etc.)
+
+  <img width="800" height="373" alt="ScreenRecording2026-07-29154535-ezgif com-video-to-gif-converter" src="https://github.com/user-attachments/assets/143eb28d-35b4-4713-b92a-949c4e178afa" />
+ 
+
 
 ### Export CRM board to CSV 
 - Only visible to Director for an easily accessible master-view of every client and their subitems
