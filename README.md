@@ -22,11 +22,15 @@ A custom CRM and operations workspace built with Next.js, React, TypeScript, Sup
 - Option management for status fields
 
 ### One source of truth: Project Manager and Sales Staff use 1 board 
+
 - Sales staff can access the subitem markup, qty, etc. columns while Project Managers can click on a payment icon to switch to their relevant columns and input the necessary information, or click on the timeline icon for tracking project timeline
-- Sales staff can select subitem(s) to view total price, total cost, total markup without scrolling to the right  
 <img width="800" height="332" alt="ScreenRecording2026-07-29141422-ezgif com-video-to-gif-converter" src="https://github.com/user-attachments/assets/e8f29f05-002d-48ba-8731-fc2816ed2457" />
+- Sales staff can select subitem(s) to view total price, total cost, total markup without scrolling to the right  
+<img width="706" height="266" alt="ScreenRecording2026-07-29141659-ezgif com-video-to-gif-converter" src="https://github.com/user-attachments/assets/d55e950c-aadb-44a2-9ef3-29e6a3613770" />
+
 
 ### Drag and drop clients to move them to different groups
+
 - Status auto-changes if there is a group with the same name that exists
 <img width="800" height="250" alt="Screen Recording 2026-07-27 172146" src="https://github.com/user-attachments/assets/228bbf4c-6ac8-41e9-8c21-b1e0222e29c8" />
 
@@ -48,6 +52,7 @@ A custom CRM and operations workspace built with Next.js, React, TypeScript, Sup
 - Generate Estimate workflow integrated with QuickBooks-oriented logic and external accounting considerations. Change 'Local/Overseas?' status to Oversas to apply Out of Scope tax, change to Local to apply SR 9% GST for the specific subitem.
 
 ### Auto-generate Order Confirmation Form, with editable web-form for staff and clients (client token link & internal link)
+
 - Sales staff can generate a Order Confirmation Form with just a click, view a dedicated modal with editable field (estimated delivery), internal page, and public client-facing signing/review flow.
   <br>
   <img width="471.5" height="402.5" alt="Screenshot 2026-07-28 162840" src="https://github.com/user-attachments/assets/c3fddeba-9c8f-4090-8547-bfd57a54df9e" />
