@@ -112,24 +112,17 @@ export async function saveSubitemAssignees(
     selectedProfileIds: string[],
     currentUserId?: string | null
 ) {
-    const { error: deleteError } = await supabase
-        .from('subitem_assignees')
-        .delete()
-        .eq('subitem_id', subitemId);
-
-    if (deleteError) throw deleteError;
-
-    if (!selectedProfileIds.length) return;
-
     const rows = selectedProfileIds.map((profileId) => ({
         subitem_id: subitemId,
         user_id: profileId,
         assigned_by: currentUserId ?? null,
     }));
 
-    const { error: insertError } = await supabase
-        .from('subitem_assignees')
-        .insert(rows);
+    const { error } = await supabase
+        .from("subitem_assignees")
+        .upsert(rows, {
+            onConflict: "subitem_id,user_id",
+        });
 
-    if (insertError) throw insertError;
+    if (error) throw error;
 }
