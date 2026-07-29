@@ -16,11 +16,13 @@ A custom CRM and operations workspace built with Next.js, React, TypeScript, Sup
 
 ### One source of truth: Project Manager and Sales Staff use 1 board 
 
-- Sales staff can access the subitem markup, qty, etc. columns while Project Managers can click on a payment icon to switch to their relevant columns and input the necessary information, or click on the timeline icon for tracking project timeline
-<img width="800" height="332" alt="ScreenRecording2026-07-29141422-ezgif com-video-to-gif-converter" src="https://github.com/user-attachments/assets/e8f29f05-002d-48ba-8731-fc2816ed2457" />
+- Sales staff can access the subitem markup, qty, etc. columns while Project Managers can click on a payment icon to switch to their relevant columns and input the necessary information, or click on the timeline icon for tracking project timeline.
+  <br>
+  <img width="800" height="332" alt="ScreenRecording2026-07-29141422-ezgif com-video-to-gif-converter" src="https://github.com/user-attachments/assets/e8f29f05-002d-48ba-8731-fc2816ed2457" />
 
-- Sales staff can select subitem(s) to view total price, total cost, total markup without scrolling to the right  
-<img width="706" height="266" alt="ScreenRecording2026-07-29141659-ezgif com-video-to-gif-converter" src="https://github.com/user-attachments/assets/d55e950c-aadb-44a2-9ef3-29e6a3613770" />
+- Sales staff can select subitem(s) to view total price, total cost, total markup without scrolling to the right
+  <br>
+  <img width="706" height="266" alt="ScreenRecording2026-07-29141659-ezgif com-video-to-gif-converter" src="https://github.com/user-attachments/assets/d55e950c-aadb-44a2-9ef3-29e6a3613770" />
 
 ### Status and workflow management
 
@@ -28,7 +30,8 @@ A custom CRM and operations workspace built with Next.js, React, TypeScript, Sup
 - Reply status tracking for outreach follow-up and reassignment flows.
 - Follow-up date handling for timing-sensitive pipeline management.
 - Option management for status fields.
-<img width="800" height="375" alt="ScreenRecording2026-07-29142353-ezgif com-video-to-gif-converter" src="https://github.com/user-attachments/assets/d4332abb-a569-40ca-a4cc-e2ad2a5ed827" />
+  <br>
+  <img width="800" height="375" alt="ScreenRecording2026-07-29142353-ezgif com-video-to-gif-converter" src="https://github.com/user-attachments/assets/d4332abb-a569-40ca-a4cc-e2ad2a5ed827" />
 
 
 ### Drag and drop clients to move them to different groups
@@ -60,7 +63,8 @@ A custom CRM and operations workspace built with Next.js, React, TypeScript, Sup
   <img width="471.5" height="402.5" alt="Screenshot 2026-07-28 162840" src="https://github.com/user-attachments/assets/c3fddeba-9c8f-4090-8547-bfd57a54df9e" />
 
 - Order Confirmation Form flow designed with editable internal fields, public tokenized sharing, and client-side signature with submission.
-<img width="400" height="363.5" alt="ScreenRecording2026-07-29143123-ezgif com-video-to-gif-converter (2)" src="https://github.com/user-attachments/assets/517e7d24-ced2-40af-b60f-a5f56ca5ba16" />
+  <br>
+  <img width="400" height="363.5" alt="ScreenRecording2026-07-29143123-ezgif com-video-to-gif-converter (2)" src="https://github.com/user-attachments/assets/517e7d24-ced2-40af-b60f-a5f56ca5ba16" />
 
 
 - Order confirmation form configuration settings page only visible to director to edit 'Important Notes' section of form
@@ -69,7 +73,8 @@ A custom CRM and operations workspace built with Next.js, React, TypeScript, Sup
 
 - Public client-facing OCF page accessible through a tokenized link rather than requiring standard app authentication.
 - Shipper-facing site/view for Project Managers: a table-based external workflow for selected subitem data (when Project Manager clicks 'Push' button for selected subitem, shipper site pulls relevant data).
-<img width="800" height="379" alt="ScreenRecording2026-07-29141026-ezgif com-video-to-gif-converter" src="https://github.com/user-attachments/assets/c2709dd0-55dd-404b-9581-a9d5d301af77" />
+  <br>
+  <img width="800" height="379" alt="ScreenRecording2026-07-29141026-ezgif com-video-to-gif-converter" src="https://github.com/user-attachments/assets/c2709dd0-55dd-404b-9581-a9d5d301af77" />
 
 - Shipper site only shows relevant fields for specific shipper using token links to protect internal operational data.
 
