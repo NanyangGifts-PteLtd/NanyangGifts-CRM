@@ -1,8 +1,8 @@
-<p align="center"> <img width="760" height="216" alt="Screenshot 2026-07-29 160313" src="https://github.com/user-attachments/assets/6e1bcb00-fd11-4052-ac2d-bb682c3a2df7" />
+<p align="center"> <img width="760" height="216" alt="Screenshot 2026-07-29 160313" src="https://github.com/user-attachments/assets/6e1bcb00-fd11-4052-ac2d-bb682c3a2df7" /> </p>
 
-# 🌐 [NanyangGifts CRM Web App](https://nanyanggifts.vercel.app)
+<p align="center"># 🌐 [NanyangGifts CRM Web App](https://nanyanggifts.vercel.app)</p>
 
-A custom CRM and operations workspace built with Next.js, React, TypeScript, Supabase, and modern component-driven UI patterns. The app is designed around a grouped board workflow similar to Monday.com, with client rows, nested subitems, assignments, activity tracking, document generation, and external collaboration flows for clients and suppliers. </p>
+<p align="center">A custom CRM and operations workspace built with Next.js, React, TypeScript, Supabase, and modern component-driven UI patterns. The app is designed around a grouped board workflow similar to Monday.com, with client rows, nested subitems, assignments, activity tracking, document generation, and external collaboration flows for clients and suppliers. </p>
 
 ## Core Features
 
