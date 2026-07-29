@@ -42,12 +42,17 @@ A custom CRM and operations workspace built with Next.js, React, TypeScript, Sup
 <img width="800" height="250" alt="Screen Recording 2026-07-27 172146" src="https://github.com/user-attachments/assets/228bbf4c-6ac8-41e9-8c21-b1e0222e29c8" />
 
 
-### Collaboration and assignments
+### Users get assigned to clients/subitems in a round robin
 
 - Multi-user assignee support at both the client and subitem levels.
-- Assignee data modeled through join tables linked to user profiles in Supabase.
-- Round-robin assignment was a major design influence earlier in the project, especially for lead ownership and response workflows.
 
+  <img width="800" height="428" alt="ScreenRecording2026-07-29145438-ezgif com-video-to-gif-converter" src="https://github.com/user-attachments/assets/68861572-f4f4-44d5-9009-1869dca76e6a" />
+
+- Round-robin assignment: director can take users out of the pool, or move users up to adjust current pointer.
+  <img width="800" height="337" alt="ScreenRecording2026-07-29145758-ezgif com-video-to-gif-converter" src="https://github.com/user-attachments/assets/ddedb8d9-fd4e-44b2-9e14-e459fe7fb4e7" />
+
+- When a new client is created, the client is auto-assigned to the user with the current pointer in the pool.
+  
 ### Activity logging
 
 - Per-client activity log with user attribution and change descriptions.
