@@ -25,6 +25,7 @@ A custom CRM and operations workspace built with Next.js, React, TypeScript, Sup
 
 - Sales staff can access the subitem markup, qty, etc. columns while Project Managers can click on a payment icon to switch to their relevant columns and input the necessary information, or click on the timeline icon for tracking project timeline
 <img width="800" height="332" alt="ScreenRecording2026-07-29141422-ezgif com-video-to-gif-converter" src="https://github.com/user-attachments/assets/e8f29f05-002d-48ba-8731-fc2816ed2457" />
+
 - Sales staff can select subitem(s) to view total price, total cost, total markup without scrolling to the right  
 <img width="706" height="266" alt="ScreenRecording2026-07-29141659-ezgif com-video-to-gif-converter" src="https://github.com/user-attachments/assets/d55e950c-aadb-44a2-9ef3-29e6a3613770" />
 
@@ -64,7 +65,7 @@ A custom CRM and operations workspace built with Next.js, React, TypeScript, Sup
 
 - Public client-facing OCF page accessible through a tokenized link rather than requiring standard app authentication.
 - Shipper-facing site/view for Project Managers: a table-based external workflow for selected subitem data (when Project Manager clicks 'Push' button for selected subitem, shipper site pulls relevant data).
-  <img width="800" height="379" alt="ScreenRecording2026-07-29141026-ezgif com-video-to-gif-converter" src="https://github.com/user-attachments/assets/c2709dd0-55dd-404b-9581-a9d5d301af77" />
+<img width="800" height="379" alt="ScreenRecording2026-07-29141026-ezgif com-video-to-gif-converter" src="https://github.com/user-attachments/assets/c2709dd0-55dd-404b-9581-a9d5d301af77" />
 
 - Shipper site only shows relevant fields for specific shipper using token links to protect internal operational data.
 
