@@ -1,5 +1,5 @@
 
-# [NanyangGifts CRM Web App](https://nanyanggifts.vercel.app)
+# 🔗[NanyangGifts CRM Web App](https://nanyanggifts.vercel.app)
 
 A custom CRM and operations workspace built with Next.js, React, TypeScript, Supabase, and modern component-driven UI patterns. The app is designed around a grouped board workflow similar to Monday.com, with client rows, nested subitems, assignments, activity tracking, document generation, and external collaboration flows for clients and suppliers.
 
