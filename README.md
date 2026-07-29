@@ -35,6 +35,11 @@ A custom CRM and operations workspace built with Next.js, React, TypeScript, Sup
   <br>
   <img width="800" height="375" alt="ScreenRecording2026-07-29142353-ezgif com-video-to-gif-converter" src="https://github.com/user-attachments/assets/d4332abb-a569-40ca-a4cc-e2ad2a5ed827" />
 
+### Filters for client status and subitem progress status
+- Sales staff can easily filter for clients and Project Managers can filter for late subitems, for example.
+
+  <img width="800" height="385" alt="ScreenRecording2026-07-29152536-ezgif com-video-to-gif-converter" src="https://github.com/user-attachments/assets/f1ce8bb9-cde1-40c3-8f7d-1364fbbb541e" />
+
 
 ### Drag and drop clients to move them to different groups
 
