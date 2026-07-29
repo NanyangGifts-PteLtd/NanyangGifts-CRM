@@ -93,6 +93,13 @@ A custom CRM and operations workspace built with Next.js, React, TypeScript, Sup
 
 - Shipper site only shows relevant fields for specific shipper using token links to protect internal operational data.
 
+### Gantt Chart view synced with subitem timeline for Project Managers 
+- Gantt chart syncs with subitem and its subprogress as well as its status (Awarded, Quoted, etc.)
+
+  <img width="800" height="373" alt="ScreenRecording2026-07-29154535-ezgif com-video-to-gif-converter" src="https://github.com/user-attachments/assets/143eb28d-35b4-4713-b92a-949c4e178afa" />
+ 
+
+
 ### Export CRM board to CSV 
 - Only visible to Director for an easily accessible master-view of every client and their subitems
 
