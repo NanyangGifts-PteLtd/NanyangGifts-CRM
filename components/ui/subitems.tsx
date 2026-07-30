@@ -211,9 +211,7 @@ export function SubitemsTable({
 
     const [pushingSubitemId, setPushingSubitemId] = useState<string | null>(null);
 
-    const isPm = currentUserRole === "pm" || "dev" || currentUserRole === 'director';
-
-
+    const isPm = currentUserRole === "pm" || currentUserRole === "dev" || currentUserRole === "director";
 
     const cols = tableMode === "payment" ? paymentCols : subitemCols;
 

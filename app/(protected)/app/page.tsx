@@ -66,7 +66,6 @@ export default function Page() {
         .select('role')
         .eq('id', user.id)
         .single();
-
       if (error) {
         console.error('Failed to load profile role', error);
         setCurrentUserRole(null);
