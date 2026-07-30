@@ -5,7 +5,7 @@
 
 <p align="center">A custom CRM and operations web app built with Next.js, React, TypeScript, Supabase, and modern component-driven UI patterns. The app is designed around a grouped board workflow similar to Monday.com, with client rows, nested subitems, assignments, activity tracking, document generation, and external collaboration flows for clients and suppliers. </p>
 
-[Local Development Setup](#local-development-setup)
+[Jump to Local Development Setup](#-local-development-setup)
 
 ## Core Features
 
