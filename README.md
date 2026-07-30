@@ -116,3 +116,47 @@
 | Database | PostgreSQL via Supabase |
 | Auth / access patterns | Supabase auth for internal users, tokenized access for selected external parties (client, supplier) |
 | Integrations | QuickBooks |
+
+## 🛠️ Local Development Setup
+
+Follow these steps to get a local development environment running on your machine.
+
+### Prerequisites
+Make sure you have [Node.js](https://nodejs.org/) installed on your machine.
+
+---
+
+### 1. Clone the Repository
+
+```bash
+git clone https://github.com/NanyangGifts-PteLtd/NanyangGifts-CRM>
+cd nanyanggifts-crm 
+```
+
+
+### 2. Install dependencies
+
+```bash
+npm install
+# or: yarn install / pnpm install / bun install
+```
+
+### 3. Set up environment variables 
+Login to Vercel using company developer account, link your local directory to the Vercel project using Vercel CLI
+
+```bash
+npx vercel link
+# Login, then select team and project
+```
+Pull the environment variables
+```bash
+npx vercel env pull .env.local
+```
+
+### 4. Run the development server locally
+
+```bash
+npm run dev
+```
+
+
