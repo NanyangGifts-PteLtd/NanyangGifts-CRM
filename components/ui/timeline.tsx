@@ -135,7 +135,7 @@ export function TimelineSection({
                                 <th
                                     key={col.label}
                                     style={{ minWidth: col.w }}
-                                    className="whitespace-nowrap border-r border-gray-100 px-2 py-1 text-left text-xs font-semibold text-gray-500 last:border-r-0"
+                                    className="whitespace-nowrap border-r border-gray-100 px-2 text-left text-xs font-semibold text-gray-500 last:border-r-0"
                                 >
                                     {col.label}
                                 </th>

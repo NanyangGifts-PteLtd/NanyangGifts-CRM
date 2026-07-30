@@ -123,7 +123,7 @@ export default function GanttChart({ clients }: Props) {
     const Scheduler = dynamic(() => import("@bitnoi.se/react-scheduler").then((mod) => mod.Scheduler), {
         ssr: false
     });
-    const [isLoading] = useState(false);
+    const [isLoading] = useState(true);
 
     const data = useMemo(() => buildSchedulerData(clients), [clients]);
 
