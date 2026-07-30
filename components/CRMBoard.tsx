@@ -101,6 +101,7 @@ export function CRMBoard({ clients,
   const [clientStatusEntries, setClientStatusEntries] = useState<OptionEntry[]>([]);
   const [channelEntries, setChannelEntries] = useState<OptionEntry[]>([]);
   const [importanceEntries, setImportanceEntries] = useState<OptionEntry[]>([]);
+  const [paymentEntries, setPaymentEntries] = useState<OptionEntry[]>([]);
   const [paymentStatusEntries, setPaymentStatusEntries] = useState<OptionEntry[]>([]);
   const [modeOfPaymentEntries, setModeOfPaymentEntries] = useState<OptionEntry[]>([]);
   const [shipperEntries, setShipperEntries] = useState<OptionEntry[]>([]);
@@ -257,6 +258,7 @@ export function CRMBoard({ clients,
           statusOpts,
           channelOpts,
           importanceOpts,
+          paymentOpts,
           paymentStatusOpts,
           modeOfPaymentOpts,
           shipperOpts,
@@ -274,6 +276,7 @@ export function CRMBoard({ clients,
           fetchOptions('client_status'),
           fetchOptions('channel'),
           fetchOptions('importance'),
+          fetchOptions('payment'),
           fetchOptions('payment_status'),
           fetchOptions('mode_of_payment'),
           fetchOptions('shipper'),
@@ -291,6 +294,7 @@ export function CRMBoard({ clients,
         setClientStatusEntries(statusOpts);
         setChannelEntries(channelOpts);
         setImportanceEntries(importanceOpts);
+        setPaymentEntries(paymentOpts);
         setPaymentStatusEntries(paymentStatusOpts);
         setModeOfPaymentEntries(modeOfPaymentOpts);
         setShipperEntries(shipperOpts);
@@ -475,6 +479,20 @@ export function CRMBoard({ clients,
   const handleDeleteSubitemStatus = useCallback(
     async (name: string) => {
       await deleteOptionValue('subitem_status', name, setSubitemStatusEntries);
+    },
+    [deleteOptionValue]
+  );
+
+  const handleAddPayment = useCallback(
+    async (name: string) => {
+      await insertOptionValue('payment', name, paymentEntries, setPaymentEntries);
+    },
+    [insertOptionValue, paymentEntries]
+  );
+
+  const handleDeletePayment = useCallback(
+    async (name: string) => {
+      await deleteOptionValue('payment', name, setPaymentEntries);
     },
     [deleteOptionValue]
   );
@@ -1114,6 +1132,7 @@ export function CRMBoard({ clients,
                   statusOptions={clientStatusEntries}
                   channelOptions={channelEntries}
                   importanceOptions={importanceEntries}
+                  paymentOptions={paymentEntries}
                   paymentStatusOptions={paymentStatusEntries}
                   modeOfPaymentOptions={modeOfPaymentEntries}
                   shipperOptions={shipperEntries}
@@ -1139,6 +1158,8 @@ export function CRMBoard({ clients,
                   onDeleteChannel={handleDeleteChannel}
                   onAddImportance={handleAddImportance}
                   onDeleteImportance={handleDeleteImportance}
+                  onAddPayment={handleAddPayment}
+                  onDeletePayment={handleDeletePayment}
                   onAddPaymentStatus={handleAddPaymentStatus}
                   onDeletePaymentStatus={handleDeletePaymentStatus}
                   onAddModeOfPayment={handleAddModeOfPayment}

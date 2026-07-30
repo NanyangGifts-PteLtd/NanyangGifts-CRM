@@ -48,6 +48,7 @@ export type ClientRowProps = {
     onDeleteChannel?: (name: string) => void | Promise<void>;
     onAddImportance?: (name: string) => void | Promise<void>;
     onDeleteImportance?: (name: string) => void | Promise<void>;
+    paymentOptions: OptionEntry[];
     paymentStatusOptions: OptionEntry[];
     modeOfPaymentOptions: OptionEntry[];
     shipperOptions: OptionEntry[];
@@ -65,6 +66,8 @@ export type ClientRowProps = {
     onDeleteLocalOverseas: (name: string) => void | Promise<void>;
     onAddShipper?: (name: string) => void | Promise<void>;
     onDeleteShipper?: (name: string) => void | Promise<void>;
+    onAddPayment?: (name: string) => void | Promise<void>;
+    onDeletePayment?: (name: string) => void | Promise<void>;
     onAddPaymentStatus?: (name: string) => void | Promise<void>;
     onDeletePaymentStatus?: (name: string) => void | Promise<void>;
     onAddModeOfPayment?: (name: string) => void | Promise<void>;
@@ -117,6 +120,7 @@ export function ClientRow({
     onDeleteChannel,
     onAddImportance,
     onDeleteImportance,
+    paymentOptions,
     paymentStatusOptions,
     modeOfPaymentOptions,
     shipperOptions,
@@ -134,6 +138,8 @@ export function ClientRow({
     onDeleteLocalOverseas,
     onAddShipper,
     onDeleteShipper,
+    onAddPayment,
+    onDeletePayment,
     onAddPaymentStatus,
     onDeletePaymentStatus,
     onAddModeOfPayment,
@@ -776,6 +782,7 @@ export function ClientRow({
                     profiles={profiles}
                     subitemAssigneeMap={subitemAssigneeMap}
                     onChangeSubitemAssignees={onChangeSubitemAssignees}
+                    paymentOptions={paymentOptions}
                     paymentStatusOptions={paymentStatusOptions}
                     modeOfPaymentOptions={modeOfPaymentOptions}
                     shipperOptions={shipperOptions}
@@ -793,6 +800,8 @@ export function ClientRow({
                     onDeleteLocalOverseas={onDeleteLocalOverseas}
                     onAddShipper={onAddShipper}
                     onDeleteShipper={onDeleteShipper}
+                    onAddPayment={onAddPayment}
+                    onDeletePayment={onDeletePayment}
                     onAddPaymentStatus={onAddPaymentStatus}
                     onDeletePaymentStatus={onDeletePaymentStatus}
                     onAddModeOfPayment={onAddModeOfPayment}

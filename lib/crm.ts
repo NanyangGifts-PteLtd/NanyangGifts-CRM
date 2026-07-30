@@ -99,6 +99,7 @@ type Subitems = {
     pl: string | null;
     sl: string | null;
     owner: string | null;
+    payment: string | null;
     payment_status: string | null;
     total_uc: string | null;
     ls_rmb: string | null;
@@ -294,6 +295,7 @@ function mapSubitems(row: Subitems): Subitem {
         pl: row.pl ?? '',
         sl: row.sl ?? '',
         owner: row.owner ?? '',
+        payment: row.payment ?? '',
         paymentStatus: row.payment_status ?? '',
         totalUc: row.total_uc ?? '',
         lsRmb: row.ls_rmb ?? '',
@@ -625,6 +627,7 @@ export async function createSubitemRow(clientId: string) {
             cn_tracking: '',
             sg_tracking: '',
             owner: '',
+            payment: '',
             payment_status: '',
             total_uc: '',
             ls_rmb: '',
@@ -734,6 +737,7 @@ export async function updateSubitemRow(subitemId: string, updates: Partial<Subit
         ...(updates.cnTracking !== undefined ? { cn_tracking: updates.cnTracking } : {}),
         ...(updates.sgTracking !== undefined ? { sg_tracking: updates.sgTracking } : {}),
         ...(updates.owner !== undefined ? { owner: updates.owner } : {}),
+        ...(updates.payment !== undefined ? { payment: updates.payment } : {}),
         ...(updates.paymentStatus !== undefined ? { payment_status: updates.paymentStatus } : {}),
         ...(updates.totalUc !== undefined ? { total_uc: updates.totalUc } : {}),
         ...(updates.lsRmb !== undefined ? { ls_rmb: updates.lsRmb } : {}),

@@ -92,7 +92,8 @@ export interface Subitem {
   
   // Payment fields
   owner: string;
-  paymentStatus: PaymentStatus | string;
+  payment: string;
+  paymentStatus: string;
   totalUc: string;
   lsRmb: string;
   manpowerRmb: string;

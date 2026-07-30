@@ -54,7 +54,7 @@ const SUBITEM_COLS: ColumnDef[] = [
 
 const PAYMENT_COLS: ColumnDef[] = [
     { key: "name", label: "Subitem", width: 290, minWidth: 170 },
-    { key: "paymentTerms", label: "Payment Terms", width: 82, minWidth: 7 },
+    { key: "payment", label: "Payment", width: 82, minWidth: 7 },
     { key: "paymentStatus", label: "Status", width: 100, minWidth: 7 },
     { key: "shipper", label: "Shipper", width: 80, minWidth: 7 },
     { key: "supplier", label: "Supplier", width: 80, minWidth: 7 },
@@ -92,6 +92,7 @@ type SubitemProps = {
     profiles: Profile[];
     subitemAssigneeMap: Record<string, string[]>;
     onChangeSubitemAssignees: (subitemId: string, ids: string[]) => void;
+    paymentOptions: OptionEntry[];
     paymentStatusOptions: OptionEntry[];
     modeOfPaymentOptions: OptionEntry[];
     shipperOptions: OptionEntry[];
@@ -109,6 +110,8 @@ type SubitemProps = {
     onDeleteShipper?: (name: string) => void | Promise<void>;
     onAddLocalOverseas?: (name: string) => void | Promise<void>;
     onDeleteLocalOverseas?: (name: string) => void | Promise<void>;
+    onAddPayment?: (name: string) => void | Promise<void>;
+    onDeletePayment?: (name: string) => void | Promise<void>;
     onAddPaymentStatus?: (name: string) => void | Promise<void>;
     onDeletePaymentStatus?: (name: string) => void | Promise<void>;
     onAddModeOfPayment?: (name: string) => void | Promise<void>;
@@ -169,6 +172,7 @@ export function SubitemsTable({
     profiles,
     subitemAssigneeMap,
     onChangeSubitemAssignees,
+    paymentOptions,
     paymentStatusOptions,
     modeOfPaymentOptions,
     shipperOptions,
@@ -186,6 +190,8 @@ export function SubitemsTable({
     onDeleteLocalOverseas,
     onAddShipper,
     onDeleteShipper,
+    onAddPayment,
+    onDeletePayment,
     onAddPaymentStatus,
     onDeletePaymentStatus,
     onAddModeOfPayment,
@@ -524,8 +530,20 @@ export function SubitemsTable({
         switch (key) {
             case "name":
                 return renderNameCell(sub);
-            case "paymentTerms":
-                return <EditableCell value={sub.owner} onChange={(v) => onUpdateSubitem(sub.id, { owner: v })} />;
+            case "payment":
+                return (
+                    <div className="overflow-hidden whitespace-nowrap text-ellipsis !text-center border-r border-[#D0D4E4] p-0 h-[33.1px] flex-shrink-0 transition transform active:scale-95 duration-150">
+                        <StatusBadge
+                            value={sub.payment ?? ""}
+                            onChange={(v) => onUpdateSubitem(sub.id, { payment: v })}
+                            options={paymentOptions}
+                            onAddOption={onAddPayment}
+                            onDeleteOption={onDeletePayment}
+                            manageLabel="payment"
+                            small
+                        />
+                    </div>
+                );
             case "paymentStatus":
                 return (
                     <div className="overflow-hidden whitespace-nowrap text-ellipsis !text-center border-r border-[#D0D4E4] p-0 h-[33.1px] flex-shrink-0 transition transform active:scale-95 duration-150">
