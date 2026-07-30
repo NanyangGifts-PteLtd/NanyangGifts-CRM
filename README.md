@@ -97,6 +97,7 @@
 
 ### Gantt Chart view synced with subitem timeline for Project Managers (using [Bitnoise React Scheduler](https://github.com/Bitnoise/react-scheduler))
 - Gantt chart syncs with subitem and its subprogress as well as its status (Awarded, Quoted, etc.)
+- Live updates: when subitem subprogress changes, Gantt Chart will update immediately
 
   <img width="800" height="373" alt="ScreenRecording2026-07-29154535-ezgif com-video-to-gif-converter" src="https://github.com/user-attachments/assets/143eb28d-35b4-4713-b92a-949c4e178afa" />
  
