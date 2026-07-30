@@ -31,7 +31,7 @@ const navItems: { id: SidePanel; icon: React.ReactNode; label: string; href?: st
   { id: 'reports', icon: <BarChart2 size={17.5} />, label: 'Reports & KPI' },
   { id: 'ganttchart', icon: <SquareChartGantt size={17.5} />, label: 'Gantt Chart' },
   { id: 'roundrobin', icon: <BotMessageSquare size={17.5} />, label: 'Round Robin' },
-  { id: 'shipper', icon: <PackageSearch size={17.5} />, label: 'Shipper', href: '/app/shipper', external: true },
+  { id: 'shipper', icon: <PackageSearch size={17.5} />, label: 'Shipper', href: '/shipper', external: true },
 ];
 
 export default function Sidebar({

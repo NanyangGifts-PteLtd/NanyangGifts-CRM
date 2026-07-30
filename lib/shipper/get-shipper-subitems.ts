@@ -1,6 +1,6 @@
 import "server-only";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import type { ShipperRow } from "@/app/(protected)/app/shipper/[token]/ShipperGrid";
+import type { ShipperRow } from "@/app/(public)/shipper/[token]/ShipperGrid";
 
 export async function getShipperSubitems(shipperId?: string): Promise<ShipperRow[]> {
     let query = supabaseAdmin
