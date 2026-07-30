@@ -55,8 +55,8 @@ export default function Sidebar({
 
   const itemClass = (active: boolean) =>
     `w-full flex items-center gap-3 px-2 py-2 rounded-md text-left group relative transition transform active:scale-95 duration-150 ${active
-      ? 'bg-[#a0e2eb] text-white'
-      : 'text-gray-500 hover:bg-[#a0e2eb] hover:text-white'
+      ? 'bg-[#16a5c4] text-white'
+      : 'text-gray-500 hover:bg-[#16a5c4] hover:text-white'
     }`;
 
   return (
@@ -75,7 +75,7 @@ export default function Sidebar({
 
         <button
           onClick={onToggleCollapsed}
-          className="p-1.5 rounded-md text-gray-500 hover:bg-[#a0e2eb] hover:text-white transition-colors"
+          className="p-1.5 rounded-md text-gray-500 hover:bg-[#43adc4] hover:text-white transition-colors"
           aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >
           {collapsed ? '›' : '‹'}

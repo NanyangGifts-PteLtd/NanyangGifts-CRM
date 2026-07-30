@@ -66,6 +66,18 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "subitemIds is required" }, { status: 400 });
         }
 
+        const { data: shipperRows, error: shipperError } = await supabase
+            .from("shippers")
+            .select("id, name, token");
+
+        if (shipperError) {
+            return NextResponse.json({ error: shipperError.message }, { status: 500 });
+        }
+
+        const shipperByName = new Map(
+            (shipperRows ?? []).map((s) => [s.name.trim().toLowerCase(), s])
+        );
+
         const { data: subitems, error: subitemsError } = await supabase
             .from("subitems")
             .select(`
@@ -75,7 +87,9 @@ export async function POST(req: NextRequest) {
         qty,
         price,
         up,
-        cn_tracking
+        cn_tracking,
+        shipper,
+        shipper_id
         `)
             .in("id", subitemIds);
 
@@ -138,6 +152,7 @@ export async function POST(req: NextRequest) {
                 latestSubmittedOcfItemBySubitemId.set(item.subitem_id, item);
             }
         }
+        
 
         const rowsToUpsert = subitems.map((item) => {
 

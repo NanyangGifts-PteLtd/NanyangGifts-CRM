@@ -878,21 +878,21 @@ export function CRMBoard({ clients,
   return (
     <div className="flex flex-col h-full bg-white">
       <div className="flex items-center gap-2 px-2 py-1 border-b border-gray-200 bg-white flex-shrink-0">
-        <button onClick={addClient} className="flex items-center gap-1 px-2 py-1 bg-[#a0e2eb] hover:bg-[#7BCBD5] text-white rounded-md text-[10px] font-medium transition-colors transition transform active:scale-95 duration-150">
+        <button onClick={addClient} className="flex items-center gap-1 px-2 py-1 bg-[#43adc4] hover:bg-[#0f8da8] text-white rounded-md text-[10px] font-medium transition-colors transition transform active:scale-95 duration-150">
           <Plus size={12} /> Add Client
         </button>
-        <button onClick={() => setShowAddGroupModal(true)} className="flex items-center gap-1 px-2 py-1 bg-[#a0e2eb] hover:bg-[#7BCBD5] text-white rounded-md text-[10px] font-medium transition-colors transition transform active:scale-95 duration-150">
+        <button onClick={() => setShowAddGroupModal(true)} className="flex items-center gap-1 px-2 py-1 bg-[#43adc4] hover:bg-[#0f8da8] text-white rounded-md text-[10px] font-medium transition-colors transition transform active:scale-95 duration-150">
           <Plus size={12} /> Add Group
         </button>
         <AddGroupModal open={showAddGroupModal} onClose={() => setShowAddGroupModal(false)} onSubmit={handleAddGroup} />
 
-        <button onClick={toggleExpandAll} className="flex items-center gap-1 px-2 py-1 bg-[#a0e2eb] hover:bg-[#7BCBD5] text-white rounded-md text-[10px] font-medium transition-colors transition transform active:scale-95 duration-150">
+        <button onClick={toggleExpandAll} className="flex items-center gap-1 px-2 py-1 bg-[#43adc4] hover:bg-[#0f8da8] text-white rounded-md text-[10px] font-medium transition-colors transition transform active:scale-95 duration-150">
           {allExpanded ? <ChevronsUp size={12} /> : <ChevronsDown size={12} />}
           {allExpanded ? 'Collapse All' : 'Expand All'}
         </button>
 
         <div ref={filterRef} className="relative">
-          <button onClick={() => setShowFilter(!showFilter)} className="flex items-center gap-1 px-2 py-1 bg-[#a0e2eb] hover:bg-[#7BCBD5] text-white rounded-md text-[10px] font-medium transition-colors transition transform active:scale-95 duration-150">
+          <button onClick={() => setShowFilter(!showFilter)} className="flex items-center gap-1 px-2 py-1 bg-[#43adc4] hover:bg-[#0f8da8] text-white rounded-md text-[10px] font-medium transition-colors transition transform active:scale-95 duration-150">
             <Filter size={12} />
             {filterStatus === 'All' ? 'Filter by Status' : filterStatus}
             <ChevronDown size={11} />
@@ -918,7 +918,7 @@ export function CRMBoard({ clients,
         <div ref={subprogressFilterRef} className="relative">
           <button
             onClick={() => setShowSubprogressFilter(!showSubprogressFilter)}
-            className="flex items-center gap-1 px-2 py-1 bg-[#a0e2eb] hover:bg-[#7BCBD5] text-white rounded-md text-[10px] font-medium transition-colors transform active:scale-95 duration-150"
+            className="flex items-center gap-1 px-2 py-1 bg-[#43adc4] hover:bg-[#0f8da8] text-white rounded-md text-[10px] font-medium transition-colors transform active:scale-95 duration-150"
           >
             <Filter size={12} />
             {filterSubprogress === 'All' ? 'Filter by Subitem' : filterSubprogress}
