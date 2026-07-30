@@ -48,19 +48,19 @@ function display(value: unknown) {
 
 export default function ShipperGrid({ rows, mode, token }: ShipperGridProps) {
     const columns = [
-        { key: "serial_number", label: "序号", editableByPm: false, editableByShipper: true },
-        { key: "waybill_date", label: "运单日期", editableByPm: false, editableByShipper: true },
-        { key: "waybill_number", label: "运单号码", editableByPm: false, editableByShipper: true },
-        { key: "pieces", label: "件数", editableByPm: false, editableByShipper: true },
-        { key: "chargeable_weight_kg", label: "计费重量（KG）", editableByPm: false, editableByShipper: true },
-        { key: "destination", label: "目的地", editableByPm: false, editableByShipper: true },
-        { key: "freight_unit_price", label: "单价", editableByPm: false, editableByShipper: true },
-        { key: "freight_cost", label: "运费", editableByPm: false, editableByShipper: true },
-        { key: "gst", label: "消费税", editableByPm: false, editableByShipper: true },
-        { key: "other_fees", label: "其他费用", editableByPm: false, editableByShipper: true },
-        { key: "total_cost", label: "总计费用", editableByPm: false, editableByShipper: true },
-        { key: "channel", label: "渠道", editableByPm: false, editableByShipper: true },
-        { key: "logistics_remarks", label: "备注", editableByPm: false, editableByShipper: true },
+        { key: "serial_number", label: "序号", editableByPm: true, editableByShipper: true },
+        { key: "waybill_date", label: "运单日期", editableByPm: true, editableByShipper: true },
+        { key: "waybill_number", label: "运单号码", editableByPm: true, editableByShipper: true },
+        { key: "pieces", label: "件数", editableByPm: true, editableByShipper: true },
+        { key: "chargeable_weight_kg", label: "计费重量（KG）", editableByPm: true, editableByShipper: true },
+        { key: "destination", label: "目的地", editableByPm: true, editableByShipper: true },
+        { key: "freight_unit_price", label: "单价", editableByPm: true, editableByShipper: true },
+        { key: "freight_cost", label: "运费", editableByPm: true, editableByShipper: true },
+        { key: "gst", label: "消费税", editableByPm: true, editableByShipper: true },
+        { key: "other_fees", label: "其他费用", editableByPm: true, editableByShipper: true },
+        { key: "total_cost", label: "总计费用", editableByPm: true, editableByShipper: true },
+        { key: "channel", label: "渠道", editableByPm: true, editableByShipper: true },
+        { key: "logistics_remarks", label: "备注", editableByPm: true, editableByShipper: true },
 
         { key: "ic", label: "谁下单 / I/C", editableByPm: true, editableByShipper: false },
         { key: "info_provided_date", label: "提供资料日期", editableByPm: true, editableByShipper: false },
@@ -106,7 +106,7 @@ export default function ShipperGrid({ rows, mode, token }: ShipperGridProps) {
                             {columns.map((col) => (
                                 <th
                                     key={col.key}
-                                    className={`sticky top-0 z-20 border border-slate-400 px-3 py-2 text-center whitespace-nowrap ${col.editableByPm ? "bg-[#4588ed] text-white" : "bg-white text-black"
+                                    className={`sticky top-0 z-20 border border-slate-400 px-3 py-2 text-center whitespace-nowrap ${col.editableByShipper ? "bg-white text-black" : "bg-[#4588ed] text-white" 
                                         }`}
                                 >
                                     {col.label}
