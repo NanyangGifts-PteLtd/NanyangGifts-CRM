@@ -16,6 +16,7 @@ const CLIENT_LOG_IGNORE_FIELDS = new Set<keyof Client>([
     'activityLog',
     'color',
     'subitems',
+    'customFields'
 ]);
 const SUBITEM_LOG_IGNORE_FIELDS = new Set<keyof Subitem>([
     'showTimeline',

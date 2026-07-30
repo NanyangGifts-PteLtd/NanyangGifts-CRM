@@ -1001,7 +1001,7 @@ export function CRMBoard({ clients,
 
       <div className="flex min-w-0 text-gray-500 font-semibold">
         <div style={{ minWidth: totalMinWidth }}>
-          <div className="flex text-[11px] items-center justify-center w-full min-w-0 flex-shrink-0 border-r border-[#D0D4E4] overflow-hidden animated-background bg-gradient-to-r from-[#e7fdff] to-[#a3dfff] sticky top-0 z-10" style={{ minWidth: totalMinWidth }}>
+          <div className="flex text-[12.6px] items-center justify-center w-full min-w-0 flex-shrink-0 border-r border-[#D0D4E4] overflow-hidden animated-background bg-gradient-to-r from-[#e7fdff] to-[#a3dfff] sticky top-0 z-10" style={{ minWidth: totalMinWidth }}>
             {mergedHeaderCols.map((col) => (
               <div
                 key={col.key}

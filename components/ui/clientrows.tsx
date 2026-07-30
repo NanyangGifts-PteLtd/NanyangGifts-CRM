@@ -312,7 +312,7 @@ export function ClientRow({
     return (
         <div className="mb-0">
             <div
-                className={`box-border border-b flex items-center flex-shrink-0 border-r border-[#D0D4E4] hover:blue-50 group transition-colors ${isSelected ? "bg-blue-50" : ""
+                className={`box-border border-b flex text-[15px] items-center flex-shrink-0 border-r border-[#D0D4E4] hover:blue-50 group transition-colors ${isSelected ? "bg-blue-50" : ""
                     }`}
             >
                 <div
@@ -355,7 +355,7 @@ export function ClientRow({
                     </div>
                     <div className="ml-auto flex items-center justify-start gap-1 flex-shrink-0">
                         {subitemCount > 0 && (
-                            <span className="text-xs text-[#7BCBD5] items-left justify-left bg-[#e7fdff] rounded-full px-1.5 py-0.5 flex-shrink-0">
+                            <span className="text-[12.6px] text-[#7BCBD5] items-left justify-left bg-[#e7fdff] rounded-full px-1.5 py-0.5 flex-shrink-0">
                                 {subitemCount}
                             </span>
                         )}
@@ -383,13 +383,13 @@ export function ClientRow({
                                     <div className="mb-4 flex items-center justify-between">
                                         <div>
                                             <h2 className="text-sm font-semibold text-gray-900">Activity Log</h2>
-                                            <p className="text-xs text-gray-500">{client.name}</p>
+                                            <p className="text-[12.6px] text-gray-500">{client.name}</p>
                                         </div>
 
                                         <button
                                             type="button"
                                             onClick={() => setShowActivityLog(false)}
-                                            className="text-xs text-gray-500 hover:text-gray-700"
+                                            className="text-[12.6px] text-gray-500 hover:text-gray-700"
                                         >
                                             Close
                                         </button>
@@ -424,13 +424,13 @@ export function ClientRow({
                                                                             href={entry.link}
                                                                             target="_blank"
                                                                             rel="noopener noreferrer"
-                                                                            className="ml-4 inline-flex items-center rounded-md bg-teal-100 px-2 py-1 text-xs font-medium text-teal-500 hover:bg-teal-200"
+                                                                            className="ml-4 inline-flex items-center rounded-md bg-teal-100 px-2 py-1 text-[12.6px] font-medium text-teal-500 hover:bg-teal-200"
                                                                         >
                                                                             Open OCF
                                                                         </a>
                                                                     ) : null}
                                                                 </p>
-                                                                <p className="mt-1 text-xs text-gray-500">
+                                                                <p className="mt-1 text-[12.6px] text-gray-500">
                                                                     {new Date(entry.createdAt).toLocaleString()}
                                                                 </p>
                                                             </div>
@@ -513,7 +513,7 @@ export function ClientRow({
                         type="date"
                         value={toDateInputValue(client.followUp)}
                         onChange={(e) => onUpdate({ followUp: e.target.value })}
-                        className="text-xs px-1 border-none outline-none bg-transparent cursor-pointer w-full"
+                        className="text-[12.6px] px-1 border-none outline-none bg-transparent cursor-pointer w-full"
                     />
                 </div>
 
@@ -586,7 +586,7 @@ export function ClientRow({
                                         }}
                                     />
                                     {closeFiles.length > 0 && (
-                                        <div className="mt-2 text-xs text-gray-500 font-semibold">
+                                        <div className="mt-2 text-[12.6px] text-gray-500 font-semibold">
                                             {closeFiles.length} file(s) selected
                                         </div>
                                     )}
@@ -686,7 +686,7 @@ export function ClientRow({
                         type="date"
                         value={toDateInputValue(client.nbd)}
                         onChange={(e) => onUpdate({ nbd: e.target.value })}
-                        className="text-xs border-none outline-none bg-transparent cursor-pointer w-full"
+                        className="text-[12.6px] border-none outline-none bg-transparent cursor-pointer w-full"
                     />
                 </div>
                 <div className="flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height: 32, minWidth: colWidth.totalPrice, width: colWidth.totalPrice }}>
@@ -729,7 +729,7 @@ export function ClientRow({
                                 onChange={(e) =>
                                     updateClientCustomField(client.id, col.id, e.target.value)
                                 }
-                                className="text-xs border-none outline-none bg-transparent cursor-pointer w-full px-1"
+                                className="text-[12.6px] border-none outline-none bg-transparent cursor-pointer w-full px-1"
                             />
                         ) : (
                             <EditableCell
