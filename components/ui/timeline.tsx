@@ -170,7 +170,7 @@ export function TimelineSection({
                                         />
                                     </td>
 
-                                    <td className="border-r border-gray-100 px-2 py-1">
+                                    <td className="overflow-hidden whitespace-nowrap text-ellipsis !text-center border-r border-[#D0D4E4] p-0 h-[33.1px] flex-shrink-0 transition transform active:scale-95 duration-150">
                                         <StatusBadge
                                             value={row.subProgress || 'Pending'}
                                             onChange={(v) => updateRow(row.id, 'subProgress', v)}

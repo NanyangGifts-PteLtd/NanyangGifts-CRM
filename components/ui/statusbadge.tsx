@@ -155,7 +155,7 @@ export function StatusBadge({
             <button
                 ref={btnRef}
                 onClick={handleOpen}
-                className={`mx-auto rounded font-medium whitespace-nowrap leading-none ${small ? 'px-1 py-1 text-[10px]' : 'px-1 py-1 text-[10px]'
+                className={`ck w-full h-full font-medium leading-none whitespace-nowrap ${small ? 'text-[12.6px]' : 'text-[12.6px]'
                     } transition transform active:scale-95 duration-150`}
                 style={{ background: activeBg, color: '#ffffff', minWidth: 50 }}
             >

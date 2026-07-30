@@ -308,7 +308,7 @@ export function SubitemsTable({
     }
 
     const renderNameCell = (sub: Subitem) => (
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 h-[30px]">
             <FileText size={11} className="text-gray-400 shrink-0" />
             <EditableCell
                 value={sub.name}
@@ -416,7 +416,7 @@ export function SubitemsTable({
                 );
             case "localOverseas":
                 return (
-                    <div className="flex items-center">
+                    <div className="overflow-hidden whitespace-nowrap text-ellipsis !text-center border-r border-[#D0D4E4] p-0 h-[33.1px] flex-shrink-0 transition transform active:scale-95 duration-150">
                         <StatusBadge
                             value={sub.localOverseas ?? ""}
                             onChange={(v) => onUpdateSubitem(sub.id, { localOverseas: v })}
@@ -430,7 +430,7 @@ export function SubitemsTable({
                 );
             case "status":
                 return (
-                    <div className="flex items-center">
+                    <div className="overflow-hidden whitespace-nowrap text-ellipsis !text-center border-r border-[#D0D4E4] p-0 h-[33.1px] flex-shrink-0 transition transform active:scale-95 duration-150">
                         <StatusBadge
                             value={sub.status ?? ""}
                             onChange={(v) => onUpdateSubitem(sub.id, { status: v })}
@@ -450,7 +450,7 @@ export function SubitemsTable({
                 return <EditableCell value={sub.remarks} onChange={(v) => onUpdateSubitem(sub.id, { remarks: v })} multiline />;
             case "shipper":
                 return (
-                    <div className="flex items-center">
+                    <div className="overflow-hidden whitespace-nowrap text-ellipsis !text-center border-r border-[#D0D4E4] p-0 h-[33.1px] flex-shrink-0 transition transform active:scale-95 duration-150">
                         <StatusBadge
                             value={sub.shipper ?? ""}
                             onChange={(v) => onUpdateSubitem(sub.id, { shipper: v })}
@@ -474,7 +474,7 @@ export function SubitemsTable({
                 return <EditableCell value={sub.os} onChange={(v) => onUpdateSubitem(sub.id, { os: v })} type="number" />;
             case "currency":
                 return (
-                    <div className="flex items-center">
+                    <div className="overflow-hidden whitespace-nowrap text-ellipsis !text-center border-r border-[#D0D4E4] p-0 h-[33.1px] flex-shrink-0 transition transform active:scale-95 duration-150">
                         <StatusBadge
                             value={sub.currency ?? ""}
                             onChange={(v) => onUpdateSubitem(sub.id, { currency: v })}
@@ -527,7 +527,7 @@ export function SubitemsTable({
                 return <EditableCell value={sub.owner} onChange={(v) => onUpdateSubitem(sub.id, { owner: v })} />;
             case "paymentStatus":
                 return (
-                    <div className="flex items-center">
+                    <div className="overflow-hidden whitespace-nowrap text-ellipsis !text-center border-r border-[#D0D4E4] p-0 h-[33.1px] flex-shrink-0 transition transform active:scale-95 duration-150">
                         <StatusBadge
                             value={sub.paymentStatus ?? ""}
                             onChange={(v) => onUpdateSubitem(sub.id, { paymentStatus: v })}
@@ -541,7 +541,7 @@ export function SubitemsTable({
                 );
             case "shipper":
                 return (
-                    <div className="flex items-center">
+                    <div className="overflow-hidden whitespace-nowrap text-ellipsis !text-center border-r border-[#D0D4E4] p-0 h-[33.1px] flex-shrink-0 transition transform active:scale-95 duration-150">
                         <StatusBadge
                             value={sub.shipper ?? ""}
                             onChange={(v) => onUpdateSubitem(sub.id, { shipper: v })}
@@ -575,7 +575,7 @@ export function SubitemsTable({
                 return <div className="flex justify-center text-xs text-gray-800">{formatMoney(totalC)}</div>;
             case "modeOfPayment":
                 return (
-                    <div className="flex items-center">
+                    <div className="overflow-hidden whitespace-nowrap text-ellipsis !text-center border-r border-[#D0D4E4] p-0 h-[33.1px] flex-shrink-0 transition transform active:scale-95 duration-150">
                         <StatusBadge
                             value={sub.modeOfPayment ?? ""}
                             onChange={(v) => onUpdateSubitem(sub.id, { modeOfPayment: v })}
@@ -674,7 +674,7 @@ export function SubitemsTable({
                             {cols.map((col) => (
                                 <th
                                     key={col.key}
-                                    className="overflow-hidden relative border-r border-[#D0D4E4] py-1 text-center text-[11px] font-semibold whitespace-nowrap text-gray-500"
+                                    className="overflow-hidden relative border-r border-[#D0D4E4] text-center text-[12.6px] font-semibold whitespace-nowrap text-gray-500"
                                 >
                                     <div className="overflow-hidden text-ellipsis whitespace-nowrap px-2">{col.label}</div>
                                     <div
@@ -690,7 +690,7 @@ export function SubitemsTable({
                             {subitemCustomCols.map((col) => (
                                 <th
                                     key={col.id}
-                                    className="relative border-r border-[#D0D4E4] py-1 text-center text-[11px] font-semibold whitespace-nowrap text-gray-500 bg-teal-50/40"
+                                    className="relative border-r border-[#D0D4E4] text-center text-[11px] font-semibold whitespace-nowrap text-gray-500 bg-teal-50/40"
                                     style={{ minWidth: CUSTOM_COL_WIDTH, width: CUSTOM_COL_WIDTH }}
                                 >
                                     <div className="flex items-center justify-center gap-1 px-2">
@@ -738,8 +738,8 @@ export function SubitemsTable({
                                     {cols.map((col) => (
                                         <td
                                             key={col.key}
-                                            className={`align-middle border-r border-[#D0D4E4] px-2 py-1 last:border-r-0 ${col.key === "name" ? "overflow-visible relative z-20" : "overflow-hidden"
-                                                }`}
+                                            className={`align-middle border-r border-[#D0D4E4] p-0 ${col.key === "name" ? "overflow-visible relative z-20" : "overflow-hidden"
+                                            }`}
 
                                             style={{ minWidth: col.minWidth }}
                                         >
