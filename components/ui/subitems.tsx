@@ -36,10 +36,10 @@ const SUBITEM_COLS: ColumnDef[] = [
     { key: "shipper", label: "Shipper", width: 125, minWidth: 7 },
     { key: "supplier", label: "Supplier", width: 120, minWidth: 7 },
     { key: "cost", label: "Cost", width: 70, minWidth: 7 },
+    { key: "currency", label: "Currency", width: 80, minWidth: 7 },
     { key: "manpower", label: "Manpower", width: 80, minWidth: 7 },
     { key: "ls", label: "LS", width: 55, minWidth: 7 },
     { key: "os", label: "OS", width: 55, minWidth: 7 },
-    { key: "currency", label: "Currency", width: 80, minWidth: 7 },
     { key: "cSgd", label: "C-SGD", width: 80, minWidth: 7 },
     { key: "tc", label: "T.C", width: 80, minWidth: 7 },
     { key: "uc", label: "U.C", width: 70, minWidth: 7 },
@@ -466,12 +466,6 @@ export function SubitemsTable({
                 return <EditableCell value={sub.supplier} onChange={(v) => onUpdateSubitem(sub.id, { supplier: v })} />;
             case "cost":
                 return <EditableCell value={sub.cost} onChange={(v) => onUpdateSubitem(sub.id, { cost: v })} type="number" />;
-            case "manpower":
-                return <EditableCell value={sub.manpower} onChange={(v) => onUpdateSubitem(sub.id, { manpower: v })} type="number" />;
-            case "ls":
-                return <EditableCell value={sub.ls} onChange={(v) => onUpdateSubitem(sub.id, { ls: v })} type="number" />;
-            case "os":
-                return <EditableCell value={sub.os} onChange={(v) => onUpdateSubitem(sub.id, { os: v })} type="number" />;
             case "currency":
                 return (
                     <div className="overflow-hidden whitespace-nowrap text-ellipsis !text-center border-r border-[#D0D4E4] p-0 h-[33.1px] flex-shrink-0 transition transform active:scale-95 duration-150">
@@ -486,6 +480,13 @@ export function SubitemsTable({
                         />
                     </div>
                 );
+            case "manpower":
+                return <EditableCell value={sub.manpower} onChange={(v) => onUpdateSubitem(sub.id, { manpower: v })} type="number" />;
+            case "ls":
+                return <EditableCell value={sub.ls} onChange={(v) => onUpdateSubitem(sub.id, { ls: v })} type="number" />;
+            case "os":
+                return <EditableCell value={sub.os} onChange={(v) => onUpdateSubitem(sub.id, { os: v })} type="number" />;
+            
             case "cSgd":
                 return <div className="flex justify-center text-xs text-gray-800">{formatMoney(cSgd)}</div>;
             case "tc":
