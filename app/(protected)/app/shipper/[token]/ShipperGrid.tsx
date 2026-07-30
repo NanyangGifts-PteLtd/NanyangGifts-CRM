@@ -33,6 +33,9 @@ export type ShipperRow = {
     tax_refund: string | null;
     shipper_remarks: string | null;
     samples_by_air: string | null;
+    samples_by_sea: string | null;
+    air_received: string | null;
+    sea_received: string | null;
 };
 
 type ShipperGridProps = {
@@ -75,6 +78,9 @@ export default function ShipperGrid({ rows, mode, token }: ShipperGridProps) {
         { key: "tax_refund", label: "退税?", editableByPm: true, editableByShipper: false },
         { key: "shipper_remarks", label: "备注 / Remarks", editableByPm: true, editableByShipper: false },
         { key: "samples_by_air", label: "发样品空运 / Samples to send by air", editableByPm: true, editableByShipper: false },
+        { key: "samples_by_sea", label: "发样品海运 / Samples to send by sea", editableByPm: true, editableByShipper: false },
+        { key: "air_received", label: "空运收到 / Air received", editableByPm: true, editableByShipper: false },
+        { key: "sea_received", label: "海运收到 / Sea received", editableByPm: true, editableByShipper: false },
     ];
     async function saveCell(row: ShipperRow, field: string, value: string) {
         if (!token && !row.shipper_id) return;

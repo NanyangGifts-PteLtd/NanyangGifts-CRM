@@ -35,7 +35,10 @@ export async function getShipperSubitems(shipperId?: string): Promise<ShipperRow
         sea_or_air,
         tax_refund,
         shipper_remarks,
-        samples_by_air
+        samples_by_air,
+        samples_by_sea,
+        air_received,
+        sea_received
     `)
         .order("id", { ascending: false });
 
