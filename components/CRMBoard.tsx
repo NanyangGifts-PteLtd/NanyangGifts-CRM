@@ -921,7 +921,7 @@ export function CRMBoard({ clients,
             className="flex items-center gap-1 px-2 py-1 bg-[#43adc4] hover:bg-[#0f8da8] text-white rounded-md text-[10px] font-medium transition-colors transform active:scale-95 duration-150"
           >
             <Filter size={12} />
-            {filterSubprogress === 'All' ? 'Filter by Subitem' : filterSubprogress}
+            {filterSubprogress === 'All' ? 'Filter by Subitem Subprogress' : filterSubprogress}
             <ChevronDown size={11} />
           </button>
 
