@@ -5,7 +5,7 @@
 
 <p align="center">A custom CRM and operations web app built with Next.js, React, TypeScript, Supabase, and modern component-driven UI patterns. The app is designed around a grouped board workflow similar to Monday.com, with client rows, nested subitems, assignments, activity tracking, document generation, and external collaboration flows for clients and suppliers. </p>
 
-[Jump to Local Development Setup](#-local-development-setup)
+[Jump to Local Development Setup](#local-setup)
 
 ## Core Features
 
@@ -119,7 +119,7 @@
 | Auth / access patterns | Supabase auth for internal users, tokenized access for selected external parties (client, supplier) |
 | Integrations | QuickBooks |
 
-## 🛠️ Local Development Setup
+## <a id="local-setup"></a>🛠️ Local Development Setup
 
 Follow these steps to get a local development environment running on your machine.
 
