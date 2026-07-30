@@ -70,6 +70,7 @@ export interface Subitem {
   description: string;
   remarks: string;
   shipper: string;
+  shipperId: string | null;
   supplier: string;
   cost: string;
   manpower: string;

@@ -211,7 +211,7 @@ export function SubitemsTable({
 
     const [pushingSubitemId, setPushingSubitemId] = useState<string | null>(null);
 
-    const isPm = currentUserRole === "pm" || "dev" || 'director';
+    const isPm = currentUserRole === "pm" || "dev" || currentUserRole === 'director';
 
 
 

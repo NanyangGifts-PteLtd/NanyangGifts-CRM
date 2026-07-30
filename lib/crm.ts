@@ -18,12 +18,16 @@ const CLIENT_LOG_IGNORE_FIELDS = new Set<keyof Client>([
     'subitems',
     'customFields'
 ]);
+
 const SUBITEM_LOG_IGNORE_FIELDS = new Set<keyof Subitem>([
     'showTimeline',
     'showPayments',
     'showSample',
     'customFields'
 ]);
+
+
+
 
 export type RoundRobinQueueRow = {
     user_id: string;
@@ -121,6 +125,7 @@ type Subitems = {
     sample_status: string | null;
     sample_type: string | null;
     custom_fields?: Record<string, string>;
+    shipper_id: string | null;
 };
 
 type Clients = {
@@ -317,6 +322,7 @@ function mapSubitems(row: Subitems): Subitem {
         sampleStatus: row.sample_status ?? '',
         sampleType: row.sample_type ?? '',
         customFields: row.custom_fields ?? {},
+        shipperId: row.shipper_id ?? null
 
     };
 }
@@ -503,7 +509,7 @@ export async function createClientRow(currentUserId?: string | null, groupId?: s
     return data;
 }
 
-export async function updateClientRow(clientId: string, updates: Partial<Client> & {customFields?: Record<string, string>;}) {
+export async function updateClientRow(clientId: string, updates: Partial<Client> & { customFields?: Record<string, string>; }) {
     const { data: existing, error: fetchError } = await supabase
         .from('clients')
         .select('*')
@@ -590,7 +596,7 @@ export async function deleteClientRow(clientId: string) {
 export async function createSubitemRow(clientId: string) {
     const timelineRows = [
         { id: crypto.randomUUID(), name: 'Sample', person: '', remarks: '', subProgress: '', timelineStart: '', timelineEnd: '', duration: '', dependency: '' },
-        { id: crypto.randomUUID(), name: 'Production 📦', person: '', remarks: '', subProgress: '', timelineStart: '', timelineEnd: '', duration: '', dependency: 'Sample'},
+        { id: crypto.randomUUID(), name: 'Production 📦', person: '', remarks: '', subProgress: '', timelineStart: '', timelineEnd: '', duration: '', dependency: 'Sample' },
         { id: crypto.randomUUID(), name: 'Check Production Status (+3 from production start)', person: '', remarks: '', subProgress: '', timelineStart: '', timelineEnd: '', duration: '', dependency: '' },
         { id: crypto.randomUUID(), name: 'Local Shipping 🚚', person: '', remarks: '', subProgress: '', timelineStart: '', timelineEnd: '', duration: '', dependency: 'Production FS-1' },
         { id: crypto.randomUUID(), name: 'Sea/Air Freight ⛵✈️', person: '', remarks: '', subProgress: '', timelineStart: '', timelineEnd: '', duration: '', dependency: 'Local Shipping' },
@@ -648,7 +654,8 @@ export async function createSubitemRow(clientId: string) {
             sample_order_status: '',
             sample_status: '',
             sample_type: '',
-            custom_fields: {}
+            custom_fields: {},
+            shipper_id: null
         })
         .select('*')
         .single();
@@ -685,151 +692,84 @@ export async function fetchOptionsByGroupCode(code: string): Promise<{ value: st
 }
 
 export async function updateSubitemRow(subitemId: string, updates: Partial<Subitem>) {
-    const nextUpdates = { ...updates };
+    const SHIPPER_NAME_TO_ID: Record<string, string> = {
+        "小李 - SEA": "67bdaa10-2e2b-4f62-8b9b-118be712fe55",
+        "小李 - AIR": "67bdaa10-2e2b-4f62-8b9b-118be712fe55",
+        "Tiger - SEA": "61d1c7d6-3a99-412e-872a-c1e1c21193a1",
+        "Tiger - AIR": "61d1c7d6-3a99-412e-872a-c1e1c21193a1",
+        "A5 汇荣": "9e9e0dc2-3448-4de2-b2c6-b9003f5dcff4",
+    };
+
+    const nextUpdates: Partial<Subitem> = { ...updates };
+
     if ("qty" in updates || "up" in updates) {
         const qty = Number(updates.qty ?? 0);
         const up = Number(updates.up ?? 0);
         nextUpdates.price = String(qty * up);
     }
-    const { data: existing, error: fetchError } = await supabase
-        .from('subitems')
-        .select('*')
-        .eq('id', subitemId)
-        .single();
 
-    if (fetchError) throw fetchError;
-    
-    
-    if (updates.timelineRows !== undefined) {
-        await logTimelineRowDiffs({
-            clientId: existing.client_id,
-            subitemId,
-            subitemName: existing.name ?? 'Subitem',
-            oldRows: (existing.timeline_rows ?? []) as TimelineRow[],
-            newRows: updates.timelineRows as TimelineRow[],
+    nextUpdates.shipperId = nextUpdates.shipper
+        ? (SHIPPER_NAME_TO_ID[nextUpdates.shipper] ?? null)
+        : null;
+
+    const { error } = await supabase
+        .from("subitems")
+        .update({
+            ...(nextUpdates.status !== undefined ? { status: nextUpdates.status } : {}),
+            ...(nextUpdates.shipperId !== undefined ? { shipper_id: nextUpdates.shipperId } : {}),
+            ...(nextUpdates.shipper !== undefined ? { shipper: nextUpdates.shipper } : {}),
+            ...(nextUpdates.price !== undefined ? { price: nextUpdates.price } : {}),
+            ...(nextUpdates.qty !== undefined ? { qty: nextUpdates.qty } : {}),
+            ...(nextUpdates.up !== undefined ? { up: nextUpdates.up } : {}),
+            ...(nextUpdates.name !== undefined ? { name: nextUpdates.name } : {}),
+            ...(nextUpdates.people !== undefined ? { people: nextUpdates.people } : {}),
+            ...(nextUpdates.localOverseas !== undefined ? { local_overseas: nextUpdates.localOverseas } : {}),
+            ...(nextUpdates.description !== undefined ? { description: nextUpdates.description } : {}),
+            ...(nextUpdates.remarks !== undefined ? { remarks: nextUpdates.remarks } : {}),
+            ...(nextUpdates.supplier !== undefined ? { supplier: nextUpdates.supplier } : {}),
+            ...(nextUpdates.cost !== undefined ? { cost: nextUpdates.cost } : {}),
+            ...(nextUpdates.manpower !== undefined ? { manpower: nextUpdates.manpower } : {}),
+            ...(nextUpdates.manpowerRmb !== undefined ? { manpower_rmb: nextUpdates.manpowerRmb } : {}),
+            ...(nextUpdates.ls !== undefined ? { ls: nextUpdates.ls } : {}),
+            ...(nextUpdates.os !== undefined ? { os: nextUpdates.os } : {}),
+            ...(nextUpdates.currency !== undefined ? { currency: nextUpdates.currency } : {}),
+            ...(nextUpdates.cSgd !== undefined ? { c_sgd: nextUpdates.cSgd } : {}),
+            ...(nextUpdates.tc !== undefined ? { tc: nextUpdates.tc } : {}),
+            ...(nextUpdates.uc !== undefined ? { uc: nextUpdates.uc } : {}),
+            ...(nextUpdates.tcSgd !== undefined ? { tc_sgd: nextUpdates.tcSgd } : {}),
+            ...(nextUpdates.pl !== undefined ? { pl: nextUpdates.pl } : {}),
+            ...(nextUpdates.sl !== undefined ? { sl: nextUpdates.sl } : {}),
+            ...(nextUpdates.numOfCartons !== undefined ? { num_of_cartons: nextUpdates.numOfCartons } : {}),
+            ...(nextUpdates.cnTracking !== undefined ? { cn_tracking: nextUpdates.cnTracking } : {}),
+            ...(nextUpdates.sgTracking !== undefined ? { sg_tracking: nextUpdates.sgTracking } : {}),
+            ...(nextUpdates.owner !== undefined ? { owner: nextUpdates.owner } : {}),
+            ...(nextUpdates.payment !== undefined ? { payment: nextUpdates.payment } : {}),
+            ...(nextUpdates.paymentStatus !== undefined ? { payment_status: nextUpdates.paymentStatus } : {}),
+            ...(nextUpdates.totalUc !== undefined ? { total_uc: nextUpdates.totalUc } : {}),
+            ...(nextUpdates.lsRmb !== undefined ? { ls_rmb: nextUpdates.lsRmb } : {}),
+            ...(nextUpdates.totalC !== undefined ? { total_c: nextUpdates.totalC } : {}),
+            ...(nextUpdates.modeOfPayment !== undefined ? { mode_of_payment: nextUpdates.modeOfPayment } : {}),
+            ...(nextUpdates.orderNumber !== undefined ? { order_number: nextUpdates.orderNumber } : {}),
+            ...(nextUpdates.quantityProduced !== undefined ? { quantity_produced: nextUpdates.quantityProduced } : {}),
+            ...(nextUpdates.sample !== undefined ? { sample: nextUpdates.sample } : {}),
+            ...(nextUpdates.qtyFor !== undefined ? { qty_for: nextUpdates.qtyFor } : {}),
+            ...(nextUpdates.paymentAmount !== undefined ? { payment_amount: nextUpdates.paymentAmount } : {}),
+            ...(nextUpdates.difference !== undefined ? { difference: nextUpdates.difference } : {}),
+            ...(nextUpdates.paymentRemarks !== undefined ? { payment_remarks: nextUpdates.paymentRemarks } : {}),
+            ...(nextUpdates.timelineRows !== undefined ? { timeline_rows: nextUpdates.timelineRows } : {}),
+            ...(nextUpdates.showTimeline !== undefined ? { show_timeline: nextUpdates.showTimeline } : {}),
+            ...(nextUpdates.showPayments !== undefined ? { show_payments: nextUpdates.showPayments } : {}),
+            ...(nextUpdates.showSample !== undefined ? { show_sample: nextUpdates.showSample } : {}),
+            ...(nextUpdates.sampleRows !== undefined ? { sample_rows: nextUpdates.sampleRows } : {}),
+            ...(nextUpdates.sampleOrderStatus !== undefined ? { sample_order_status: nextUpdates.sampleOrderStatus } : {}),
+            ...(nextUpdates.sampleStatus !== undefined ? { sample_status: nextUpdates.sampleStatus } : {}),
+            ...(nextUpdates.sampleType !== undefined ? { sample_type: nextUpdates.sampleType } : {}),
+            ...(nextUpdates.customFields !== undefined ? { custom_fields: nextUpdates.customFields } : {}),
         })
-    }
-    const payload = {
-        ...(updates.name !== undefined ? { name: updates.name } : {}),
-        ...(updates.people !== undefined ? { people: updates.people } : {}),
-        ...(updates.status !== undefined ? { status: updates.status } : {}),
-        ...(updates.localOverseas !== undefined ? { local_overseas: updates.localOverseas } : {}),
-        ...(updates.qty !== undefined ? { qty: updates.qty } : {}),
-        ...(updates.description !== undefined ? { description: updates.description } : {}),
-        ...(updates.remarks !== undefined ? { remarks: updates.remarks } : {}),
-        ...(updates.shipper !== undefined ? { shipper: updates.shipper } : {}),
-        ...(updates.supplier !== undefined ? { supplier: updates.supplier } : {}),
-        ...(updates.cost !== undefined ? { cost: updates.cost } : {}),
-        ...(updates.manpower !== undefined ? { manpower: updates.manpower } : {}),
-        ...(updates.manpowerRmb !== undefined ? { manpower_rmb: updates.manpowerRmb } : {}),
-        ...(updates.ls !== undefined ? { ls: updates.ls } : {}),
-        ...(updates.os !== undefined ? { os: updates.os } : {}),
-        ...(updates.currency !== undefined ? { currency: updates.currency } : {}),
-        ...(updates.cSgd !== undefined ? { c_sgd: updates.cSgd } : {}),
-        ...(updates.tc !== undefined ? { tc: updates.tc } : {}),
-        ...(updates.uc !== undefined ? { uc: updates.uc } : {}),
-        ...(updates.tcSgd !== undefined ? { tc_sgd: updates.tcSgd } : {}),
-        ...(updates.price !== undefined ? { price: updates.price } : {}),
-        ...(updates.up !== undefined ? { up: updates.up } : {}),
-        ...(updates.pl !== undefined ? { pl: updates.pl } : {}),
-        ...(updates.sl !== undefined ? { sl: updates.sl } : {}),
-        ...(updates.numOfCartons !== undefined ? { num_of_cartons: updates.numOfCartons } : {}),
-        ...(updates.cnTracking !== undefined ? { cn_tracking: updates.cnTracking } : {}),
-        ...(updates.sgTracking !== undefined ? { sg_tracking: updates.sgTracking } : {}),
-        ...(updates.owner !== undefined ? { owner: updates.owner } : {}),
-        ...(updates.payment !== undefined ? { payment: updates.payment } : {}),
-        ...(updates.paymentStatus !== undefined ? { payment_status: updates.paymentStatus } : {}),
-        ...(updates.totalUc !== undefined ? { total_uc: updates.totalUc } : {}),
-        ...(updates.lsRmb !== undefined ? { ls_rmb: updates.lsRmb } : {}),
-        ...(updates.totalC !== undefined ? { total_c: updates.totalC } : {}),
-        ...(updates.modeOfPayment !== undefined ? { mode_of_payment: updates.modeOfPayment } : {}),
-        ...(updates.orderNumber !== undefined ? { order_number: updates.orderNumber } : {}),
-        ...(updates.quantityProduced !== undefined ? { quantity_produced: updates.quantityProduced } : {}),
-        ...(updates.sample !== undefined ? { sample: updates.sample } : {}),
-        ...(updates.qtyFor !== undefined ? { qty_for: updates.qtyFor } : {}),
-        ...(updates.paymentAmount !== undefined ? { payment_amount: updates.paymentAmount } : {}),
-        ...(updates.difference !== undefined ? { difference: updates.difference } : {}),
-        ...(updates.paymentRemarks !== undefined ? { payment_remarks: updates.paymentRemarks } : {}),
-        ...(updates.timelineRows !== undefined ? { timeline_rows: updates.timelineRows } : {}),
-        ...(updates.showTimeline !== undefined ? { show_timeline: updates.showTimeline } : {}),
-        ...(updates.showPayments !== undefined ? { show_payments: updates.showPayments } : {}),
-        ...(updates.showSample !== undefined ? { show_sample: updates.showSample } : {}),
-        ...(updates.sampleRows !== undefined ? { sample_rows: updates.sampleRows } : {}),
-        ...(updates.sampleOrderStatus !== undefined ? { sample_order_status: updates.sampleOrderStatus } : {}),
-        ...(updates.sampleStatus !== undefined ? { sample_status: updates.sampleStatus } : {}),
-        ...(updates.sampleType !== undefined ? { sample_type: updates.sampleType } : {}),
-        ...(updates.customFields !== undefined ? { custom_fields: updates.customFields } : {}),
-    };
-
-    const { data, error } = await supabase
-        .from('subitems')
-        .update(payload)
-        .eq('id', subitemId)
-        .select('id, timeline_rows')
-        .single();
+        .eq("id", subitemId);
 
     if (error) throw error;
-
-    for (const [key, value] of Object.entries(updates) as [keyof Subitem, unknown][]) {
-        if (SUBITEM_LOG_IGNORE_FIELDS.has(key)) continue;
-
-        const oldValue =
-            existing[
-            key === 'localOverseas' ? 'local_overseas' :
-            key === 'status' ? 'status' :
-            key === 'qty' ? 'qty' :
-            key === 'description' ? 'description' :
-            key === 'remarks' ? 'remarks' :
-            key === 'shipper' ? 'shipper' :
-            key === 'supplier' ? 'supplier' :
-            key === 'cost' ? 'cost' :
-            key === 'manpower' ? 'manpower' :
-            key === 'ls' ? 'ls' :
-            key === 'os' ? 'os' :
-            key === 'currency' ? 'currency' :
-            key === 'tcSgd' ? 'tc_sgd' :
-            key === 'price' ? 'price' :
-            key === 'up' ? 'up' :
-            key === 'pl' ? 'pl' :
-            key === 'sl' ? 'sl' :
-            key === 'numOfCartons' ? 'num_of_cartons' :
-            key === 'cnTracking' ? 'cn_tracking' :
-            key === 'sgTracking' ? 'sg_tracking' :
-            key === 'paymentStatus' ? 'payment_status' :
-            key === 'lsRmb' ? 'ls_rmb' :
-            key === 'totalC' ? 'total_c' :
-            key === 'modeOfPayment' ? 'mode_of_payment' :
-            key === 'orderNumber' ? 'order_number' :
-            key === 'quantityProduced' ? 'quantity_produced' :
-            key === 'qtyFor' ? 'qty_for' :
-            key === 'paymentAmount' ? 'payment_amount' :
-            key === 'paymentRemarks' ? 'payment_remarks' :
-            key === 'timelineRows' ? 'timeline_rows' :
-            key === 'showTimeline' ? 'show_timeline' :
-            key === 'showPayments' ? 'show_payments' :
-            key === 'showSample' ? 'show_sample' :
-            key === 'sampleRows' ? 'sample_rows' :
-            key === 'sampleOrderStatus' ? 'sample_order_status' :
-            key === 'sampleStatus' ? 'sample_status' :
-            key === 'sampleType' ? 'sample_type' :
-            key
-            ];
-        if (isEqualForLog(oldValue, value)) continue;
-
-        await insertActivityLog({
-            clientId: existing.client_id,
-            subitemId,
-            subitemName: existing.name,
-            action: 'subitem_field_changed',
-            fieldName: key,
-            oldValue: formatValueForLog(oldValue),
-            newValue: formatValueForLog(value),
-        });
-
-
-    }
 }
-
 export async function deleteSubitemRow(subitemId: string) {
     const { data: existing, error: fetchError } = await supabase
         .from('subitems')

@@ -66,18 +66,6 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "subitemIds is required" }, { status: 400 });
         }
 
-        const { data: shipperRows, error: shipperError } = await supabase
-            .from("shippers")
-            .select("id, name, token");
-
-        if (shipperError) {
-            return NextResponse.json({ error: shipperError.message }, { status: 500 });
-        }
-
-        const shipperByName = new Map(
-            (shipperRows ?? []).map((s) => [s.name.trim().toLowerCase(), s])
-        );
-
         const { data: subitems, error: subitemsError } = await supabase
             .from("subitems")
             .select(`
@@ -90,15 +78,16 @@ export async function POST(req: NextRequest) {
         cn_tracking,
         shipper,
         shipper_id
-        `)
-            .in("id", subitemIds);
+      `)
+            .in("id", subitemIds)
+            .not("shipper_id", "is", null);
 
         if (subitemsError) {
             return NextResponse.json({ error: subitemsError.message }, { status: 500 });
         }
 
         if (!subitems || subitems.length === 0) {
-            return NextResponse.json({ error: "No matching subitems found" }, { status: 404 });
+            return NextResponse.json({ error: "No subitems with shipper_id found" }, { status: 404 });
         }
 
         const subitemIdList = subitems.map((item) => item.id);
@@ -111,59 +100,32 @@ export async function POST(req: NextRequest) {
         delivery_contact_number,
         delivery_address,
         order_confirmations!inner (
-        id
+            id,
+            client_submitted_at
         )
     `)
             .in("subitem_id", subitemIdList);
-
 
         if (ocfItemsError) {
             return NextResponse.json({ error: ocfItemsError.message }, { status: 500 });
         }
 
         const ocfItems = (ocfItemsRaw ?? []) as unknown as OcfJoinRow[];
-        const latestSubmittedOcfItemBySubitemId = new Map<string, OcfJoinRow>();
         const ocfItemBySubitemId = new Map<string, OcfJoinRow>();
+
         for (const item of ocfItems) {
             ocfItemBySubitemId.set(item.subitem_id, item);
         }
 
-        for (const item of ocfItems) {
-            const ocf = item.order_confirmations as unknown as {
-                id: string;
-                client_submitted_at: string | null;
-            } | null;
-            const submittedAt = ocf?.client_submitted_at;
-
-            if (!submittedAt) continue;
-
-            const existing = latestSubmittedOcfItemBySubitemId.get(item.subitem_id);
-
-            if (!existing) {
-                latestSubmittedOcfItemBySubitemId.set(item.subitem_id, item);
-                continue;
-            }
-
-            const existingSubmittedAt = existing.order_confirmations?.client_submitted_at;
-            const existingDate = existingSubmittedAt ? new Date(existingSubmittedAt).getTime() : 0;
-            const currentDate = new Date(submittedAt).getTime();
-
-            if (currentDate > existingDate) {
-                latestSubmittedOcfItemBySubitemId.set(item.subitem_id, item);
-            }
-        }
-        
-
         const rowsToUpsert = subitems.map((item) => {
-
             const ocfItem = ocfItemBySubitemId.get(item.id);
+
             return {
                 subitem_id: item.id,
                 client_id: item.client_id ?? null,
                 order_confirmation_item_id: ocfItem?.id ?? null,
                 pushed_by: user.id,
-                shipper_id: null,
-                
+                shipper_id: item.shipper_id ?? null,
                 serial_number: null,
                 waybill_date: null,
                 waybill_number: null,
@@ -177,7 +139,6 @@ export async function POST(req: NextRequest) {
                 total_cost: null,
                 channel: null,
                 logistics_remarks: null,
-
                 ic: null,
                 info_provided_date: null,
                 cn_tracking_no: item.cn_tracking,
@@ -186,14 +147,16 @@ export async function POST(req: NextRequest) {
                 delivery_info: buildDeliveryInfo(ocfItem) ?? null,
                 qty: item.qty ?? null,
                 up: item.up ?? null,
-                value: parseFloat(item.qty) * parseFloat(item.up),
+                value: Number(item.qty ?? 0) * Number(item.up ?? 0),
                 sea_or_air: null,
                 tax_refund: null,
                 shipper_remarks: null,
                 samples_by_air: null,
+                samples_by_sea: null,
+                air_received: null,
+                sea_received: null,
             };
         });
-
 
         const { data: pushedRows, error: upsertError } = await supabase
             .from("shipper_view_rows")
@@ -204,16 +167,6 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: upsertError.message }, { status: 500 });
         }
 
-        console.log('subitemIdList:', subitemIdList);
-        console.log('ocfItemsError:', ocfItemsError);
-        console.log('ocfItemsRaw:', JSON.stringify(ocfItemsRaw, null, 2));
-        console.log('ocfItemBySubitemId after loop:', JSON.stringify([...ocfItemBySubitemId.entries()], null, 2));
-        console.log('rowsToUpsert delivery_info:', rowsToUpsert.map(r => ({
-            subitem_id: r.subitem_id,
-            delivery_info: r.delivery_info,
-            order_confirmation_item_id: r.order_confirmation_item_id
-        })));
-        console.log('upsertError:', upsertError);
         return NextResponse.json({
             ok: true,
             count: pushedRows?.length ?? 0,
