@@ -43,13 +43,14 @@ const SUBITEM_COLS: ColumnDef[] = [
     { key: "cSgd", label: "C-SGD", width: 57, minWidth: 7 },
     { key: "tc", label: "T.C", width: 58, minWidth: 7 },
     { key: "uc", label: "U.C", width: 90, minWidth: 7 },
-    { key: "tcSgd", label: "TC-SGD", width: 44, minWidth: 7 },
+    { key: "pl", label: "PL", width: 44, minWidth: 7 },
+    { key: "sl", label: "SL", width: 44, minWidth: 7 },
+    { key: "tcSgd", label: "TC-SGD", width: 70, minWidth: 7 },
     { key: "price", label: "Price", width: 80, minWidth: 7 },
     { key: "up", label: "U.P", width: 60, minWidth: 7 },
     { key: "cnTracking", label: "CN Tracking #", width: 130, minWidth: 7 },
     { key: "sgTracking", label: "SG Tracking #", width: 130, minWidth: 7 },
-    { key: "pl", label: "PL", width: 55, minWidth: 7 },
-    { key: "sl", label: "SL", width: 55, minWidth: 7 },
+    
 ];
 
 const PAYMENT_COLS: ColumnDef[] = [
@@ -499,7 +500,11 @@ export function SubitemsTable({
                 return <div className="flex justify-center text-xs text-gray-800">{formatMoney(tc)}</div>;
             case "uc":
                 return <div className="flex justify-center text-xs text-gray-800">{formatMoney(uc)}</div>;
-            case "tcSgd":
+            case "pl":
+                return <EditableCell value={sub.pl ?? ""} onChange={(v) => onUpdateSubitem(sub.id, { pl: v })} type="number" />;
+            case "sl":
+                return <EditableCell value={sub.sl ?? ""} onChange={(v) => onUpdateSubitem(sub.id, { sl: v })} type="number" />;
+                case "tcSgd":
                 return <div className="flex justify-center text-xs text-gray-800">{formatMoney(tcSgd)}</div>;
             case "price":
                 return <div className="flex justify-center text-xs text-gray-800">{formatMoney(price)} </div>;
@@ -509,10 +514,6 @@ export function SubitemsTable({
                 return <EditableCell value={sub.cnTracking} onChange={(v) => onUpdateSubitem(sub.id, { cnTracking: v })} />;
             case "sgTracking":
                 return <EditableCell value={sub.sgTracking} onChange={(v) => onUpdateSubitem(sub.id, { sgTracking: v })} />;
-            case "pl":
-                return <EditableCell value={sub.pl ?? ""} onChange={(v) => onUpdateSubitem(sub.id, { pl: v })} type="number" />;
-            case "sl":
-                return <EditableCell value={sub.sl ?? ""} onChange={(v) => onUpdateSubitem(sub.id, { sl: v })} type="number" />;
             default:
                 return null;
         }
