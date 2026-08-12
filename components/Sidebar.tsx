@@ -3,7 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutGrid, Mail, BarChart2, SquareChartGantt, BotMessageSquare, PackageSearch } from 'lucide-react';
+import { LayoutGrid, Mail, BarChart2, SquareChartGantt, BotMessageSquare, PackageSearch, Users } from 'lucide-react';
 import logo from "./logo.png";
 import Image from 'next/image';
 import type { User } from "@supabase/supabase-js";
@@ -14,6 +14,7 @@ export type SidePanel =
   | 'reports'
   | 'ganttchart'
   | 'roundrobin'
+  | 'team'
   | 'shipper';
 
 interface SidebarProps {
@@ -31,6 +32,7 @@ const navItems: { id: SidePanel; icon: React.ReactNode; label: string; href?: st
   { id: 'reports', icon: <BarChart2 size={17.5} />, label: 'Reports & KPI' },
   { id: 'ganttchart', icon: <SquareChartGantt size={17.5} />, label: 'Gantt Chart' },
   { id: 'roundrobin', icon: <BotMessageSquare size={17.5} />, label: 'Round Robin' },
+  { id: 'team', icon: <Users size={17.5} />, label: 'Team' },
   { id: 'shipper', icon: <PackageSearch size={17.5} />, label: 'Shipper', href: '/app/shipper', external: true },
 ];
 

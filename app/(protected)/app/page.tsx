@@ -13,6 +13,7 @@ import { RoundRobinAdminPanel } from '@/components/RoundRobinPanel';
 import GanttChart from '@/components/Gantt-Chart';
 import { fetchClientAssigneeMap } from '@/lib/assignments';
 import { fetchAllSubitemAssignees } from '@/components/CRMBoard';
+import { TeamPanel } from '@/components/TeamPanel';
 
 export default function Page() {
   const [clients, setClients] = useState<Client[]>([]);
@@ -78,6 +79,25 @@ export default function Page() {
     void loadUserAndRole();
   }, []);
 
+  useEffect(() => {
+    const loadProfiles = async () => {
+      const supabase = createSupabaseClient();
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, full_name, email, role, avatar_url')
+        .order('full_name', { ascending: true, nullsFirst: true });
+
+      if (error) {
+        console.error('Failed to load profiles', error);
+        return;
+      }
+
+      setProfiles((data ?? []) as Profile[]);
+    };
+
+    void loadProfiles();
+  }, []);
+
   const renderPanel = () => {
     switch (activePanel) {
       case 'crm':
@@ -125,6 +145,9 @@ export default function Page() {
             <RoundRobinAdminPanel />
           </div>
         );
+
+      case 'team':
+        return <TeamPanel profiles={profiles} />;
 
       default:
         return null;
