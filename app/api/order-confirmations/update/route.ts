@@ -44,8 +44,6 @@ export async function POST(req: Request) {
             }
         }
 for (const item of items) {
-    if (!item.delivery_address) continue;
-
     const { error: shipperUpdateError } = await supabase
         .from("shipper_view_rows")
         .update({

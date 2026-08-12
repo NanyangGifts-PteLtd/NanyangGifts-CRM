@@ -33,7 +33,6 @@ export async function GET(_request: NextRequest, { params }: RouteContext) {
         salesperson_email,
         estimated_delivery_notes,
         important_notes,
-        delivery_info,
         status,
         client_token,
         client_signed_at,
@@ -59,9 +58,12 @@ export async function GET(_request: NextRequest, { params }: RouteContext) {
         order_confirmation_id,
         subitem_id,
         qty,
-        name,
+        item_name,
         remarks,
-        delivery_info,
+        delivery_name,
+        delivery_address,
+        delivery_contact_number,
+        delivery_remarks,
         image_path
         `)
             .eq("order_confirmation_id", id);
@@ -108,11 +110,10 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
 
         const {
             salesperson_name,
-            salesperson_phone,
+            salesperson_contact_number,
             salesperson_email,
             estimated_delivery_notes,
             important_notes,
-            delivery_info
         } = body ?? {};
 
         const { data: existing, error: existingError } = await supabase
@@ -145,8 +146,8 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
             updates.salesperson_name = salesperson_name;
         }
 
-        if (typeof salesperson_phone === "string") {
-            updates.salesperson_phone = salesperson_phone;
+        if (typeof salesperson_contact_number === "string") {
+            updates.salesperson_contact_number = salesperson_contact_number;
         }
 
         if (typeof salesperson_email === "string") {
@@ -160,10 +161,6 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
         if (typeof estimated_delivery_notes === "string") {
             updates.estimated_delivery_notes = estimated_delivery_notes;
         }
-        if (typeof delivery_info === "string") {
-            updates.delivery_info = delivery_info;
-        }
-
         if (Object.keys(updates).length === 0) {
             return NextResponse.json(
                 { error: "No valid fields to update" },
@@ -183,11 +180,10 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
         client_name_snapshot,
         company_snapshot,
         salesperson_name,
-        salesperson_phone,
+        salesperson_contact_number,
         salesperson_email,
         important_notes,
         estimated_delivery_notes,
-        delivery_info,
         status,
         client_token,
         client_signed_at,

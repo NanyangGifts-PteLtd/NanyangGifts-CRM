@@ -175,14 +175,14 @@ export async function POST(request: NextRequest) {
                 for (const ocfItem of ocfItemRows ?? []) {
                     if (!ocfItem.subitem_id) continue;
 
-                    const deliveryInfo = [
-                        ocfItem.delivery_contact_number ? `Contact: ${ocfItem.delivery_contact_number}` : null,
-                        ocfItem.delivery_address ? `Address: ${ocfItem.delivery_address}` : null,
-                    ].filter(Boolean).join("\n") || null;
-
                     await supabase
                         .from("shipper_view_rows")
-                        .update({ delivery_info: deliveryInfo })
+                        .update({
+                            delivery_info: [
+                                ocfItem.delivery_contact_number ? `Contact: ${ocfItem.delivery_contact_number}` : null,
+                                ocfItem.delivery_address ? `Address: ${ocfItem.delivery_address}` : null,
+                            ].filter(Boolean).join("\n") || null,
+                        })
                         .eq("subitem_id", ocfItem.subitem_id);
                 }
             }
