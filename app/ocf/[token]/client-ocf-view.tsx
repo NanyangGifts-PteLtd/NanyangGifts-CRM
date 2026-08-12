@@ -167,7 +167,7 @@ function updateItemField(
             <div className="mx-auto max-w-5xl bg-white p-6 shadow-lg">
                 <div className="mb-4 flex items-start justify-between gap-4 border-b border-black pb-4">
                     <div>
-                        <Image src={logo} alt="Nanyang Gifts Logo" className="h-14 w-auto object-contain" />
+                        <Image src={logo} alt="Nanyang Gifts Logo" loading="eager" className="h-14 w-auto object-contain" />
                         <p className="mt-2 text-sm font-semibold text-gray-800">NANYANGGIFTS PTE. LTD.</p>
                     </div>
 

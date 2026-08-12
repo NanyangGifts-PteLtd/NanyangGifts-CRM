@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { supabaseAdmin } from "@/lib/supabase/admin";
 
 function getClientIp(request: NextRequest) {
     const forwardedFor = request.headers.get("x-forwarded-for");
@@ -30,7 +31,8 @@ type SubmittedItem = {
 };
 
 export async function POST(request: NextRequest) {
-    const supabase = await createClient();
+    // Use the admin client for updates that must bypass RLS for unauthenticated client submissions
+    const supabase = supabaseAdmin;
 
     try {
         const body = await request.json();

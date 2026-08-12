@@ -141,7 +141,7 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
             <div className="mx-auto max-w-5xl bg-white p-6 shadow-lg">
                 <div className="mb-4 flex items-start justify-between gap-4 border-b border-black pb-4">
                     <div>
-                        <Image src={logo} alt="Nanyang Gifts Logo" className="h-14 w-auto object-contain" />
+                        <Image src={logo} alt="Nanyang Gifts Logo" loading="eager" className="h-14 w-auto object-contain" />
                         <p className="mt-2 text-sm font-semibold text-gray-800">NANYANGGIFTS PTE. LTD.</p>
                     </div>
 
@@ -149,7 +149,7 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
                         <h1 className="text-base font-bold tracking-wide">ORDER CONFIRMATION FORM</h1>
                         <p className="mt-3">
                             <span className="font-semibold">Date:</span>{" "}
-                            {ocf.generated_at ? new Date(ocf.generated_at).toLocaleDateString() : "-"}
+                            {ocf.generated_at ? new Date(ocf.generated_at).toLocaleDateString('en-SG') : "-"}
                         </p>
                     </div>
                 </div>
@@ -269,10 +269,10 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
                         </tbody>
 </table>
                         
-            <div className="mt-10 break-before-page print:break-before-page max-w-5xl">
+                <div className="mt-10 break-before-page print:break-before-page max-w-5xl">
                     <span className="flex bg-[#eef2ff] px-1 rounded-sm py-3 text-black items-center justify-center text-[11px]">𝐈𝐦𝐩𝐨𝐫𝐭𝐚𝐧𝐭 𝐧𝐨𝐭𝐞𝐬, 𝐩𝐥𝐞𝐚𝐬𝐞 𝐫𝐞𝐚𝐝 𝐜𝐚𝐫𝐞𝐟𝐮𝐥𝐥𝐲: </span>
 
-                    <td className="px-3 py-2 whitespace-pre-wrap text-[11px]">{importantNotes}</td>
+                    <div className="px-3 py-2 whitespace-pre-wrap text-[11px]">{importantNotes}</div>
                 </div>
 
                 {ocf.client_signature_url ? (

@@ -20,12 +20,12 @@ export default async function OrderConfirmationPage({ params }: PageProps) {
         generated_at,
         estimated_delivery_notes,
         same_address_for_all_items,
-        restricted_area,
+        
         important_notes,
         client_name_snapshot,
         company_snapshot,
         client_signature_path,
-        recipient_name,
+        
         salesperson_name,
         salesperson_email,
         salesperson_contact_number,
