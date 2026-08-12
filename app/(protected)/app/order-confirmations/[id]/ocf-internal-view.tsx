@@ -56,6 +56,7 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
     const [saving, setSaving] = useState(false);
     const [saveMessage, setSaveMessage] = useState<string | null>(null);
     const [saveError, setSaveError] = useState<string | null>(null);
+    const [expandedImage, setExpandedImage] = useState<{ src: string; alt: string } | null>(null);
     const importantNotes = ocf.important_notes?.trim() || DEFAULT_IMPORTANT_NOTES;
 
     const clientUrl = useMemo(() => {
@@ -71,6 +72,19 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
         el.style.height = "0px";
         el.style.height = `${el.scrollHeight}px`;
     }, [deliveryNotes]);
+
+    useEffect(() => {
+        if (!expandedImage) return;
+
+        const onKeyDown = (event: KeyboardEvent) => {
+            if (event.key === "Escape") {
+                setExpandedImage(null);
+            }
+        };
+
+        window.addEventListener("keydown", onKeyDown);
+        return () => window.removeEventListener("keydown", onKeyDown);
+    }, [expandedImage]);
 
     async function copyClientLink() {
         if (!clientUrl) return;
@@ -98,6 +112,10 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
                     : item
             )
         );
+    }
+
+    function openExpandedImage(src: string, alt: string) {
+        setExpandedImage({ src, alt });
     }
 
     async function saveInternalEdits() {
@@ -209,7 +227,25 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
                         {items.length > 0 ? (
                             items.map((item) => (
                                 <tr key={item.id} className="align-top">
-                                    <td className="border border-black px-2 py-3 break-words">{item.item_name || "-"}</td>
+                                    <td className="border border-black px-2 py-3 align-top break-words">
+                                        <div className="space-y-2">
+                                            <div className="font-medium text-black">{item.item_name || "-"}</div>
+                                            {item.image_url ? (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => openExpandedImage(item.image_url!, item.item_name || "Uploaded item")}
+                                                    className="block w-full text-left"
+                                                    title="Click to enlarge"
+                                                >
+                                                    <img
+                                                        src={item.image_url}
+                                                        alt={item.item_name || "Uploaded item"}
+                                                        className="max-h-28 max-w-full rounded border border-gray-300 object-contain shadow-sm transition hover:opacity-90"
+                                                    />
+                                                </button>
+                                            ) : null}
+                                        </div>
+                                    </td>
                                     <td className="border border-black px-2 py-3">{item.qty || "-"}</td>
                                     <td className="border border-black px-2 py-3">
                                         <textarea
@@ -328,25 +364,34 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
                 </div>
             </div>
 
-            <div className="mt-10 break-before-page print:break-before-page">
-                {ocf.order_confirmation_items
-                    .filter((item) => item.image_url)
-                    .map((item) => (
-                        <section key={item.id} className="mb-10">
-                            <div className="relative mx-auto flex min-h-[85vh] w-full max-w-[1030px] items-center justify-center overflow-hidden rounded border border-gray-300 bg-white p-4 pt-12 print:min-h-[92vh]">
-                                <h1 className="absolute top-4 text-center text-base font-normal text-black">
-                                    {item.item_name || "Item image"}
-                                </h1>
-
-                                <img
-                                    src={item.image_url!}
-                                    alt={item.item_name || "Uploaded item"}
-                                    className="max-h-[80vh] w-auto max-w-full object-contain print:max-h-[88vh]"
-                                />
-                            </div>
-                        </section>
-                    ))}
-            </div>
+            {expandedImage ? (
+                <div
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+                    onClick={() => setExpandedImage(null)}
+                    role="dialog"
+                    aria-modal="true"
+                >
+                    <div
+                        className="relative max-h-[92vh] w-full max-w-5xl overflow-auto rounded-lg bg-white p-3 shadow-2xl"
+                        onClick={(event) => event.stopPropagation()}
+                    >
+                        <button
+                            type="button"
+                            onClick={() => setExpandedImage(null)}
+                            className="absolute right-3 top-3 rounded-full bg-black/70 px-3 py-1 text-sm font-medium text-white hover:bg-black"
+                        >
+                            Close
+                        </button>
+                        <div className="flex items-center justify-center pt-8">
+                            <img
+                                src={expandedImage.src}
+                                alt={expandedImage.alt}
+                                className="max-h-[85vh] w-auto max-w-full object-contain"
+                            />
+                        </div>
+                    </div>
+                </div>
+            ) : null}
         </main>
     );
 }

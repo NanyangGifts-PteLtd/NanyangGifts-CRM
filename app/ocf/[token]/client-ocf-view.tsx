@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import SignatureForm from "./signature-form";
 import logo from "./nanyanggifts-gifts-and-merch.png";
 import { DEFAULT_IMPORTANT_NOTES } from "@/components/Important-Notes";
@@ -70,6 +70,7 @@ export default function ClientOcfView({ ocf }: { ocf: Ocf }) {
             delivery_remarks: item.delivery_remarks ?? "",
         }))
     );
+    const [expandedImage, setExpandedImage] = useState<{ src: string; alt: string } | null>(null);
 
     useEffect(() => {
   if (sameAddressForAllItems && items.length > 0) {
@@ -162,6 +163,27 @@ function updateItemField(
     return updated;
   });
 }
+
+    function openExpandedImage(src: string, alt: string) {
+        setExpandedImage({ src, alt });
+    }
+
+    function closeExpandedImage() {
+        setExpandedImage(null);
+    }
+
+    useEffect(() => {
+        if (!expandedImage) return;
+
+        const onKeyDown = (event: KeyboardEvent) => {
+            if (event.key === "Escape") {
+                closeExpandedImage();
+            }
+        };
+
+        window.addEventListener("keydown", onKeyDown);
+        return () => window.removeEventListener("keydown", onKeyDown);
+    }, [expandedImage]);
     return (
         <main className="min-h-screen bg-[#f3f4f6] px-4 py-8">
             <div className="mx-auto max-w-5xl bg-white p-6 shadow-lg">
@@ -235,7 +257,25 @@ function updateItemField(
 
                             return (
                                 <tr key={item.id} className="align-top">
-                                    <td className="border border-black px-2 py-3">{item.item_name || "-"}</td>
+                                    <td className="border border-black px-2 py-3 align-top">
+                                        <div className="space-y-2">
+                                            <div className="font-medium text-black">{item.item_name || "-"}</div>
+                                            {item.image_url ? (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => openExpandedImage(item.image_url!, item.item_name || "Uploaded item")}
+                                                    className="block w-full text-left"
+                                                    title="Click to enlarge"
+                                                >
+                                                    <img
+                                                        src={item.image_url}
+                                                        alt={item.item_name || "Uploaded item"}
+                                                        className="max-h-28 max-w-full rounded border border-gray-300 object-contain shadow-sm transition hover:opacity-90"
+                                                    />
+                                                </button>
+                                            ) : null}
+                                        </div>
+                                    </td>
                                     <td className="border border-black px-2 py-3">{item.qty || "-"}</td>
                                     <td className="border border-black px-2 py-3">{item.remarks || "-"}</td>
                                     <td className="border border-black px-2 py-3">
@@ -301,7 +341,6 @@ function updateItemField(
                     </tbody>
                 </table>
 
-
                 <table className="mt-4 w-full border border-black text-sm">
                     <tbody>
                         <tr className="border-b border-black">
@@ -334,11 +373,11 @@ function updateItemField(
                             <p>This form has already been submitted.</p>
                             <p>
                                 <span className="font-semibold">Signed at:</span>{" "}
-                                {ocf.client_signed_at ? new Date(ocf.client_signed_at).toLocaleString() : "-"}
+                                {ocf.client_signed_at ? new Date(ocf.client_signed_at).toLocaleString('en-SG') : "-"}
                             </p>
                             <p>
                                 <span className="font-semibold">Submitted at:</span>{" "}
-                                {ocf.client_submitted_at ? new Date(ocf.client_submitted_at).toLocaleString() : "-"}
+                                {ocf.client_submitted_at ? new Date(ocf.client_submitted_at).toLocaleString('en-SG') : "-"}
                             </p>
                             <p>
                                 <span className="font-semibold">Client IP:</span> {ocf.client_ip || "-"}
@@ -356,25 +395,34 @@ function updateItemField(
                 </div>
             </div>
 
-            <div className="mt-10 break-before-page print:break-before-page">
-                {ocf.order_confirmation_items
-                    .filter((item) => item.image_url)
-                    .map((item) => (
-                        <section key={item.id} className="mb-10">
-                            <div className="relative mx-auto flex min-h-[85vh] w-full max-w-[1030px] items-center justify-center overflow-hidden rounded border border-gray-300 bg-white p-4 pt-12 print:min-h-[92vh]">
-                                <h1 className="absolute top-4 text-center text-base font-normal text-black">
-                                    {item.item_name || "Item image"}
-                                </h1>
-
-                                <img
-                                    src={item.image_url!}
-                                    alt={item.item_name || "Uploaded item"}
-                                    className="max-h-[80vh] w-auto max-w-full object-contain print:max-h-[88vh]"
-                                />
-                            </div>
-                        </section>
-                    ))}
-            </div>
+            {expandedImage ? (
+                <div
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+                    onClick={closeExpandedImage}
+                    role="dialog"
+                    aria-modal="true"
+                >
+                    <div
+                        className="relative max-h-[92vh] w-full max-w-5xl overflow-auto rounded-lg bg-white p-3 shadow-2xl"
+                        onClick={(event) => event.stopPropagation()}
+                    >
+                        <button
+                            type="button"
+                            onClick={closeExpandedImage}
+                            className="absolute right-3 top-3 rounded-full bg-black/70 px-3 py-1 text-sm font-medium text-white hover:bg-black"
+                        >
+                            Close
+                        </button>
+                        <div className="flex items-center justify-center pt-8">
+                            <img
+                                src={expandedImage.src}
+                                alt={expandedImage.alt}
+                                className="max-h-[85vh] w-auto max-w-full object-contain"
+                            />
+                        </div>
+                    </div>
+                </div>
+            ) : null}
         </main>
     );
 }
