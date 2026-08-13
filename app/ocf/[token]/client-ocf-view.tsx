@@ -274,6 +274,10 @@ function updateItemField(
                                                     />
                                                 </button>
                                             ) : null}
+                                            {item.image_url ? (
+                                                <div className="text-xs text-red-600">Click image to enlarge</div>
+                                            ) : null}
+                                            
                                         </div>
                                     </td>
                                     <td className="border border-black px-2 py-3">{item.qty || "-"}</td>
