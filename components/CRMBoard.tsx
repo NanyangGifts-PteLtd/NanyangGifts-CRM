@@ -134,10 +134,12 @@ export function CRMBoard({ clients,
   const [isDeletingGroup, setIsDeletingGroup] = useState(false);
   const [draggedClientId, setDraggedClientId] = useState<string | null>(null);
   const [dragOverGroupId, setDragOverGroupId] = useState<string | null>(null);
+  const [dragOverGroupEdge, setDragOverGroupEdge] = useState<'top' | 'bottom' | null>(null);
 
   const [headerCols, setHeaderCols] = useState<HeaderCol[]>(CLIENT_HEADER_COLS);
   const [draggedHeaderKey, setDraggedHeaderKey] = useState<string | null>(null);
   const [dragOverHeaderKey, setDragOverHeaderKey] = useState<string | null>(null);
+  const [dragOverHeaderEdge, setDragOverHeaderEdge] = useState<'left' | 'right' | null>(null);
   const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
   const [showRestoreArrangementConfirm, setShowRestoreArrangementConfirm] = useState(false);
 
@@ -170,6 +172,56 @@ export function CRMBoard({ clients,
         .catch((error) => console.warn('Failed to save client column arrangement', error));
     }
   }, [headerCols, currentUserId]);
+
+  const setDragPreview = (event: React.DragEvent, source: HTMLElement, includeColumnCells = false) => {
+    if (!event.dataTransfer) return;
+    const bounds = source.getBoundingClientRect();
+    const preview = includeColumnCells ? document.createElement('div') : source.cloneNode(true) as HTMLElement;
+    preview.style.position = 'fixed';
+    preview.style.left = '-10000px';
+    preview.style.top = '-10000px';
+    preview.style.width = `${bounds.width}px`;
+    preview.style.maxWidth = `${bounds.width}px`;
+    preview.style.opacity = '1';
+    preview.style.filter = 'none';
+    preview.style.pointerEvents = 'none';
+    preview.style.boxShadow = '0 8px 20px rgba(15, 23, 42, 0.22)';
+    preview.style.borderRadius = '3px';
+    preview.style.background = '#ffffff';
+    if (includeColumnCells) {
+      preview.style.border = '1px solid #8edbe7';
+      preview.style.overflow = 'hidden';
+      preview.innerHTML = `<div style="height:${bounds.height}px;display:flex;align-items:center;justify-content:center;padding:0 8px;box-sizing:border-box;background:#e7fdff;color:#334155;font-weight:600;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-bottom:1px solid #d0d4e4">${source.textContent?.trim() ?? ''}</div>`;
+      const sourceCenter = bounds.left + bounds.width / 2;
+      const groupContainer = source.closest<HTMLElement>('[data-client-group]');
+      const visibleCells = Array.from((groupContainer ?? document).querySelectorAll<HTMLElement>('[data-client-row]'))
+        .flatMap((row) => Array.from(row.querySelectorAll<HTMLElement>('[style*="order"]')))
+        .filter((cell) => {
+          const cellBounds = cell.getBoundingClientRect();
+          return cellBounds.top >= bounds.bottom - 1
+            && Math.abs(cellBounds.left + cellBounds.width / 2 - sourceCenter) < Math.max(8, bounds.width / 2);
+        })
+        .sort((first, second) => first.getBoundingClientRect().top - second.getBoundingClientRect().top)
+        .slice(0, 2);
+      visibleCells.forEach((cell) => {
+        const cellPreview = cell.cloneNode(true) as HTMLElement;
+        cellPreview.style.width = `${bounds.width}px`;
+        cellPreview.style.minWidth = `${bounds.width}px`;
+        cellPreview.style.height = '28px';
+        cellPreview.style.border = '0';
+        cellPreview.style.borderBottom = '1px solid #d0d4e4';
+        cellPreview.style.overflow = 'hidden';
+        cellPreview.style.opacity = '1';
+        cellPreview.querySelectorAll<HTMLElement>('*').forEach((element) => {
+          element.style.opacity = '1';
+        });
+        preview.appendChild(cellPreview);
+      });
+    }
+    document.body.appendChild(preview);
+    event.dataTransfer.setDragImage(preview, Math.min(bounds.width / 2, 90), Math.min(bounds.height / 2, includeColumnCells ? 28 : 16));
+    window.setTimeout(() => preview.remove(), 0);
+  };
 
   const handleRestoreDefaults = useCallback(async () => {
     // restore client header widths to defaults
@@ -1042,18 +1094,31 @@ export function CRMBoard({ clients,
   function handleCloseOcfModal() { setIsOcfModalOpen(false); setOcfClient(null); }
 
   // --- Drag ---
-  const handleDragStart = useCallback((clientId: string) => setDraggedClientId(clientId), []);
-  const handleDragOver = useCallback((e: React.DragEvent, groupId: string) => {
+  const handleDragStart = useCallback((clientId: string, event: React.DragEvent) => {
+    event.dataTransfer?.setData('text/plain', clientId);
+    event.dataTransfer?.setData('application/x-crm-client-row', clientId);
+    if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
+    setDragPreview(event, event.currentTarget as HTMLElement);
+    setDraggedClientId(clientId);
+  }, []);
+  const handleDragOver = useCallback((e: React.DragEvent, groupId: string, edge: 'top' | 'bottom') => {
+    if (!Array.from(e.dataTransfer.types).includes('application/x-crm-client-row')) return;
     e.preventDefault();
     setDragOverGroupId(groupId);
+    setDragOverGroupEdge(edge);
   }, []);
-  const handleDragEnd = useCallback(() => { setDraggedClientId(null); setDragOverGroupId(null); }, []);
+  const handleDragEnd = useCallback(() => {
+    setDraggedClientId(null);
+    setDragOverGroupId(null);
+    setDragOverGroupEdge(null);
+  }, []);
 
   const handleDrop = useCallback(async (groupId: string) => {
     if (!draggedClientId) return;
     const localDraggedId = draggedClientId;
     setDraggedClientId(null);
     setDragOverGroupId(null);
+    setDragOverGroupEdge(null);
     const targetGroup = groups.find((g) => g.id === groupId);
     const draggedClient = clients.find((c) => c.id === localDraggedId);
     if (!targetGroup || !draggedClient) return;
@@ -1383,7 +1448,7 @@ export function CRMBoard({ clients,
 
       <div className="flex min-w-0 text-gray-500 font-semibold">
         <div style={{ minWidth: totalMinWidth }}>
-          <div className="flex text-[12.6px] items-center justify-center w-full min-w-0 flex-shrink-0 border-r border-[#D0D4E4] overflow-hidden animated-background bg-gradient-to-r from-[#e7fdff] to-[#a3dfff] sticky top-0 z-10" style={{ minWidth: totalMinWidth }}>
+          <div className="hidden" style={{ minWidth: totalMinWidth }}>
             {mergedHeaderCols.map((col) => {
               const fixedKeys = new Set(['selectCheckbox', 'client', 'addClientCol', 'empty']);
               const isDraggable = !col.isCustom && !fixedKeys.has(col.key);
@@ -1397,29 +1462,40 @@ export function CRMBoard({ clients,
                   onDragStart={(e) => {
                     if (!isDraggable) return;
                     e.dataTransfer?.setData('text/plain', col.key);
+                    e.dataTransfer?.setData('application/x-crm-client-column', col.key);
                     e.dataTransfer!.effectAllowed = 'move';
+                    setDragPreview(e, e.currentTarget, true);
                     setDraggedHeaderKey(col.key);
                   }}
                   onDragOver={(e) => {
                     if (!isDraggable) return;
+                    if (!Array.from(e.dataTransfer.types).includes('application/x-crm-client-column')) return;
                     e.preventDefault();
                     setDragOverHeaderKey(col.key);
+                    const bounds = e.currentTarget.getBoundingClientRect();
+                    setDragOverHeaderEdge(e.clientX < bounds.left + bounds.width / 2 ? 'left' : 'right');
                   }}
                   onDragLeave={() => {
-                    if (dragOverHeaderKey === col.key) setDragOverHeaderKey(null);
+                    if (dragOverHeaderKey === col.key) {
+                      setDragOverHeaderKey(null);
+                      setDragOverHeaderEdge(null);
+                    }
                   }}
                   onDrop={(e) => {
+                    if (!Array.from(e.dataTransfer.types).includes('application/x-crm-client-column')) return;
                     e.preventDefault();
                     const draggedKey = e.dataTransfer?.getData('text/plain') || draggedHeaderKey;
                     if (!draggedKey || draggedKey === col.key || !isDraggable) {
                       setDraggedHeaderKey(null);
                       setDragOverHeaderKey(null);
+                      setDragOverHeaderEdge(null);
                       return;
                     }
 
                     reorderClientColumns(draggedKey, col.key);
                     setDraggedHeaderKey(null);
                     setDragOverHeaderKey(null);
+                    setDragOverHeaderEdge(null);
                   }}
                   className={`relative flex justify-center items-center border-[#D0D4E4] border-r flex-shrink-0 ${isDragging ? 'opacity-60' : ''} ${isDraggable ? (draggedHeaderKey ? 'cursor-grabbing' : 'cursor-grab') : ''} ${isDragOver && isDraggable ? 'bg-[#dff9ff]' : ''}`}
                   style={{ minWidth: col.width, width: col.width }}
@@ -1455,6 +1531,9 @@ export function CRMBoard({ clients,
                       ) : null}
                     </div>
                   )}
+                  {isDragOver && isDraggable && (
+                    <div className={`pointer-events-none absolute inset-y-0 z-20 w-1 bg-[#0f8da8] shadow-[0_0_5px_rgba(15,141,168,0.6)] ${dragOverHeaderEdge === 'left' ? 'left-0' : 'right-0'}`} />
+                  )}
 
                   <div
                     onMouseDown={(e) => startResize(col.key, e.clientX)}
@@ -1469,10 +1548,7 @@ export function CRMBoard({ clients,
           {groupedClients.map(({ group, clients: groupClients }) => (
             <React.Fragment key={group.id}>
               <div
-                onDragOver={(e) => handleDragOver(e, group.id)}
-                onDrop={() => handleDrop(group.id)}
-                onDragLeave={() => setDragOverGroupId(null)}
-                className={`flex items-center gap-2.5 px-2 py-1 text-sm border-y border-gray-100 transition-colors ${dragOverGroupId === group.id ? 'bg-[#e7fdff]' : 'bg-gray-50'}`}
+                className="flex items-center gap-2.5 px-2 py-1 text-sm border-y border-gray-100 bg-gray-50"
               >
                 <button onClick={() => toggleGroup(group.id)} className="text-sm text-gray-500">
                   {collapsedGroups[group.id] ? '▷' : '▼'}
@@ -1486,6 +1562,67 @@ export function CRMBoard({ clients,
                   <Trash2 size={14} />
                 </button>
               </div>
+
+              {!collapsedGroups[group.id] && (
+                <div data-client-group={group.id} onDragOver={(event) => handleDragOver(event, group.id, 'top')} onDrop={() => handleDrop(group.id)} onDragLeave={() => { setDragOverGroupId(null); setDragOverGroupEdge(null); }} className="relative" style={{ minWidth: totalMinWidth }}>
+                <div className="relative flex text-[12.6px] items-center justify-center w-full min-w-0 flex-shrink-0 border border-[#D0D4E4] overflow-hidden bg-gradient-to-r from-[#e7fdff] to-[#a3dfff]" style={{ minWidth: totalMinWidth }}>
+                  {mergedHeaderCols.map((col) => {
+                    const fixedKeys = new Set(['selectCheckbox', 'client', 'addClientCol', 'empty']);
+                    const isDraggable = !col.isCustom && !fixedKeys.has(col.key);
+                    const isDragging = draggedHeaderKey === col.key;
+                    const isDragOver = dragOverHeaderKey === col.key;
+
+                    return (
+                      <div
+                        key={col.key}
+                        draggable={isDraggable}
+                        onDragStart={(event) => {
+                          if (!isDraggable) return;
+                          event.dataTransfer?.setData('text/plain', col.key);
+                          event.dataTransfer?.setData('application/x-crm-client-column', col.key);
+                          event.dataTransfer!.effectAllowed = 'move';
+                          setDragPreview(event, event.currentTarget, true);
+                          setDraggedHeaderKey(col.key);
+                        }}
+                        onDragOver={(event) => {
+                          if (!isDraggable || !Array.from(event.dataTransfer.types).includes('application/x-crm-client-column')) return;
+                          event.preventDefault();
+                          setDragOverHeaderKey(col.key);
+                          const bounds = event.currentTarget.getBoundingClientRect();
+                          setDragOverHeaderEdge(event.clientX < bounds.left + bounds.width / 2 ? 'left' : 'right');
+                        }}
+                        onDragLeave={() => {
+                          if (dragOverHeaderKey === col.key) {
+                            setDragOverHeaderKey(null);
+                            setDragOverHeaderEdge(null);
+                          }
+                        }}
+                        onDrop={(event) => {
+                          if (!Array.from(event.dataTransfer.types).includes('application/x-crm-client-column')) return;
+                          event.preventDefault();
+                          const draggedKey = event.dataTransfer?.getData('text/plain') || draggedHeaderKey;
+                          if (draggedKey && draggedKey !== col.key && isDraggable) reorderClientColumns(draggedKey, col.key);
+                          setDraggedHeaderKey(null);
+                          setDragOverHeaderKey(null);
+                          setDragOverHeaderEdge(null);
+                        }}
+                        className={`relative flex h-7 justify-center items-center border-[#D0D4E4] border-r flex-shrink-0 ${isDragging ? 'opacity-60' : ''} ${isDraggable ? (draggedHeaderKey ? 'cursor-grabbing' : 'cursor-grab') : ''} ${isDragOver && isDraggable ? 'bg-[#dff9ff]' : ''}`}
+                        style={{ minWidth: col.width, width: col.width }}
+                      >
+                        {col.key === 'selectCheckbox' ? (
+                          <input type="checkbox" checked={allFilteredSelected} onChange={toggleSelectAll} className="w-3 h-3 rounded cursor-pointer accent-[#7BCBD5]" />
+                        ) : col.key === 'addClientCol' ? (
+                          <button type="button" onClick={() => setShowAddColModal('client')} className="mx-auto flex h-5 w-5 items-center justify-center rounded-md text-teal-500 hover:bg-teal-100 hover:text-black" title="Add client column"><Plus size={14} /></button>
+                        ) : (
+                          <div className="flex items-center gap-1 min-w-0 max-w-full px-1"><span className="truncate">{col.label}</span>{col.isCustom && col.customColumnId ? <button type="button" onClick={() => handleDeleteCustomColumn(col.customColumnId!)} className="text-gray-400 hover:text-red-500 flex-shrink-0" title="Delete column"><X size={12} /></button> : null}</div>
+                        )}
+                        {isDragOver && isDraggable && <div className={`pointer-events-none absolute inset-y-0 z-20 w-1 bg-[#0f8da8] shadow-[0_0_5px_rgba(15,141,168,0.6)] ${dragOverHeaderEdge === 'left' ? 'left-0' : 'right-0'}`} />}
+                        <div onMouseDown={(event) => startResize(col.key, event.clientX)} className="absolute right-0 top-0 h-full w-1 cursor-col-resize" />
+                      </div>
+                    );
+                  })}
+                  {dragOverGroupId === group.id && dragOverGroupEdge === 'top' && <div className="pointer-events-none absolute inset-x-0 -bottom-0.5 z-30 h-1 bg-[#0f8da8] shadow-[0_0_5px_rgba(15,141,168,0.6)]" />}
+                </div>
 
               {groupToDelete && (
                 <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/20 backdrop-blur-[2px] px-4">
@@ -1525,7 +1662,7 @@ export function CRMBoard({ clients,
                   onChangeSubitemAssignees={handleSubitemAssigneesChange}
                   colWidth={colWidth}
                   columnOrderMap={clientColumnOrderMap}
-                  onDragStart={() => handleDragStart(client.id)}
+                  onDragStart={(event) => handleDragStart(client.id, event)}
                   onDragEnd={handleDragEnd}
                   isDragging={draggedClientId === client.id}
                   replyStatusOptions={replyStatusEntries}
@@ -1574,6 +1711,13 @@ export function CRMBoard({ clients,
 
                 />
               ))}
+              {!collapsedGroups[group.id] && (
+                <div onDragOver={(event) => handleDragOver(event, group.id, 'bottom')} onDrop={() => handleDrop(group.id)} onDragLeave={() => { setDragOverGroupId(null); setDragOverGroupEdge(null); }} className="relative h-1" style={{ minWidth: totalMinWidth }}>
+                  {dragOverGroupId === group.id && dragOverGroupEdge === 'bottom' && <div className="pointer-events-none absolute inset-x-0 -top-0.5 z-30 h-1 bg-[#0f8da8] shadow-[0_0_5px_rgba(15,141,168,0.6)]" />}
+                </div>
+              )}
+                </div>
+              )}
 
               <GenerateOcfModal
                 open={isOcfModalOpen}

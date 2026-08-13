@@ -34,7 +34,7 @@ export type ClientRowProps = {
     onChangeSubitemAssignees: (subitemId: string, ids: string[]) => void;
     colWidth: Record<string, number>;
     columnOrderMap: Record<string, number>;
-    onDragStart: () => void;
+    onDragStart: (event: React.DragEvent<HTMLDivElement>) => void;
     onDragEnd: () => void;
     isDragging: boolean;
     replyStatusOptions: OptionEntry[];
@@ -322,6 +322,7 @@ export function ClientRow({
     return (
         <div className="mb-0">
             <div
+                data-client-row
                 className={`box-border border-b flex text-[15px] items-center flex-shrink-0 border-r border-[#D0D4E4] hover:blue-50 group transition-colors ${isSelected ? "bg-blue-50" : ""
                     }`}
             >
@@ -349,7 +350,7 @@ export function ClientRow({
 
                 <div
                     draggable
-                    onDragStart={onDragStart}
+                    onDragStart={(event) => onDragStart(event)}
                     onDragEnd={onDragEnd}
                     className={`box-border flex items-center min-w-0 px-1 border-r border-[#D0D4E4] overflow-hidden ${isDragging ? "opacity-40" : ""} ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
                     style={{ height: 30, minWidth: colWidth.client, width: colWidth.client, order: columnOrderMap.client ?? 1 }}

@@ -211,8 +211,71 @@ export function SubitemsTable({
     const [selectedSubitemIds, setSelectedSubitemIds] = useState<string[]>([]);
     const [selectionBox, setSelectionBox] = useState({ x: 0, y: 0, visible: false });
     const [draggedColumnKey, setDraggedColumnKey] = useState<string | null>(null);
+    const [dragOverColumnKey, setDragOverColumnKey] = useState<string | null>(null);
+    const [dragOverColumnEdge, setDragOverColumnEdge] = useState<'left' | 'right' | null>(null);
 
     const [pushingSubitemId, setPushingSubitemId] = useState<string | null>(null);
+
+    const setDragPreview = (event: React.DragEvent, source: HTMLElement) => {
+        if (!event.dataTransfer) return;
+        const bounds = source.getBoundingClientRect();
+        const preview = document.createElement('div');
+        preview.style.position = 'fixed';
+        preview.style.left = '-10000px';
+        preview.style.top = '-10000px';
+        preview.style.width = `${bounds.width}px`;
+        preview.style.maxWidth = `${bounds.width}px`;
+        preview.style.height = `${bounds.height + 56}px`;
+        preview.style.overflow = 'hidden';
+        preview.style.opacity = '1';
+        preview.style.pointerEvents = 'none';
+        preview.style.background = '#ffffff';
+        preview.style.border = '1px solid #8edbe7';
+        preview.style.borderRadius = '3px';
+        preview.style.boxShadow = '0 8px 20px rgba(15, 23, 42, 0.22)';
+        preview.innerHTML = `<div style="height:${bounds.height}px;display:flex;align-items:center;justify-content:center;padding:0 8px;box-sizing:border-box;background:#f8fafc;color:#475569;font-weight:600;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-bottom:1px solid #d0d4e4">${source.textContent?.trim() ?? ''}</div>`;
+        const table = source.closest('table');
+        const columnIndex = Array.from(source.parentElement?.children ?? []).indexOf(source);
+        Array.from(table?.tBodies[0]?.rows ?? []).slice(0, 2).forEach((row, index) => {
+            const cell = row.cells[columnIndex];
+            if (!cell) return;
+            const cellPreview = document.createElement('div');
+            cellPreview.style.width = `${bounds.width}px`;
+            cellPreview.style.minWidth = `${bounds.width}px`;
+            cellPreview.style.height = '28px';
+            cellPreview.style.boxSizing = 'border-box';
+            cellPreview.style.overflow = 'hidden';
+            cellPreview.style.border = '0';
+            cellPreview.style.borderBottom = '1px solid #d0d4e4';
+            cellPreview.style.display = 'flex';
+            cellPreview.style.alignItems = 'center';
+            cellPreview.style.justifyContent = 'center';
+            cellPreview.style.padding = '0';
+            cellPreview.style.background = index % 2 === 0 ? '#ffffff' : '#f8fafc';
+            cellPreview.style.fontSize = '12px';
+            cellPreview.style.whiteSpace = 'nowrap';
+            cellPreview.style.textOverflow = 'ellipsis';
+            const cellContent = cell.firstElementChild?.cloneNode(true) as HTMLElement | undefined;
+            if (cellContent) {
+                cellContent.style.width = '100%';
+                cellContent.style.height = '100%';
+                cellContent.style.minWidth = '0';
+                cellContent.style.opacity = '1';
+                cellContent.querySelectorAll<HTMLElement>('*').forEach((element) => {
+                    element.style.opacity = '1';
+                });
+                cellPreview.appendChild(cellContent);
+            } else {
+                cellPreview.style.padding = '0 8px';
+                cellPreview.style.color = '#334155';
+                cellPreview.textContent = cell.textContent?.trim() ?? '';
+            }
+            preview.appendChild(cellPreview);
+        });
+        document.body.appendChild(preview);
+        event.dataTransfer.setDragImage(preview, Math.min(bounds.width / 2, 90), Math.min(bounds.height / 2, 16));
+        window.setTimeout(() => preview.remove(), 0);
+    };
 
     const reorderTableCols = (
         cols: ColumnDef[],
@@ -1061,7 +1124,7 @@ export function SubitemsTable({
 
             <div className="w-full overflow-visible">
                 <table
-                    className="table-fixed border-collapse"
+                    className="table-fixed border-collapse border-b border-[#D0D4E4]"
                     style={{ width: totalTableWidth, minWidth: totalTableWidth }}
                 >
                     <colgroup>
@@ -1090,18 +1153,33 @@ export function SubitemsTable({
                                         onDragStart={(e) => {
                                             if (!isDragTarget) return;
                                             e.dataTransfer?.setData('text/plain', col.key);
+                                            e.dataTransfer?.setData('application/x-crm-table-column', col.key);
                                             e.dataTransfer!.effectAllowed = 'move';
+                                            setDragPreview(e, e.currentTarget);
                                             setDraggedColumnKey(col.key);
                                         }}
                                         onDragOver={(e) => {
                                             if (!isDragTarget) return;
+                                            if (!Array.from(e.dataTransfer.types).includes('application/x-crm-table-column')) return;
                                             e.preventDefault();
+                                            setDragOverColumnKey(col.key);
+                                            const bounds = e.currentTarget.getBoundingClientRect();
+                                            setDragOverColumnEdge(e.clientX < bounds.left + bounds.width / 2 ? 'left' : 'right');
+                                        }}
+                                        onDragLeave={() => {
+                                            if (dragOverColumnKey === col.key) {
+                                                setDragOverColumnKey(null);
+                                                setDragOverColumnEdge(null);
+                                            }
                                         }}
                                         onDrop={(e) => {
+                                            if (!Array.from(e.dataTransfer.types).includes('application/x-crm-table-column')) return;
                                             e.preventDefault();
                                             const draggedKey = e.dataTransfer?.getData('text/plain') || draggedColumnKey;
                                             if (!draggedKey || draggedKey === col.key || !isDragTarget) {
                                                 setDraggedColumnKey(null);
+                                                setDragOverColumnKey(null);
+                                                setDragOverColumnEdge(null);
                                                 return;
                                             }
 
@@ -1112,10 +1190,15 @@ export function SubitemsTable({
                                             }
 
                                             setDraggedColumnKey(null);
+                                            setDragOverColumnKey(null);
+                                            setDragOverColumnEdge(null);
                                         }}
                                         className={`overflow-hidden relative border-r border-[#D0D4E4] text-center text-[12.6px] font-semibold whitespace-nowrap text-gray-500 ${isDragging ? 'opacity-60' : ''} ${isDragTarget ? (draggedColumnKey ? 'cursor-grabbing' : 'cursor-grab') : ''}`}
                                     >
                                         <div className="overflow-hidden text-ellipsis whitespace-nowrap px-2">{col.label}</div>
+                                        {dragOverColumnKey === col.key && isDragTarget && (
+                                            <div className={`pointer-events-none absolute inset-y-0 z-20 w-1 bg-[#0f8da8] shadow-[0_0_5px_rgba(15,141,168,0.6)] ${dragOverColumnEdge === 'left' ? 'left-0' : 'right-0'}`} />
+                                        )}
                                         <div
                                             onMouseDown={(e) => {
                                                 e.preventDefault();
