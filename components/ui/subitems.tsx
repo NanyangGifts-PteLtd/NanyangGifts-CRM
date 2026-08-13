@@ -210,12 +210,128 @@ export function SubitemsTable({
     const [paymentCols, setPaymentCols] = useState<ColumnDef[]>([...PAYMENT_COLS]);
     const [selectedSubitemIds, setSelectedSubitemIds] = useState<string[]>([]);
     const [selectionBox, setSelectionBox] = useState({ x: 0, y: 0, visible: false });
+    const [draggedColumnKey, setDraggedColumnKey] = useState<string | null>(null);
 
     const [pushingSubitemId, setPushingSubitemId] = useState<string | null>(null);
+
+    const reorderTableCols = (
+        cols: ColumnDef[],
+        draggedKey: string,
+        targetKey: string,
+        storageKey: string,
+        eventName: string,
+        setCols: React.Dispatch<React.SetStateAction<ColumnDef[]>>
+    ) => {
+        const reorderable = cols.filter((col) => col.key !== 'name');
+        const from = reorderable.findIndex((col) => col.key === draggedKey);
+        const to = reorderable.findIndex((col) => col.key === targetKey);
+        if (from === -1 || to === -1) return;
+
+        const reordered = [...reorderable];
+        const [moved] = reordered.splice(from, 1);
+        reordered.splice(to, 0, moved);
+
+        const next = [cols.find((col) => col.key === 'name') ?? cols[0], ...reordered];
+        setCols(next);
+
+        try {
+            const order = next.map((col) => col.key);
+            localStorage.setItem(`${storageKey}:local`, JSON.stringify(order));
+            localStorage.setItem(`${storageKey}:local_owner`, String(currentUserId ?? 'anon'));
+            if (currentUserId) localStorage.setItem(`${storageKey}:${currentUserId}`, JSON.stringify(order));
+            window.dispatchEvent(new CustomEvent(eventName, { detail: order }));
+            window.dispatchEvent(new CustomEvent(eventName.replace('Reordered', 'Changed'), { detail: Object.fromEntries(next.map((col) => [col.key, col.width])) }));
+        } catch {}
+
+        if (currentUserId) {
+            void import('@/lib/user-settings')
+                .then(({ saveUserSetting }) => saveUserSetting(storageKey, next.map((col) => col.key)))
+                .catch((error) => console.warn('Failed to save column arrangement', error));
+        }
+    };
 
     const isPm = currentUserRole === "pm" || currentUserRole === "dev" || currentUserRole === "director";
 
     const cols = tableMode === "payment" ? paymentCols : subitemCols;
+
+    React.useEffect(() => {
+        try {
+            const raw = localStorage.getItem('colOrder:subitems:local');
+            if (raw) {
+                const owner = localStorage.getItem('colOrder:subitems:local_owner');
+                if (!currentUserId || !owner || owner === currentUserId) {
+                    const order = JSON.parse(raw) as string[];
+                    if (Array.isArray(order) && order.length > 0) {
+                        setSubitemCols((prev) => {
+                            const middle = prev.filter((c) => c.key !== 'name');
+                            const ordered = order
+                                .map((key) => middle.find((c) => c.key === key))
+                                .filter(Boolean) as typeof prev;
+                            const remaining = middle.filter((c) => !order.includes(c.key));
+                            const nameColumn = prev.find((c) => c.key === 'name') ?? prev[0];
+                            return nameColumn ? [nameColumn, ...ordered, ...remaining] : [...ordered, ...remaining];
+                        });
+                    }
+                }
+            }
+        } catch {}
+
+        try {
+            const raw = localStorage.getItem('colOrder:payments:local');
+            if (raw) {
+                const owner = localStorage.getItem('colOrder:payments:local_owner');
+                if (!currentUserId || !owner || owner === currentUserId) {
+                    const order = JSON.parse(raw) as string[];
+                    if (Array.isArray(order) && order.length > 0) {
+                        setPaymentCols((prev) => {
+                            const middle = prev.filter((c) => c.key !== 'name');
+                            const ordered = order
+                                .map((key) => middle.find((c) => c.key === key))
+                                .filter(Boolean) as typeof prev;
+                            const remaining = middle.filter((c) => !order.includes(c.key));
+                            const nameColumn = prev.find((c) => c.key === 'name') ?? prev[0];
+                            return nameColumn ? [nameColumn, ...ordered, ...remaining] : [...ordered, ...remaining];
+                        });
+                    }
+                }
+            }
+        } catch {}
+    }, [currentUserId]);
+
+    React.useEffect(() => {
+        if (!currentUserId) return;
+        let mounted = true;
+
+        const applyOrder = (setCols: React.Dispatch<React.SetStateAction<ColumnDef[]>>, order: unknown) => {
+            if (!Array.isArray(order) || order.length === 0) return;
+            setCols((prev) => {
+                const middle = prev.filter((col) => col.key !== 'name');
+                const ordered = order
+                    .map((key) => middle.find((col) => col.key === key))
+                    .filter(Boolean) as ColumnDef[];
+                const remaining = middle.filter((col) => !order.includes(col.key));
+                const nameColumn = prev.find((col) => col.key === 'name') ?? prev[0];
+                return nameColumn ? [nameColumn, ...ordered, ...remaining] : [...ordered, ...remaining];
+            });
+        };
+
+        (async () => {
+            try {
+                const { loadUserSetting } = await import('@/lib/user-settings');
+                const [subitemOrder, paymentOrder] = await Promise.all([
+                    loadUserSetting('colOrder:subitems'),
+                    loadUserSetting('colOrder:payments'),
+                ]);
+                if (!mounted) return;
+                applyOrder(setSubitemCols, subitemOrder);
+                applyOrder(setPaymentCols, paymentOrder);
+            } catch (error) {
+                console.warn('Failed to load saved column arrangements', error);
+            }
+        })();
+
+        return () => { mounted = false; };
+    }, [currentUserId]);
 
     const totalTableWidth = useMemo(() => {
         const baseCols = 44 + cols.reduce((s, c) => s + c.width, 0);
@@ -477,11 +593,47 @@ export function SubitemsTable({
             } catch {}
         }
 
+        function onSubitemOrder(e: any) {
+            try {
+                const order = e?.detail ?? [];
+                if (!Array.isArray(order) || order.length === 0) return;
+                setSubitemCols((prev) => {
+                    const middle = prev.filter((c) => c.key !== 'name');
+                    const ordered = order
+                        .map((key) => middle.find((c) => c.key === key))
+                        .filter(Boolean) as typeof prev;
+                    const remaining = middle.filter((c) => !order.includes(c.key));
+                    const nameColumn = prev.find((c) => c.key === 'name') ?? prev[0];
+                    return nameColumn ? [nameColumn, ...ordered, ...remaining] : [...ordered, ...remaining];
+                });
+            } catch {}
+        }
+
+        function onPaymentOrder(e: any) {
+            try {
+                const order = e?.detail ?? [];
+                if (!Array.isArray(order) || order.length === 0) return;
+                setPaymentCols((prev) => {
+                    const middle = prev.filter((c) => c.key !== 'name');
+                    const ordered = order
+                        .map((key) => middle.find((c) => c.key === key))
+                        .filter(Boolean) as typeof prev;
+                    const remaining = middle.filter((c) => !order.includes(c.key));
+                    const nameColumn = prev.find((c) => c.key === 'name') ?? prev[0];
+                    return nameColumn ? [nameColumn, ...ordered, ...remaining] : [...ordered, ...remaining];
+                });
+            } catch {}
+        }
+
         window.addEventListener('subitemColsChanged', onSubitemCols as EventListener);
         window.addEventListener('paymentColsChanged', onPaymentCols as EventListener);
+        window.addEventListener('subitemColsReordered', onSubitemOrder as EventListener);
+        window.addEventListener('paymentColsReordered', onPaymentOrder as EventListener);
         return () => {
             window.removeEventListener('subitemColsChanged', onSubitemCols as EventListener);
             window.removeEventListener('paymentColsChanged', onPaymentCols as EventListener);
+            window.removeEventListener('subitemColsReordered', onSubitemOrder as EventListener);
+            window.removeEventListener('paymentColsReordered', onPaymentOrder as EventListener);
         };
     }, []);
 
@@ -927,21 +1079,53 @@ export function SubitemsTable({
                         <tr className="border-b border-t border-r border-[#D0D4E4] bg-gray-50">
                             <th className="w-11 px-2 py-1 text-center" />
 
-                            {cols.map((col) => (
-                                <th
-                                    key={col.key}
-                                    className="overflow-hidden relative border-r border-[#D0D4E4] text-center text-[12.6px] font-semibold whitespace-nowrap text-gray-500"
-                                >
-                                    <div className="overflow-hidden text-ellipsis whitespace-nowrap px-2">{col.label}</div>
-                                    <div
-                                        onMouseDown={(e) => {
-                                            e.preventDefault();
-                                            startResize(col.key, e.clientX);
+                            {cols.map((col) => {
+                                const isDragTarget = col.key !== 'name';
+                                const isDragging = draggedColumnKey === col.key;
+
+                                return (
+                                    <th
+                                        key={col.key}
+                                        draggable={isDragTarget}
+                                        onDragStart={(e) => {
+                                            if (!isDragTarget) return;
+                                            e.dataTransfer?.setData('text/plain', col.key);
+                                            e.dataTransfer!.effectAllowed = 'move';
+                                            setDraggedColumnKey(col.key);
                                         }}
-                                        className="absolute top-0 right-0 h-full w-2 cursor-col-resize hover:bg-[#7BCBD5]/20"
-                                    />
-                                </th>
-                            ))}
+                                        onDragOver={(e) => {
+                                            if (!isDragTarget) return;
+                                            e.preventDefault();
+                                        }}
+                                        onDrop={(e) => {
+                                            e.preventDefault();
+                                            const draggedKey = e.dataTransfer?.getData('text/plain') || draggedColumnKey;
+                                            if (!draggedKey || draggedKey === col.key || !isDragTarget) {
+                                                setDraggedColumnKey(null);
+                                                return;
+                                            }
+
+                                            if (tableMode === 'payment') {
+                                                reorderTableCols(paymentCols, draggedKey, col.key, 'colOrder:payments', 'paymentColsReordered', setPaymentCols);
+                                            } else {
+                                                reorderTableCols(subitemCols, draggedKey, col.key, 'colOrder:subitems', 'subitemColsReordered', setSubitemCols);
+                                            }
+
+                                            setDraggedColumnKey(null);
+                                        }}
+                                        className={`overflow-hidden relative border-r border-[#D0D4E4] text-center text-[12.6px] font-semibold whitespace-nowrap text-gray-500 ${isDragging ? 'opacity-60' : ''} ${isDragTarget ? (draggedColumnKey ? 'cursor-grabbing' : 'cursor-grab') : ''}`}
+                                    >
+                                        <div className="overflow-hidden text-ellipsis whitespace-nowrap px-2">{col.label}</div>
+                                        <div
+                                            onMouseDown={(e) => {
+                                                e.preventDefault();
+                                                startResize(col.key, e.clientX);
+                                            }}
+                                            className="absolute top-0 right-0 h-full w-2 cursor-col-resize hover:bg-[#7BCBD5]/20"
+                                        />
+                                    </th>
+                                );
+                            })}
 
                             {subitemCustomCols.map((col) => (
                                 <th

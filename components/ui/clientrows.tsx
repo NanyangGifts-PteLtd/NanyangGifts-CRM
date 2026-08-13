@@ -33,6 +33,7 @@ export type ClientRowProps = {
     subitemAssigneeMap: Record<string, string[]>;
     onChangeSubitemAssignees: (subitemId: string, ids: string[]) => void;
     colWidth: Record<string, number>;
+    columnOrderMap: Record<string, number>;
     onDragStart: () => void;
     onDragEnd: () => void;
     isDragging: boolean;
@@ -106,6 +107,7 @@ export function ClientRow({
     subitemAssigneeMap,
     onChangeSubitemAssignees,
     colWidth,
+    columnOrderMap,
     onDragStart,
     onDragEnd,
     isDragging,
@@ -325,7 +327,7 @@ export function ClientRow({
             >
                 <div
                     className="box-border flex items-center min-w-0 px-3 flex-shrink-0 overflow-hidden"
-                    style={{ minWidth: colWidth.selectCheckbox, width: colWidth.selectCheckbox }}
+                    style={{ minWidth: colWidth.selectCheckbox, width: colWidth.selectCheckbox, order: columnOrderMap.selectCheckbox ?? 0 }}
                 >
                     <input
                         type="checkbox"
@@ -350,7 +352,7 @@ export function ClientRow({
                     onDragStart={onDragStart}
                     onDragEnd={onDragEnd}
                     className={`box-border flex items-center min-w-0 px-1 border-r border-[#D0D4E4] overflow-hidden ${isDragging ? "opacity-40" : ""} ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
-                    style={{ height: 30, minWidth: colWidth.client, width: colWidth.client }}
+                    style={{ height: 30, minWidth: colWidth.client, width: colWidth.client, order: columnOrderMap.client ?? 1 }}
                 >
 
                     <div className="min-w-0 flex items-left">
@@ -490,7 +492,7 @@ export function ClientRow({
                 </div>
                 <div
                     className="flex-1 min-w-0 py-1 overflow-hidden whitespace-nowrap text-ellipsis border-r border-[#D0D4E4]"
-                    style={{ minWidth: colWidth.people, width: colWidth.people }}
+                    style={{ minWidth: colWidth.people, width: colWidth.people, order: columnOrderMap.people ?? 2 }}
                 >
                     <AssigneeMultiSelect
                         profiles={profiles}
@@ -501,7 +503,7 @@ export function ClientRow({
 
                 <div
                     className="overflow-hidden whitespace-nowrap text-ellipsis !text-center border-r border-[#D0D4E4] p-0 h-[33.1px] transition transform active:scale-95 duration-150"
-                    style={{ minWidth: colWidth.replyStatus, width: colWidth.replyStatus }}
+                    style={{ minWidth: colWidth.replyStatus, width: colWidth.replyStatus, order: columnOrderMap.replyStatus ?? 3 }}
                 >
                     <StatusBadge
                         value={client.replyStatus}
@@ -515,7 +517,7 @@ export function ClientRow({
 
                 <div
                     className="flex-1 min-w-0 py-1 overflow-hidden whitespace-nowrap text-ellipsis !text-center border-r border-1 border-[#D0D4E4] transition transform active:scale-95 duration-150"
-                    style={{ minWidth: colWidth.followUp, width: colWidth.followUp }}
+                    style={{ minWidth: colWidth.followUp, width: colWidth.followUp, order: columnOrderMap.followUp ?? 4 }}
                 >
                     <input
                         type="date"
@@ -527,7 +529,7 @@ export function ClientRow({
 
                 <div
                     className="overflow-hidden whitespace-nowrap text-ellipsis !text-center border-r border-[#D0D4E4] p-0 h-[33.1px] flex-shrink-0 transition transform active:scale-95 duration-150"
-                    style={{ minWidth: colWidth.status, width: colWidth.status }}
+                    style={{ minWidth: colWidth.status, width: colWidth.status, order: columnOrderMap.status ?? 5 }}
                 >
                     <StatusBadge
                         value={client.status}
@@ -647,7 +649,7 @@ export function ClientRow({
 
                 <div
                     className="overflow-hidden whitespace-nowrap text-ellipsis !text-center border-r border-[#D0D4E4] p-0 h-[33.1px] flex-shrink-0 transition transform active:scale-95 duration-150"
-                    style={{ minWidth: colWidth.channel, width: colWidth.channel }}
+                    style={{ minWidth: colWidth.channel, width: colWidth.channel, order: columnOrderMap.channel ?? 6 }}
                 >
                     <StatusBadge
                         value={client.channel}
@@ -661,7 +663,7 @@ export function ClientRow({
 
                 <div
                     className="overflow-hidden whitespace-nowrap text-ellipsis !text-center border-r border-[#D0D4E4] p-0 h-[33.1px] flex-shrink-0 transition transform active:scale-95 duration-150"
-                    style={{ minWidth: colWidth.importance, width: colWidth.importance }}
+                    style={{ minWidth: colWidth.importance, width: colWidth.importance, order: columnOrderMap.importance ?? 7 }}
                 >
                     <StatusBadge
                         value={client.importance}
@@ -673,23 +675,23 @@ export function ClientRow({
                     />
                 </div>
 
-                <div className="min-w-0 py-1 w-full overflow-hidden border-r border-[#D0D4E4] whitespace-nowrap text-ellipsis" style={{ height: 30, minWidth: colWidth.company, width: colWidth.company }}>
+                <div className="min-w-0 py-1 w-full overflow-hidden border-r border-[#D0D4E4] whitespace-nowrap text-ellipsis" style={{ height: 30, minWidth: colWidth.company, width: colWidth.company, order: columnOrderMap.company ?? 8 }}>
                     <EditableCell className="!justify-start px-1" value={client.company} onChange={(v) => onUpdate({ company: v })} placeholder="" />
                 </div>
 
-                <div className="flex-1 min-w-0 items-center py-1 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height: 30, minWidth: colWidth.email, width: colWidth.email }}>
+                <div className="flex-1 min-w-0 items-center py-1 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height: 30, minWidth: colWidth.email, width: colWidth.email, order: columnOrderMap.email ?? 9 }}>
                     <EditableCell className="!justify-start px-1" value={client.email} onChange={(v) => onUpdate({ email: v })} placeholder="" />
                 </div>
 
-                <div className="flex-1 min-w-0 py-1 items-center border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height: 30, minWidth: colWidth.phone, width: colWidth.phone }}>
+                <div className="flex-1 min-w-0 py-1 items-center border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height: 30, minWidth: colWidth.phone, width: colWidth.phone, order: columnOrderMap.phone ?? 10 }}>
                     <EditableCell value={client.phone} onChange={(v) => onUpdate({ phone: v })} placeholder="" />
                 </div>
 
-                <div className="flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height: 30, minWidth: colWidth.requirements, width: colWidth.requirements }}>
+                <div className="flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height: 30, minWidth: colWidth.requirements, width: colWidth.requirements, order: columnOrderMap.requirements ?? 11 }}>
                     <EditableCell className="!justify-start px-1" value={client.requirements} onChange={(v) => onUpdate({ requirements: v })} placeholder="" />
                 </div>
                 <div
-                    className="flex items-center border-r border-[#D0D4E4] transition transform active:scale-95 duration-150" style={{ height: 30, minWidth: colWidth.nbd, width: colWidth.nbd }}>
+                    className="flex items-center border-r border-[#D0D4E4] transition transform active:scale-95 duration-150" style={{ height: 30, minWidth: colWidth.nbd, width: colWidth.nbd, order: columnOrderMap.nbd ?? 12 }}>
                     <input
                         type="date"
                         value={toDateInputValue(client.nbd)}
@@ -697,10 +699,10 @@ export function ClientRow({
                         className="text-[12.6px] border-none outline-none bg-transparent cursor-pointer w-full"
                     />
                 </div>
-                <div className="flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height: 30, minWidth: colWidth.totalPrice, width: colWidth.totalPrice }}>
+                <div className="flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height: 30, minWidth: colWidth.totalPrice, width: colWidth.totalPrice, order: columnOrderMap.totalPrice ?? 13 }}>
                     <EditableCell className="!px-8" value={client.totalPrice} onChange={(v) => onUpdate({ totalPrice: v })} type="Number" />
                 </div>
-                <div className="flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height: 30, minWidth: colWidth.companyAddress, width: colWidth.companyAddress }}>
+                <div className="flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height: 30, minWidth: colWidth.companyAddress, width: colWidth.companyAddress, order: columnOrderMap.companyAddress ?? 14 }}>
                     <EditableCell
                         value={client.companyAddress}
                         onChange={(v) => onUpdate({ companyAddress: v })}
@@ -708,7 +710,7 @@ export function ClientRow({
                     />
                 </div>
 
-                <div className="flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height: 30, minWidth: colWidth.billingAddress, width: colWidth.billingAddress }}>
+                <div className="flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height: 30, minWidth: colWidth.billingAddress, width: colWidth.billingAddress, order: columnOrderMap.billingAddress ?? 15 }}>
                     <EditableCell
                         value={client.billingAddress}
                         onChange={(v) => onUpdate({ billingAddress: v })}
@@ -716,7 +718,7 @@ export function ClientRow({
                     />
                 </div>
 
-                <div className="flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height: 30, minWidth: colWidth.dateCreated, width: colWidth.dateCreated }}>
+                <div className="flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height: 30, minWidth: colWidth.dateCreated, width: colWidth.dateCreated, order: columnOrderMap.dateCreated ?? 16 }}>
                     <EditableCell value={client.dateCreated} onChange={(v) => onUpdate({ dateCreated: v })} />
                 </div>
                 {/* custom cols */}
@@ -728,6 +730,7 @@ export function ClientRow({
                             height: 30,
                             minWidth: colWidth[`custom:${col.id}`] ?? 120,
                             width: colWidth[`custom:${col.id}`] ?? 120,
+                            order: columnOrderMap[`custom:${col.id}`] ?? 17,
                         }}
                     >
                         {col.field_type === "date" ? (
@@ -757,10 +760,11 @@ export function ClientRow({
                         height: 30,
                         minWidth: colWidth.addClientCol ?? 44,
                         width: colWidth.addClientCol ?? 44,
+                        order: columnOrderMap.addClientCol ?? 999,
                     }}
 />
                 {/* delete button */}
-                <div className="flex items-center flex-shrink-0" style={{ minWidth: colWidth.empty, width: colWidth.empty }}>
+                <div className="flex items-center flex-shrink-0" style={{ minWidth: colWidth.empty, width: colWidth.empty, order: columnOrderMap.empty ?? 1000 }}>
                     <button
                         onClick={onDelete}
                         title="Delete client"

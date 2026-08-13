@@ -136,7 +136,40 @@ export function CRMBoard({ clients,
   const [dragOverGroupId, setDragOverGroupId] = useState<string | null>(null);
 
   const [headerCols, setHeaderCols] = useState<HeaderCol[]>(CLIENT_HEADER_COLS);
+  const [draggedHeaderKey, setDraggedHeaderKey] = useState<string | null>(null);
+  const [dragOverHeaderKey, setDragOverHeaderKey] = useState<string | null>(null);
   const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
+  const [showRestoreArrangementConfirm, setShowRestoreArrangementConfirm] = useState(false);
+
+  const reorderClientColumns = useCallback((draggedKey: string, targetKey: string) => {
+    const baseCols = headerCols.filter((c) => !['selectCheckbox', 'client', 'addClientCol', 'empty'].includes(c.key));
+    const from = baseCols.findIndex((c) => c.key === draggedKey);
+    const to = baseCols.findIndex((c) => c.key === targetKey);
+    if (from === -1 || to === -1) return;
+
+    const reordered = [...baseCols];
+    const [moved] = reordered.splice(from, 1);
+    reordered.splice(to, 0, moved);
+
+    const fixedFront = headerCols.filter((c) => ['selectCheckbox', 'client'].includes(c.key));
+    const fixedEnd = headerCols.filter((c) => ['addClientCol', 'empty'].includes(c.key));
+    const next = [...fixedFront, ...reordered, ...fixedEnd];
+    setHeaderCols(next);
+
+    try {
+      const order = next.map((c) => c.key);
+      localStorage.setItem('colOrder:clients:local', JSON.stringify(order));
+      localStorage.setItem('colOrder:clients:local_owner', String(currentUserId ?? 'anon'));
+      if (currentUserId) localStorage.setItem(`colOrder:clients:${currentUserId}`, JSON.stringify(order));
+      window.dispatchEvent(new CustomEvent('clientColsReordered', { detail: order }));
+    } catch {}
+
+    if (currentUserId) {
+      void import('@/lib/user-settings')
+        .then(({ saveUserSetting }) => saveUserSetting('colOrder:clients', next.map((c) => c.key)))
+        .catch((error) => console.warn('Failed to save client column arrangement', error));
+    }
+  }, [headerCols, currentUserId]);
 
   const handleRestoreDefaults = useCallback(async () => {
     // restore client header widths to defaults
@@ -186,6 +219,44 @@ export function CRMBoard({ clients,
     }
   }, [currentUserId]);
 
+  const handleRestoreDefaultArrangement = useCallback(async () => {
+    const clientOrder = CLIENT_HEADER_COLS.map((col) => col.key);
+    const subitemOrder = SUBITEM_COLS.map((col) => col.key);
+    const paymentOrder = PAYMENT_COLS.map((col) => col.key);
+
+    setHeaderCols(CLIENT_HEADER_COLS.map((col) => ({ ...col })));
+
+    try {
+      localStorage.setItem('colOrder:clients:local', JSON.stringify(clientOrder));
+      localStorage.setItem('colOrder:subitems:local', JSON.stringify(subitemOrder));
+      localStorage.setItem('colOrder:payments:local', JSON.stringify(paymentOrder));
+      localStorage.setItem('colOrder:clients:local_owner', String(currentUserId ?? 'anon'));
+      localStorage.setItem('colOrder:subitems:local_owner', String(currentUserId ?? 'anon'));
+      localStorage.setItem('colOrder:payments:local_owner', String(currentUserId ?? 'anon'));
+      if (currentUserId) {
+        localStorage.setItem(`colOrder:clients:${currentUserId}`, JSON.stringify(clientOrder));
+        localStorage.setItem(`colOrder:subitems:${currentUserId}`, JSON.stringify(subitemOrder));
+        localStorage.setItem(`colOrder:payments:${currentUserId}`, JSON.stringify(paymentOrder));
+      }
+      window.dispatchEvent(new CustomEvent('subitemColsReordered', { detail: subitemOrder }));
+      window.dispatchEvent(new CustomEvent('paymentColsReordered', { detail: paymentOrder }));
+      window.dispatchEvent(new CustomEvent('clientColsReordered', { detail: clientOrder }));
+    } catch {}
+
+    if (currentUserId) {
+      try {
+        const { saveUserSetting } = await import('@/lib/user-settings');
+        await Promise.all([
+          saveUserSetting('colOrder:clients', clientOrder),
+          saveUserSetting('colOrder:subitems', subitemOrder),
+          saveUserSetting('colOrder:payments', paymentOrder),
+        ]);
+      } catch (error) {
+        console.warn('Failed to persist restored default column arrangement', error);
+      }
+    }
+  }, [currentUserId]);
+
   // User custom columns
   const [customColumns, setCustomColumns] = useState<CustomColumn[]>([]);
   const [showAddColModal, setShowAddColModal] = useState<'client' | 'subitem' | null>(null);
@@ -195,6 +266,10 @@ export function CRMBoard({ clients,
 
   const clientCustomCols = customColumns.filter((c) => c.target === 'client');
   const subitemCustomCols = customColumns.filter((c) => c.target === 'subitem');
+
+  const clientColumnOrderMap = React.useMemo<Record<string, number>>(() => {
+    return Object.fromEntries(headerCols.map((col, index) => [col.key, index]));
+  }, [headerCols]);
 
   const mergedHeaderCols = React.useMemo<HeaderCol[]>(() => {
     const customClientHeaderCols: HeaderCol[] = clientCustomCols.map((col) => ({
@@ -225,6 +300,9 @@ export function CRMBoard({ clients,
       const clientOwner = localStorage.getItem('colWidths:clients:local_owner');
       const subOwner = localStorage.getItem('colWidths:subitems:local_owner');
       const payOwner = localStorage.getItem('colWidths:payments:local_owner');
+      const clientOrderOwner = localStorage.getItem('colOrder:clients:local_owner');
+      const subitemOrderOwner = localStorage.getItem('colOrder:subitems:local_owner');
+      const paymentOrderOwner = localStorage.getItem('colOrder:payments:local_owner');
       // if signed in and owners exist but don't match, clear and reset defaults
       if (currentUserId) {
         let didClear = false;
@@ -243,6 +321,18 @@ export function CRMBoard({ clients,
           try { localStorage.removeItem('colWidths:payments:local'); localStorage.removeItem('colWidths:payments:local_owner'); } catch {}
           try { window.dispatchEvent(new CustomEvent('paymentColsChanged', { detail: Object.fromEntries(PAYMENT_COLS.map(c => [c.key, c.width])) })); } catch {}
           didClear = true;
+        }
+        if (clientOrderOwner && clientOrderOwner !== currentUserId) {
+          try { localStorage.removeItem('colOrder:clients:local'); localStorage.removeItem('colOrder:clients:local_owner'); } catch {}
+          setHeaderCols(CLIENT_HEADER_COLS.map((c) => ({ ...c })));
+        }
+        if (subitemOrderOwner && subitemOrderOwner !== currentUserId) {
+          try { localStorage.removeItem('colOrder:subitems:local'); localStorage.removeItem('colOrder:subitems:local_owner'); } catch {}
+          try { window.dispatchEvent(new CustomEvent('subitemColsReordered', { detail: SUBITEM_COLS.map((c) => c.key) })); } catch {}
+        }
+        if (paymentOrderOwner && paymentOrderOwner !== currentUserId) {
+          try { localStorage.removeItem('colOrder:payments:local'); localStorage.removeItem('colOrder:payments:local_owner'); } catch {}
+          try { window.dispatchEvent(new CustomEvent('paymentColsReordered', { detail: PAYMENT_COLS.map((c) => c.key) })); } catch {}
         }
 
         // if we cleared other-user caches, persist defaults for current user if they have none
@@ -281,6 +371,54 @@ export function CRMBoard({ clients,
 
   // Persist client column widths per-user in DB (fallback to localStorage)
   // Apply most-recent local cache immediately on mount so SPA nav restores quickly
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('colOrder:clients:local');
+      if (!raw) return;
+      const owner = localStorage.getItem('colOrder:clients:local_owner');
+      if (currentUserId && owner && owner !== currentUserId) return;
+      const order = JSON.parse(raw) as string[];
+      if (!Array.isArray(order) || order.length === 0) return;
+
+      setHeaderCols((prev) => {
+        const fixedFront = prev.filter((c) => ['selectCheckbox', 'client'].includes(c.key));
+        const fixedEnd = prev.filter((c) => ['addClientCol', 'empty'].includes(c.key));
+        const middle = prev.filter((c) => !['selectCheckbox', 'client', 'addClientCol', 'empty'].includes(c.key));
+        const ordered = order
+          .map((key) => middle.find((c) => c.key === key))
+          .filter(Boolean) as HeaderCol[];
+        const remaining = middle.filter((c) => !order.includes(c.key));
+        return [...fixedFront, ...ordered, ...remaining, ...fixedEnd];
+      });
+    } catch (e) {
+      // ignore
+    }
+  }, [currentUserId]);
+
+  useEffect(() => {
+    if (!currentUserId) return;
+    let mounted = true;
+    (async () => {
+      try {
+        const { loadUserSetting } = await import('@/lib/user-settings');
+        const order = await loadUserSetting('colOrder:clients');
+        if (!mounted || !Array.isArray(order) || order.length === 0) return;
+
+        setHeaderCols((prev) => {
+          const fixedFront = prev.filter((col) => ['selectCheckbox', 'client'].includes(col.key));
+          const fixedEnd = prev.filter((col) => ['addClientCol', 'empty'].includes(col.key));
+          const middle = prev.filter((col) => !['selectCheckbox', 'client', 'addClientCol', 'empty'].includes(col.key));
+          const ordered = order.map((key) => middle.find((col) => col.key === key)).filter(Boolean) as HeaderCol[];
+          const remaining = middle.filter((col) => !order.includes(col.key));
+          return [...fixedFront, ...ordered, ...remaining, ...fixedEnd];
+        });
+      } catch (error) {
+        console.warn('Failed to load saved client column arrangement', error);
+      }
+    })();
+    return () => { mounted = false; };
+  }, [currentUserId]);
+
   useEffect(() => {
     try {
       const raw = localStorage.getItem('colWidths:clients:local');
@@ -1176,6 +1314,9 @@ export function CRMBoard({ clients,
         <button onClick={() => setShowRestoreConfirm(true)} className="flex items-center gap-1 px-2 py-1 bg-[#43adc4] hover:bg-[#0f8da8] text-white rounded-md text-[10px] font-medium transition-colors transform active:scale-95 duration-150">
           Restore default column widths
         </button>
+        <button onClick={() => setShowRestoreArrangementConfirm(true)} className="flex items-center gap-1 px-2 py-1 bg-[#43adc4] hover:bg-[#0f8da8] text-white rounded-md text-[10px] font-medium transition-colors transform active:scale-95 duration-150">
+          Restore default column arrangement
+        </button>
 
         <div className="flex items-center gap-1">
           {clientStatuses.map((st) => {
@@ -1223,53 +1364,105 @@ export function CRMBoard({ clients,
         </AlertDialogContent>
       </AlertDialog>
 
+      <AlertDialog open={showRestoreArrangementConfirm} onOpenChange={setShowRestoreArrangementConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Restore default column arrangement?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will reset the client, subitem, and payment columns to their default order. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={async () => { setShowRestoreArrangementConfirm(false); await handleRestoreDefaultArrangement(); }}>
+              Restore
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <div className="flex min-w-0 text-gray-500 font-semibold">
         <div style={{ minWidth: totalMinWidth }}>
           <div className="flex text-[12.6px] items-center justify-center w-full min-w-0 flex-shrink-0 border-r border-[#D0D4E4] overflow-hidden animated-background bg-gradient-to-r from-[#e7fdff] to-[#a3dfff] sticky top-0 z-10" style={{ minWidth: totalMinWidth }}>
-            {mergedHeaderCols.map((col) => (
-              <div
-                key={col.key}
-                className="relative flex justify-center items-center border-[#D0D4E4] border-r flex-shrink-0"
-                style={{ minWidth: col.width, width: col.width }}
-              >
-                {col.key === 'selectCheckbox' ? (
-                  <input
-                    type="checkbox"
-                    checked={allFilteredSelected}
-                    onChange={toggleSelectAll}
-                    className="w-3 h-3 rounded cursor-pointer accent-[#7BCBD5]"
-                  />
-                ) : col.key === 'addClientCol' ? (
-                  <button
-                    type="button"
-                    onClick={() => setShowAddColModal('client')}
-                    className="mx-auto flex h-5 w-5 items-center justify-center rounded-md text-teal-500 hover:bg-teal-100 hover:text-black"
-                    title="Add client column"
-                  >
-                    <Plus size={14} />
-                  </button>
-                ) : (
-                  <div className="flex items-center gap-1 min-w-0">
-                    <span className="truncate">{col.label}</span>
-                    {col.isCustom && col.customColumnId ? (
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteCustomColumn(col.customColumnId!)}
-                        className="text-gray-400 hover:text-red-500 flex-shrink-0"
-                        title="Delete column"
-                      >
-                        <X size={12} />
-                      </button>
-                    ) : null}
-                  </div>
-                )}
+            {mergedHeaderCols.map((col) => {
+              const fixedKeys = new Set(['selectCheckbox', 'client', 'addClientCol', 'empty']);
+              const isDraggable = !col.isCustom && !fixedKeys.has(col.key);
+              const isDragging = draggedHeaderKey === col.key;
+              const isDragOver = dragOverHeaderKey === col.key;
 
+              return (
                 <div
-                  onMouseDown={(e) => startResize(col.key, e.clientX)}
-                  className="absolute right-0 top-0 h-full w-1 cursor-col-resize"
-                />
-              </div>
-            ))}
+                  key={col.key}
+                  draggable={isDraggable}
+                  onDragStart={(e) => {
+                    if (!isDraggable) return;
+                    e.dataTransfer?.setData('text/plain', col.key);
+                    e.dataTransfer!.effectAllowed = 'move';
+                    setDraggedHeaderKey(col.key);
+                  }}
+                  onDragOver={(e) => {
+                    if (!isDraggable) return;
+                    e.preventDefault();
+                    setDragOverHeaderKey(col.key);
+                  }}
+                  onDragLeave={() => {
+                    if (dragOverHeaderKey === col.key) setDragOverHeaderKey(null);
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    const draggedKey = e.dataTransfer?.getData('text/plain') || draggedHeaderKey;
+                    if (!draggedKey || draggedKey === col.key || !isDraggable) {
+                      setDraggedHeaderKey(null);
+                      setDragOverHeaderKey(null);
+                      return;
+                    }
+
+                    reorderClientColumns(draggedKey, col.key);
+                    setDraggedHeaderKey(null);
+                    setDragOverHeaderKey(null);
+                  }}
+                  className={`relative flex justify-center items-center border-[#D0D4E4] border-r flex-shrink-0 ${isDragging ? 'opacity-60' : ''} ${isDraggable ? (draggedHeaderKey ? 'cursor-grabbing' : 'cursor-grab') : ''} ${isDragOver && isDraggable ? 'bg-[#dff9ff]' : ''}`}
+                  style={{ minWidth: col.width, width: col.width }}
+                >
+                  {col.key === 'selectCheckbox' ? (
+                    <input
+                      type="checkbox"
+                      checked={allFilteredSelected}
+                      onChange={toggleSelectAll}
+                      className="w-3 h-3 rounded cursor-pointer accent-[#7BCBD5]"
+                    />
+                  ) : col.key === 'addClientCol' ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowAddColModal('client')}
+                      className="mx-auto flex h-5 w-5 items-center justify-center rounded-md text-teal-500 hover:bg-teal-100 hover:text-black"
+                      title="Add client column"
+                    >
+                      <Plus size={14} />
+                    </button>
+                  ) : (
+                    <div className="flex items-center gap-1 min-w-0">
+                      <span className="truncate">{col.label}</span>
+                      {col.isCustom && col.customColumnId ? (
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteCustomColumn(col.customColumnId!)}
+                          className="text-gray-400 hover:text-red-500 flex-shrink-0"
+                          title="Delete column"
+                        >
+                          <X size={12} />
+                        </button>
+                      ) : null}
+                    </div>
+                  )}
+
+                  <div
+                    onMouseDown={(e) => startResize(col.key, e.clientX)}
+                    className="absolute right-0 top-0 h-full w-1 cursor-col-resize"
+                  />
+                </div>
+              );
+            })}
           </div>
 
 
@@ -1331,6 +1524,7 @@ export function CRMBoard({ clients,
                   subitemAssigneeMap={subitemAssignees}
                   onChangeSubitemAssignees={handleSubitemAssigneesChange}
                   colWidth={colWidth}
+                  columnOrderMap={clientColumnOrderMap}
                   onDragStart={() => handleDragStart(client.id)}
                   onDragEnd={handleDragEnd}
                   isDragging={draggedClientId === client.id}
