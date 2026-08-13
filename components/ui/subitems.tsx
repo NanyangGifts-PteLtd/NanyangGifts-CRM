@@ -25,7 +25,7 @@ type ColumnDef = {
     minWidth: number;
 };
 
-const SUBITEM_COLS: ColumnDef[] = [
+export const SUBITEM_COLS: ColumnDef[] = [
     { key: "name", label: "Subitem", width: 290, minWidth: 170 },
     { key: "people", label: "People", width: 82, minWidth: 7 },
     { key: "localOverseas", label: "Local/Overseas", width: 100, minWidth: 7 },
@@ -53,7 +53,7 @@ const SUBITEM_COLS: ColumnDef[] = [
     
 ];
 
-const PAYMENT_COLS: ColumnDef[] = [
+export const PAYMENT_COLS: ColumnDef[] = [
     { key: "name", label: "Subitem", width: 290, minWidth: 170 },
     { key: "payment", label: "Payment", width: 82, minWidth: 7 },
     { key: "paymentStatus", label: "Status", width: 100, minWidth: 7 },
@@ -121,6 +121,7 @@ type SubitemProps = {
     onDeleteSubitemCustomCol: (id: string) => void;
     onRequestAddSubitemCol: () => void;
     currentUserRole?: string | null;
+    currentUserId?: string | null;
     onPushToShipperView?: (subitemId: string) => Promise<void> | void;
 };
 
@@ -201,6 +202,7 @@ export function SubitemsTable({
     onDeleteSubitemCustomCol,
     onRequestAddSubitemCol,
     currentUserRole,
+    currentUserId,
     onPushToShipperView,
 }: SubitemProps) {
     const [tableMode, setTableMode] = useState<TableMode | null>(null);
@@ -230,12 +232,17 @@ export function SubitemsTable({
 
         const onMouseMove = (e: MouseEvent) => {
             const delta = e.clientX - startX;
-            const setter = tableMode === "payment" ? setPaymentCols : setSubitemCols;
-            setter((prev) =>
-                prev.map((c) =>
-                    c.key === key ? { ...c, width: Math.max(c.minWidth ?? 50, startWidth + delta) } : c
-                )
-            );
+            if (tableMode === "payment") {
+                const newCols = paymentCols.map((c) => (c.key === key ? { ...c, width: Math.max(c.minWidth ?? 50, startWidth + delta) } : c));
+                setPaymentCols(newCols);
+                try { window.localStorage.setItem(`colWidths:payments:${currentUserId}`, JSON.stringify(Object.fromEntries(newCols.map(c=>[c.key,c.width])))); } catch {}
+                window.dispatchEvent(new CustomEvent('paymentColsChanged', { detail: Object.fromEntries(newCols.map(c=>[c.key,c.width])) }));
+            } else {
+                const newCols = subitemCols.map((c) => (c.key === key ? { ...c, width: Math.max(c.minWidth ?? 50, startWidth + delta) } : c));
+                setSubitemCols(newCols);
+                try { window.localStorage.setItem(`colWidths:subitems:${currentUserId}`, JSON.stringify(Object.fromEntries(newCols.map(c=>[c.key,c.width])))); } catch {}
+                window.dispatchEvent(new CustomEvent('subitemColsChanged', { detail: Object.fromEntries(newCols.map(c=>[c.key,c.width])) }));
+            }
         };
 
         const onMouseUp = () => {
@@ -246,6 +253,237 @@ export function SubitemsTable({
         document.addEventListener("mousemove", onMouseMove);
         document.addEventListener("mouseup", onMouseUp);
     };
+
+    // Persist column widths per-user in localStorage
+    React.useEffect(() => {
+        // try local generic cache immediately for fast SPA nav
+        try {
+            const raw = localStorage.getItem('colWidths:subitems:local');
+            if (raw) {
+                const owner = localStorage.getItem('colWidths:subitems:local_owner');
+                if (!currentUserId) {
+                    const map = JSON.parse(raw) as Record<string, number>;
+                    setSubitemCols((prev) => prev.map((c) => ({ ...c, width: map[c.key] ?? c.width })));
+                } else if (owner && owner === currentUserId) {
+                    const map = JSON.parse(raw) as Record<string, number>;
+                    setSubitemCols((prev) => prev.map((c) => ({ ...c, width: map[c.key] ?? c.width })));
+                } else if (currentUserId && owner && owner !== currentUserId) {
+                    // reset to defaults to avoid leaking other user's settings
+                    setSubitemCols(SUBITEM_COLS.map((c) => ({ ...c })));
+                }
+            }
+        } catch {}
+
+        if (!currentUserId) return;
+        let mounted = true;
+        (async () => {
+            try {
+                const { loadUserSetting } = await import('@/lib/user-settings');
+                const value = await loadUserSetting('colWidths:subitems');
+                if (!mounted) return;
+                if (value && typeof value === 'object') {
+                    setSubitemCols((prev) => prev.map((c) => ({ ...c, width: value[c.key] ?? c.width })));
+                } else {
+                    try {
+                        const raw = localStorage.getItem(`colWidths:subitems:${currentUserId}`);
+                        if (raw) {
+                            const map = JSON.parse(raw) as Record<string, number>;
+                            setSubitemCols((prev) => prev.map((c) => ({ ...c, width: map[c.key] ?? c.width })));
+                        }
+                    } catch {}
+                }
+            } catch (e) {
+                console.error('Failed to load subitem column widths', e);
+            }
+        })();
+        return () => { mounted = false; };
+    }, [currentUserId]);
+
+    React.useEffect(() => {
+        // try generic local cache for payments on mount
+        try {
+            const raw = localStorage.getItem('colWidths:payments:local');
+            if (raw) {
+                const owner = localStorage.getItem('colWidths:payments:local_owner');
+                if (!currentUserId) {
+                    const map = JSON.parse(raw) as Record<string, number>;
+                    setPaymentCols((prev) => prev.map((c) => ({ ...c, width: map[c.key] ?? c.width })));
+                } else if (owner && owner === currentUserId) {
+                    const map = JSON.parse(raw) as Record<string, number>;
+                    setPaymentCols((prev) => prev.map((c) => ({ ...c, width: map[c.key] ?? c.width })));
+                } else if (currentUserId && owner && owner !== currentUserId) {
+                    setPaymentCols(PAYMENT_COLS.map((c) => ({ ...c })));
+                }
+            }
+        } catch {}
+
+        if (!currentUserId) return;
+        // debounce server saves
+        const t = window.setTimeout(() => {
+            (async () => {
+                try {
+                    const { saveUserSetting } = await import('@/lib/user-settings');
+                    const map = Object.fromEntries(subitemCols.map((c) => [c.key, c.width]));
+                    try { localStorage.setItem(`colWidths:subitems:${currentUserId}`, JSON.stringify(map)); } catch {}
+                    try { localStorage.setItem('colWidths:subitems:local', JSON.stringify(map)); } catch {}
+                    try { localStorage.setItem('colWidths:subitems:local_owner', String(currentUserId ?? 'anon')); } catch {}
+                    await saveUserSetting('colWidths:subitems', map);
+                } catch (e) {
+                    console.warn('Failed to save subitem column widths', e);
+                }
+            })();
+        }, 800);
+
+        return () => window.clearTimeout(t);
+    }, [subitemCols, currentUserId]);
+
+    React.useEffect(() => {
+        if (!currentUserId) return;
+        let mounted = true;
+        (async () => {
+            try {
+                const { loadUserSetting } = await import('@/lib/user-settings');
+                const value = await loadUserSetting('colWidths:payments');
+                if (!mounted) return;
+                if (value && typeof value === 'object') {
+                    setPaymentCols((prev) => prev.map((c) => ({ ...c, width: value[c.key] ?? c.width })));
+                } else {
+                    try {
+                        const raw = localStorage.getItem(`colWidths:payments:${currentUserId}`);
+                        if (raw) {
+                            const map = JSON.parse(raw) as Record<string, number>;
+                            setPaymentCols((prev) => prev.map((c) => ({ ...c, width: map[c.key] ?? c.width })));
+                        }
+                    } catch {}
+                }
+            } catch (e) {
+                console.error('Failed to load payment column widths', e);
+            }
+        })();
+        return () => { mounted = false; };
+    }, [currentUserId]);
+
+    React.useEffect(() => {
+        if (!currentUserId) return;
+        // debounce server saves
+        const t2 = window.setTimeout(() => {
+            (async () => {
+                try {
+                    const { saveUserSetting } = await import('@/lib/user-settings');
+                    const map = Object.fromEntries(paymentCols.map((c) => [c.key, c.width]));
+                    try { localStorage.setItem(`colWidths:payments:${currentUserId}`, JSON.stringify(map)); } catch {}
+                    try { localStorage.setItem('colWidths:payments:local', JSON.stringify(map)); } catch {}
+                    try { localStorage.setItem('colWidths:payments:local_owner', String(currentUserId ?? 'anon')); } catch {}
+                    await saveUserSetting('colWidths:payments', map);
+                } catch (e) {
+                    console.warn('Failed to save payment column widths', e);
+                }
+            })();
+        }, 800);
+
+        return () => window.clearTimeout(t2);
+    }, [paymentCols, currentUserId]);
+
+    // Listen for auth changes (SPA sign-in/out) and reload/reset widths accordingly
+    React.useEffect(() => {
+        const handler = (e: any) => {
+            const newUserId = e?.detail ?? null;
+            try {
+                const rawSub = localStorage.getItem('colWidths:subitems:local');
+                if (rawSub) {
+                    const owner = localStorage.getItem('colWidths:subitems:local_owner');
+                    if (!newUserId) {
+                        const map = JSON.parse(rawSub) as Record<string, number>;
+                        setSubitemCols((prev) => prev.map((c) => ({ ...c, width: map[c.key] ?? c.width })));
+                    } else if (owner && owner === newUserId) {
+                        const map = JSON.parse(rawSub) as Record<string, number>;
+                        setSubitemCols((prev) => prev.map((c) => ({ ...c, width: map[c.key] ?? c.width })));
+                    } else if (newUserId && owner && owner !== newUserId) {
+                        setSubitemCols(SUBITEM_COLS.map((c) => ({ ...c })));
+                    }
+                }
+            } catch {}
+
+            try {
+                const rawPay = localStorage.getItem('colWidths:payments:local');
+                if (rawPay) {
+                    const owner = localStorage.getItem('colWidths:payments:local_owner');
+                    if (!newUserId) {
+                        const map = JSON.parse(rawPay) as Record<string, number>;
+                        setPaymentCols((prev) => prev.map((c) => ({ ...c, width: map[c.key] ?? c.width })));
+                    } else if (owner && owner === newUserId) {
+                        const map = JSON.parse(rawPay) as Record<string, number>;
+                        setPaymentCols((prev) => prev.map((c) => ({ ...c, width: map[c.key] ?? c.width })));
+                    } else if (newUserId && owner && owner !== newUserId) {
+                        setPaymentCols(PAYMENT_COLS.map((c) => ({ ...c })));
+                    }
+                }
+            } catch {}
+
+            // If a new user signed in, attempt to load their per-user saved widths from server/localStorage
+            if (newUserId) {
+                (async () => {
+                    try {
+                        const { loadUserSetting } = await import('@/lib/user-settings');
+                        const val = await loadUserSetting('colWidths:subitems');
+                        if (val && typeof val === 'object') {
+                            setSubitemCols((prev) => prev.map((c) => ({ ...c, width: val[c.key] ?? c.width })));
+                        } else {
+                            try {
+                                const raw = localStorage.getItem(`colWidths:subitems:${newUserId}`);
+                                if (raw) {
+                                    const map = JSON.parse(raw) as Record<string, number>;
+                                    setSubitemCols((prev) => prev.map((c) => ({ ...c, width: map[c.key] ?? c.width })));
+                                }
+                            } catch {}
+                        }
+
+                        const val2 = await loadUserSetting('colWidths:payments');
+                        if (val2 && typeof val2 === 'object') {
+                            setPaymentCols((prev) => prev.map((c) => ({ ...c, width: val2[c.key] ?? c.width })));
+                        } else {
+                            try {
+                                const raw2 = localStorage.getItem(`colWidths:payments:${newUserId}`);
+                                if (raw2) {
+                                    const map2 = JSON.parse(raw2) as Record<string, number>;
+                                    setPaymentCols((prev) => prev.map((c) => ({ ...c, width: map2[c.key] ?? c.width })));
+                                }
+                            } catch {}
+                        }
+                    } catch (e) {
+                        // ignore
+                    }
+                })();
+            }
+        };
+
+        window.addEventListener('authChanged', handler as EventListener);
+        return () => window.removeEventListener('authChanged', handler as EventListener);
+    }, []);
+
+    // Listen for column changes from other SubitemsTable instances and update
+    React.useEffect(() => {
+        function onSubitemCols(e: any) {
+            try {
+                const detail = e?.detail ?? {};
+                setSubitemCols((prev) => prev.map((c) => ({ ...c, width: detail[c.key] ?? c.width })));
+            } catch {}
+        }
+
+        function onPaymentCols(e: any) {
+            try {
+                const detail = e?.detail ?? {};
+                setPaymentCols((prev) => prev.map((c) => ({ ...c, width: detail[c.key] ?? c.width })));
+            } catch {}
+        }
+
+        window.addEventListener('subitemColsChanged', onSubitemCols as EventListener);
+        window.addEventListener('paymentColsChanged', onPaymentCols as EventListener);
+        return () => {
+            window.removeEventListener('subitemColsChanged', onSubitemCols as EventListener);
+            window.removeEventListener('paymentColsChanged', onPaymentCols as EventListener);
+        };
+    }, []);
 
     const toggleSubitemSelection = (subitemId: string, x: number, y: number) => {
         setSelectedSubitemIds((prev) =>

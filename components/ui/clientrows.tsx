@@ -82,6 +82,7 @@ export type ClientRowProps = {
         value: string
     ) => void | Promise<void>;
     currentUserRole?: string;
+    currentUserId?: string | null;
     onPushToShipperView?: (subitemId: string) => void | Promise<void>;
 
 
@@ -150,6 +151,7 @@ export function ClientRow({
     onRequestAddSubitemCol,
     updateClientCustomField,
     currentUserRole,
+    currentUserId,
     onPushToShipperView
 
 
@@ -810,6 +812,7 @@ export function ClientRow({
                     onDeleteSubitemCustomCol={onDeleteCustomColumn}
                     onRequestAddSubitemCol={onRequestAddSubitemCol}
                     currentUserRole={currentUserRole}
+                    currentUserId={currentUserId}
                     onPushToShipperView={onPushToShipperView}
 
 

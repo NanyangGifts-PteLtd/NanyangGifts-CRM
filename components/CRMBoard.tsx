@@ -5,6 +5,17 @@ import { ChevronDown, Plus, Trash2, Filter, ChevronsDown, ChevronsUp, X } from '
 import { Client, Subitem, ClientStatus, Profile, ClientAssigneeMap, SubitemAssigneeMap, CRMGroup } from '../app/types';
 import { createClient as createSupabaseClient } from '@/lib/supabase/client';
 import { ClientRow } from './ui/clientrows';
+import { SUBITEM_COLS, PAYMENT_COLS } from './ui/subitems';
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogFooter,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogAction,
+  AlertDialogCancel,
+} from './ui/alert-dialog';
 import { fetchProfiles, saveClientAssignees, saveSubitemAssignees } from '@/lib/assignments';
 import { createClientRow, updateClientRow, deleteClientRow, createSubitemRow, updateSubitemRow, deleteSubitemRow } from '@/lib/crm';
 import { fetchClientAssigneeMap } from '@/lib/assignments';
@@ -125,6 +136,55 @@ export function CRMBoard({ clients,
   const [dragOverGroupId, setDragOverGroupId] = useState<string | null>(null);
 
   const [headerCols, setHeaderCols] = useState<HeaderCol[]>(CLIENT_HEADER_COLS);
+  const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
+
+  const handleRestoreDefaults = useCallback(async () => {
+    // restore client header widths to defaults
+    setHeaderCols((prev) => prev.map((c) => {
+      const def = CLIENT_HEADER_COLS.find((d) => d.key === c.key);
+      return { ...c, width: def?.width ?? c.width };
+    }));
+
+    // prepare maps
+    const clientMap = Object.fromEntries(CLIENT_HEADER_COLS.map((c) => [c.key, c.width]));
+    const subitemMap = Object.fromEntries(SUBITEM_COLS.map((c) => [c.key, c.width]));
+    const paymentMap = Object.fromEntries(PAYMENT_COLS.map((c) => [c.key, c.width]));
+
+    // write local caches
+    try { localStorage.setItem('colWidths:clients:local', JSON.stringify(clientMap)); } catch {}
+    try { localStorage.setItem('colWidths:subitems:local', JSON.stringify(subitemMap)); } catch {}
+    try { localStorage.setItem('colWidths:payments:local', JSON.stringify(paymentMap)); } catch {}
+    try { localStorage.setItem('colWidths:clients:local_owner', String(currentUserId ?? 'anon')); } catch {}
+    try { localStorage.setItem('colWidths:subitems:local_owner', String(currentUserId ?? 'anon')); } catch {}
+    try { localStorage.setItem('colWidths:payments:local_owner', String(currentUserId ?? 'anon')); } catch {}
+    if (currentUserId) {
+      try { localStorage.setItem(`colWidths:clients:${currentUserId}`, JSON.stringify(clientMap)); } catch {}
+      try { localStorage.setItem(`colWidths:subitems:${currentUserId}`, JSON.stringify(subitemMap)); } catch {}
+      try { localStorage.setItem(`colWidths:payments:${currentUserId}`, JSON.stringify(paymentMap)); } catch {}
+    }
+
+    // notify subitems/payment instances to reset
+    try {
+      window.dispatchEvent(new CustomEvent('subitemColsChanged', { detail: subitemMap }));
+      window.dispatchEvent(new CustomEvent('paymentColsChanged', { detail: paymentMap }));
+    } catch (e) {
+      // ignore
+    }
+
+    // persist to server if authenticated
+    if (currentUserId) {
+      try {
+        const { saveUserSetting } = await import('@/lib/user-settings');
+        await Promise.all([
+          saveUserSetting('colWidths:clients', clientMap),
+          saveUserSetting('colWidths:subitems', subitemMap),
+          saveUserSetting('colWidths:payments', paymentMap),
+        ]);
+      } catch (e) {
+        console.warn('Failed to persist restored default column widths', e);
+      }
+    }
+  }, [currentUserId]);
 
   // User custom columns
   const [customColumns, setCustomColumns] = useState<CustomColumn[]>([]);
@@ -158,11 +218,135 @@ export function CRMBoard({ clients,
     ];
   }, [headerCols, clientCustomCols]);
 
+  // If the authenticated user changes, clear any generic local caches owned by other users
+  useEffect(() => {
+    try {
+      if (!window?.localStorage) return;
+      const clientOwner = localStorage.getItem('colWidths:clients:local_owner');
+      const subOwner = localStorage.getItem('colWidths:subitems:local_owner');
+      const payOwner = localStorage.getItem('colWidths:payments:local_owner');
+      // if signed in and owners exist but don't match, clear and reset defaults
+      if (currentUserId) {
+        let didClear = false;
+        if (clientOwner && clientOwner !== currentUserId) {
+          try { localStorage.removeItem('colWidths:clients:local'); localStorage.removeItem('colWidths:clients:local_owner'); } catch {}
+          setHeaderCols(CLIENT_HEADER_COLS.map((c) => ({ ...c })));
+          didClear = true;
+        }
+        if (subOwner && subOwner !== currentUserId) {
+          try { localStorage.removeItem('colWidths:subitems:local'); localStorage.removeItem('colWidths:subitems:local_owner'); } catch {}
+          // notify subitems to reset to defaults
+          try { window.dispatchEvent(new CustomEvent('subitemColsChanged', { detail: Object.fromEntries(SUBITEM_COLS.map(c => [c.key, c.width])) })); } catch {}
+          didClear = true;
+        }
+        if (payOwner && payOwner !== currentUserId) {
+          try { localStorage.removeItem('colWidths:payments:local'); localStorage.removeItem('colWidths:payments:local_owner'); } catch {}
+          try { window.dispatchEvent(new CustomEvent('paymentColsChanged', { detail: Object.fromEntries(PAYMENT_COLS.map(c => [c.key, c.width])) })); } catch {}
+          didClear = true;
+        }
+
+        // if we cleared other-user caches, persist defaults for current user if they have none
+        if (didClear) {
+          (async () => {
+            try {
+              const { saveUserSetting } = await import('@/lib/user-settings');
+              const clientMap = Object.fromEntries(CLIENT_HEADER_COLS.map((c) => [c.key, c.width]));
+              const subMap = Object.fromEntries(SUBITEM_COLS.map((c) => [c.key, c.width]));
+              const payMap = Object.fromEntries(PAYMENT_COLS.map((c) => [c.key, c.width]));
+              try { localStorage.setItem(`colWidths:clients:${currentUserId}`, JSON.stringify(clientMap)); } catch {}
+              try { localStorage.setItem(`colWidths:subitems:${currentUserId}`, JSON.stringify(subMap)); } catch {}
+              try { localStorage.setItem(`colWidths:payments:${currentUserId}`, JSON.stringify(payMap)); } catch {}
+              await Promise.all([
+                saveUserSetting('colWidths:clients', clientMap),
+                saveUserSetting('colWidths:subitems', subMap),
+                saveUserSetting('colWidths:payments', payMap),
+              ]);
+            } catch (e) {
+              // ignore persistence errors
+            }
+          })();
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+    try { window.dispatchEvent(new CustomEvent('authChanged', { detail: currentUserId })); } catch {}
+  }, [currentUserId]);
+
   const totalMinWidth = mergedHeaderCols.reduce((sum, col) => sum + col.width, 0);
   const colWidth = React.useMemo(
     () => Object.fromEntries(mergedHeaderCols.map((c) => [c.key, c.width])),
     [mergedHeaderCols]
   );
+
+  // Persist client column widths per-user in DB (fallback to localStorage)
+  // Apply most-recent local cache immediately on mount so SPA nav restores quickly
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('colWidths:clients:local');
+      if (!raw) return;
+      const owner = localStorage.getItem('colWidths:clients:local_owner');
+      // only apply generic local cache when unauthenticated or when owner matches current user
+      if (currentUserId) {
+        if (owner && owner !== currentUserId) {
+          // if owner doesn't match the signed-in user, reset to defaults so old widths don't leak
+          setHeaderCols(CLIENT_HEADER_COLS.map((c) => ({ ...c })));
+          return;
+        }
+      }
+      const map = JSON.parse(raw) as Record<string, number>;
+      setHeaderCols((prev) => prev.map((c) => ({ ...c, width: map[c.key] ?? c.width })));
+    } catch (e) {
+      // ignore
+    }
+  }, [currentUserId]);
+  useEffect(() => {
+    if (!currentUserId) return;
+    let mounted = true;
+    (async () => {
+      try {
+        const { loadUserSetting } = await import('@/lib/user-settings');
+        const value = await loadUserSetting('colWidths:clients');
+        if (!mounted) return;
+        if (value && typeof value === 'object') {
+          setHeaderCols((prev) => prev.map((c) => ({ ...c, width: value[c.key] ?? c.width })));
+          return;
+        }
+
+        // fallback: try localStorage
+        try {
+          const raw = localStorage.getItem(`colWidths:clients:${currentUserId}`);
+          if (raw) {
+            const map = JSON.parse(raw) as Record<string, number>;
+            setHeaderCols((prev) => prev.map((c) => ({ ...c, width: map[c.key] ?? c.width })));
+          }
+        } catch (e) {
+          // ignore
+        }
+      } catch (e) {
+        console.error('Failed to load saved client column widths', e);
+      }
+    })();
+    return () => { mounted = false; };
+  }, [currentUserId]);
+
+  useEffect(() => {
+    if (!currentUserId) return;
+    (async () => {
+      try {
+          const { saveUserSetting } = await import('@/lib/user-settings');
+          const map = Object.fromEntries(mergedHeaderCols.map((c) => [c.key, c.width]));
+          // always write to localStorage for immediate reloads/navigation
+          try { localStorage.setItem(`colWidths:clients:${currentUserId}`, JSON.stringify(map)); } catch {}
+          try { localStorage.setItem('colWidths:clients:local', JSON.stringify(map)); } catch {}
+          try { localStorage.setItem('colWidths:clients:local_owner', String(currentUserId ?? 'anon')); } catch {}
+          // then persist to server (async)
+          await saveUserSetting('colWidths:clients', map);
+      } catch (e) {
+        console.error('Failed to save client column widths', e);
+      }
+    })();
+  }, [mergedHeaderCols, currentUserId]);
 
   const updateClientCustomField = useCallback(
     async (clientId: string, columnId: string, value: string) => {
@@ -933,6 +1117,7 @@ export function CRMBoard({ clients,
             </div>
           )}
         </div>
+        
         <div ref={subprogressFilterRef} className="relative">
           <button
             onClick={() => setShowSubprogressFilter(!showSubprogressFilter)}
@@ -988,6 +1173,10 @@ export function CRMBoard({ clients,
           )}
         </div>
 
+        <button onClick={() => setShowRestoreConfirm(true)} className="flex items-center gap-1 px-2 py-1 bg-[#43adc4] hover:bg-[#0f8da8] text-white rounded-md text-[10px] font-medium transition-colors transform active:scale-95 duration-150">
+          Restore default column widths
+        </button>
+
         <div className="flex items-center gap-1">
           {clientStatuses.map((st) => {
             const count = clients.filter((c) => c.status === st).length;
@@ -1016,6 +1205,23 @@ export function CRMBoard({ clients,
           </div>
         )}
       </div>
+
+      <AlertDialog open={showRestoreConfirm} onOpenChange={setShowRestoreConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Restore default column widths?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will reset client, subitem, and payment column widths to their default values. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={async () => { setShowRestoreConfirm(false); await handleRestoreDefaults(); }}>
+              Restore
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <div className="flex min-w-0 text-gray-500 font-semibold">
         <div style={{ minWidth: totalMinWidth }}>
@@ -1169,6 +1375,7 @@ export function CRMBoard({ clients,
                   subitemCustomCols={subitemCustomCols}
                   onDeleteCustomColumn={handleDeleteCustomColumn}
                   onRequestAddSubitemCol={() => setShowAddColModal('subitem')}
+                  currentUserId={currentUserId}
 
 
                 />
