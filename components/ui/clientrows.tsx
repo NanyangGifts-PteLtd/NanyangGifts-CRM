@@ -347,7 +347,7 @@ export function ClientRow({
                     draggable
                     onDragStart={onDragStart}
                     onDragEnd={onDragEnd}
-                    className={`box-border flex items-center min-w-0 px-1 border-r border-[#D0D4E4] overflow-hidden ${isDragging ? "opacity-40" : ""}`}
+                    className={`box-border flex items-center min-w-0 px-1 border-r border-[#D0D4E4] overflow-hidden ${isDragging ? "opacity-40" : ""} ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
                     style={{ height: 30, minWidth: colWidth.client, width: colWidth.client }}
                 >
 
