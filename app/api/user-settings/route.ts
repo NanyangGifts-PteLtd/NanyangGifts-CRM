@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
 
     const { error } = await supabase
       .from("user_settings")
-      .upsert({ user_id: user.id, key, value: valueToStore }, { onConflict: ["user_id", "key"] });
+      .upsert({ user_id: user.id, key, value: valueToStore }, { onConflict: "user_id,key" });
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
