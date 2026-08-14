@@ -38,18 +38,27 @@ export async function updateSession(request: NextRequest) {
     },
   );
 
-  // Do not run code between createServerClient and
-  // supabase.auth.getClaims(). A simple mistake could make it very hard to debug
-  // issues with users being randomly logged out.
-
-  // IMPORTANT: If you remove getClaims() and you use server-side rendering
-  // with the Supabase client, your users may be randomly logged out.
-  const { data } = await supabase.auth.getClaims();
-  const user = data?.claims;
+  // Validate the actual session instead of only decoding claims. An expired or stale
+  // Supabase token can still leave a cookie behind, and getClaims() alone can cause
+  // the browser to bounce between /app and /auth/login.
+  const {
+    data: { user },
+    error,
+  } = await supabase.auth.getUser();
 
   const pathname = request.nextUrl.pathname;
   const isAuthPage = pathname.startsWith("/auth");
   const isAppPage = pathname.startsWith("/app");
+
+  if (error) {
+    // Ignore the stale or invalid session and route the user to the login page.
+    // This prevents redirect loops when the cookie is expired.
+    if (isAppPage) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/auth/login";
+      return NextResponse.redirect(url);
+    }
+  }
 
   if (!user && isAppPage) {
     const url = request.nextUrl.clone();
