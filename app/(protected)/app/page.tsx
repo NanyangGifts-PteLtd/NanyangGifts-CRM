@@ -109,6 +109,7 @@ export default function Page() {
             setClients={setClients}
             reloadClients={reloadClients}
             search={search}
+            currentUserRole={currentUserRole}
             clientAssignees={clientAssignees}
             setClientAssignees={setClientAssignees}
             subitemAssignees={subitemAssignees}

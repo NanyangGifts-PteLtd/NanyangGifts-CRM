@@ -64,6 +64,7 @@ interface CRMBoardProps {
   setClients: React.Dispatch<React.SetStateAction<Client[]>>;
   reloadClients: () => Promise<void>;
   search?: string;
+  currentUserRole?: string | null;
   clientAssignees: ClientAssigneeMap;
   setClientAssignees: React.Dispatch<React.SetStateAction<ClientAssigneeMap>>;
   subitemAssignees: SubitemAssigneeMap;
@@ -85,6 +86,7 @@ export function CRMBoard({ clients,
   setClients,
   reloadClients,
   search = '',
+  currentUserRole,
   clientAssignees,
   setClientAssignees,
   subitemAssignees,
@@ -1864,6 +1866,7 @@ export function CRMBoard({ clients,
                   subitemCustomCols={subitemCustomCols}
                   onDeleteCustomColumn={handleDeleteCustomColumn}
                   onRequestAddSubitemCol={() => setShowAddColModal('subitem')}
+                  currentUserRole={currentUserRole}
                   currentUserId={currentUserId}
                 />
               ))}
