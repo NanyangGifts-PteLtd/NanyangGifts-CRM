@@ -330,7 +330,7 @@ export function ClientRow({
     }
 
     return (
-        <div className="mb-0">
+        <div className="mb-0 w-fit min-w-0">
             <style>{Array.from(hiddenColumnKeys).filter((key) => key.startsWith('client:')).map((key) => `[data-client-column="${key.slice(7)}"]{display:none!important}`).join('')}</style>
             <div
                 data-client-row

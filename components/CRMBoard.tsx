@@ -55,7 +55,7 @@ const CLIENT_HEADER_COLS: HeaderCol[] = [
   { key: 'billingAddress', label: 'Billing Address', width: 115, minWidth: 7 },
   { key: 'dateCreated', label: 'Date Created', width: 90, minWidth: 7 },
   { key: 'addClientCol', label: '', width: 44, minWidth: 44 },
-  { key: 'empty', label: '', width: 800, minWidth: 7 },
+  { key: 'empty', label: '', width: 44, minWidth: 44 },
 ];
 
 interface CRMBoardProps {
@@ -653,7 +653,7 @@ export function CRMBoard({ clients,
         }
       }
       const map = JSON.parse(raw) as Record<string, number>;
-      setHeaderCols((prev) => prev.map((c) => ({ ...c, width: map[c.key] ?? c.width })));
+      setHeaderCols((prev) => prev.map((c) => ({ ...c, width: c.key === 'empty' ? 44 : map[c.key] ?? c.width })));
     } catch (e) {
       // ignore
     }
@@ -667,7 +667,7 @@ export function CRMBoard({ clients,
         const value = await loadUserSetting('colWidths:clients');
         if (!mounted) return;
         if (value && typeof value === 'object') {
-          setHeaderCols((prev) => prev.map((c) => ({ ...c, width: value[c.key] ?? c.width })));
+          setHeaderCols((prev) => prev.map((c) => ({ ...c, width: c.key === 'empty' ? 44 : value[c.key] ?? c.width })));
           return;
         }
 
@@ -676,7 +676,7 @@ export function CRMBoard({ clients,
           const raw = localStorage.getItem(`colWidths:clients:${currentUserId}`);
           if (raw) {
             const map = JSON.parse(raw) as Record<string, number>;
-            setHeaderCols((prev) => prev.map((c) => ({ ...c, width: map[c.key] ?? c.width })));
+            setHeaderCols((prev) => prev.map((c) => ({ ...c, width: c.key === 'empty' ? 44 : map[c.key] ?? c.width })));
           }
         } catch (e) {
           // ignore
@@ -2032,7 +2032,7 @@ export function CRMBoard({ clients,
 
               {!collapsedGroups[group.id] && (
                 <div data-client-group={group.id} onDragOver={(event) => handleDragOver(event, group.id, 'top')} onDrop={() => handleDrop(group.id)} onDragLeave={() => { setDragOverGroupId(null); setDragOverGroupEdge(null); }} className="relative" style={{ minWidth: totalMinWidth }}>
-                  <div className="relative flex text-[12.6px] items-center justify-center w-full min-w-0 flex-shrink-0 border border-[#D0D4E4] overflow-visible bg-gradient-to-r from-[#e7fdff] to-[#a3dfff]" style={{ minWidth: totalMinWidth }}>
+                  <div className="relative flex text-[12.6px] items-center justify-center min-w-0 flex-shrink-0 border border-[#D0D4E4] overflow-visible bg-gradient-to-r from-[#e7fdff] to-[#a3dfff]" style={{ minWidth: totalMinWidth, width: totalMinWidth }}>
                     {visibleClientHeaderCols.map((col) => {
                       const fixedKeys = new Set(['selectCheckbox', 'client', 'addClientCol', 'empty']);
                       const isDraggable = !col.isCustom && !fixedKeys.has(col.key);
