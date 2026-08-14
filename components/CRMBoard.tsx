@@ -188,6 +188,7 @@ export function CRMBoard({ clients,
     preview.style.top = '-10000px';
     preview.style.width = `${bounds.width}px`;
     preview.style.maxWidth = `${bounds.width}px`;
+    preview.style.height = includeColumnCells ? `${bounds.height + 56}px` : `${bounds.height}px`;
     preview.style.opacity = '1';
     preview.style.filter = 'none';
     preview.style.pointerEvents = 'none';
@@ -200,7 +201,11 @@ export function CRMBoard({ clients,
       preview.innerHTML = `<div style="height:${bounds.height}px;display:flex;align-items:center;justify-content:center;padding:0 8px;box-sizing:border-box;background:#e7fdff;color:#334155;font-weight:600;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-bottom:1px solid #d0d4e4">${source.textContent?.trim() ?? ''}</div>`;
       const sourceCenter = bounds.left + bounds.width / 2;
       const groupContainer = source.closest<HTMLElement>('[data-client-group]');
-      const visibleCells = Array.from((groupContainer ?? document).querySelectorAll<HTMLElement>('[data-client-row]'))
+      const groupRows = groupContainer
+        ? Array.from(groupContainer.querySelectorAll<HTMLElement>('[data-client-row]'))
+        : [];
+      const rowScope: ParentNode = groupRows.length > 0 && groupContainer ? groupContainer : document;
+      const visibleCells = Array.from(rowScope.querySelectorAll<HTMLElement>('[data-client-row]'))
         .flatMap((row) => Array.from(row.querySelectorAll<HTMLElement>('[style*="order"]')))
         .filter((cell) => {
           const cellBounds = cell.getBoundingClientRect();
