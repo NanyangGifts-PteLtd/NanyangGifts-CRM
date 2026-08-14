@@ -155,7 +155,7 @@ export default function Page() {
   };
 
   return (
-    <div className="flex h-screen bg-[#f8fafc]">
+    <div className="flex h-screen overflow-hidden bg-[#f8fafc]">
       <Sidebar
         activePanel={activePanel}
         onChangePanel={setActivePanel}
@@ -165,7 +165,7 @@ export default function Page() {
         user={user}
       />
 
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <TopBar
           value={search}
           onChange={setSearch}
@@ -178,7 +178,7 @@ export default function Page() {
           profiles={profiles}
         />
 
-        <main className="min-h-0 flex-1">
+        <main className="min-h-0 flex-1 overflow-y-auto">
           {renderPanel()}
         </main>
       </div>

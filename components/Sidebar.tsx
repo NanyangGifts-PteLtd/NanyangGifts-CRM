@@ -63,7 +63,7 @@ export default function Sidebar({
 
   return (
     <div
-      className={`${collapsed ? 'w-12' : 'w-52'} bg-[#ffffff] relative h-full flex flex-col border-r border-[#f2f8ff] flex-shrink-0 transition-[width] duration-200 ease-in-out overflow-hidden`}
+      className={`${collapsed ? 'w-12' : 'w-52'} bg-[#ffffff] relative h-screen flex flex-col border-r border-[#f2f8ff] flex-shrink-0 transition-[width] duration-200 ease-in-out overflow-hidden sticky top-0 left-0`}
     >
       <div className="h-12 flex items-center justify-between px-1 lg:px-4 border-b border-[#f2f8ff]">
         <div className="flex items-center gap-2 min-w-0">

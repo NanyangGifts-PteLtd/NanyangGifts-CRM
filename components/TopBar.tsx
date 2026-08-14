@@ -192,7 +192,7 @@ export default function TopBar({
   }, []);
 
   return (
-    <div className="h-16 bg-[#ffffff] flex items-center px-4 gap-3 border-b border-[#f2f8ff] flex-shrink-0">
+    <div className="h-16 bg-[#ffffff] flex items-center px-4 gap-3 border-b border-[#f2f8ff] flex-shrink-0 overflow-hidden sticky top-0 z-30">
       <SearchBar
         value={value}
         onChange={onChange}
