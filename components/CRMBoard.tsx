@@ -96,8 +96,6 @@ export function CRMBoard({ clients,
   const [filterStatus, setFilterStatus] = useState<string | 'All'>('All');
   const [showFilter, setShowFilter] = useState(false);
   const [filterSubprogress, setFilterSubprogress] = useState<string>('All');
-  const [showSubprogressFilter, setShowSubprogressFilter] = useState(false);
-  const subprogressFilterRef = useRef<HTMLDivElement>(null);
   const expandedIdSet = React.useMemo(() => new Set(expandedIds), [expandedIds]);
   const allExpanded = clients.length > 0 && clients.every((c) => expandedIdSet.has(c.id));
 
@@ -703,18 +701,6 @@ export function CRMBoard({ clients,
     return () => document.removeEventListener('mousedown', handler);
   }, [showFilter]);
 
-  useEffect(() => {
-    if (!showSubprogressFilter) return;
-
-    const handler = (e: MouseEvent) => {
-      if (subprogressFilterRef.current && !subprogressFilterRef.current.contains(e.target as Node)) {
-        setShowSubprogressFilter(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [showSubprogressFilter]);
 
   // --- Option handlers ---
 
@@ -1385,79 +1371,65 @@ export function CRMBoard({ clients,
         <div ref={filterRef} className="relative">
           <button onClick={() => setShowFilter(!showFilter)} className="flex items-center gap-1 px-2 py-1 bg-[#43adc4] hover:bg-[#0f8da8] text-white rounded-md text-[10px] font-medium transition-colors transition transform active:scale-95 duration-150">
             <Filter size={12} />
-            {filterStatus === 'All' ? 'Filter by Status' : filterStatus}
+            Filter
+            {(filterStatus !== 'All' || filterSubprogress !== 'All') && <span className="rounded-full bg-white/25 px-1.5">{[filterStatus !== 'All', filterSubprogress !== 'All'].filter(Boolean).length}</span>}
             <ChevronDown size={11} />
           </button>
           {showFilter && (
-            <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-xl z-50 min-w-44 py-1 max-h-80 overflow-y-auto">
-              <button onClick={() => { setFilterStatus('All'); setShowFilter(false); }} className="flex items-center font-semibold gap-2 w-full text-left px-3 py-1.5 text-[10px] hover:bg-gray-50">
-                <span className="w-2.5 h-2.5 rounded-sm bg-gray-300" /> All Clients
-                {filterStatus === 'All' && <span className="ml-auto text-blue-500">✓</span>}
-              </button>
-              <div className="border-t border-gray-100 my-1" />
-              {clientStatuses.map((st) => (
-                <button key={st} onClick={() => { setFilterStatus(st); setShowFilter(false); }} className="flex items-center font-semibold gap-2 w-full text-left px-3 py-1.5 text-[10px] hover:bg-gray-50">
-                  <span className="w-2.5 h-2.5 rounded-sm" style={{ background: statusColors[st] ?? '#9ca3af' }} />
-                  <span className="flex-1">{st}</span>
-                  <span className="text-gray-400">{clients.filter((c) => c.status === st).length}</span>
-                  {filterStatus === st && <span className="text-blue-500 ml-1">✓</span>}
+            <div className="absolute top-full left-0 mt-1 w-[min(680px,calc(100vw-1rem))] bg-white border border-gray-200 rounded-lg shadow-xl z-50 p-3">
+              <div className="mb-3 flex items-center justify-between border-b border-gray-100 pb-2">
+                <span className="text-xs font-semibold text-gray-800">Quick filters</span>
+                <button
+                  onClick={() => { setFilterStatus('All'); setFilterSubprogress('All'); }}
+                  className="text-[10px] font-medium text-gray-400 hover:text-gray-700 disabled:opacity-40"
+                  disabled={filterStatus === 'All' && filterSubprogress === 'All'}
+                >
+                  Clear all
                 </button>
-              ))}
-            </div>
-          )}
-        </div>
-        
-        <div ref={subprogressFilterRef} className="relative">
-          <button
-            onClick={() => setShowSubprogressFilter(!showSubprogressFilter)}
-            className="flex items-center gap-1 px-2 py-1 bg-[#43adc4] hover:bg-[#0f8da8] text-white rounded-md text-[10px] font-medium transition-colors transform active:scale-95 duration-150"
-          >
-            <Filter size={12} />
-            {filterSubprogress === 'All' ? 'Filter by Subitem Subprogress' : filterSubprogress}
-            <ChevronDown size={11} />
-          </button>
+              </div>
 
-          {showSubprogressFilter && (
-            <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-xl z-50 min-w-44 py-1 max-h-80 overflow-y-auto">
-              <button
-                onClick={() => {
-                  setFilterSubprogress('All');
-                  setShowSubprogressFilter(false);
-                }}
-                className="flex items-center font-semibold gap-2 w-full text-left px-3 py-1.5 text-[10px] hover:bg-gray-50"
-              >
-                <span className="w-2.5 h-2.5 rounded-sm bg-gray-300" />
-                <span className="flex-1">All Subprogress</span>
-                {filterSubprogress === 'All' && <span className="ml-auto text-blue-500">✓</span>}
-              </button>
+              <div className="flex gap-3 overflow-x-auto pb-1">
+                <div className="min-w-48 shrink-0">
+                  <div className="mb-2 text-[11px] font-semibold text-gray-500">Status</div>
+                  <div className="max-h-60 space-y-1 overflow-y-auto pr-1">
+                    <button onClick={() => setFilterStatus('All')} className="flex items-center gap-2 w-full rounded-md px-2 py-1.5 text-left text-[10px] font-semibold hover:bg-gray-50">
+                      <span className="h-2.5 w-2.5 rounded-sm bg-gray-300" />
+                      <span className="flex-1">All Clients</span>
+                      {filterStatus === 'All' && <span className="text-blue-500">✓</span>}
+                    </button>
+                    {clientStatuses.map((st) => (
+                      <button key={st} onClick={() => setFilterStatus(st)} className="flex items-center gap-2 w-full rounded-md px-2 py-1.5 text-left text-[10px] font-semibold hover:bg-gray-50">
+                        <span className="h-2.5 w-2.5 rounded-sm" style={{ background: statusColors[st] ?? '#9ca3af' }} />
+                        <span className="flex-1 truncate">{st}</span>
+                        <span className="text-gray-400">{clients.filter((c) => c.status === st).length}</span>
+                        {filterStatus === st && <span className="text-blue-500">✓</span>}
+                      </button>
+                    ))}
+                  </div>
+                </div>
 
-              <div className="border-t border-gray-100 my-1" />
-
-              {subprogressOptions.map((sp) => {
-                const count = clients.filter((client) =>
-                  client.subitems.some((subitem) =>
-                    (subitem.timelineRows ?? []).some(
-                      (row) => (row.subProgress ?? '') === sp
-                    )
-                  )
-                ).length;
-
-                return (
-                  <button
-                    key={sp}
-                    onClick={() => {
-                      setFilterSubprogress(sp);
-                      setShowSubprogressFilter(false);
-                    }}
-                    className="flex items-center font-semibold gap-2 w-full text-left px-3 py-1.5 text-[10px] hover:bg-gray-50"
-                  >
-                    <span className="w-2.5 h-2.5 rounded-sm bg-[#7BCBD5]" style={{ background: subProgressColors[sp] ?? '#9ca3af' }} />
-                    <span className="flex-1">{sp}</span>
-                    <span className="text-gray-400">{count}</span>
-                    {filterSubprogress === sp && <span className="text-blue-500 ml-1">✓</span>}
-                  </button>
-                );
-              })}
+                <div className="min-w-48 shrink-0">
+                  <div className="mb-2 text-[11px] font-semibold text-gray-500">Subitem Subprogress</div>
+                  <div className="max-h-60 space-y-1 overflow-y-auto pr-1">
+                    <button onClick={() => setFilterSubprogress('All')} className="flex items-center gap-2 w-full rounded-md px-2 py-1.5 text-left text-[10px] font-semibold hover:bg-gray-50">
+                      <span className="h-2.5 w-2.5 rounded-sm bg-gray-300" />
+                      <span className="flex-1">All Subprogress</span>
+                      {filterSubprogress === 'All' && <span className="text-blue-500">✓</span>}
+                    </button>
+                    {subprogressOptions.map((sp) => {
+                      const count = clients.filter((client) => client.subitems.some((subitem) => (subitem.timelineRows ?? []).some((row) => (row.subProgress ?? '') === sp))).length;
+                      return (
+                        <button key={sp} onClick={() => setFilterSubprogress(sp)} className="flex items-center gap-2 w-full rounded-md px-2 py-1.5 text-left text-[10px] font-semibold hover:bg-gray-50">
+                          <span className="h-2.5 w-2.5 rounded-sm" style={{ background: subProgressColors[sp] ?? '#9ca3af' }} />
+                          <span className="flex-1 truncate">{sp}</span>
+                          <span className="text-gray-400">{count}</span>
+                          {filterSubprogress === sp && <span className="text-blue-500">✓</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
             </div>
           )}
         </div>
