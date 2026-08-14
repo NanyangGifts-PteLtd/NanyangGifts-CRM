@@ -82,7 +82,7 @@ export type ClientRowProps = {
         columnId: string,
         value: string
     ) => void | Promise<void>;
-    currentUserRole?: string;
+    currentUserRole?: string | null;
     currentUserId?: string | null;
     onPushToShipperView?: (subitemId: string) => void | Promise<void>;
 

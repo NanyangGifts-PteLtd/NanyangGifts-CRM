@@ -1866,7 +1866,7 @@ export function CRMBoard({ clients,
                   subitemCustomCols={subitemCustomCols}
                   onDeleteCustomColumn={handleDeleteCustomColumn}
                   onRequestAddSubitemCol={() => setShowAddColModal('subitem')}
-                  currentUserRole={currentUserRole}
+                  currentUserRole={currentUserRole ?? undefined}
                   currentUserId={currentUserId}
                 />
               ))}
