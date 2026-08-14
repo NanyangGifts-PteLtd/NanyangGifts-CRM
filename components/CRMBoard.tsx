@@ -112,6 +112,9 @@ export function CRMBoard({ clients,
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+  const [archivedGroupIds, setArchivedGroupIds] = useState<Set<string>>(new Set());
+  const [openGroupMenu, setOpenGroupMenu] = useState<string | null>(null);
+  const archivedGroupsLoadedFor = useRef<string | null>(null);
   const filterRef = useRef<HTMLDivElement>(null);
   const [ocfClient, setOcfClient] = useState<Client | null>(null);
   const [isOcfModalOpen, setIsOcfModalOpen] = useState(false);
@@ -176,6 +179,21 @@ export function CRMBoard({ clients,
     setFocusedFilterColumn(column);
     setShowFilter(true);
   }, []);
+
+  const archiveGroup = useCallback((groupId: string) => {
+    setArchivedGroupIds((previous) => new Set(previous).add(groupId));
+    setCollapsedGroups((previous) => ({ ...previous, [groupId]: true }));
+    setOpenGroupMenu(null);
+  }, []);
+
+  const unarchiveGroup = useCallback((groupId: string) => {
+    setArchivedGroupIds((previous) => {
+      const next = new Set(previous);
+      next.delete(groupId);
+      return next;
+    });
+    setOpenGroupMenu(null);
+  }, []);
   const hiddenSettingsLoadedFor = useRef<string | null>(null);
 
   const hideColumn = useCallback((key: string) => {
@@ -220,6 +238,41 @@ export function CRMBoard({ clients,
 
     return () => { mounted = false; };
   }, [currentUserId]);
+
+  useEffect(() => {
+    if (!currentUserId) {
+      archivedGroupsLoadedFor.current = null;
+      setArchivedGroupIds(new Set());
+      return;
+    }
+
+    let mounted = true;
+    archivedGroupsLoadedFor.current = null;
+    (async () => {
+      try {
+        const { loadUserSetting } = await import('@/lib/user-settings');
+        const value = await loadUserSetting('archivedGroups');
+        if (!mounted) return;
+        const ids = Array.isArray(value) ? value.filter((id): id is string => typeof id === 'string') : [];
+        setArchivedGroupIds(new Set(ids));
+        setCollapsedGroups((previous) => ids.reduce((next, id) => ({ ...next, [id]: true }), previous));
+        archivedGroupsLoadedFor.current = currentUserId;
+      } catch (error) {
+        console.warn('Failed to load archived groups', error);
+        if (mounted) archivedGroupsLoadedFor.current = currentUserId;
+      }
+    })();
+
+    return () => { mounted = false; };
+  }, [currentUserId]);
+
+  useEffect(() => {
+    if (!currentUserId || archivedGroupsLoadedFor.current !== currentUserId) return;
+    const ids = Array.from(archivedGroupIds);
+    void import('@/lib/user-settings')
+      .then(({ saveUserSetting }) => saveUserSetting('archivedGroups', ids))
+      .catch((error) => console.warn('Failed to save archived groups', error));
+  }, [archivedGroupIds, currentUserId]);
 
   useEffect(() => {
     if (!currentUserId || hiddenSettingsLoadedFor.current !== currentUserId) return;
@@ -1940,8 +1993,30 @@ export function CRMBoard({ clients,
                   handleGroupDrop(group.id, groupDragOverEdge ?? 'top');
                 }}
                 onDragEnd={handleGroupDragEnd}
-                className={`flex cursor-grab items-center gap-2.5 px-2 py-1 text-sm border-y border-gray-100 bg-gray-50 active:cursor-grabbing ${groupDragOverId === group.id ? 'ring-1 ring-[#0f8da8]/40' : ''}`}
+                className={`group relative flex cursor-grab items-center gap-2.5 px-2 py-1 text-sm border-y border-gray-100 bg-gray-50 active:cursor-grabbing ${groupDragOverId === group.id ? 'ring-1 ring-[#0f8da8]/40' : ''}`}
               >
+                <button
+                  type="button"
+                  onClick={(event) => { event.stopPropagation(); setOpenGroupMenu(openGroupMenu === group.id ? null : group.id); }}
+                  onMouseDown={(event) => event.stopPropagation()}
+                  className="absolute -left-9 top-1/2 z-30 -translate-y-1/2 rounded bg-white/90 p-1 text-gray-400 opacity-0 shadow-sm transition-opacity hover:text-gray-700 group-hover:opacity-100"
+                  title={`Group actions for ${group.name}`}
+                >
+                  <MoreHorizontal size={14} />
+                </button>
+                {openGroupMenu === group.id && (
+                  <div className="absolute -left-9 top-full z-[90] mt-1 w-40 rounded-md border border-gray-200 bg-white p-1 text-left shadow-xl">
+                    {archivedGroupIds.has(group.id) ? (
+                      <button type="button" onClick={() => unarchiveGroup(group.id)} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-[10px] font-medium text-gray-700 hover:bg-gray-50">
+                        Unarchive group
+                      </button>
+                    ) : (
+                      <button type="button" onClick={() => archiveGroup(group.id)} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-[10px] font-medium text-gray-700 hover:bg-gray-50">
+                        Archive group
+                      </button>
+                    )}
+                  </div>
+                )}
                 <button onClick={() => toggleGroup(group.id)} className="text-sm text-gray-500">
                   {collapsedGroups[group.id] ? '▷' : '▼'}
                 </button>

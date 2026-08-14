@@ -179,7 +179,7 @@ export default function Page() {
           profiles={profiles}
         />
 
-        <main className="min-h-0 flex-1 overflow-y-auto">
+        <main className="min-h-0 flex-1 overflow-y-auto pl-10">
           {renderPanel()}
         </main>
       </div>
