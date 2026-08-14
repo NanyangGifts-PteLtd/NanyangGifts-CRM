@@ -7,6 +7,16 @@ export type ShipperByToken = {
     token: string;
 };
 
+export async function getShippers(): Promise<ShipperByToken[]> {
+    const { data, error } = await supabaseAdmin
+        .from("shippers")
+        .select("id, name, token")
+        .order("name", { ascending: true });
+
+    if (error) throw error;
+    return data ?? [];
+}
+
 export async function getShipperByToken(token: string): Promise<ShipperByToken | null> {
     if (!token) return null;
 
