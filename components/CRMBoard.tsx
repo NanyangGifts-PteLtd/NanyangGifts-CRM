@@ -5,6 +5,7 @@ import { ChevronDown, Plus, Trash2, Filter, ChevronsDown, ChevronsUp, X, MoreHor
 import { Client, Subitem, ClientStatus, Profile, ClientAssigneeMap, SubitemAssigneeMap, CRMGroup } from '../app/types';
 import { createClient as createSupabaseClient } from '@/lib/supabase/client';
 import { ClientRow } from './ui/clientrows';
+import { gradientForId } from './ui/assignee-multiselect';
 import { SUBITEM_COLS, PAYMENT_COLS } from './ui/subitems';
 import {
   AlertDialog,
@@ -96,6 +97,13 @@ export function CRMBoard({ clients,
   const [filterStatus, setFilterStatus] = useState<string | 'All'>('All');
   const [showFilter, setShowFilter] = useState(false);
   const [filterSubprogress, setFilterSubprogress] = useState<string>('All');
+  const [filterSubitemStatus, setFilterSubitemStatus] = useState('All');
+  const [filterPayment, setFilterPayment] = useState('All');
+  const [filterPaymentStatus, setFilterPaymentStatus] = useState('All');
+  const [filterPeople, setFilterPeople] = useState('All');
+  const [filterImportance, setFilterImportance] = useState('All');
+  const [filterReplyStatus, setFilterReplyStatus] = useState('All');
+  const [filterChannel, setFilterChannel] = useState('All');
   const expandedIdSet = React.useMemo(() => new Set(expandedIds), [expandedIds]);
   const allExpanded = clients.length > 0 && clients.every((c) => expandedIdSet.has(c.id));
 
@@ -129,8 +137,19 @@ export function CRMBoard({ clients,
   const channelOptions = channelEntries.map((e) => e.value);
   const importanceOptions = importanceEntries.map((e) => e.value);
   const subprogressOptions = subitemSubprogressEntries.map((e) => e.value);
+  const subitemStatusOptionsForFilter = subitemStatusEntries.map((e) => e.value);
+  const paymentOptionsForFilter = paymentEntries.map((e) => e.value);
+  const paymentStatusOptionsForFilter = paymentStatusEntries.map((e) => e.value);
+  const peopleOptions = profiles.filter((profile) => profile.id).map((profile) => ({ value: profile.id, label: profile.full_name || profile.email || profile.id }));
+  const peopleProfilesById = Object.fromEntries(profiles.map((profile) => [profile.id, profile]));
   const statusColors = Object.fromEntries(clientStatusEntries.map((e) => [e.value, e.color]));
   const subProgressColors = Object.fromEntries(subitemSubprogressEntries.map((e) => [e.value, e.color]));
+  const subitemStatusColors = Object.fromEntries(subitemStatusEntries.map((e) => [e.value, e.color]));
+  const paymentColors = Object.fromEntries(paymentEntries.map((e) => [e.value, e.color]));
+  const paymentStatusColors = Object.fromEntries(paymentStatusEntries.map((e) => [e.value, e.color]));
+  const importanceColors = Object.fromEntries(importanceEntries.map((e) => [e.value, e.color]));
+  const replyStatusColors = Object.fromEntries(replyStatusEntries.map((e) => [e.value, e.color]));
+  const channelColors = Object.fromEntries(channelEntries.map((e) => [e.value, e.color]));
 
   const [groups, setGroups] = useState<CRMGroup[]>([]);
   const [groupToDelete, setGroupToDelete] = useState<CRMGroup | null>(null);
@@ -1284,6 +1303,16 @@ export function CRMBoard({ clients,
   const displayedClients = clients.filter((client) => {
     const matchesStatus = filterStatus === 'All' || client.status === filterStatus;
 
+    const matchesSubitemStatus = filterSubitemStatus === 'All' || client.subitems.some((subitem) => subitem.status === filterSubitemStatus);
+    const matchesPayment = filterPayment === 'All' || client.subitems.some((subitem) => subitem.payment === filterPayment);
+    const matchesPaymentStatus = filterPaymentStatus === 'All' || client.subitems.some((subitem) => subitem.paymentStatus === filterPaymentStatus);
+    const matchesPeople = filterPeople === 'All' ||
+      (clientAssignees[client.id] ?? []).includes(filterPeople) ||
+      client.subitems.some((subitem) => (subitemAssignees[subitem.id] ?? []).includes(filterPeople));
+    const matchesImportance = filterImportance === 'All' || client.importance === filterImportance;
+    const matchesReplyStatus = filterReplyStatus === 'All' || client.replyStatus === filterReplyStatus;
+    const matchesChannel = filterChannel === 'All' || client.channel === filterChannel;
+
     const matchesSubprogress =
       filterSubprogress === 'All' ||
       client.subitems.some((subitem) =>
@@ -1302,7 +1331,7 @@ export function CRMBoard({ clients,
         (p.full_name ?? '').toLowerCase().includes(q) || (p.email ?? '').toLowerCase().includes(q)
       ) ||
       client.subitems.some((s) => (s.name ?? '').toLowerCase().includes(q));
-    return matchesStatus && matchesSearch && matchesSubprogress;
+    return matchesStatus && matchesSubitemStatus && matchesPayment && matchesPaymentStatus && matchesPeople && matchesImportance && matchesReplyStatus && matchesChannel && matchesSearch && matchesSubprogress;
   });
 
   const groupedClients = groups.map((group) => ({
@@ -1310,8 +1339,63 @@ export function CRMBoard({ clients,
     clients: displayedClients.filter((c) => c.groupId === group.id),
   }));
 
-  const filteredClients = filterStatus === 'All' ? clients : clients.filter((c) => c.status === filterStatus);
+  const filteredClients = displayedClients;
   const allFilteredSelected = filteredClients.length > 0 && filteredClients.every((c) => selectedIds.has(c.id));
+
+  const activeFilterCount = [
+    filterStatus,
+    filterSubprogress,
+    filterSubitemStatus,
+    filterPayment,
+    filterPaymentStatus,
+    filterPeople,
+    filterImportance,
+    filterReplyStatus,
+    filterChannel,
+  ].filter((value) => value !== 'All').length;
+
+  const renderFilterColumn = ({
+    label,
+    value,
+    options,
+    onChange,
+    countFor,
+    colors,
+    renderOption,
+  }: {
+    label: string;
+    value: string;
+    options: Array<string | { value: string; label: string }>;
+    onChange: (value: string) => void;
+    countFor: (value: string) => number;
+    colors?: Record<string, string>;
+    renderOption?: (value: string, label: string) => React.ReactNode;
+  }) => (
+    <div className="min-w-48 shrink-0">
+      <div className="mb-2 text-[11px] font-semibold text-gray-500">{label}</div>
+      <div className="max-h-60 space-y-1 overflow-y-auto pr-1">
+        <button onClick={() => onChange('All')} className="flex items-center gap-2 w-full rounded-md px-2 py-1.5 text-left text-[10px] font-semibold hover:bg-gray-50">
+          <span className="h-2.5 w-2.5 rounded-sm bg-gray-300" />
+          <span className="flex-1">All</span>
+          {value === 'All' && <span className="text-blue-500">✓</span>}
+        </button>
+        {options.map((option) => {
+          const optionValue = typeof option === 'string' ? option : option.value;
+          const optionLabel = typeof option === 'string' ? option : option.label;
+          return (
+            <button key={optionValue} onClick={() => onChange(optionValue)} className="flex items-center gap-2 w-full rounded-md px-2 py-1.5 text-left text-[10px] font-semibold hover:bg-gray-50">
+              {renderOption ? renderOption(optionValue, optionLabel) : (
+                <span className="h-2.5 w-2.5 rounded-sm bg-[#7BCBD5]" style={colors?.[optionValue] ? { background: colors[optionValue] } : undefined} />
+              )}
+              <span className="flex-1 truncate">{optionLabel}</span>
+              <span className="text-gray-400">{countFor(optionValue)}</span>
+              {value === optionValue && <span className="text-blue-500">✓</span>}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
 
   // --- Selection ---
   const toggleExpandAll = useCallback(() => {
@@ -1456,7 +1540,7 @@ export function CRMBoard({ clients,
           <button onClick={() => setShowFilter(!showFilter)} className="flex items-center gap-1 px-2 py-1 bg-[#43adc4] hover:bg-[#0f8da8] text-white rounded-md text-[10px] font-medium transition-colors transition transform active:scale-95 duration-150">
             <Filter size={12} />
             Filter
-            {(filterStatus !== 'All' || filterSubprogress !== 'All') && <span className="rounded-full bg-white/25 px-1.5">{[filterStatus !== 'All', filterSubprogress !== 'All'].filter(Boolean).length}</span>}
+            {activeFilterCount > 0 && <span className="rounded-full bg-white/25 px-1.5">{activeFilterCount}</span>}
             <ChevronDown size={11} />
           </button>
           {showFilter && (
@@ -1464,55 +1548,50 @@ export function CRMBoard({ clients,
               <div className="mb-3 flex items-center justify-between border-b border-gray-100 pb-2">
                 <span className="text-xs font-semibold text-gray-800">Quick filters</span>
                 <button
-                  onClick={() => { setFilterStatus('All'); setFilterSubprogress('All'); }}
+                  onClick={() => {
+                    setFilterStatus('All');
+                    setFilterSubprogress('All');
+                    setFilterSubitemStatus('All');
+                    setFilterPayment('All');
+                    setFilterPaymentStatus('All');
+                    setFilterPeople('All');
+                    setFilterImportance('All');
+                    setFilterReplyStatus('All');
+                    setFilterChannel('All');
+                  }}
                   className="text-[10px] font-medium text-gray-400 hover:text-gray-700 disabled:opacity-40"
-                  disabled={filterStatus === 'All' && filterSubprogress === 'All'}
+                  disabled={activeFilterCount === 0}
                 >
                   Clear all
                 </button>
               </div>
 
               <div className="flex gap-3 overflow-x-auto pb-1">
-                <div className="min-w-48 shrink-0">
-                  <div className="mb-2 text-[11px] font-semibold text-gray-500">Status</div>
-                  <div className="max-h-60 space-y-1 overflow-y-auto pr-1">
-                    <button onClick={() => setFilterStatus('All')} className="flex items-center gap-2 w-full rounded-md px-2 py-1.5 text-left text-[10px] font-semibold hover:bg-gray-50">
-                      <span className="h-2.5 w-2.5 rounded-sm bg-gray-300" />
-                      <span className="flex-1">All Clients</span>
-                      {filterStatus === 'All' && <span className="text-blue-500">✓</span>}
-                    </button>
-                    {clientStatuses.map((st) => (
-                      <button key={st} onClick={() => setFilterStatus(st)} className="flex items-center gap-2 w-full rounded-md px-2 py-1.5 text-left text-[10px] font-semibold hover:bg-gray-50">
-                        <span className="h-2.5 w-2.5 rounded-sm" style={{ background: statusColors[st] ?? '#9ca3af' }} />
-                        <span className="flex-1 truncate">{st}</span>
-                        <span className="text-gray-400">{clients.filter((c) => c.status === st).length}</span>
-                        {filterStatus === st && <span className="text-blue-500">✓</span>}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="min-w-48 shrink-0">
-                  <div className="mb-2 text-[11px] font-semibold text-gray-500">Subitem Subprogress</div>
-                  <div className="max-h-60 space-y-1 overflow-y-auto pr-1">
-                    <button onClick={() => setFilterSubprogress('All')} className="flex items-center gap-2 w-full rounded-md px-2 py-1.5 text-left text-[10px] font-semibold hover:bg-gray-50">
-                      <span className="h-2.5 w-2.5 rounded-sm bg-gray-300" />
-                      <span className="flex-1">All Subprogress</span>
-                      {filterSubprogress === 'All' && <span className="text-blue-500">✓</span>}
-                    </button>
-                    {subprogressOptions.map((sp) => {
-                      const count = clients.filter((client) => client.subitems.some((subitem) => (subitem.timelineRows ?? []).some((row) => (row.subProgress ?? '') === sp))).length;
-                      return (
-                        <button key={sp} onClick={() => setFilterSubprogress(sp)} className="flex items-center gap-2 w-full rounded-md px-2 py-1.5 text-left text-[10px] font-semibold hover:bg-gray-50">
-                          <span className="h-2.5 w-2.5 rounded-sm" style={{ background: subProgressColors[sp] ?? '#9ca3af' }} />
-                          <span className="flex-1 truncate">{sp}</span>
-                          <span className="text-gray-400">{count}</span>
-                          {filterSubprogress === sp && <span className="text-blue-500">✓</span>}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
+                {renderFilterColumn({ label: 'Status', value: filterStatus, options: clientStatuses, onChange: setFilterStatus, countFor: (value) => clients.filter((client) => client.status === value).length, colors: statusColors })}
+                {renderFilterColumn({ label: 'Subitem Subprogress', value: filterSubprogress, options: subprogressOptions, onChange: setFilterSubprogress, countFor: (value) => clients.filter((client) => client.subitems.some((subitem) => (subitem.timelineRows ?? []).some((row) => (row.subProgress ?? '') === value))).length, colors: subProgressColors })}
+                {renderFilterColumn({ label: 'Subitem Status', value: filterSubitemStatus, options: subitemStatusOptionsForFilter, onChange: setFilterSubitemStatus, countFor: (value) => clients.filter((client) => client.subitems.some((subitem) => subitem.status === value)).length, colors: subitemStatusColors })}
+                {renderFilterColumn({ label: 'Payment', value: filterPayment, options: paymentOptionsForFilter, onChange: setFilterPayment, countFor: (value) => clients.filter((client) => client.subitems.some((subitem) => subitem.payment === value)).length, colors: paymentColors })}
+                {renderFilterColumn({ label: 'Payment Status', value: filterPaymentStatus, options: paymentStatusOptionsForFilter, onChange: setFilterPaymentStatus, countFor: (value) => clients.filter((client) => client.subitems.some((subitem) => subitem.paymentStatus === value)).length, colors: paymentStatusColors })}
+                {renderFilterColumn({
+                  label: 'People',
+                  value: filterPeople,
+                  options: peopleOptions,
+                  onChange: setFilterPeople,
+                  countFor: (value) => clients.filter((client) => (clientAssignees[client.id] ?? []).includes(value) || client.subitems.some((subitem) => (subitemAssignees[subitem.id] ?? []).includes(value))).length,
+                  renderOption: (value, label) => {
+                    const profile = peopleProfilesById[value];
+                    const displayLabel = profile?.full_name || profile?.email || label;
+                    const initials = displayLabel.trim().split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase() || 'U';
+                    return (
+                      <span className="flex h-5 w-5 items-center justify-center rounded-full text-[9px] font-bold text-white" style={{ background: gradientForId(value) }} title={displayLabel}>
+                        {initials}
+                      </span>
+                    );
+                  },
+                })}
+                {renderFilterColumn({ label: 'Importance', value: filterImportance, options: importanceOptions, onChange: setFilterImportance, countFor: (value) => clients.filter((client) => client.importance === value).length, colors: importanceColors })}
+                {renderFilterColumn({ label: 'Reply Status', value: filterReplyStatus, options: replyStatuses, onChange: setFilterReplyStatus, countFor: (value) => clients.filter((client) => client.replyStatus === value).length, colors: replyStatusColors })}
+                {renderFilterColumn({ label: 'Channel', value: filterChannel, options: channelOptions, onChange: setFilterChannel, countFor: (value) => clients.filter((client) => client.channel === value).length, colors: channelColors })}
               </div>
             </div>
           )}
