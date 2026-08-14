@@ -99,7 +99,7 @@ export async function POST(req: NextRequest) {
         }
 
         if (!subitems || subitems.length === 0) {
-            return NextResponse.json({ error: "No subitems with shipper_id found" }, { status: 404 });
+            return NextResponse.json({ error: "Subitem has no shipper_id with supported shipper view" }, { status: 404 });
         }
 
         const pushedByName = profile.full_name?.trim() || profile.email || user.email || user.id;
