@@ -1,9 +1,14 @@
 "use client";
 import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Trash2, Pencil } from 'lucide-react';
 
 const MENU_WIDTH = 250;
+const LABEL_COLORS = [
+    '#ef4444', '#f97316', '#f59e0b', '#eab308', '#84cc16', '#22c55e',
+    '#14b8a6', '#06b6d4', '#3b82f6', '#6366f1', '#8b5cf6', '#a855f7',
+    '#ec4899', '#64748b', '#475569', '#d1d5db',
+];
 
 export type BadgeOption = {
     value: string;
@@ -22,6 +27,7 @@ export function StatusBadge({
     onAddOption,
     onDeleteOption,
     canDeleteOption,
+    onUpdateOptionColor,
     manageLabel = 'option',
 }: {
     value: string;
@@ -31,11 +37,13 @@ export function StatusBadge({
     onAddOption?: (name: string) => void | Promise<void>;
     onDeleteOption?: (name: string) => void | Promise<void>;
     canDeleteOption?: (name: string) => boolean;
+    onUpdateOptionColor?: (name: string, color: string) => void | Promise<void>;
     manageLabel?: string;
 }) {
     const [open, setOpen] = useState(false);
     const [menuStyle, setMenuStyle] = useState<React.CSSProperties>({});
     const [newOption, setNewOption] = useState('');
+    const [colorEditor, setColorEditor] = useState<string | null>(null);
     const btnRef = useRef<HTMLButtonElement>(null);
     const menuRef = useRef<HTMLDivElement>(null);
 
@@ -92,7 +100,7 @@ export function StatusBadge({
                     return (
                         <div
                             key={opt.value || '__empty__'}
-                            className="flex items-center gap-2 px-2 py-1 hover:bg-gray-50"
+                            className="relative flex items-center gap-2 px-2 py-1 hover:bg-gray-50"
                         >
                             <button
                                 onMouseDown={(e) => e.preventDefault()}
@@ -116,6 +124,35 @@ export function StatusBadge({
                                 >
                                     <Trash2 size={12} />
                                 </button>
+                            )}
+                            {onUpdateOptionColor && (
+                                <button
+                                    onMouseDown={(e) => e.preventDefault()}
+                                    onClick={(e) => { e.stopPropagation(); setColorEditor(colorEditor === opt.value ? null : opt.value); }}
+                                    className="rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                                    title={`Edit ${manageLabel} color`}
+                                >
+                                    <Pencil size={12} />
+                                </button>
+                            )}
+                            {colorEditor === opt.value && onUpdateOptionColor && (
+                                <div className="absolute right-2 z-10 mt-8 grid w-40 grid-cols-4 gap-2 rounded-lg border border-gray-200 bg-white p-2 shadow-xl">
+                                    {LABEL_COLORS.map((color) => (
+                                        <button
+                                            key={color}
+                                            type="button"
+                                            onMouseDown={(e) => e.preventDefault()}
+                                            onClick={async (e) => {
+                                                e.stopPropagation();
+                                                await onUpdateOptionColor(opt.value, color);
+                                                setColorEditor(null);
+                                            }}
+                                            className="h-6 w-6 rounded-md border border-white ring-1 ring-gray-200 hover:scale-110"
+                                            style={{ background: color }}
+                                            title={color}
+                                        />
+                                    ))}
+                                </div>
                             )}
                         </div>
                     );

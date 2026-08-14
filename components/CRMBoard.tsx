@@ -884,6 +884,39 @@ export function CRMBoard({ clients,
     [getOptionGroupId]
   );
 
+  const updateOptionColor = useCallback(async (code: string, name: string, color: string) => {
+    const groupId = await getOptionGroupId(code);
+    if (!groupId) return;
+
+    const supabase = createSupabaseClient();
+    const { error } = await supabase
+      .from('option_values')
+      .update({ color })
+      .eq('group_id', groupId)
+      .eq('value', name);
+
+    if (error) {
+      console.error(`Failed to update option color for ${code}`, error);
+      return;
+    }
+
+    const setters: Record<string, React.Dispatch<React.SetStateAction<OptionEntry[]>>> = {
+      reply_status: setReplyStatusEntries,
+      client_status: setClientStatusEntries,
+      channel: setChannelEntries,
+      importance: setImportanceEntries,
+      payment: setPaymentEntries,
+      payment_status: setPaymentStatusEntries,
+      mode_of_payment: setModeOfPaymentEntries,
+      shipper: setShipperEntries,
+      local_overseas: setLocalOverseasEntries,
+      subitem_status: setSubitemStatusEntries,
+      currency: setCurrencyEntries,
+      subitem_subprogress: setSubitemSubprogressEntries,
+    };
+    setters[code]?.((previous) => previous.map((entry) => entry.value === name ? { ...entry, color } : entry));
+  }, [getOptionGroupId]);
+
   const handleAddShipper = useCallback(
     async (name: string) => {
       await insertOptionValue('shipper', name, shipperEntries, setShipperEntries);
@@ -2054,6 +2087,7 @@ export function CRMBoard({ clients,
                   subitemCustomCols={subitemCustomCols}
                   onDeleteCustomColumn={handleDeleteCustomColumn}
                   onRequestAddSubitemCol={() => setShowAddColModal('subitem')}
+                  onUpdateOptionColor={updateOptionColor}
                   hiddenColumnKeys={hiddenColumnKeys}
                   onHideColumn={hideColumn}
                   onSetColumnVisibility={setColumnVisibility}

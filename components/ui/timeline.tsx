@@ -101,12 +101,14 @@ export function TimelineSection({
     timelineProgressOptions,
     onAddTimelineProgress,
     onDeleteTimelineProgress,
+    onUpdateOptionColor,
 }: {
     rows: TimelineRow[];
     onUpdate: (rows: TimelineRow[]) => void;
     timelineProgressOptions: OptionEntry[];
     onAddTimelineProgress?: (name: string) => void | Promise<void>;
     onDeleteTimelineProgress?: (name: string) => void | Promise<void>;
+    onUpdateOptionColor?: (name: string, color: string) => void | Promise<void>;
 }) {
     const updateRow = (id: string, field: keyof TimelineRow, val: string) =>
         onUpdate(rows.map((r) => (r.id === id ? { ...r, [field]: val } : r)));
@@ -178,6 +180,7 @@ export function TimelineSection({
                                             onAddOption={onAddTimelineProgress}
                                             onDeleteOption={onDeleteTimelineProgress}
                                             manageLabel="timeline progress"
+                                            onUpdateOptionColor={onUpdateOptionColor}
                                             small
                                         />
                                     </td>

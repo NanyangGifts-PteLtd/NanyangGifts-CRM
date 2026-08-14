@@ -117,6 +117,7 @@ type SubitemProps = {
     onDeletePaymentStatus?: (name: string) => void | Promise<void>;
     onAddModeOfPayment?: (name: string) => void | Promise<void>;
     onDeleteModeOfPayment?: (name: string) => void | Promise<void>;
+    onUpdateOptionColor?: (code: string, name: string, color: string) => void | Promise<void>;
     subitemCustomCols: CustomColumn[];
     onDeleteSubitemCustomCol: (id: string) => void;
     onRequestAddSubitemCol: () => void;
@@ -201,6 +202,7 @@ export function SubitemsTable({
     onDeletePaymentStatus,
     onAddModeOfPayment,
     onDeleteModeOfPayment,
+    onUpdateOptionColor,
     subitemCustomCols,
     onDeleteSubitemCustomCol,
     onRequestAddSubitemCol,
@@ -892,6 +894,7 @@ export function SubitemsTable({
                             onAddOption={onAddLocalOverseas}
                             onDeleteOption={onDeleteLocalOverseas}
                             manageLabel="local overseas"
+                            onUpdateOptionColor={(name, color) => onUpdateOptionColor?.('local_overseas', name, color)}
                             small
                         />
                     </div>
@@ -906,6 +909,7 @@ export function SubitemsTable({
                             onAddOption={onAddSubitemStatus}
                             onDeleteOption={onDeleteSubitemStatus}
                             manageLabel="subitem status"
+                            onUpdateOptionColor={(name, color) => onUpdateOptionColor?.('subitem_status', name, color)}
                             small
                         />
                     </div>
@@ -926,6 +930,7 @@ export function SubitemsTable({
                             onAddOption={onAddShipper}
                             onDeleteOption={onDeleteShipper}
                             manageLabel="shipper"
+                            onUpdateOptionColor={(name, color) => onUpdateOptionColor?.('shipper', name, color)}
                             small
                         />
                     </div>
@@ -944,6 +949,7 @@ export function SubitemsTable({
                             onAddOption={onAddCurrency}
                             onDeleteOption={onDeleteCurrency}
                             manageLabel="currency"
+                            onUpdateOptionColor={(name, color) => onUpdateOptionColor?.('currency', name, color)}
                             small
                         />
                     </div>
@@ -1002,6 +1008,7 @@ export function SubitemsTable({
                             onAddOption={onAddPayment}
                             onDeleteOption={onDeletePayment}
                             manageLabel="payment"
+                            onUpdateOptionColor={(name, color) => onUpdateOptionColor?.('payment', name, color)}
                             small
                         />
                     </div>
@@ -1016,6 +1023,7 @@ export function SubitemsTable({
                             onAddOption={onAddPaymentStatus}
                             onDeleteOption={onDeletePaymentStatus}
                             manageLabel="payment status"
+                            onUpdateOptionColor={(name, color) => onUpdateOptionColor?.('payment_status', name, color)}
                             small
                         />
                     </div>
@@ -1030,6 +1038,7 @@ export function SubitemsTable({
                             onAddOption={onAddShipper}
                             onDeleteOption={onDeleteShipper}
                             manageLabel="shipper"
+                            onUpdateOptionColor={(name, color) => onUpdateOptionColor?.('shipper', name, color)}
                             small
                         />
                     </div>
@@ -1064,6 +1073,7 @@ export function SubitemsTable({
                             onAddOption={onAddModeOfPayment}
                             onDeleteOption={onDeleteModeOfPayment}
                             manageLabel="mode of payment"
+                            onUpdateOptionColor={(name, color) => onUpdateOptionColor?.('mode_of_payment', name, color)}
                             small
                         />
                     </div>
@@ -1349,6 +1359,7 @@ export function SubitemsTable({
                                             timelineProgressOptions={subitemSubprogressOptions}
                                             onAddTimelineProgress={onAddSubitemSubprogress}
                                             onDeleteTimelineProgress={onDeleteSubitemSubprogress}
+                                            onUpdateOptionColor={(name, color) => onUpdateOptionColor?.('subitem_subprogress', name, color)}
                                         />
                                     </ExpandedRow>
                                 )}

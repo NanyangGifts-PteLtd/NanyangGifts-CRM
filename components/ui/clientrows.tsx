@@ -73,6 +73,7 @@ export type ClientRowProps = {
     onDeletePaymentStatus?: (name: string) => void | Promise<void>;
     onAddModeOfPayment?: (name: string) => void | Promise<void>;
     onDeleteModeOfPayment?: (name: string) => void | Promise<void>;
+    onUpdateOptionColor?: (code: string, name: string, color: string) => void | Promise<void>;
     clientCustomCols: CustomColumn[];
     subitemCustomCols: CustomColumn[];
     onDeleteCustomColumn: (id: string) => void;
@@ -150,6 +151,7 @@ export function ClientRow({
     onDeletePaymentStatus,
     onAddModeOfPayment,
     onDeleteModeOfPayment,
+    onUpdateOptionColor,
     clientCustomCols,
     subitemCustomCols,
     onDeleteCustomColumn,
@@ -524,6 +526,7 @@ export function ClientRow({
                         onAddOption={onAddReplyStatus}
                         onDeleteOption={onDeleteReplyStatus}
                         manageLabel="reply status"
+                        onUpdateOptionColor={(name, color) => onUpdateOptionColor?.('reply_status', name, color)}
                     />
                 </div>
 
@@ -564,6 +567,7 @@ export function ClientRow({
                         onAddOption={onAddStatus}
                         onDeleteOption={onDeleteStatus}
                         manageLabel="status"
+                        onUpdateOptionColor={(name, color) => onUpdateOptionColor?.('client_status', name, color)}
                     />
 
                     <AlertDialog open={showCloseDialog} onOpenChange={setShowCloseDialog}>
@@ -673,6 +677,7 @@ export function ClientRow({
                         onAddOption={onAddChannel}
                         onDeleteOption={onDeleteChannel}
                         manageLabel="channel"
+                        onUpdateOptionColor={(name, color) => onUpdateOptionColor?.('channel', name, color)}
                     />
                 </div>
 
@@ -688,6 +693,7 @@ export function ClientRow({
                         onAddOption={onAddImportance}
                         onDeleteOption={onDeleteImportance}
                         manageLabel="importance"
+                        onUpdateOptionColor={(name, color) => onUpdateOptionColor?.('importance', name, color)}
                     />
                 </div>
 
@@ -840,6 +846,7 @@ export function ClientRow({
                     onRequestAddSubitemCol={onRequestAddSubitemCol}
                     currentUserRole={currentUserRole}
                     currentUserId={currentUserId}
+                    onUpdateOptionColor={onUpdateOptionColor}
                     hiddenColumnKeys={hiddenColumnKeys}
                     onHideColumn={onHideColumn}
                     onSetColumnVisibility={onSetColumnVisibility}
