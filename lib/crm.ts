@@ -471,6 +471,13 @@ export async function fetchClientsWithSubitems() {
 }
 
 export async function createClientRow(currentUserId?: string | null, groupId?: string | null) {
+    const singaporeDate = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Singapore',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+    }).format(new Date());
+
     const { data, error } = await supabase
         .from('clients')
         .insert({
@@ -489,7 +496,7 @@ export async function createClientRow(currentUserId?: string | null, groupId?: s
             total_price: '',
             company_address: '',
             billing_address: '',
-            date_created: '',
+            date_created: singaporeDate,
             group_id: groupId ?? null,
             expanded: true,
             color: '#7BCBD5',
