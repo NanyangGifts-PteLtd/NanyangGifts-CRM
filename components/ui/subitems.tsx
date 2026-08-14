@@ -2,7 +2,7 @@
 
 import React, { useMemo, useState } from "react";
 import type { Profile, Subitem } from "../../app/types";
-import { Calendar, CreditCard, FileText, Package, Plus, Trash2 } from "lucide-react";
+import { Calendar, CreditCard, FileText, Package, Plus, Trash2, MoreHorizontal, EyeOff } from "lucide-react";
 import { StatusBadge } from "./statusbadge";
 import { EditableCell } from "./editablecell";
 import { SamplesSection } from "./sample";
@@ -122,6 +122,9 @@ type SubitemProps = {
     onRequestAddSubitemCol: () => void;
     currentUserRole?: string | null;
     currentUserId?: string | null;
+    hiddenColumnKeys: Set<string>;
+    onHideColumn: (key: string) => void;
+    onSetColumnVisibility: (key: string, visible: boolean) => void;
     onPushToShipperView?: (subitemId: string) => Promise<void> | void;
 };
 
@@ -203,6 +206,9 @@ export function SubitemsTable({
     onRequestAddSubitemCol,
     currentUserRole,
     currentUserId,
+    hiddenColumnKeys,
+    onHideColumn,
+    onSetColumnVisibility,
     onPushToShipperView,
 }: SubitemProps) {
     const [tableMode, setTableMode] = useState<TableMode | null>(null);
@@ -213,6 +219,7 @@ export function SubitemsTable({
     const [draggedColumnKey, setDraggedColumnKey] = useState<string | null>(null);
     const [dragOverColumnKey, setDragOverColumnKey] = useState<string | null>(null);
     const [dragOverColumnEdge, setDragOverColumnEdge] = useState<'left' | 'right' | null>(null);
+    const [openColumnMenu, setOpenColumnMenu] = useState<string | null>(null);
 
     const [pushingSubitemId, setPushingSubitemId] = useState<string | null>(null);
 
@@ -316,6 +323,9 @@ export function SubitemsTable({
     const isPm = currentUserRole === "pm" || currentUserRole === "dev" || currentUserRole === "director";
 
     const cols = tableMode === "payment" ? paymentCols : subitemCols;
+    const tablePrefix = tableMode === "payment" ? "payment" : "subitem";
+    const visibleCols = cols.filter((col) => col.key === "name" || !hiddenColumnKeys.has(`${tablePrefix}:${col.key}`));
+    const visibleCustomCols = subitemCustomCols.filter((col) => !hiddenColumnKeys.has(`subitem:custom:${col.id}`));
 
     React.useEffect(() => {
         try {
@@ -397,11 +407,11 @@ export function SubitemsTable({
     }, [currentUserId]);
 
     const totalTableWidth = useMemo(() => {
-        const baseCols = 44 + cols.reduce((s, c) => s + c.width, 0);
-        const customColsWidth = subitemCustomCols.length * CUSTOM_COL_WIDTH;
+        const baseCols = 44 + visibleCols.reduce((s, c) => s + c.width, 0);
+        const customColsWidth = visibleCustomCols.length * CUSTOM_COL_WIDTH;
         const addBtnWidth = 32;
         return baseCols + customColsWidth + addBtnWidth;
-    }, [cols, subitemCustomCols]);
+    }, [visibleCols, visibleCustomCols]);
 
     const startResize = (key: string, startX: number) => {
         const activeCols = tableMode === "payment" ? paymentCols : subitemCols;
@@ -1129,10 +1139,10 @@ export function SubitemsTable({
                 >
                     <colgroup>
                         <col style={{ width: 44 }} />
-                        {cols.map((col) => (
+                        {visibleCols.map((col) => (
                             <col key={col.key} style={{ width: col.width }} />
                         ))}
-                        {subitemCustomCols.map((col) => (
+                        {visibleCustomCols.map((col) => (
                             <col key={col.id} style={{ width: CUSTOM_COL_WIDTH }} />
                         ))}
                         <col style={{ width: 32 }} />
@@ -1142,13 +1152,18 @@ export function SubitemsTable({
                         <tr className="border-b border-t border-r border-[#D0D4E4] bg-gray-50">
                             <th className="w-11 px-2 py-1 text-center" />
 
-                            {cols.map((col) => {
+                            {visibleCols.map((col) => {
                                 const isDragTarget = col.key !== 'name';
                                 const isDragging = draggedColumnKey === col.key;
 
                                 return (
                                     <th
                                         key={col.key}
+                                        onContextMenu={(e) => {
+                                            if (col.key === 'name') return;
+                                            e.preventDefault();
+                                            setOpenColumnMenu(`${tablePrefix}:${col.key}`);
+                                        }}
                                         draggable={isDragTarget}
                                         onDragStart={(e) => {
                                             if (!isDragTarget) return;
@@ -1193,9 +1208,21 @@ export function SubitemsTable({
                                             setDragOverColumnKey(null);
                                             setDragOverColumnEdge(null);
                                         }}
-                                        className={`overflow-hidden relative border-r border-[#D0D4E4] text-center text-[12.6px] font-semibold whitespace-nowrap text-gray-500 ${isDragging ? 'opacity-60' : ''} ${isDragTarget ? (draggedColumnKey ? 'cursor-grabbing' : 'cursor-grab') : ''}`}
+                                        className={`group overflow-visible relative border-r border-[#D0D4E4] text-center text-[12.6px] font-semibold whitespace-nowrap text-gray-500 ${isDragging ? 'opacity-60' : ''} ${isDragTarget ? (draggedColumnKey ? 'cursor-grabbing' : 'cursor-grab') : ''}`}
                                     >
                                         <div className="overflow-hidden text-ellipsis whitespace-nowrap px-2">{col.label}</div>
+                                        {isDragTarget && (
+                                            <button type="button" onClick={(e) => { e.stopPropagation(); setOpenColumnMenu(openColumnMenu === `${tablePrefix}:${col.key}` ? null : `${tablePrefix}:${col.key}`); }} onMouseDown={(e) => e.stopPropagation()} className="absolute right-0.5 top-0.5 z-30 hidden rounded bg-white/90 p-0.5 text-gray-400 shadow-sm hover:text-gray-700 group-hover:block" title={`Column options for ${col.label}`}>
+                                                <MoreHorizontal size={12} />
+                                            </button>
+                                        )}
+                                        {openColumnMenu === `${tablePrefix}:${col.key}` && (
+                                            <div className="absolute left-0 top-full z-[80] mt-1 w-36 rounded-md border border-gray-200 bg-white p-1 text-left shadow-xl">
+                                                <button type="button" onClick={() => onHideColumn(`${tablePrefix}:${col.key}`)} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-[10px] font-medium text-gray-700 hover:bg-gray-50">
+                                                    <EyeOff size={12} /> Hide column
+                                                </button>
+                                            </div>
+                                        )}
                                         {dragOverColumnKey === col.key && isDragTarget && (
                                             <div className={`pointer-events-none absolute inset-y-0 z-20 w-1 bg-[#0f8da8] shadow-[0_0_5px_rgba(15,141,168,0.6)] ${dragOverColumnEdge === 'left' ? 'left-0' : 'right-0'}`} />
                                         )}
@@ -1210,10 +1237,11 @@ export function SubitemsTable({
                                 );
                             })}
 
-                            {subitemCustomCols.map((col) => (
+                            {visibleCustomCols.map((col) => (
                                 <th
                                     key={col.id}
-                                    className="relative border-r border-[#D0D4E4] text-center text-[11px] font-semibold whitespace-nowrap text-gray-500 bg-teal-50/40"
+                                    onContextMenu={(e) => { e.preventDefault(); setOpenColumnMenu(`${tablePrefix}:custom:${col.id}`); }}
+                                    className="group relative overflow-visible border-r border-[#D0D4E4] text-center text-[11px] font-semibold whitespace-nowrap text-gray-500 bg-teal-50/40"
                                     style={{ minWidth: CUSTOM_COL_WIDTH, width: CUSTOM_COL_WIDTH }}
                                 >
                                     <div className="flex items-center justify-center gap-1 px-2">
@@ -1226,6 +1254,8 @@ export function SubitemsTable({
                                             ×
                                         </button>
                                     </div>
+                                    <button type="button" onClick={() => setOpenColumnMenu(`${tablePrefix}:custom:${col.id}`)} className="absolute right-0.5 top-0.5 z-30 hidden rounded bg-white/90 p-0.5 text-gray-400 shadow-sm hover:text-gray-700 group-hover:block" title={`Column options for ${col.name}`}><MoreHorizontal size={12} /></button>
+                                    {openColumnMenu === `${tablePrefix}:custom:${col.id}` && <div className="absolute left-0 top-full z-[80] mt-1 w-36 rounded-md border border-gray-200 bg-white p-1 text-left shadow-xl"><button type="button" onClick={() => onHideColumn(`${tablePrefix}:custom:${col.id}`)} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-[10px] font-medium text-gray-700 hover:bg-gray-50"><EyeOff size={12} /> Hide column</button></div>}
                                 </th>
                             ))}
 
@@ -1258,7 +1288,7 @@ export function SubitemsTable({
                                         />
                                     </td>
 
-                                    {cols.map((col) => (
+                                    {visibleCols.map((col) => (
                                         <td
                                             key={col.key}
                                             className={`align-middle border-r border-[#D0D4E4] p-0 ${col.key === "name" ? "overflow-visible relative z-20" : "overflow-hidden"
@@ -1270,7 +1300,7 @@ export function SubitemsTable({
                                         </td>
                                     ))}
 
-                                    {subitemCustomCols.map((col) => (
+                                    {visibleCustomCols.map((col) => (
                                         <td
                                             key={col.id}
                                             className="overflow-hidden align-middle border-r border-[#D0D4E4] px-1 py-1 bg-teal-50/20"

@@ -77,6 +77,9 @@ export type ClientRowProps = {
     subitemCustomCols: CustomColumn[];
     onDeleteCustomColumn: (id: string) => void;
     onRequestAddSubitemCol: () => void;
+    hiddenColumnKeys: Set<string>;
+    onHideColumn: (key: string) => void;
+    onSetColumnVisibility: (key: string, visible: boolean) => void;
     updateClientCustomField: (
         clientId: string,
         columnId: string,
@@ -151,6 +154,9 @@ export function ClientRow({
     subitemCustomCols,
     onDeleteCustomColumn,
     onRequestAddSubitemCol,
+    hiddenColumnKeys,
+    onHideColumn,
+    onSetColumnVisibility,
     updateClientCustomField,
     currentUserRole,
     currentUserId,
@@ -321,12 +327,14 @@ export function ClientRow({
 
     return (
         <div className="mb-0">
+            <style>{Array.from(hiddenColumnKeys).filter((key) => key.startsWith('client:')).map((key) => `[data-client-column="${key.slice(7)}"]{display:none!important}`).join('')}</style>
             <div
                 data-client-row
                 className={`box-border border-b flex text-[15px] items-center flex-shrink-0 border-r border-[#D0D4E4] hover:blue-50 group transition-colors ${isSelected ? "bg-blue-50" : ""
                     }`}
             >
                 <div
+                    data-client-column="selectCheckbox"
                     className="box-border flex items-center min-w-0 px-3 flex-shrink-0 overflow-hidden"
                     style={{ minWidth: colWidth.selectCheckbox, width: colWidth.selectCheckbox, order: columnOrderMap.selectCheckbox ?? 0 }}
                 >
@@ -350,6 +358,7 @@ export function ClientRow({
 
                 <div
                     draggable
+                    data-client-column="client"
                     onDragStart={(event) => onDragStart(event)}
                     onDragEnd={onDragEnd}
                     className={`box-border flex items-center min-w-0 px-1 border-r border-[#D0D4E4] overflow-hidden ${isDragging ? "opacity-40" : ""} ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
@@ -492,6 +501,7 @@ export function ClientRow({
                     </div>
                 </div>
                 <div
+                    data-client-column="people"
                     className="flex-1 min-w-0 py-1 overflow-hidden whitespace-nowrap text-ellipsis border-r border-[#D0D4E4]"
                     style={{ minWidth: colWidth.people, width: colWidth.people, order: columnOrderMap.people ?? 2 }}
                 >
@@ -503,6 +513,7 @@ export function ClientRow({
                 </div>
 
                 <div
+                    data-client-column="replyStatus"
                     className="overflow-hidden whitespace-nowrap text-ellipsis !text-center border-r border-[#D0D4E4] p-0 h-[33.1px] transition transform active:scale-95 duration-150"
                     style={{ minWidth: colWidth.replyStatus, width: colWidth.replyStatus, order: columnOrderMap.replyStatus ?? 3 }}
                 >
@@ -517,6 +528,7 @@ export function ClientRow({
                 </div>
 
                 <div
+                    data-client-column="followUp"
                     className="flex-1 min-w-0 py-1 overflow-hidden whitespace-nowrap text-ellipsis !text-center border-r border-1 border-[#D0D4E4] transition transform active:scale-95 duration-150"
                     style={{ minWidth: colWidth.followUp, width: colWidth.followUp, order: columnOrderMap.followUp ?? 4 }}
                 >
@@ -529,6 +541,7 @@ export function ClientRow({
                 </div>
 
                 <div
+                    data-client-column="status"
                     className="overflow-hidden whitespace-nowrap text-ellipsis !text-center border-r border-[#D0D4E4] p-0 h-[33.1px] flex-shrink-0 transition transform active:scale-95 duration-150"
                     style={{ minWidth: colWidth.status, width: colWidth.status, order: columnOrderMap.status ?? 5 }}
                 >
@@ -649,6 +662,7 @@ export function ClientRow({
                 </div>
 
                 <div
+                    data-client-column="channel"
                     className="overflow-hidden whitespace-nowrap text-ellipsis !text-center border-r border-[#D0D4E4] p-0 h-[33.1px] flex-shrink-0 transition transform active:scale-95 duration-150"
                     style={{ minWidth: colWidth.channel, width: colWidth.channel, order: columnOrderMap.channel ?? 6 }}
                 >
@@ -663,6 +677,7 @@ export function ClientRow({
                 </div>
 
                 <div
+                    data-client-column="importance"
                     className="overflow-hidden whitespace-nowrap text-ellipsis !text-center border-r border-[#D0D4E4] p-0 h-[33.1px] flex-shrink-0 transition transform active:scale-95 duration-150"
                     style={{ minWidth: colWidth.importance, width: colWidth.importance, order: columnOrderMap.importance ?? 7 }}
                 >
@@ -676,22 +691,23 @@ export function ClientRow({
                     />
                 </div>
 
-                <div className="min-w-0 py-1 w-full overflow-hidden border-r border-[#D0D4E4] whitespace-nowrap text-ellipsis" style={{ height: 30, minWidth: colWidth.company, width: colWidth.company, order: columnOrderMap.company ?? 8 }}>
+                <div data-client-column="company" className="min-w-0 py-1 w-full overflow-hidden border-r border-[#D0D4E4] whitespace-nowrap text-ellipsis" style={{ height: 30, minWidth: colWidth.company, width: colWidth.company, order: columnOrderMap.company ?? 8 }}>
                     <EditableCell className="!justify-start px-1" value={client.company} onChange={(v) => onUpdate({ company: v })} placeholder="" />
                 </div>
 
-                <div className="flex-1 min-w-0 items-center py-1 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height: 30, minWidth: colWidth.email, width: colWidth.email, order: columnOrderMap.email ?? 9 }}>
+                <div data-client-column="email" className="flex-1 min-w-0 items-center py-1 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height: 30, minWidth: colWidth.email, width: colWidth.email, order: columnOrderMap.email ?? 9 }}>
                     <EditableCell className="!justify-start px-1" value={client.email} onChange={(v) => onUpdate({ email: v })} placeholder="" />
                 </div>
 
-                <div className="flex-1 min-w-0 py-1 items-center border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height: 30, minWidth: colWidth.phone, width: colWidth.phone, order: columnOrderMap.phone ?? 10 }}>
+                <div data-client-column="phone" className="flex-1 min-w-0 py-1 items-center border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height: 30, minWidth: colWidth.phone, width: colWidth.phone, order: columnOrderMap.phone ?? 10 }}>
                     <EditableCell value={client.phone} onChange={(v) => onUpdate({ phone: v })} placeholder="" />
                 </div>
 
-                <div className="flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height: 30, minWidth: colWidth.requirements, width: colWidth.requirements, order: columnOrderMap.requirements ?? 11 }}>
+                <div data-client-column="requirements" className="flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height: 30, minWidth: colWidth.requirements, width: colWidth.requirements, order: columnOrderMap.requirements ?? 11 }}>
                     <EditableCell className="!justify-start px-1" value={client.requirements} onChange={(v) => onUpdate({ requirements: v })} placeholder="" />
                 </div>
                 <div
+                    data-client-column="nbd"
                     className="flex items-center border-r border-[#D0D4E4] transition transform active:scale-95 duration-150" style={{ height: 30, minWidth: colWidth.nbd, width: colWidth.nbd, order: columnOrderMap.nbd ?? 12 }}>
                     <input
                         type="date"
@@ -700,10 +716,10 @@ export function ClientRow({
                         className="text-[12.6px] border-none outline-none bg-transparent cursor-pointer w-full"
                     />
                 </div>
-                <div className="flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height: 30, minWidth: colWidth.totalPrice, width: colWidth.totalPrice, order: columnOrderMap.totalPrice ?? 13 }}>
+                <div data-client-column="totalPrice" className="flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height: 30, minWidth: colWidth.totalPrice, width: colWidth.totalPrice, order: columnOrderMap.totalPrice ?? 13 }}>
                     <EditableCell className="!px-8" value={client.totalPrice} onChange={(v) => onUpdate({ totalPrice: v })} type="Number" />
                 </div>
-                <div className="flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height: 30, minWidth: colWidth.companyAddress, width: colWidth.companyAddress, order: columnOrderMap.companyAddress ?? 14 }}>
+                <div data-client-column="companyAddress" className="flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height: 30, minWidth: colWidth.companyAddress, width: colWidth.companyAddress, order: columnOrderMap.companyAddress ?? 14 }}>
                     <EditableCell
                         value={client.companyAddress}
                         onChange={(v) => onUpdate({ companyAddress: v })}
@@ -711,7 +727,7 @@ export function ClientRow({
                     />
                 </div>
 
-                <div className="flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height: 30, minWidth: colWidth.billingAddress, width: colWidth.billingAddress, order: columnOrderMap.billingAddress ?? 15 }}>
+                <div data-client-column="billingAddress" className="flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height: 30, minWidth: colWidth.billingAddress, width: colWidth.billingAddress, order: columnOrderMap.billingAddress ?? 15 }}>
                     <EditableCell
                         value={client.billingAddress}
                         onChange={(v) => onUpdate({ billingAddress: v })}
@@ -719,13 +735,14 @@ export function ClientRow({
                     />
                 </div>
 
-                <div className="flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height: 30, minWidth: colWidth.dateCreated, width: colWidth.dateCreated, order: columnOrderMap.dateCreated ?? 16 }}>
+                <div data-client-column="dateCreated" className="flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height: 30, minWidth: colWidth.dateCreated, width: colWidth.dateCreated, order: columnOrderMap.dateCreated ?? 16 }}>
                     <EditableCell value={client.dateCreated} onChange={(v) => onUpdate({ dateCreated: v })} />
                 </div>
                 {/* custom cols */}
                 {clientCustomCols.map((col) => (
                     <div
                         key={col.id}
+                        data-client-column={`custom:${col.id}`}
                         className="flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap bg-teal-50/20"
                         style={{
                             height: 30,
@@ -818,6 +835,9 @@ export function ClientRow({
                     onRequestAddSubitemCol={onRequestAddSubitemCol}
                     currentUserRole={currentUserRole}
                     currentUserId={currentUserId}
+                    hiddenColumnKeys={hiddenColumnKeys}
+                    onHideColumn={onHideColumn}
+                    onSetColumnVisibility={onSetColumnVisibility}
                     onPushToShipperView={onPushToShipperView}
 
 

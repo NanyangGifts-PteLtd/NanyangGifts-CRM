@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { ChevronDown, Plus, Trash2, Filter, ChevronsDown, ChevronsUp, X } from 'lucide-react';
+import { ChevronDown, Plus, Trash2, Filter, ChevronsDown, ChevronsUp, X, MoreHorizontal, EyeOff } from 'lucide-react';
 import { Client, Subitem, ClientStatus, Profile, ClientAssigneeMap, SubitemAssigneeMap, CRMGroup } from '../app/types';
 import { createClient as createSupabaseClient } from '@/lib/supabase/client';
 import { ClientRow } from './ui/clientrows';
@@ -148,6 +148,62 @@ export function CRMBoard({ clients,
   const [dragOverHeaderEdge, setDragOverHeaderEdge] = useState<'left' | 'right' | null>(null);
   const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
   const [showRestoreArrangementConfirm, setShowRestoreArrangementConfirm] = useState(false);
+  const [hiddenColumnKeys, setHiddenColumnKeys] = useState<Set<string>>(new Set());
+  const [openColumnMenu, setOpenColumnMenu] = useState<string | null>(null);
+  const [showHideColumns, setShowHideColumns] = useState(false);
+  const hiddenSettingsLoadedFor = useRef<string | null>(null);
+
+  const hideColumn = useCallback((key: string) => {
+    setHiddenColumnKeys((previous) => new Set(previous).add(key));
+    setOpenColumnMenu(null);
+  }, []);
+
+  const setColumnVisibility = useCallback((key: string, visible: boolean) => {
+    setHiddenColumnKeys((previous) => {
+      const next = new Set(previous);
+      if (visible) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!currentUserId) {
+      hiddenSettingsLoadedFor.current = null;
+      setHiddenColumnKeys(new Set());
+      return;
+    }
+
+    let mounted = true;
+    hiddenSettingsLoadedFor.current = null;
+    (async () => {
+      try {
+        const { loadUserSetting } = await import('@/lib/user-settings');
+        const value = await loadUserSetting('colHidden');
+        if (!mounted) return;
+        const keys = Array.isArray(value) ? value.filter((key): key is string => typeof key === 'string') : [];
+        setHiddenColumnKeys(new Set(keys));
+        hiddenSettingsLoadedFor.current = currentUserId;
+        try {
+          localStorage.setItem(`colHidden:${currentUserId}`, JSON.stringify(keys));
+        } catch {}
+      } catch (error) {
+        console.warn('Failed to load saved hidden columns', error);
+        if (mounted) hiddenSettingsLoadedFor.current = currentUserId;
+      }
+    })();
+
+    return () => { mounted = false; };
+  }, [currentUserId]);
+
+  useEffect(() => {
+    if (!currentUserId || hiddenSettingsLoadedFor.current !== currentUserId) return;
+    const keys = Array.from(hiddenColumnKeys);
+    try { localStorage.setItem(`colHidden:${currentUserId}`, JSON.stringify(keys)); } catch {}
+    void import('@/lib/user-settings')
+      .then(({ saveUserSetting }) => saveUserSetting('colHidden', keys))
+      .catch((error) => console.warn('Failed to save hidden columns', error));
+  }, [hiddenColumnKeys, currentUserId]);
 
   const reorderClientColumns = useCallback((draggedKey: string, targetKey: string) => {
     const baseCols = headerCols.filter((c) => !['selectCheckbox', 'client', 'addClientCol', 'empty'].includes(c.key));
@@ -356,6 +412,29 @@ export function CRMBoard({ clients,
     ];
   }, [headerCols, clientCustomCols]);
 
+  const visibleClientHeaderCols = React.useMemo(
+    () => mergedHeaderCols.filter((col) => !hiddenColumnKeys.has(`client:${col.key}`) || ['selectCheckbox', 'client', 'addClientCol', 'empty'].includes(col.key)),
+    [mergedHeaderCols, hiddenColumnKeys],
+  );
+
+  const hideableColumnGroups = React.useMemo(() => [
+    {
+      label: 'Client columns',
+      columns: mergedHeaderCols.filter((col) => !['selectCheckbox', 'client', 'addClientCol', 'empty'].includes(col.key)).map((col) => ({ key: `client:${col.key}`, label: col.label })),
+    },
+    {
+      label: 'Subitem columns',
+      columns: [
+        ...SUBITEM_COLS.filter((col) => col.key !== 'name').map((col) => ({ key: `subitem:${col.key}`, label: col.label })),
+        ...subitemCustomCols.map((col) => ({ key: `subitem:custom:${col.id}`, label: col.name })),
+      ],
+    },
+    {
+      label: 'Payment columns',
+      columns: PAYMENT_COLS.filter((col) => col.key !== 'name').map((col) => ({ key: `payment:${col.key}`, label: col.label })),
+    },
+  ], [mergedHeaderCols, subitemCustomCols]);
+
   // If the authenticated user changes, clear any generic local caches owned by other users
   useEffect(() => {
     try {
@@ -426,7 +505,7 @@ export function CRMBoard({ clients,
     try { window.dispatchEvent(new CustomEvent('authChanged', { detail: currentUserId })); } catch {}
   }, [currentUserId]);
 
-  const totalMinWidth = mergedHeaderCols.reduce((sum, col) => sum + col.width, 0);
+  const totalMinWidth = visibleClientHeaderCols.reduce((sum, col) => sum + col.width, 0);
   const colWidth = React.useMemo(
     () => Object.fromEntries(mergedHeaderCols.map((c) => [c.key, c.width])),
     [mergedHeaderCols]
@@ -1439,6 +1518,36 @@ export function CRMBoard({ clients,
           )}
         </div>
 
+        <div className="relative">
+          <button onClick={() => setShowHideColumns((open) => !open)} className="flex items-center gap-1 px-2 py-1 bg-[#43adc4] hover:bg-[#0f8da8] text-white rounded-md text-[10px] font-medium transition-colors transform active:scale-95 duration-150">
+            <EyeOff size={12} /> Hide
+            {hiddenColumnKeys.size > 0 && <span className="rounded-full bg-white/25 px-1.5">{hiddenColumnKeys.size}</span>}
+            <ChevronDown size={11} />
+          </button>
+          {showHideColumns && (
+            <div className="absolute top-full left-0 mt-1 w-64 max-h-[min(520px,calc(100vh-5rem))] overflow-y-auto rounded-lg border border-gray-200 bg-white p-2 shadow-xl z-50">
+              <div className="flex items-center justify-between border-b border-gray-100 px-2 pb-2">
+                <span className="text-xs font-semibold text-gray-800">Display columns</span>
+                <button onClick={() => setHiddenColumnKeys(new Set())} className="text-[10px] font-medium text-gray-400 hover:text-gray-700">Show all</button>
+              </div>
+              {hideableColumnGroups.map((group) => (
+                <div key={group.label} className="pt-2">
+                  <div className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400">{group.label}</div>
+                  {group.columns.map((column) => {
+                    const visible = !hiddenColumnKeys.has(column.key);
+                    return (
+                      <label key={column.key} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-[11px] text-gray-700 hover:bg-gray-50">
+                        <input type="checkbox" checked={visible} onChange={(event) => setColumnVisibility(column.key, event.target.checked)} className="h-3.5 w-3.5 rounded accent-[#0f8da8]" />
+                        <span className="truncate">{column.label || 'Unnamed column'}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
         <button onClick={() => setShowRestoreConfirm(true)} className="flex items-center gap-1 px-2 py-1 bg-[#43adc4] hover:bg-[#0f8da8] text-white rounded-md text-[10px] font-medium transition-colors transform active:scale-95 duration-150">
           Restore default column widths
         </button>
@@ -1582,7 +1691,7 @@ export function CRMBoard({ clients,
       <div className="flex min-w-0 text-gray-500 font-semibold">
         <div style={{ minWidth: totalMinWidth }}>
           <div className="hidden" style={{ minWidth: totalMinWidth }}>
-            {mergedHeaderCols.map((col) => {
+            {visibleClientHeaderCols.map((col) => {
               const fixedKeys = new Set(['selectCheckbox', 'client', 'addClientCol', 'empty']);
               const isDraggable = !col.isCustom && !fixedKeys.has(col.key);
               const isDragging = draggedHeaderKey === col.key;
@@ -1717,8 +1826,8 @@ export function CRMBoard({ clients,
 
               {!collapsedGroups[group.id] && (
                 <div data-client-group={group.id} onDragOver={(event) => handleDragOver(event, group.id, 'top')} onDrop={() => handleDrop(group.id)} onDragLeave={() => { setDragOverGroupId(null); setDragOverGroupEdge(null); }} className="relative" style={{ minWidth: totalMinWidth }}>
-                  <div className="relative flex text-[12.6px] items-center justify-center w-full min-w-0 flex-shrink-0 border border-[#D0D4E4] overflow-hidden bg-gradient-to-r from-[#e7fdff] to-[#a3dfff]" style={{ minWidth: totalMinWidth }}>
-                    {mergedHeaderCols.map((col) => {
+                  <div className="relative flex text-[12.6px] items-center justify-center w-full min-w-0 flex-shrink-0 border border-[#D0D4E4] overflow-visible bg-gradient-to-r from-[#e7fdff] to-[#a3dfff]" style={{ minWidth: totalMinWidth }}>
+                    {visibleClientHeaderCols.map((col) => {
                       const fixedKeys = new Set(['selectCheckbox', 'client', 'addClientCol', 'empty']);
                       const isDraggable = !col.isCustom && !fixedKeys.has(col.key);
                       const isDragging = draggedHeaderKey === col.key;
@@ -1728,6 +1837,11 @@ export function CRMBoard({ clients,
                         <div
                           key={col.key}
                           draggable={isDraggable}
+                          onContextMenu={(event) => {
+                            if (['selectCheckbox', 'client', 'addClientCol', 'empty'].includes(col.key)) return;
+                            event.preventDefault();
+                            setOpenColumnMenu(`client:${group.id}:${col.key}`);
+                          }}
                           onDragStart={(event) => {
                             if (!isDraggable) return;
                             event.dataTransfer?.setData('text/plain', col.key);
@@ -1758,7 +1872,7 @@ export function CRMBoard({ clients,
                             setDragOverHeaderKey(null);
                             setDragOverHeaderEdge(null);
                           }}
-                          className={`relative flex h-7 justify-center items-center border-[#D0D4E4] border-r flex-shrink-0 ${isDragging ? 'opacity-60' : ''} ${isDraggable ? (draggedHeaderKey ? 'cursor-grabbing' : 'cursor-grab') : ''} ${isDragOver && isDraggable ? 'bg-[#dff9ff]' : ''}`}
+                          className={`group relative flex h-7 justify-center items-center overflow-visible border-[#D0D4E4] border-r flex-shrink-0 ${isDragging ? 'opacity-60' : ''} ${isDraggable ? (draggedHeaderKey ? 'cursor-grabbing' : 'cursor-grab') : ''} ${isDragOver && isDraggable ? 'bg-[#dff9ff]' : ''}`}
                           style={{ minWidth: col.width, width: col.width }}
                         >
                           {col.key === 'selectCheckbox' ? (
@@ -1767,6 +1881,24 @@ export function CRMBoard({ clients,
                             <button type="button" onClick={() => setShowAddColModal('client')} className="mx-auto flex h-5 w-5 items-center justify-center rounded-md text-teal-500 hover:bg-teal-100 hover:text-black" title="Add client column"><Plus size={14} /></button>
                           ) : (
                             <div className="flex items-center gap-1 min-w-0 max-w-full px-1"><span className="truncate">{col.label}</span>{col.isCustom && col.customColumnId ? <button type="button" onClick={() => handleDeleteCustomColumn(col.customColumnId!)} className="text-gray-400 hover:text-red-500 flex-shrink-0" title="Delete column"><X size={12} /></button> : null}</div>
+                          )}
+                          {!['selectCheckbox', 'client', 'addClientCol', 'empty'].includes(col.key) && (
+                            <button
+                              type="button"
+                              onClick={(event) => { event.stopPropagation(); setOpenColumnMenu(openColumnMenu === `client:${group.id}:${col.key}` ? null : `client:${group.id}:${col.key}`); }}
+                              onMouseDown={(event) => event.stopPropagation()}
+                              className="absolute right-0.5 top-0.5 z-30 hidden rounded bg-white/90 p-0.5 text-gray-400 shadow-sm hover:text-gray-700 group-hover:block"
+                              title={`Column options for ${col.label}`}
+                            >
+                              <MoreHorizontal size={12} />
+                            </button>
+                          )}
+                          {openColumnMenu === `client:${group.id}:${col.key}` && (
+                            <div className="absolute left-0 top-full z-[80] mt-1 w-36 rounded-md border border-gray-200 bg-white p-1 text-left shadow-xl">
+                              <button type="button" onClick={() => hideColumn(`client:${col.key}`)} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-[10px] font-medium text-gray-700 hover:bg-gray-50">
+                                <EyeOff size={12} /> Hide column
+                              </button>
+                            </div>
                           )}
                           {isDragOver && isDraggable && <div className={`pointer-events-none absolute inset-y-0 z-20 w-1 bg-[#0f8da8] shadow-[0_0_5px_rgba(15,141,168,0.6)] ${dragOverHeaderEdge === 'left' ? 'left-0' : 'right-0'}`} />}
                           <div onMouseDown={(event) => startResize(col.key, event.clientX)} className="absolute right-0 top-0 h-full w-1 cursor-col-resize" />
@@ -1843,6 +1975,9 @@ export function CRMBoard({ clients,
                   subitemCustomCols={subitemCustomCols}
                   onDeleteCustomColumn={handleDeleteCustomColumn}
                   onRequestAddSubitemCol={() => setShowAddColModal('subitem')}
+                  hiddenColumnKeys={hiddenColumnKeys}
+                  onHideColumn={hideColumn}
+                  onSetColumnVisibility={setColumnVisibility}
                   currentUserRole={currentUserRole ?? undefined}
                   currentUserId={currentUserId}
                 />
