@@ -192,7 +192,7 @@ export default function TopBar({
   }, []);
 
   return (
-    <div className="h-16 bg-[#ffffff] flex items-center px-4 gap-3 border-b border-[#f2f8ff] flex-shrink-0 overflow-hidden sticky top-0 z-30">
+    <div className="h-16 bg-[#ffffff] flex items-center px-4 gap-3 border-b border-[#f2f8ff] flex-shrink-0 overflow-visible sticky top-0 z-50">
       <SearchBar
         value={value}
         onChange={onChange}
@@ -220,7 +220,7 @@ export default function TopBar({
         </button>
 
         {showNotifs && (
-          <div className="absolute right-0 top-full mt-1 w-80 bg-white font-semibold rounded-lg shadow-2xl border border-gray-200 z-50 overflow-hidden">
+          <div className="absolute right-0 top-full mt-1 w-80 bg-white font-semibold rounded-lg shadow-2xl border border-gray-200 z-[60] overflow-hidden">
             <div className="flex items-center justify-between px-4 py-2.5 bg-gray-50 border-b">
               <span className="text-xs font-semibold text-gray-700">Notifications</span>
               <button onClick={onMarkAllRead} className="text-xs text-blue-500 hover:text-blue-700">
@@ -264,7 +264,7 @@ export default function TopBar({
           <Settings size={16} />
         </button>
         {showSettings && (
-          <div className="absolute right-0 top-full mt-1 w-64 bg-white font-semibold rounded-lg shadow-2xl border border-gray-200 z-50 overflow-hidden">
+          <div className="absolute right-0 top-full mt-1 w-64 bg-white font-semibold rounded-lg shadow-2xl border border-gray-200 z-[60] overflow-hidden">
             <div className="px-4 py-2 bg-gray-50 border-b">
               <span className="text-xs font-semibold text-gray-700">Settings</span>
             </div>
@@ -323,7 +323,7 @@ export default function TopBar({
         </button>
 
         {showProfile && (
-          <div className="absolute right-0 top-full mt-1 w-56 bg-white font-semibold rounded-lg shadow-2xl border border-gray-200 z-50 overflow-hidden">
+          <div className="absolute right-0 top-full mt-1 w-56 bg-white font-semibold rounded-lg shadow-2xl border border-gray-200 z-[60] overflow-hidden">
             <div className="px-4 py-3 bg-gray-50 border-b">
               <p className="text-xs font-semibold text-gray-800 truncate">{userEmail}</p>
               <p className="text-xs text-gray-500 mt-0.5 truncate">Online</p>
