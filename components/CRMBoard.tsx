@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { ChevronDown, Plus, Trash2, Filter, ChevronsDown, ChevronsUp, X } from 'lucide-react';
 import { Client, Subitem, ClientStatus, Profile, ClientAssigneeMap, SubitemAssigneeMap, CRMGroup } from '../app/types';
 import { createClient as createSupabaseClient } from '@/lib/supabase/client';
@@ -107,6 +107,9 @@ export function CRMBoard({ clients,
   const [ocfClient, setOcfClient] = useState<Client | null>(null);
   const [isOcfModalOpen, setIsOcfModalOpen] = useState(false);
   const [showAddGroupModal, setShowAddGroupModal] = useState(false);
+  const [pendingDeleteClientId, setPendingDeleteClientId] = useState<string | null>(null);
+  const [pendingDeleteSubitem, setPendingDeleteSubitem] = useState<{ clientId: string; subitemId: string } | null>(null);
+  const [pendingDeleteSelected, setPendingDeleteSelected] = useState(false);
 
   const [replyStatusEntries, setReplyStatusEntries] = useState<OptionEntry[]>([]);
   const [clientStatusEntries, setClientStatusEntries] = useState<OptionEntry[]>([]);
@@ -1261,6 +1264,18 @@ export function CRMBoard({ clients,
     catch (error: any) { setClients(clients); console.error('Failed to delete client', error); }
   }, [clients, setClients]);
 
+  const pendingClientToDelete = useMemo(
+    () => clients.find((client) => client.id === pendingDeleteClientId) ?? null,
+    [clients, pendingDeleteClientId],
+  );
+
+  const pendingSubitemToDelete = useMemo(() => {
+    if (!pendingDeleteSubitem) return null;
+    const client = clients.find((item) => item.id === pendingDeleteSubitem.clientId);
+    const subitem = client?.subitems.find((item) => item.id === pendingDeleteSubitem.subitemId);
+    return { clientName: client?.name ?? 'this client', subitemName: subitem?.name ?? 'this subitem' };
+  }, [clients, pendingDeleteSubitem]);
+
   const deleteSelected = useCallback(async () => {
     const ids = [...selectedIds];
     setClients((prev) => prev.filter((c) => !selectedIds.has(c.id)));
@@ -1402,7 +1417,7 @@ export function CRMBoard({ clients,
         {selectedIds.size > 0 && (
           <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-md px-3 py-1.5">
             <span className="text-[10px] text-red-600 font-medium">{selectedIds.size} selected</span>
-            <button onClick={deleteSelected} className="flex items-center gap-1 text-[10px] text-red-600 hover:text-red-800 font-semibold transition-colors">
+            <button onClick={() => setPendingDeleteSelected(true)} className="flex items-center gap-1 text-[10px] text-red-600 hover:text-red-800 font-semibold transition-colors">
               <Trash2 size={12} /> Delete
             </button>
             <button onClick={() => setSelectedIds(new Set())} className="text-gray-400 hover:text-gray-600 transition-colors">
@@ -1411,6 +1426,76 @@ export function CRMBoard({ clients,
           </div>
         )}
       </div>
+
+      <AlertDialog open={pendingDeleteSelected} onOpenChange={setPendingDeleteSelected}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete selected clients?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete {selectedIds.size} selected client{selectedIds.size === 1 ? '' : 's'}. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async () => {
+                setPendingDeleteSelected(false);
+                await deleteSelected();
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={!!pendingDeleteClientId} onOpenChange={(open) => !open && setPendingDeleteClientId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this client?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete <span className="font-semibold text-gray-700">{pendingClientToDelete?.name ?? 'this client'}</span> and all of its related data. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async () => {
+                if (!pendingDeleteClientId) return;
+                const clientId = pendingDeleteClientId;
+                setPendingDeleteClientId(null);
+                await deleteClient(clientId);
+              }}
+            >
+              Delete client
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={!!pendingDeleteSubitem} onOpenChange={(open) => !open && setPendingDeleteSubitem(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this subitem?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete <span className="font-semibold text-gray-700">{pendingSubitemToDelete?.subitemName ?? 'this subitem'}</span> from <span className="font-semibold text-gray-700">{pendingSubitemToDelete?.clientName ?? 'this client'}</span>. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async () => {
+                if (!pendingDeleteSubitem) return;
+                const { clientId, subitemId } = pendingDeleteSubitem;
+                setPendingDeleteSubitem(null);
+                await deleteSubitem(clientId, subitemId);
+              }}
+            >
+              Delete subitem
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={showRestoreConfirm} onOpenChange={setShowRestoreConfirm}>
         <AlertDialogContent>
@@ -1653,8 +1738,8 @@ export function CRMBoard({ clients,
                   onUpdate={(updates) => updateClient(client.id, updates)}
                   onUpdateSubitem={(subitemId, updates) => updateSubitem(client.id, subitemId, updates)}
                   onAddSubitem={() => addSubitem(client.id)}
-                  onDeleteSubitem={(subitemId) => deleteSubitem(client.id, subitemId)}
-                  onDelete={() => deleteClient(client.id)}
+                  onDeleteSubitem={(subitemId) => setPendingDeleteSubitem({ clientId: client.id, subitemId })}
+                  onDelete={() => setPendingDeleteClientId(client.id)}
                   profiles={profiles}
                   clientAssignedIds={clientAssignees[client.id] ?? []}
                   onChangeClientAssignees={(ids) => handleClientAssigneesChange(client.id, ids)}
