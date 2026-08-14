@@ -32,6 +32,18 @@ function buildDeliveryInfo(item?: {
     return parts.length > 0 ? parts.join("\n") : null;
 }
 
+function getSingaporeDate() {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Asia/Singapore",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+    }).formatToParts(new Date());
+
+    const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+    return `${values.year}-${values.month}-${values.day}`;
+}
+
 export async function POST(req: NextRequest) {
     try {
         const supabase = await createClient();
@@ -47,7 +59,7 @@ export async function POST(req: NextRequest) {
 
         const { data: profile, error: profileError } = await supabase
             .from("profiles")
-            .select("id, role")
+            .select("id, role, full_name, email")
             .eq("id", user.id)
             .single();
 
@@ -89,6 +101,9 @@ export async function POST(req: NextRequest) {
         if (!subitems || subitems.length === 0) {
             return NextResponse.json({ error: "No subitems with shipper_id found" }, { status: 404 });
         }
+
+        const pushedByName = profile.full_name?.trim() || profile.email || user.email || user.id;
+        const pushedDate = getSingaporeDate();
 
         const subitemIdList = subitems.map((item) => item.id);
 
@@ -139,8 +154,8 @@ export async function POST(req: NextRequest) {
                 total_cost: null,
                 channel: null,
                 logistics_remarks: null,
-                ic: null,
-                info_provided_date: null,
+                ic: pushedByName,
+                info_provided_date: pushedDate,
                 cn_tracking_no: item.cn_tracking,
                 cartons: null,
                 item_name: item.name ?? null,
