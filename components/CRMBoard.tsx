@@ -104,6 +104,7 @@ export function CRMBoard({ clients,
   const [filterImportance, setFilterImportance] = useState('All');
   const [filterReplyStatus, setFilterReplyStatus] = useState('All');
   const [filterChannel, setFilterChannel] = useState('All');
+  const [focusedFilterColumn, setFocusedFilterColumn] = useState<string | null>(null);
   const expandedIdSet = React.useMemo(() => new Set(expandedIds), [expandedIds]);
   const allExpanded = clients.length > 0 && clients.every((c) => expandedIdSet.has(c.id));
 
@@ -170,6 +171,11 @@ export function CRMBoard({ clients,
   const [hiddenColumnKeys, setHiddenColumnKeys] = useState<Set<string>>(new Set());
   const [openColumnMenu, setOpenColumnMenu] = useState<string | null>(null);
   const [showHideColumns, setShowHideColumns] = useState(false);
+
+  const openColumnFilter = useCallback((column: string) => {
+    setFocusedFilterColumn(column);
+    setShowFilter(true);
+  }, []);
   const hiddenSettingsLoadedFor = useRef<string | null>(null);
 
   const hideColumn = useCallback((key: string) => {
@@ -1404,7 +1410,17 @@ export function CRMBoard({ clients,
     colors?: Record<string, string>;
     renderOption?: (value: string, label: string) => React.ReactNode;
   }) => (
-    <div className="min-w-48 shrink-0">
+    <div className={`min-w-48 shrink-0 ${focusedFilterColumn && focusedFilterColumn !== ({
+      Status: 'client:status',
+      'Subitem Subprogress': 'subitem:subprogress',
+      'Subitem Status': 'subitem:status',
+      Payment: 'payment:payment',
+      'Payment Status': 'payment:paymentStatus',
+      People: 'people',
+      Importance: 'client:importance',
+      'Reply Status': 'client:replyStatus',
+      Channel: 'client:channel',
+    } as Record<string, string>)[label] ? 'hidden' : ''}`}>
       <div className="mb-2 text-[11px] font-semibold text-gray-500">{label}</div>
       <div className="max-h-60 space-y-1 overflow-y-auto pr-1">
         <button onClick={() => onChange('All')} className="flex items-center gap-2 w-full rounded-md px-2 py-1.5 text-left text-[10px] font-semibold hover:bg-gray-50">
@@ -1570,7 +1586,7 @@ export function CRMBoard({ clients,
         </button>
 
         <div ref={filterRef} className="relative">
-          <button onClick={() => setShowFilter(!showFilter)} className="flex items-center gap-1 px-2 py-1 bg-[#43adc4] hover:bg-[#0f8da8] text-white rounded-md text-[10px] font-medium transition-colors transition transform active:scale-95 duration-150">
+          <button onClick={() => { setFocusedFilterColumn(null); setShowFilter(!showFilter); }} className="flex items-center gap-1 px-2 py-1 bg-[#43adc4] hover:bg-[#0f8da8] text-white rounded-md text-[10px] font-medium transition-colors transition transform active:scale-95 duration-150">
             <Filter size={12} />
             Filter
             {activeFilterCount > 0 && <span className="rounded-full bg-white/25 px-1.5">{activeFilterCount}</span>}
@@ -1579,7 +1595,10 @@ export function CRMBoard({ clients,
           {showFilter && (
             <div className="absolute top-full left-0 mt-1 w-[min(680px,calc(100vw-1rem))] bg-white border border-gray-200 rounded-lg shadow-xl z-50 p-3">
               <div className="mb-3 flex items-center justify-between border-b border-gray-100 pb-2">
-                <span className="text-xs font-semibold text-gray-800">Quick filters</span>
+                <div className="flex items-center gap-2">
+                  {focusedFilterColumn && <button onClick={() => setFocusedFilterColumn(null)} className="text-xs text-gray-500 hover:text-gray-800">←</button>}
+                  <span className="text-xs font-semibold text-gray-800">Quick filters{focusedFilterColumn ? ` · ${focusedFilterColumn}` : ''}</span>
+                </div>
                 <button
                   onClick={() => {
                     setFilterStatus('All');
@@ -2007,6 +2026,7 @@ export function CRMBoard({ clients,
                           )}
                           {openColumnMenu === `client:${group.id}:${col.key}` && (
                             <div className="absolute left-0 top-full z-[80] mt-1 w-36 rounded-md border border-gray-200 bg-white p-1 text-left shadow-xl">
+                              {['people', 'status', 'replyStatus', 'importance', 'channel'].includes(col.key) && <button type="button" onClick={() => { openColumnFilter(col.key === 'people' ? 'people' : `client:${col.key}`); setOpenColumnMenu(null); }} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-[10px] font-medium text-gray-700 hover:bg-gray-50"><Filter size={12} /> Filter</button>}
                               <button type="button" onClick={() => hideColumn(`client:${col.key}`)} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-[10px] font-medium text-gray-700 hover:bg-gray-50">
                                 <EyeOff size={12} /> Hide column
                               </button>
@@ -2088,6 +2108,7 @@ export function CRMBoard({ clients,
                   onDeleteCustomColumn={handleDeleteCustomColumn}
                   onRequestAddSubitemCol={() => setShowAddColModal('subitem')}
                   onUpdateOptionColor={updateOptionColor}
+                  onFilterColumn={openColumnFilter}
                   hiddenColumnKeys={hiddenColumnKeys}
                   onHideColumn={hideColumn}
                   onSetColumnVisibility={setColumnVisibility}

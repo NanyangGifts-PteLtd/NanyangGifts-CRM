@@ -2,7 +2,7 @@
 
 import React, { useMemo, useState } from "react";
 import type { Profile, Subitem } from "../../app/types";
-import { Calendar, CreditCard, FileText, Package, Plus, Trash2, MoreHorizontal, EyeOff } from "lucide-react";
+import { Calendar, CreditCard, FileText, Package, Plus, Trash2, MoreHorizontal, EyeOff, Filter } from "lucide-react";
 import { StatusBadge } from "./statusbadge";
 import { EditableCell } from "./editablecell";
 import { SamplesSection } from "./sample";
@@ -118,6 +118,7 @@ type SubitemProps = {
     onAddModeOfPayment?: (name: string) => void | Promise<void>;
     onDeleteModeOfPayment?: (name: string) => void | Promise<void>;
     onUpdateOptionColor?: (code: string, name: string, color: string) => void | Promise<void>;
+    onFilterColumn?: (column: string) => void;
     subitemCustomCols: CustomColumn[];
     onDeleteSubitemCustomCol: (id: string) => void;
     onRequestAddSubitemCol: () => void;
@@ -203,6 +204,7 @@ export function SubitemsTable({
     onAddModeOfPayment,
     onDeleteModeOfPayment,
     onUpdateOptionColor,
+    onFilterColumn,
     subitemCustomCols,
     onDeleteSubitemCustomCol,
     onRequestAddSubitemCol,
@@ -1228,6 +1230,7 @@ export function SubitemsTable({
                                         )}
                                         {openColumnMenu === `${tablePrefix}:${col.key}` && (
                                             <div className="absolute left-0 top-full z-[80] mt-1 w-36 rounded-md border border-gray-200 bg-white p-1 text-left shadow-xl">
+                                                {((tablePrefix === 'subitem' && ['people', 'status'].includes(col.key)) || (tablePrefix === 'payment' && ['payment', 'paymentStatus'].includes(col.key))) && <button type="button" onClick={() => { onFilterColumn?.(col.key === 'people' ? 'people' : `${tablePrefix}:${col.key}`); setOpenColumnMenu(null); }} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-[10px] font-medium text-gray-700 hover:bg-gray-50"><Filter size={12} /> Filter</button>}
                                                 <button type="button" onClick={() => onHideColumn(`${tablePrefix}:${col.key}`)} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-[10px] font-medium text-gray-700 hover:bg-gray-50">
                                                     <EyeOff size={12} /> Hide column
                                                 </button>

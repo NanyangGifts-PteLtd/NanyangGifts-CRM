@@ -74,6 +74,7 @@ export type ClientRowProps = {
     onAddModeOfPayment?: (name: string) => void | Promise<void>;
     onDeleteModeOfPayment?: (name: string) => void | Promise<void>;
     onUpdateOptionColor?: (code: string, name: string, color: string) => void | Promise<void>;
+    onFilterColumn?: (column: string) => void;
     clientCustomCols: CustomColumn[];
     subitemCustomCols: CustomColumn[];
     onDeleteCustomColumn: (id: string) => void;
@@ -152,6 +153,7 @@ export function ClientRow({
     onAddModeOfPayment,
     onDeleteModeOfPayment,
     onUpdateOptionColor,
+    onFilterColumn,
     clientCustomCols,
     subitemCustomCols,
     onDeleteCustomColumn,
@@ -847,6 +849,7 @@ export function ClientRow({
                     currentUserRole={currentUserRole}
                     currentUserId={currentUserId}
                     onUpdateOptionColor={onUpdateOptionColor}
+                    onFilterColumn={onFilterColumn}
                     hiddenColumnKeys={hiddenColumnKeys}
                     onHideColumn={onHideColumn}
                     onSetColumnVisibility={onSetColumnVisibility}
