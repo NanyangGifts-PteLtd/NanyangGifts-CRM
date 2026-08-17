@@ -189,6 +189,7 @@ export async function POST(req: NextRequest) {
             company_address: "",
             billing_address: "",
             created_at: createdAt,
+            waiting_started_at: createdAt,
             expanded: false,
             color: "#7BCBD5",
             activity_log: [

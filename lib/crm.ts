@@ -77,6 +77,7 @@ type Subitems = {
     id: string;
     client_id: string;
     created_at: string | null;
+    waiting_started_at: string | null;
     name: string | null;
     people: string | null;
     status: string | null;
@@ -349,6 +350,7 @@ function mapClients(row: Clients): Client {
         companyAddress: row.company_address ?? '',
         billingAddress: row.billing_address ?? '',
         createdAt: row.created_at ?? '',
+        waitingStartedAt: row.waiting_started_at ?? null,
         groupId: row.group_id ?? null,
         expanded: row.expanded ?? false,
         color: row.color ?? '#7BCBD5',
@@ -524,6 +526,13 @@ export async function updateClientRow(
 
     if (fetchError) throw fetchError;
 
+    const nextUpdates = { ...updates } as Partial<Client>;
+    if (updates.replyStatus !== undefined && updates.replyStatus !== existing.reply_status) {
+        nextUpdates.waitingStartedAt = updates.replyStatus === 'Waiting...'
+            ? new Date().toISOString()
+            : null;
+    }
+
     const mapped = {
         ...updates,
         group_id: updates.groupId,
@@ -533,7 +542,7 @@ export async function updateClientRow(
     const payload = {
         ...(updates.name !== undefined ? { name: updates.name } : {}),
         ...(updates.people !== undefined ? { people: updates.people } : {}),
-        ...(updates.replyStatus !== undefined ? { reply_status: updates.replyStatus } : {}),
+        ...(nextUpdates.replyStatus !== undefined ? { reply_status: nextUpdates.replyStatus } : {}),
         ...(updates.followUp !== undefined ? { follow_up: updates.followUp } : {}),
         ...(updates.status !== undefined ? { status: updates.status } : {}),
         ...(updates.channel !== undefined ? { channel: updates.channel } : {}),
@@ -551,6 +560,7 @@ export async function updateClientRow(
         ...(updates.color !== undefined ? { color: updates.color } : {}),
         ...(updates.activityLog !== undefined ? { activity_log: updates.activityLog } : {}),
         ...(updates.customFields !== undefined ? { custom_fields: updates.customFields } : {}),
+        ...(nextUpdates.waitingStartedAt !== undefined ? { waiting_started_at: nextUpdates.waitingStartedAt } : {}),
     };
 
     const { error } = await supabase

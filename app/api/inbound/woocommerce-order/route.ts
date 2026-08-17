@@ -223,6 +223,7 @@ export async function POST(req: NextRequest) {
             company_address: companyAddress,
             billing_address: billingAddress,
             created_at: createdAt,
+            waiting_started_at: createdAt,
             expanded: false,
             color: "#7BCBD5",
             activity_log: [

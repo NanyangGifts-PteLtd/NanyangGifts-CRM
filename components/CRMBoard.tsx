@@ -1571,10 +1571,19 @@ export function CRMBoard({ clients,
 
   // --- Assignees ---
   const handleClientAssigneesChange = useCallback(async (clientId: string, ids: string[]) => {
+    const previousIds = clientAssignees[clientId] ?? [];
     setClientAssignees((prev) => ({ ...prev, [clientId]: ids }));
-    try { await saveClientAssignees(clientId, ids, currentUserId); }
+    try {
+      await saveClientAssignees(clientId, ids, currentUserId);
+      const clientName = clients.find((client) => client.id === clientId)?.name ?? 'A client';
+      await Promise.all(ids.filter((id) => !previousIds.includes(id)).map((recipientUserId) => fetch('/api/notifications', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ recipientUserId, clientId, message: `You have been assigned to ${clientName}.` }),
+      })));
+    }
     catch (error: any) { console.error('Failed to save client assignees', error); }
-  }, [currentUserId]);
+  }, [clientAssignees, clients, currentUserId]);
 
   const handleSubitemAssigneesChange = useCallback(async (subitemId: string, ids: string[]) => {
     setSubitemAssignees((prev) => ({ ...prev, [subitemId]: ids }));

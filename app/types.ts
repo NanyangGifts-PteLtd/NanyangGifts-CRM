@@ -132,6 +132,7 @@ export type ActivityEntry = {
   newValue?: unknown;
   actorName: string;
   createdAt: string;
+  waitingStartedAt?: string | null;
   subitemId?: string;
   subitemName?: string;
   link?: string | null;

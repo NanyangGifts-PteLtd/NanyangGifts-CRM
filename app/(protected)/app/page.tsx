@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from 'react';
-import type { Client, ClientAssigneeMap, SubitemAssigneeMap, Profile } from '../../types';
+import type { Client, ClientAssigneeMap, SubitemAssigneeMap, Profile, Notification } from '../../types';
 import { fetchClientsWithSubitems } from '@/lib/crm';
 import { CRMBoard } from '@/components/CRMBoard';
 import Sidebar, { type SidePanel } from '../../../components/Sidebar';
@@ -26,6 +26,7 @@ export default function Page() {
   const [clientAssignees, setClientAssignees] = useState<ClientAssigneeMap>({});
   const [subitemAssignees, setSubitemAssignees] = useState<SubitemAssigneeMap>({});
   const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
 
   const reloadClients = useCallback(async () => {
     try {
@@ -77,6 +78,28 @@ export default function Page() {
     };
 
     void loadUserAndRole();
+  }, []);
+
+  const loadNotifications = useCallback(async () => {
+    const response = await fetch('/api/notifications');
+    if (!response.ok) return;
+    setNotifications(await response.json() as Notification[]);
+  }, []);
+
+  useEffect(() => {
+    void loadNotifications();
+    const interval = window.setInterval(() => void loadNotifications(), 60_000);
+    return () => window.clearInterval(interval);
+  }, [loadNotifications]);
+
+  const markNotificationRead = useCallback(async (id: string) => {
+    await fetch('/api/notifications', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
+    setNotifications((previous) => previous.map((notification) => notification.id === id ? { ...notification, read: true } : notification));
+  }, []);
+
+  const markAllNotificationsRead = useCallback(async () => {
+    await fetch('/api/notifications', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ all: true }) });
+    setNotifications((previous) => previous.map((notification) => ({ ...notification, read: true })));
   }, []);
 
   useEffect(() => {
@@ -170,8 +193,9 @@ export default function Page() {
         <TopBar
           value={search}
           onChange={setSearch}
-          onMarkAllRead={() => { }}
-          notifications={[]}
+          onMarkAllRead={markAllNotificationsRead}
+          onMarkRead={markNotificationRead}
+          notifications={notifications}
           user={user}
           currentUserRole={currentUserRole}
           clients={clients}
