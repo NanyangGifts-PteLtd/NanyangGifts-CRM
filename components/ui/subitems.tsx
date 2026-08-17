@@ -10,6 +10,16 @@ import { AssigneeMultiSelect } from "./assignee-multiselect";
 import { TimelineSection, DEFAULT_TIMELINE_ROWS } from "./timeline";
 import { CustomColumn } from "@/lib/custom-columns";
 import { toast } from "sonner";
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "./alert-dialog";
 
 export const dynamic = "force-dynamic";
 
@@ -231,6 +241,7 @@ export function SubitemsTable({
     const [openColumnMenu, setOpenColumnMenu] = useState<string | null>(null);
 
     const [pushingSubitemId, setPushingSubitemId] = useState<string | null>(null);
+    const [pendingPushSubitemId, setPendingPushSubitemId] = useState<string | null>(null);
     const [activitySubitem, setActivitySubitem] = useState<Subitem | null>(null);
     const [undoneActivityIds, setUndoneActivityIds] = useState<Set<string>>(new Set());
 
@@ -757,7 +768,7 @@ export function SubitemsTable({
         [selectedSubitems]
     );
 
-    async function handlePushToShipperView(subitemId: string) {
+    async function handlePushToShipperView(subitemId: string, overwrite = false) {
         try {
             setPushingSubitemId(subitemId);
 
@@ -771,10 +782,16 @@ export function SubitemsTable({
                     },
                     body: JSON.stringify({
                         subitemIds: [subitemId],
+                        overwrite,
                     }),
                 });
 
                 const result = await response.json();
+
+                if (response.status === 409 && result?.alreadyPushed && !overwrite) {
+                    setPendingPushSubitemId(subitemId);
+                    return;
+                }
 
                 if (!response.ok) {
                     throw new Error(result?.error || "Failed to push to shipper view.");
@@ -1145,6 +1162,30 @@ export function SubitemsTable({
             style={{ borderLeft: `7px solid ${clientColor}` }}
             data-client-id={clientId}
         >
+            <AlertDialog open={!!pendingPushSubitemId} onOpenChange={(open) => !open && setPendingPushSubitemId(null)}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Push this subitem again?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            This subitem has been pushed before. Pushing it again will overwrite the existing information on the shipper view.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                            onClick={async () => {
+                                if (!pendingPushSubitemId) return;
+                                const subitemId = pendingPushSubitemId;
+                                setPendingPushSubitemId(null);
+                                await handlePushToShipperView(subitemId, true);
+                            }}
+                        >
+                            Overwrite and push
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+
             {activitySubitem ? (
                 <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/30 p-4">
                     <div className="w-full max-w-2xl rounded-xl bg-white p-4 shadow-xl">

@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 
 type PushShipperViewBody = {
     subitemIds: string[];
+    overwrite?: boolean;
 };
 
 const ALLOWED_ROLES = ["pm", "director", "dev"];
@@ -85,7 +86,31 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "subitemIds is required" }, { status: 400 });
         }
 
-        const { data: subitems, error: subitemsError } = await supabase
+        const { data: allShippers, error: shippersError } = await supabase
+            .from("shippers")
+            .select("id, name");
+
+        if (shippersError) {
+            return NextResponse.json({ error: shippersError.message }, { status: 500 });
+        }
+
+        const normalize = (value: string | null | undefined) => value?.trim().toLowerCase() ?? "";
+        const shipperByName = new Map(
+            (allShippers ?? []).map((shipper) => [normalize(shipper.name), shipper.id])
+        );
+        const shipperIds = new Set((allShippers ?? []).map((shipper) => shipper.id));
+        const resolveShipperId = (label: string | null | undefined) => {
+            const normalizedLabel = normalize(label);
+            if (!normalizedLabel) return null;
+
+            const exactId = shipperByName.get(normalizedLabel);
+            if (exactId) return exactId;
+
+            const baseName = normalizedLabel.replace(/\s+-\s+(sea|air)\s*$/i, "").trim();
+            return shipperByName.get(baseName) ?? null;
+        };
+
+        const { data: rawSubitems, error: subitemsError } = await supabase
             .from("subitems")
             .select(`
         id,
@@ -105,8 +130,52 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: subitemsError.message }, { status: 500 });
         }
 
-        if (!subitems || subitems.length === 0) {
-            return NextResponse.json({ error: "Subitem has no shipper_id with supported shipper view" }, { status: 404 });
+        const subitems = (rawSubitems ?? []).map((item) => ({
+            ...item,
+            shipper_id: item.shipper_id && shipperIds.has(item.shipper_id)
+                ? item.shipper_id
+                : resolveShipperId(item.shipper),
+        }));
+        const unresolvedItems = subitems.filter((item) => !item.shipper_id);
+
+        if (subitems.length === 0 || unresolvedItems.length > 0) {
+            return NextResponse.json({
+                error: unresolvedItems.length > 0
+                    ? `Unsupported shipper label: ${unresolvedItems.map((item) => item.shipper || "blank").join(", ")}`
+                    : "Subitem has no shipper configured",
+            }, { status: 404 });
+        }
+
+        for (const item of subitems) {
+            const rawItem = rawSubitems?.find((raw) => raw.id === item.id);
+            if (rawItem?.shipper_id !== item.shipper_id && item.shipper_id) {
+                const { error: repairError } = await supabase
+                    .from("subitems")
+                    .update({ shipper_id: item.shipper_id })
+                    .eq("id", item.id);
+                if (repairError) {
+                    return NextResponse.json({ error: repairError.message }, { status: 500 });
+                }
+            }
+        }
+
+        if (!body.overwrite) {
+            const { data: existingRows, error: existingRowsError } = await supabase
+                .from("shipper_view_rows")
+                .select("subitem_id")
+                .in("subitem_id", subitems.map((item) => item.id));
+
+            if (existingRowsError) {
+                return NextResponse.json({ error: existingRowsError.message }, { status: 500 });
+            }
+
+            if ((existingRows ?? []).length > 0) {
+                return NextResponse.json({
+                    error: "This subitem has already been pushed. Pushing again will overwrite existing shipper-view information.",
+                    alreadyPushed: true,
+                    subitemIds: existingRows?.map((row) => row.subitem_id) ?? [],
+                }, { status: 409 });
+            }
         }
 
         const pushedByName = profile.full_name?.trim() || profile.email || user.email || user.id;

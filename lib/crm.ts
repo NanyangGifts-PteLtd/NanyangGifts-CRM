@@ -713,14 +713,6 @@ export async function updateSubitemRow(subitemId: string, updates: Partial<Subit
 
     if (fetchError) throw fetchError;
 
-    const SHIPPER_NAME_TO_ID: Record<string, string> = {
-        "小李 - SEA": "67bdaa10-2e2b-4f62-8b9b-118be712fe55",
-        "小李 - AIR": "67bdaa10-2e2b-4f62-8b9b-118be712fe55",
-        "Tiger - SEA": "61d1c7d6-3a99-412e-872a-c1e1c21193a1",
-        "Tiger - AIR": "61d1c7d6-3a99-412e-872a-c1e1c21193a1",
-        "A5 汇荣": "9e9e0dc2-3448-4de2-b2c6-b9003f5dcff4",
-    };
-
     const nextUpdates: Partial<Subitem> = { ...updates };
 
     if ("qty" in updates || "up" in updates) {
@@ -729,9 +721,20 @@ export async function updateSubitemRow(subitemId: string, updates: Partial<Subit
         nextUpdates.price = String(qty * up);
     }
 
-    nextUpdates.shipperId = nextUpdates.shipper
-        ? (SHIPPER_NAME_TO_ID[nextUpdates.shipper] ?? null)
-        : null;
+    if (nextUpdates.shipper !== undefined) {
+        const { data: shippers, error: shippersError } = await supabase
+            .from('shippers')
+            .select('id, name');
+        if (shippersError) throw shippersError;
+
+        const normalizedLabel = nextUpdates.shipper.trim().toLowerCase();
+        const baseName = normalizedLabel.replace(/\s+-\s+(sea|air)\s*$/i, '').trim();
+        const matchingShipper = (shippers ?? []).find((shipper) => {
+            const normalizedName = (shipper.name ?? '').trim().toLowerCase();
+            return normalizedName === normalizedLabel || normalizedName === baseName;
+        });
+        nextUpdates.shipperId = matchingShipper?.id ?? null;
+    }
 
     const { error } = await supabase
         .from("subitems")
