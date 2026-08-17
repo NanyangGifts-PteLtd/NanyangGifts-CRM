@@ -131,10 +131,11 @@ function RemarksCell({
     };
 
     const imagePreview = images.map((url) => (
-        <div key={url} className="relative mt-1 w-fit">
+        <div key={url} className="relative mt-2 w-fit max-w-full">
             <a href={url} target="_blank" rel="noreferrer" className="block">
-                <img src={url} alt="Attached remark" className="max-h-24 max-w-full rounded border border-slate-200 object-contain" />
+                <img src={url} alt="Attached remark" className="max-h-48 max-w-[240px] rounded border border-slate-200 object-contain" />
             </a>
+            <div className="mt-1 text-[11px] leading-4 text-slate-400">点击图片放大</div>
             {editable && (
                 <button
                     type="button"
@@ -152,7 +153,7 @@ function RemarksCell({
     if (!editable) return <div>{text || "-"}{imagePreview}</div>;
 
     return (
-        <div onPaste={(event) => {
+        <div className="min-w-[240px]" onPaste={(event) => {
             const image = Array.from(event.clipboardData.files).find((file) => file.type.startsWith("image/"));
             if (image) {
                 event.preventDefault();
@@ -167,7 +168,7 @@ function RemarksCell({
                 onBlur={() => void save()}
             />
             {imagePreview}
-            <label className="mt-1 flex cursor-pointer items-center gap-1 text-[10px] text-slate-400 hover:text-slate-600">
+            <label className="mt-2 flex cursor-pointer items-center gap-1 whitespace-nowrap text-[11px] leading-4 text-slate-400 hover:text-slate-600">
                 <ImagePlus size={12} />
                 <span>{uploading ? "加载中..." : "在此粘贴或附上图片"}</span>
                 <input type="file" accept="image/*" className="sr-only" disabled={uploading} onChange={(event) => {
@@ -194,7 +195,7 @@ export default function ShipperGrid({ rows, mode, token }: ShipperGridProps) {
         { key: "other_fees", label: "其他费用", editableByPm: true, editableByShipper: true },
         { key: "total_cost", label: "总计费用", editableByPm: true, editableByShipper: true },
         { key: "channel", label: "渠道", editableByPm: true, editableByShipper: true },
-        { key: "logistics_remarks", label: "备注", editableByPm: true, editableByShipper: true },
+        { key: "logistics_remarks", label: "备注", editableByPm: true, editableByShipper: true, width: 280 },
 
         { key: "ic", label: "谁下单 / I/C", editableByPm: true, editableByShipper: false },
         { key: "info_provided_date", label: "提供资料日期", editableByPm: true, editableByShipper: false },
@@ -207,7 +208,7 @@ export default function ShipperGrid({ rows, mode, token }: ShipperGridProps) {
         { key: "value", label: "货值 / Value", editableByPm: true, editableByShipper: false },
         { key: "sea_or_air", label: "海运、空运 / Sea or Air?", editableByPm: true, editableByShipper: false },
         { key: "tax_refund", label: "退税?", editableByPm: true, editableByShipper: false },
-        { key: "shipper_remarks", label: "备注 / Remarks", editableByPm: true, editableByShipper: false },
+        { key: "shipper_remarks", label: "备注 / Remarks", editableByPm: true, editableByShipper: false, width: 280 },
         { key: "samples_by_air", label: "发样品空运 / Samples to send by air", editableByPm: true, editableByShipper: false },
         { key: "samples_by_sea", label: "发样品海运 / Samples to send by sea", editableByPm: true, editableByShipper: false },
         { key: "air_received", label: "空运收到 / Air received", editableByPm: true, editableByShipper: false },
@@ -243,6 +244,7 @@ export default function ShipperGrid({ rows, mode, token }: ShipperGridProps) {
                             {columns.map((col) => (
                                 <th
                                     key={col.key}
+                                    style={col.width ? { minWidth: col.width, width: col.width } : undefined}
                                     className={`sticky top-0 z-20 border border-slate-400 px-3 py-2 text-center whitespace-nowrap ${col.editableByShipper ? "bg-white text-black" : "bg-[#4588ed] text-white" 
                                         }`}
                                 >
@@ -275,6 +277,7 @@ export default function ShipperGrid({ rows, mode, token }: ShipperGridProps) {
                                             <td
                                                 key={col.key}
                                                 className="border border-slate-300 px-1 py-2 whitespace-pre-wrap"
+                                                style={col.width ? { minWidth: col.width, width: col.width } : undefined}
                                             >
                                                 {col.key === "logistics_remarks" || col.key === "shipper_remarks" ? (
                                                     <RemarksCell
