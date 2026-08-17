@@ -1586,10 +1586,27 @@ export function CRMBoard({ clients,
   }, [clientAssignees, clients, currentUserId]);
 
   const handleSubitemAssigneesChange = useCallback(async (subitemId: string, ids: string[]) => {
+    const previousIds = subitemAssignees[subitemId] ?? [];
     setSubitemAssignees((prev) => ({ ...prev, [subitemId]: ids }));
-    try { await saveSubitemAssignees(subitemId, ids, currentUserId); }
+    try {
+      await saveSubitemAssignees(subitemId, ids, currentUserId);
+      const parentClient = clients.find((client) => client.subitems.some((subitem) => subitem.id === subitemId));
+      if (!parentClient) return;
+      const subitem = parentClient?.subitems.find((item) => item.id === subitemId);
+      const subitemName = subitem?.name || 'a subitem';
+      const clientName = parentClient?.name || 'a client';
+      await Promise.all(ids.filter((id) => !previousIds.includes(id)).map((recipientUserId) => fetch('/api/notifications', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          recipientUserId,
+          clientId: parentClient?.id,
+          message: `You have been assigned to subitem ${subitemName} under ${clientName}.`,
+        }),
+      })));
+    }
     catch (error: any) { console.error('Failed to save subitem assignees', error); }
-  }, [currentUserId]);
+  }, [clients, currentUserId, subitemAssignees]);
 
   const STATUS_TO_GROUP_NAME: Partial<Record<ClientStatus, string>> = {
     'Follow Up': 'Follow Up',

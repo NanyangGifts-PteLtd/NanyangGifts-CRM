@@ -160,8 +160,20 @@ export default function TopBar({
   const settingsRef = useRef<HTMLDivElement>(null);
   const [showOcfSettings, setShowOcfSettings] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
+  const [hasNewNotification, setHasNewNotification] = useState(false);
 
   const unreadCount = notifications.filter(n => !n.read).length;
+  const previousUnreadCount = useRef(unreadCount);
+
+  useEffect(() => {
+    if (unreadCount > previousUnreadCount.current) {
+      setHasNewNotification(true);
+      const timer = window.setTimeout(() => setHasNewNotification(false), 1400);
+      previousUnreadCount.current = unreadCount;
+      return () => window.clearTimeout(timer);
+    }
+    previousUnreadCount.current = unreadCount;
+  }, [unreadCount]);
 
   const displayName =
     user?.user_metadata?.full_name ||
@@ -206,7 +218,7 @@ export default function TopBar({
             setShowProfile(false);
             setShowSettings(false);
           }}
-          className="relative p-2 rounded-md hover:bg-[#43adc4] text-black-300 hover:text-white transition-colors transition transform active:scale-95 duration-150"
+          className={`relative p-2 rounded-md hover:bg-[#43adc4] text-black-300 hover:text-white transition-colors transition transform active:scale-95 duration-150 ${hasNewNotification ? 'animate-[notification-shake_0.7s_ease-in-out]' : ''}`}
         >
           <Bell size={16} />
           {unreadCount > 0 && (
@@ -215,6 +227,7 @@ export default function TopBar({
               style={{ fontSize: '9px' }}
             >
               {unreadCount}
+              {hasNewNotification && <span className="absolute inset-0 rounded-full bg-red-400 opacity-60 animate-ping" />}
             </span>
           )}
         </button>

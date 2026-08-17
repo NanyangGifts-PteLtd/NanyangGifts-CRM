@@ -44,6 +44,7 @@ function initials(profile: Profile) {
 export function AssigneeMultiSelect({ profiles, selectedIds, onChange }: Props) {
     const [open, setOpen] = useState(false);
     const [query, setQuery] = useState('');
+    const [menuStyle, setMenuStyle] = useState<React.CSSProperties>({});
 
     const selectedProfiles = useMemo(
         () => profiles.filter((p) => selectedIds.includes(p.id)),
@@ -86,7 +87,30 @@ export function AssigneeMultiSelect({ profiles, selectedIds, onChange }: Props) 
             <div className="relative">
                 <button
                     type="button"
-                    onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        if (!open) {
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            const menuWidth = 288;
+                            const menuHeight = 320;
+                            const gap = 4;
+                            const left = Math.min(
+                                Math.max(8, rect.left),
+                                Math.max(8, window.innerWidth - menuWidth - 8),
+                            );
+                            const openBelow = rect.bottom + gap + menuHeight <= window.innerHeight - 8;
+                            setMenuStyle({
+                                position: 'fixed',
+                                left,
+                                ...(openBelow
+                                    ? { top: rect.bottom + gap }
+                                    : { bottom: window.innerHeight - rect.top + gap }),
+                                zIndex: 9999,
+                                width: menuWidth,
+                            });
+                        }
+                        setOpen((v) => !v);
+                    }}
                     className="min-h-[25px] w-full rounded-md !text-center hover:bg-gray-50 transition transform active:scale-95 duration-150"
                 >
                     {selectedProfiles.length > 0 ? (
@@ -110,7 +134,7 @@ export function AssigneeMultiSelect({ profiles, selectedIds, onChange }: Props) 
                 </button>
 
                 {open && (
-                    <div className="fixed left-[500px] right-[200px] z-[9999] w-72 rounded-lg border border-gray-200 bg-white p-2 shadow-xl">
+                    <div style={menuStyle} className="fixed max-h-[min(320px,calc(100vh-1rem))] overflow-hidden rounded-lg border border-gray-200 bg-white p-2 shadow-xl">
                         <input
                             value={query}
                             onChange={(e) => setQuery(e.target.value)}
