@@ -149,6 +149,7 @@ type Clients = {
     company_address: string | null;
     billing_address: string | null;
     created_at: string | null;
+    waiting_started_at: string | null;
     group_id: string;
     expanded: boolean | null;
     color: string | null;
