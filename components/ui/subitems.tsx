@@ -9,6 +9,7 @@ import { SamplesSection } from "./sample";
 import { AssigneeMultiSelect } from "./assignee-multiselect";
 import { TimelineSection, DEFAULT_TIMELINE_ROWS } from "./timeline";
 import { CustomColumn } from "@/lib/custom-columns";
+import { toast } from "sonner";
 
 export const dynamic = "force-dynamic";
 
@@ -322,6 +323,7 @@ export function SubitemsTable({
                 .then(({ saveUserSetting }) => saveUserSetting(storageKey, next.map((col) => col.key)))
                 .catch((error) => console.warn('Failed to save column arrangement', error));
         }
+            toast.success('Column arrangement saved', { description: `${tableMode === 'payment' ? 'Payment' : 'Subitem'} column order was saved to your account.` });
     };
 
     const isPm = currentUserRole === "pm" || currentUserRole === "dev" || currentUserRole === "director";
@@ -441,6 +443,7 @@ export function SubitemsTable({
         const onMouseUp = () => {
             document.removeEventListener("mousemove", onMouseMove);
             document.removeEventListener("mouseup", onMouseUp);
+            toast.success('Column width saved', { description: `The ${key} column width was saved.` });
         };
 
         document.addEventListener("mousemove", onMouseMove);
@@ -772,8 +775,25 @@ export function SubitemsTable({
                 }
             }
 
+            toast.success("Pushed to shipper view", {
+                description: "The shipping record was created or updated successfully.",
+                action: {
+                    label: "Details",
+                    onClick: () => toast("Push details", {
+                        description: "The subitem was matched to its configured shipper and its shipper-view fields were updated.",
+                    }),
+                },
+            });
+
         } catch (error: any) {
-            alert(error?.message || "Failed to push to shipper view.");
+            const reason = error?.message || "Failed to push to shipper view.";
+            toast.error("Push to shipper view failed", {
+                description: reason,
+                action: {
+                    label: "Details",
+                    onClick: () => toast("Why the push failed", { description: reason }),
+                },
+            });
         } finally {
             setPushingSubitemId(null);
         }

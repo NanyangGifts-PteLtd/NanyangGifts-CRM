@@ -24,6 +24,7 @@ import { GenerateOcfModal } from './Generate-OCF-Modal';
 import { AddGroupModal } from './Add-Group-Modal';
 import { fetchCustomColumns, addCustomColumn, deleteCustomColumn, type CustomColumn } from '@/lib/custom-columns'
 import ClientsLiveRefresh from './RealtimeRefresh';
+import { toast } from 'sonner';
 
 type OptionEntry = { value: string; color: string };
 type HeaderCol = {
@@ -175,6 +176,16 @@ export function CRMBoard({ clients,
   const [openColumnMenu, setOpenColumnMenu] = useState<string | null>(null);
   const [showHideColumns, setShowHideColumns] = useState(false);
 
+  const notifyChange = useCallback((title: string, description: string) => {
+    toast.success(title, {
+      description,
+      action: {
+        label: 'Details',
+        onClick: () => toast(title, { description }),
+      },
+    });
+  }, []);
+
   const openColumnFilter = useCallback((column: string) => {
     setFocusedFilterColumn(column);
     setShowFilter(true);
@@ -184,7 +195,8 @@ export function CRMBoard({ clients,
     setArchivedGroupIds((previous) => new Set(previous).add(groupId));
     setCollapsedGroups((previous) => ({ ...previous, [groupId]: true }));
     setOpenGroupMenu(null);
-  }, []);
+    notifyChange('Group archived', 'The group is now collapsed for your account.');
+  }, [notifyChange]);
 
   const unarchiveGroup = useCallback((groupId: string) => {
     setArchivedGroupIds((previous) => {
@@ -193,13 +205,15 @@ export function CRMBoard({ clients,
       return next;
     });
     setOpenGroupMenu(null);
-  }, []);
+    notifyChange('Group unarchived', 'The group will remain available in your board.');
+  }, [notifyChange]);
   const hiddenSettingsLoadedFor = useRef<string | null>(null);
 
   const hideColumn = useCallback((key: string) => {
     setHiddenColumnKeys((previous) => new Set(previous).add(key));
     setOpenColumnMenu(null);
-  }, []);
+    notifyChange('Column hidden', `${key.replace(/^[^:]+:/, '')} is hidden for your account.`);
+  }, [notifyChange]);
 
   const setColumnVisibility = useCallback((key: string, visible: boolean) => {
     setHiddenColumnKeys((previous) => {
@@ -208,7 +222,8 @@ export function CRMBoard({ clients,
       else next.add(key);
       return next;
     });
-  }, []);
+    notifyChange(visible ? 'Column restored' : 'Column hidden', visible ? `${key.replace(/^[^:]+:/, '')} is visible again.` : `${key.replace(/^[^:]+:/, '')} is hidden for your account.`);
+  }, [notifyChange]);
 
   useEffect(() => {
     if (!currentUserId) {
@@ -311,7 +326,8 @@ export function CRMBoard({ clients,
         .then(({ saveUserSetting }) => saveUserSetting('colOrder:clients', next.map((c) => c.key)))
         .catch((error) => console.warn('Failed to save client column arrangement', error));
     }
-  }, [headerCols, currentUserId]);
+    notifyChange('Column arrangement saved', 'The client column order was saved to your account.');
+  }, [headerCols, currentUserId, notifyChange]);
 
   const setDragPreview = (event: React.DragEvent, source: HTMLElement, includeColumnCells = false) => {
     if (!event.dataTransfer) return;
@@ -414,7 +430,8 @@ export function CRMBoard({ clients,
         console.warn('Failed to persist restored default column widths', e);
       }
     }
-  }, [currentUserId]);
+    notifyChange('Column widths restored', 'Client, subitem, and payment widths were reset to their defaults.');
+  }, [currentUserId, notifyChange]);
 
   const handleRestoreDefaultArrangement = useCallback(async () => {
     const clientOrder = CLIENT_HEADER_COLS.map((col) => col.key);
@@ -452,7 +469,8 @@ export function CRMBoard({ clients,
         console.warn('Failed to persist restored default column arrangement', error);
       }
     }
-  }, [currentUserId]);
+    notifyChange('Column arrangement restored', 'Client, subitem, and payment columns were reset to their defaults.');
+  }, [currentUserId, notifyChange]);
 
   // User custom columns
   const [customColumns, setCustomColumns] = useState<CustomColumn[]>([]);
@@ -893,7 +911,10 @@ export function CRMBoard({ clients,
       if (!trimmed) return;
 
       const groupId = await getOptionGroupId(code);
-      if (!groupId) return;
+      if (!groupId) {
+        toast.error('Option could not be added', { description: `The ${code.replaceAll('_', ' ')} option group was not found.` });
+        return;
+      }
 
       const supabase = createSupabaseClient();
       const { data, error } = await supabase
@@ -909,12 +930,14 @@ export function CRMBoard({ clients,
 
       if (error) {
         console.error(`Failed to insert option into ${code}`, error);
+        toast.error('Option could not be added', { description: error.message });
         return;
       }
 
       setEntries((prev) => [...prev, data]);
+      notifyChange('Option added', `${trimmed} is now available in the ${code.replaceAll('_', ' ')} list.`);
     },
-    [getOptionGroupId]
+    [getOptionGroupId, notifyChange]
   );
 
   const deleteOptionValue = useCallback(
@@ -924,7 +947,10 @@ export function CRMBoard({ clients,
       setEntries: React.Dispatch<React.SetStateAction<OptionEntry[]>>
     ) => {
       const groupId = await getOptionGroupId(code);
-      if (!groupId) return;
+      if (!groupId) {
+        toast.error('Option could not be deleted', { description: `The ${code.replaceAll('_', ' ')} option group was not found.` });
+        return;
+      }
 
       const supabase = createSupabaseClient();
       const { error } = await supabase
@@ -935,17 +961,22 @@ export function CRMBoard({ clients,
 
       if (error) {
         console.error(`Failed to delete option from ${code}`, error);
+        toast.error('Option could not be deleted', { description: error.message });
         return;
       }
 
       setEntries((prev) => prev.filter((e) => e.value !== name));
+      notifyChange('Option deleted', `${name} was removed from the ${code.replaceAll('_', ' ')} list.`);
     },
-    [getOptionGroupId]
+    [getOptionGroupId, notifyChange]
   );
 
   const updateOptionColor = useCallback(async (code: string, name: string, color: string) => {
     const groupId = await getOptionGroupId(code);
-    if (!groupId) return;
+    if (!groupId) {
+      toast.error('Label color could not be changed', { description: `The ${code.replaceAll('_', ' ')} option group was not found.` });
+      return;
+    }
 
     const supabase = createSupabaseClient();
     const { error } = await supabase
@@ -956,6 +987,7 @@ export function CRMBoard({ clients,
 
     if (error) {
       console.error(`Failed to update option color for ${code}`, error);
+      toast.error('Label color could not be changed', { description: error.message });
       return;
     }
 
@@ -974,7 +1006,8 @@ export function CRMBoard({ clients,
       subitem_subprogress: setSubitemSubprogressEntries,
     };
     setters[code]?.((previous) => previous.map((entry) => entry.value === name ? { ...entry, color } : entry));
-  }, [getOptionGroupId]);
+    notifyChange('Label color changed', `${name} now uses the selected color.`);
+  }, [getOptionGroupId, notifyChange]);
 
   const handleAddShipper = useCallback(
     async (name: string) => {
@@ -1096,16 +1129,18 @@ export function CRMBoard({ clients,
     const { data, error } = await supabase.from('option_values')
       .insert({ group_id: group.id, value: trimmed, color: '#d1d5db', sort_order: replyStatuses.length })
       .select('value, color').single();
-    if (error) { console.error(error); return; }
+    if (error) { console.error(error); toast.error('Reply status could not be added', { description: error.message }); return; }
     setReplyStatusEntries((prev) => [...prev, data]);
-  }, [replyStatuses.length]);
+    notifyChange('Option added', `${trimmed} was added to Reply Status.`);
+  }, [replyStatuses.length, notifyChange]);
 
   const handleDeleteReplyStatus = useCallback(async (name: string) => {
     const supabase = createSupabaseClient();
     const { error } = await supabase.from('option_values').delete().eq('value', name);
-    if (error) { console.error(error); return; }
+    if (error) { console.error(error); toast.error('Reply status could not be deleted', { description: error.message }); return; }
     setReplyStatusEntries((prev) => prev.filter((e) => e.value !== name));
-  }, []);
+    notifyChange('Option deleted', `${name} was removed from Reply Status.`);
+  }, [notifyChange]);
 
   const handleAddStatus = useCallback(async (name: string) => {
     const trimmed = name.trim();
@@ -1116,16 +1151,18 @@ export function CRMBoard({ clients,
     const { data, error } = await supabase.from('option_values')
       .insert({ group_id: group.id, value: trimmed, color: '#d1d5db', sort_order: clientStatuses.length })
       .select('value, color').single();
-    if (error) { console.error(error); return; }
+    if (error) { console.error(error); toast.error('Status could not be added', { description: error.message }); return; }
     setClientStatusEntries((prev) => [...prev, data]);
-  }, [clientStatuses.length]);
+    notifyChange('Option added', `${trimmed} was added to Status.`);
+  }, [clientStatuses.length, notifyChange]);
 
   const handleDeleteStatus = useCallback(async (name: string) => {
     const supabase = createSupabaseClient();
     const { error } = await supabase.from('option_values').delete().eq('value', name);
-    if (error) { console.error(error); return; }
+    if (error) { console.error(error); toast.error('Status could not be deleted', { description: error.message }); return; }
     setClientStatusEntries((prev) => prev.filter((e) => e.value !== name));
-  }, []);
+    notifyChange('Option deleted', `${name} was removed from Status.`);
+  }, [notifyChange]);
 
   const handleAddChannel = useCallback(async (name: string) => {
     const trimmed = name.trim();
@@ -1136,16 +1173,18 @@ export function CRMBoard({ clients,
     const { data, error } = await supabase.from('option_values')
       .insert({ group_id: group.id, value: trimmed, color: '#d1d5db', sort_order: channelOptions.length })
       .select('value, color').single();
-    if (error) { console.error(error); return; }
+    if (error) { console.error(error); toast.error('Channel could not be added', { description: error.message }); return; }
     setChannelEntries((prev) => [...prev, data]);
-  }, [channelOptions.length]);
+    notifyChange('Option added', `${trimmed} was added to Channel.`);
+  }, [channelOptions.length, notifyChange]);
 
   const handleDeleteChannel = useCallback(async (name: string) => {
     const supabase = createSupabaseClient();
     const { error } = await supabase.from('option_values').delete().eq('value', name);
-    if (error) { console.error(error); return; }
+    if (error) { console.error(error); toast.error('Channel could not be deleted', { description: error.message }); return; }
     setChannelEntries((prev) => prev.filter((e) => e.value !== name));
-  }, []);
+    notifyChange('Option deleted', `${name} was removed from Channel.`);
+  }, [notifyChange]);
 
   const handleAddImportance = useCallback(async (name: string) => {
     const trimmed = name.trim();
@@ -1156,16 +1195,18 @@ export function CRMBoard({ clients,
     const { data, error } = await supabase.from('option_values')
       .insert({ group_id: group.id, value: trimmed, color: '#d1d5db', sort_order: importanceOptions.length })
       .select('value, color').single();
-    if (error) { console.error(error); return; }
+    if (error) { console.error(error); toast.error('Importance could not be added', { description: error.message }); return; }
     setImportanceEntries((prev) => [...prev, data]);
-  }, [importanceOptions.length]);
+    notifyChange('Option added', `${trimmed} was added to Importance.`);
+  }, [importanceOptions.length, notifyChange]);
 
   const handleDeleteImportance = useCallback(async (name: string) => {
     const supabase = createSupabaseClient();
     const { error } = await supabase.from('option_values').delete().eq('value', name);
-    if (error) { console.error(error); return; }
+    if (error) { console.error(error); toast.error('Importance could not be deleted', { description: error.message }); return; }
     setImportanceEntries((prev) => prev.filter((e) => e.value !== name));
-  }, []);
+    notifyChange('Option deleted', `${name} was removed from Importance.`);
+  }, [notifyChange]);
 
   // --- Groups ---
   const handleAddGroup = useCallback(async (name: string) => {
@@ -1183,10 +1224,12 @@ export function CRMBoard({ clients,
         .select('id, name, color, sort_order').single();
       if (error) throw error;
       setGroups((prev) => [...prev, data]);
+      notifyChange('Group added', `${trimmed} is now available on the board.`);
     } catch (error) {
       console.error('Failed to add group', error);
+      toast.error('Group could not be added', { description: error instanceof Error ? error.message : 'The group was not saved.' });
     }
-  }, [groups, currentUserId]);
+  }, [groups, currentUserId, notifyChange]);
 
   const handleDeleteGroup = useCallback(async () => {
     if (!groupToDelete) return;
@@ -1203,13 +1246,15 @@ export function CRMBoard({ clients,
       setClients((prev) => prev.filter((c) => c.groupId !== groupToDelete.id));
       setGroups((prev) => prev.filter((g) => g.id !== groupToDelete.id));
       setCollapsedGroups((prev) => { const next = { ...prev }; delete next[groupToDelete.id]; return next; });
+      notifyChange('Group deleted', `${groupToDelete.name} and its clients were removed.`);
       setGroupToDelete(null);
     } catch (error) {
       console.error('Failed to delete group', error);
+      toast.error('Group could not be deleted', { description: error instanceof Error ? error.message : 'The group was not deleted.' });
     } finally {
       setIsDeletingGroup(false);
     }
-  }, [groupToDelete, clients, setClients]);
+  }, [groupToDelete, clients, setClients, notifyChange]);
 
 
   // Custom col handlers
@@ -1273,6 +1318,7 @@ export function CRMBoard({ clients,
     const onMouseUp = () => {
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
+      notifyChange('Column width saved', `The ${key} column width was saved.`);
     };
     document.addEventListener('mousemove', onMouseMove);
     document.addEventListener('mouseup', onMouseUp);
@@ -1540,16 +1586,38 @@ export function CRMBoard({ clients,
 
   const updateClient = useCallback(async (clientId: string, updates: Partial<Client>) => {
     let nextUpdates = { ...updates };
+    let movedToGroupName: string | null = null;
     if (updates.status) {
       const targetGroupName = STATUS_TO_GROUP_NAME[updates.status];
       if (targetGroupName) {
         const matchingGroup = groups.find((g) => g.name.toLowerCase() === targetGroupName.toLowerCase());
-        if (matchingGroup) nextUpdates.groupId = matchingGroup.id;
+        if (matchingGroup) {
+          nextUpdates.groupId = matchingGroup.id;
+          movedToGroupName = matchingGroup.name;
+        }
       }
     }
     setClients((prev) => prev.map((c) => c.id === clientId ? { ...c, ...nextUpdates } : c));
-    try { await updateClientRow(clientId, nextUpdates); }
-    catch (error: any) { setClients(clients); console.error('Failed to update client', error); }
+    try {
+      await updateClientRow(clientId, nextUpdates);
+      if (movedToGroupName && updates.status) {
+        const clientName = clients.find((client) => client.id === clientId)?.name || 'Client';
+        toast.success(`${clientName} moved to ${movedToGroupName}`, {
+          description: `Status changed to ${updates.status}.`,
+          action: {
+            label: 'Details',
+            onClick: () => toast(`Automation details for ${clientName}`, {
+              description: `Changing the status to ${updates.status} automatically moved this client into the ${movedToGroupName} group.`,
+            }),
+          },
+        });
+      }
+    }
+    catch (error: any) {
+      setClients(clients);
+      console.error('Failed to update client', error);
+      toast.error('Client update failed', { description: error?.message || 'The client change could not be saved.' });
+    }
   }, [clients, groups, setClients]);
 
   const updateSubitem = useCallback(async (_clientId: string, subitemId: string, updates: Partial<Subitem>) => {
@@ -1578,18 +1646,19 @@ export function CRMBoard({ clients,
       };
       setClients((prev) => [newClient, ...prev]);
       setExpandedIds((prev) => [...prev, newClient.id]);
+      notifyChange('Client added', `${newClient.name} was added to the board.`);
       fetchClientAssigneeMap()
         .then((m) => setClientAssignees(m))
         .catch((e) => console.error('Failed to refresh assignees', e));
-    } catch (error: any) { console.error('Failed to add client', error); }
-  }, [currentUserId, groups, setClients, setExpandedIds]);
+    } catch (error: any) { console.error('Failed to add client', error); toast.error('Client could not be added', { description: error?.message || 'The client was not saved.' }); }
+  }, [currentUserId, groups, setClients, setExpandedIds, notifyChange]);
 
   const deleteClient = useCallback(async (clientId: string) => {
     setClients((prev) => prev.filter((c) => c.id !== clientId));
     setSelectedIds((prev) => { const next = new Set(prev); next.delete(clientId); return next; });
-    try { await deleteClientRow(clientId); }
-    catch (error: any) { setClients(clients); console.error('Failed to delete client', error); }
-  }, [clients, setClients]);
+    try { await deleteClientRow(clientId); notifyChange('Client deleted', 'The client and its related records were removed.'); }
+    catch (error: any) { setClients(clients); console.error('Failed to delete client', error); toast.error('Client could not be deleted', { description: error?.message || 'The client was not deleted.' }); }
+  }, [clients, setClients, notifyChange]);
 
   const pendingClientToDelete = useMemo(
     () => clients.find((client) => client.id === pendingDeleteClientId) ?? null,
@@ -1607,20 +1676,20 @@ export function CRMBoard({ clients,
     const ids = [...selectedIds];
     setClients((prev) => prev.filter((c) => !selectedIds.has(c.id)));
     setSelectedIds(new Set());
-    try { await Promise.all(ids.map((id) => deleteClientRow(id))); }
-    catch (error: any) { setClients(clients); console.error('Failed to delete selected', error); }
-  }, [selectedIds, clients, setClients]);
+    try { await Promise.all(ids.map((id) => deleteClientRow(id))); notifyChange('Clients deleted', `${ids.length} selected client${ids.length === 1 ? '' : 's'} were removed.`); }
+    catch (error: any) { setClients(clients); console.error('Failed to delete selected', error); toast.error('Selected clients could not be deleted', { description: error?.message || 'The selected clients were not deleted.' }); }
+  }, [selectedIds, clients, setClients, notifyChange]);
 
   const addSubitem = useCallback(async (clientId: string) => {
-    try { await createSubitemRow(clientId); await reloadClients(); }
-    catch (error: any) { console.error('Failed to add subitem', error); }
-  }, [reloadClients]);
+      try { await createSubitemRow(clientId); await reloadClients(); notifyChange('Subitem added', 'The new subitem is now available under the client.'); }
+    catch (error: any) { console.error('Failed to add subitem', error); toast.error('Subitem could not be added', { description: error?.message || 'The subitem was not saved.' }); }
+  }, [reloadClients, notifyChange]);
 
   const deleteSubitem = useCallback(async (_clientId: string, subitemId: string) => {
     setClients((prev) => prev.map((c) => ({ ...c, subitems: c.subitems.filter((s) => s.id !== subitemId) })));
-    try { await deleteSubitemRow(subitemId); }
-    catch (error: any) { setClients(clients); console.error('Failed to delete subitem', error); }
-  }, [clients, setClients]);
+    try { await deleteSubitemRow(subitemId); notifyChange('Subitem deleted', 'The subitem was removed.'); }
+    catch (error: any) { setClients(clients); console.error('Failed to delete subitem', error); toast.error('Subitem could not be deleted', { description: error?.message || 'The subitem was not deleted.' }); }
+  }, [clients, setClients, notifyChange]);
 
   return (
     <div className="flex flex-col h-full bg-white">

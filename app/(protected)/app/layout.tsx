@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import AuthGate from "./AuthGate";
+import { Toaster } from "@/components/ui/sonner";
 
 export default function ProtectedAppLayout({
   children,
@@ -8,7 +9,10 @@ export default function ProtectedAppLayout({
 }) {
   return (
     <Suspense fallback={null}>
-      <AuthGate>{children}</AuthGate>
+      <AuthGate>
+        {children}
+        <Toaster position="bottom-right" closeButton richColors />
+      </AuthGate>
     </Suspense>
   );
 }
