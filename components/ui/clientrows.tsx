@@ -90,6 +90,8 @@ export type ClientRowProps = {
     currentUserRole?: string | null;
     currentUserId?: string | null;
     onPushToShipperView?: (subitemId: string) => void | Promise<void>;
+    onUndoActivity?: (entry: ActivityEntry) => void | Promise<void>;
+    groupNamesById: Record<string, string>;
 
 
 };
@@ -165,6 +167,8 @@ export function ClientRow({
     currentUserRole,
     currentUserId,
     onPushToShipperView
+    , onUndoActivity
+    , groupNamesById
 
 
 }: ClientRowProps) {
@@ -174,6 +178,7 @@ export function ClientRow({
     const [closeFiles, setCloseFiles] = useState<File[]>([]);
     const [closeConfirmed, setCloseConfirmed] = useState(false);
     const [showActivityLog, setShowActivityLog] = useState(false);
+    const [undoneActivityIds, setUndoneActivityIds] = useState<Set<string>>(new Set());
 
     // generating estimate
     const {
@@ -266,6 +271,13 @@ export function ClientRow({
 
         return String(value);
     }
+
+    function displayActivityValue(fieldName: string | undefined, value: unknown) {
+        if (fieldName === 'groupId' && value) {
+            return groupNamesById[String(value)] ?? String(value);
+        }
+        return displayLogValue(value);
+    }
     function renderActivityText(entry: ActivityEntry) {
         if (entry.title || entry.description) {
             return (
@@ -285,8 +297,8 @@ export function ClientRow({
             return (
                 <>
                     changed <span className="font-medium">{entry.fieldName}</span> from{" "}
-                    <span className="text-gray-600">{displayLogValue(entry.oldValue ?? "empty")}</span> to{" "}
-                    <span className="text-gray-600">{displayLogValue(entry.newValue ?? "empty")}</span>
+                    <span className="text-gray-600">{displayActivityValue(entry.fieldName, entry.oldValue ?? "empty")}</span> to{" "}
+                    <span className="text-gray-600">{displayActivityValue(entry.fieldName, entry.newValue ?? "empty")}</span>
                 </>
             );
         }
@@ -419,12 +431,13 @@ export function ClientRow({
                                         </button>
                                     </div>
                                     <div className="max-h-[420px] space-y-3 overflow-y-auto">
-                                        {(client.activityLog?.length ?? 0) === 0 ? (
+                                        {(client.activityLog?.filter((entry) => !entry.subitemId).length ?? 0) === 0 ? (
                                             <div className="rounded-lg border border-dashed border-gray-200 p-6 text-center text-sm text-gray-500">
                                                 No activity yet.
                                             </div>
                                         ) : (
                                             [...(client.activityLog ?? [])]
+                                                .filter((entry) => !entry.subitemId)
                                                 .sort(
                                                     (a, b) =>
                                                         new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
@@ -458,6 +471,21 @@ export function ClientRow({
                                                                     {new Date(entry.createdAt).toLocaleString()}
                                                                 </p>
                                                             </div>
+                                                            {(entry.action === 'field_changed' || entry.action === 'subitem_field_changed') && entry.oldValue !== undefined && entry.oldValue !== null && (
+                                                                <button
+                                                                    type="button"
+                                                                    disabled={undoneActivityIds.has(entry.id)}
+                                                                    onClick={async () => {
+                                                                        if (undoneActivityIds.has(entry.id)) return;
+                                                                        await onUndoActivity?.(entry);
+                                                                        setUndoneActivityIds((previous) => new Set(previous).add(entry.id));
+                                                                    }}
+                                                                    title={undoneActivityIds.has(entry.id) ? 'The action has already been undone' : 'Undo this action'}
+                                                                    className="shrink-0 rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] font-medium text-gray-600 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                                                >
+                                                                    {undoneActivityIds.has(entry.id) ? 'Undone' : 'Undo'}
+                                                                </button>
+                                                            )}
                                                         </div>
                                                     </div>
                                                 ))
@@ -854,6 +882,8 @@ export function ClientRow({
                     onHideColumn={onHideColumn}
                     onSetColumnVisibility={onSetColumnVisibility}
                     onPushToShipperView={onPushToShipperView}
+                    clientActivityLog={client.activityLog ?? []}
+                    onUndoActivity={onUndoActivity}
 
 
                 />

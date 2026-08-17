@@ -256,6 +256,7 @@ async function logTimelineRowDiffs(params: {
 function mapActivityEntry(row: ActivityLogRow): ActivityEntry {
     return {
         id: row.id,
+        clientId: row.client_id,
         actorName: row.actor_name ?? 'Unknown user',
         action: row.action as ActivityEntry['action'],
         fieldName: row.field_name ?? '',
@@ -516,7 +517,11 @@ export async function createClientRow(currentUserId?: string | null, groupId?: s
     return data;
 }
 
-export async function updateClientRow(clientId: string, updates: Partial<Client> & { customFields?: Record<string, string>; }) {
+export async function updateClientRow(
+    clientId: string,
+    updates: Partial<Client> & { customFields?: Record<string, string>; },
+    activityMeta?: Record<string, any>,
+) {
     const { data: existing, error: fetchError } = await supabase
         .from('clients')
         .select('*')
@@ -586,6 +591,7 @@ export async function updateClientRow(clientId: string, updates: Partial<Client>
             fieldName: key,
             oldValue: formatValueForLog(oldValue),
             newValue: formatValueForLog(value),
+            meta: activityMeta,
         });
     }
 }
@@ -699,6 +705,14 @@ export async function fetchOptionsByGroupCode(code: string): Promise<{ value: st
 }
 
 export async function updateSubitemRow(subitemId: string, updates: Partial<Subitem>) {
+    const { data: existing, error: fetchError } = await supabase
+        .from('subitems')
+        .select('*')
+        .eq('id', subitemId)
+        .single();
+
+    if (fetchError) throw fetchError;
+
     const SHIPPER_NAME_TO_ID: Record<string, string> = {
         "小李 - SEA": "67bdaa10-2e2b-4f62-8b9b-118be712fe55",
         "小李 - AIR": "67bdaa10-2e2b-4f62-8b9b-118be712fe55",
@@ -776,6 +790,34 @@ export async function updateSubitemRow(subitemId: string, updates: Partial<Subit
         .eq("id", subitemId);
 
     if (error) throw error;
+
+    const ignoredFields = new Set(['showTimeline', 'showPayments', 'showSample', 'customFields']);
+    const fieldMap: Record<string, string> = {
+        replyStatus: 'reply_status', localOverseas: 'local_overseas', paymentStatus: 'payment_status',
+        totalUc: 'total_uc', lsRmb: 'ls_rmb', totalC: 'total_c', modeOfPayment: 'mode_of_payment',
+        orderNumber: 'order_number', quantityProduced: 'quantity_produced', qtyFor: 'qty_for',
+        paymentAmount: 'payment_amount', paymentRemarks: 'payment_remarks', timelineRows: 'timeline_rows',
+        sampleRows: 'sample_rows', sampleOrderStatus: 'sample_order_status', sampleStatus: 'sample_status',
+        sampleType: 'sample_type', cSgd: 'c_sgd', tcSgd: 'tc_sgd', numOfCartons: 'num_of_cartons',
+        cnTracking: 'cn_tracking', sgTracking: 'sg_tracking', shipperId: 'shipper_id',
+    };
+
+    for (const [key, value] of Object.entries(updates)) {
+        if (ignoredFields.has(key)) continue;
+        const databaseKey = fieldMap[key] ?? key;
+        const oldValue = existing[databaseKey];
+        if (isEqualForLog(oldValue, value)) continue;
+
+        await insertActivityLog({
+            clientId: existing.client_id,
+            subitemId,
+            subitemName: existing.name,
+            action: 'subitem_field_changed',
+            fieldName: key,
+            oldValue: formatValueForLog(oldValue),
+            newValue: formatValueForLog(value),
+        });
+    }
 }
 export async function deleteSubitemRow(subitemId: string) {
     const { data: existing, error: fetchError } = await supabase

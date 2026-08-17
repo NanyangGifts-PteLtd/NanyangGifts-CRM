@@ -193,7 +193,6 @@ export function CRMBoard({ clients,
 
   const archiveGroup = useCallback((groupId: string) => {
     setArchivedGroupIds((previous) => new Set(previous).add(groupId));
-    setCollapsedGroups((previous) => ({ ...previous, [groupId]: true }));
     setOpenGroupMenu(null);
     notifyChange('Group archived', 'The group is now collapsed for your account.');
   }, [notifyChange]);
@@ -1599,16 +1598,24 @@ export function CRMBoard({ clients,
     }
     setClients((prev) => prev.map((c) => c.id === clientId ? { ...c, ...nextUpdates } : c));
     try {
-      await updateClientRow(clientId, nextUpdates);
+      await updateClientRow(clientId, nextUpdates, movedToGroupName ? { automated: true, reason: 'status_group_automation' } : undefined);
       if (movedToGroupName && updates.status) {
-        const clientName = clients.find((client) => client.id === clientId)?.name || 'Client';
-        toast.success(`${clientName} moved to ${movedToGroupName}`, {
+        const previousClient = clients.find((client) => client.id === clientId);
+        const clientName = previousClient?.name || 'Client';
+        const statusToastId = toast.success(`${clientName} moved to ${movedToGroupName}`, {
           description: `Status changed to ${updates.status}.`,
           action: {
-            label: 'Details',
-            onClick: () => toast(`Automation details for ${clientName}`, {
-              description: `Changing the status to ${updates.status} automatically moved this client into the ${movedToGroupName} group.`,
-            }),
+            label: 'Undo',
+            onClick: () => {
+              if (!previousClient) return;
+              const rollback = { status: previousClient.status, groupId: previousClient.groupId } as Partial<Client>;
+              void updateClient(clientId, rollback)
+                .then(() => {
+                  toast.dismiss(statusToastId);
+                  toast.success('Automation undone', { description: `${clientName} was restored to its previous status and group.` });
+                })
+                .catch((error) => toast.error('Undo failed', { description: error?.message || 'The previous status could not be restored.' }));
+            },
           },
         });
       }
@@ -1627,6 +1634,33 @@ export function CRMBoard({ clients,
     try { await updateSubitemRow(subitemId, updates); }
     catch (error: any) { setClients(clients); console.error('Failed to update subitem', error); }
   }, [clients]);
+
+  const undoActivity = useCallback(async (entry: import('../app/types').ActivityEntry) => {
+    if (entry.action === 'field_changed') {
+      const fieldMap: Record<string, keyof Client> = {
+        replyStatus: 'replyStatus', followUp: 'followUp', status: 'status', channel: 'channel',
+        importance: 'importance', name: 'name', people: 'people', company: 'company', email: 'email',
+        phone: 'phone', requirements: 'requirements', nbd: 'nbd', totalPrice: 'totalPrice',
+        companyAddress: 'companyAddress', billingAddress: 'billingAddress', dateCreated: 'dateCreated',
+      };
+      const field = entry.fieldName ? fieldMap[entry.fieldName] : undefined;
+      if (!field || !entry.clientId) return;
+      const updates = { [field]: entry.oldValue } as Partial<Client>;
+      await updateClient(entry.clientId, updates);
+      toast.success('Change undone', { description: `${entry.fieldName} was restored to its previous value.` });
+      return;
+    }
+
+    if (entry.action === 'subitem_field_changed' && entry.subitemId && entry.fieldName && !entry.fieldName.startsWith('timeline:')) {
+      const updates = { [entry.fieldName]: entry.oldValue } as Partial<Subitem>;
+      setClients((previous) => previous.map((client) => ({
+        ...client,
+        subitems: client.subitems.map((subitem) => subitem.id === entry.subitemId ? { ...subitem, ...updates } : subitem),
+      })));
+      await updateSubitemRow(entry.subitemId, updates);
+      toast.success('Change undone', { description: `${entry.fieldName} was restored to its previous value.` });
+    }
+  }, [updateClient, setClients]);
 
   const addClient = useCallback(async () => {
     try {
@@ -2258,6 +2292,8 @@ export function CRMBoard({ clients,
                   onSetColumnVisibility={setColumnVisibility}
                   currentUserRole={currentUserRole ?? undefined}
                   currentUserId={currentUserId}
+                  onUndoActivity={undoActivity}
+                  groupNamesById={Object.fromEntries(groups.map((group) => [group.id, group.name]))}
                 />
               ))}
 

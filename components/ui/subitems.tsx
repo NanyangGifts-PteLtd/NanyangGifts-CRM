@@ -1,8 +1,8 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import type { Profile, Subitem } from "../../app/types";
-import { Calendar, CreditCard, FileText, Package, Plus, Trash2, MoreHorizontal, EyeOff, Filter } from "lucide-react";
+import type { ActivityEntry, Profile, Subitem } from "../../app/types";
+import { Calendar, CreditCard, FileText, Package, Plus, Trash2, MoreHorizontal, EyeOff, Filter, Activity, X } from "lucide-react";
 import { StatusBadge } from "./statusbadge";
 import { EditableCell } from "./editablecell";
 import { SamplesSection } from "./sample";
@@ -129,6 +129,8 @@ type SubitemProps = {
     onHideColumn: (key: string) => void;
     onSetColumnVisibility: (key: string, visible: boolean) => void;
     onPushToShipperView?: (subitemId: string) => Promise<void> | void;
+    clientActivityLog?: ActivityEntry[];
+    onUndoActivity?: (entry: ActivityEntry) => void | Promise<void>;
 };
 
 function parseNumber(v: string | number | undefined | null) {
@@ -215,6 +217,8 @@ export function SubitemsTable({
     onHideColumn,
     onSetColumnVisibility,
     onPushToShipperView,
+    clientActivityLog = [],
+    onUndoActivity,
 }: SubitemProps) {
     const [tableMode, setTableMode] = useState<TableMode | null>(null);
     const [subitemCols, setSubitemCols] = useState<ColumnDef[]>([...SUBITEM_COLS]);
@@ -227,6 +231,8 @@ export function SubitemsTable({
     const [openColumnMenu, setOpenColumnMenu] = useState<string | null>(null);
 
     const [pushingSubitemId, setPushingSubitemId] = useState<string | null>(null);
+    const [activitySubitem, setActivitySubitem] = useState<Subitem | null>(null);
+    const [undoneActivityIds, setUndoneActivityIds] = useState<Set<string>>(new Set());
 
     const setDragPreview = (event: React.DragEvent, source: HTMLElement) => {
         if (!event.dataTransfer) return;
@@ -856,6 +862,15 @@ export function SubitemsTable({
                     <Package size={15} />
                 </button>
 
+                <button
+                    type="button"
+                    onClick={() => setActivitySubitem(sub)}
+                    className="flex items-center justify-center rounded-sm border border-cyan-200 p-1 text-cyan-500 transition hover:bg-cyan-50"
+                    title="Activity log"
+                >
+                    <Activity size={15} />
+                </button>
+
                 {isPm ? (
                     <button
                         type="button"
@@ -1130,6 +1145,46 @@ export function SubitemsTable({
             style={{ borderLeft: `7px solid ${clientColor}` }}
             data-client-id={clientId}
         >
+            {activitySubitem ? (
+                <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/30 p-4">
+                    <div className="w-full max-w-2xl rounded-xl bg-white p-4 shadow-xl">
+                        <div className="mb-4 flex items-center justify-between">
+                            <div>
+                                <h2 className="text-sm font-semibold text-gray-900">Subitem Activity Log</h2>
+                                <p className="text-xs text-gray-500">{activitySubitem.name}</p>
+                            </div>
+                            <button type="button" onClick={() => setActivitySubitem(null)} className="text-gray-400 hover:text-gray-700" title="Close activity log"><X size={16} /></button>
+                        </div>
+                        <div className="max-h-[420px] space-y-2 overflow-y-auto">
+                            {clientActivityLog.filter((entry) => entry.subitemId === activitySubitem.id).length === 0 ? (
+                                <div className="rounded-lg border border-dashed border-gray-200 p-6 text-center text-sm text-gray-500">No activity yet.</div>
+                            ) : clientActivityLog.filter((entry) => entry.subitemId === activitySubitem.id).map((entry) => (
+                                <div key={entry.id} className="flex items-start justify-between gap-3 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-xs">
+                                    <div>
+                                        <div className="text-gray-800">{entry.fieldName || entry.action}: {String(entry.oldValue ?? 'empty')} <span className="text-gray-400">to</span> {String(entry.newValue ?? 'empty')}</div>
+                                        <div className="mt-1 text-gray-400">{entry.actorName} · {new Date(entry.createdAt).toLocaleString()}</div>
+                                    </div>
+                                    {!entry.meta?.automated && entry.action === 'subitem_field_changed' && !entry.fieldName?.startsWith('timeline:') && entry.oldValue !== undefined && (
+                                        <button
+                                            type="button"
+                                            disabled={undoneActivityIds.has(entry.id)}
+                                            onClick={async () => {
+                                                if (undoneActivityIds.has(entry.id)) return;
+                                                await onUndoActivity?.(entry);
+                                                setUndoneActivityIds((previous) => new Set(previous).add(entry.id));
+                                            }}
+                                            title={undoneActivityIds.has(entry.id) ? 'The action has already been undone' : 'Undo this action'}
+                                            className="shrink-0 rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] font-medium text-gray-600 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                        >
+                                            {undoneActivityIds.has(entry.id) ? 'Undone' : 'Undo'}
+                                        </button>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            ) : null}
             {selectedSubitemIds.length > 0 && selectionBox.visible && (
                 <div
                     className="fixed z-50 rounded-xl border border-gray-200 bg-white/95 px-4 py-3 text-xs text-gray-700 shadow-xl backdrop-blur-sm"
