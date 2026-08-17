@@ -44,6 +44,13 @@ function getSingaporeDate() {
     return `${values.year}-${values.month}-${values.day}`;
 }
 
+function getSeaOrAir(shipperLabel: string | null | undefined) {
+    const label = shipperLabel?.toUpperCase() ?? "";
+    if (label.includes("SEA")) return "海运";
+    if (label.includes("AIR")) return "空运";
+    return null;
+}
+
 export async function POST(req: NextRequest) {
     try {
         const supabase = await createClient();
@@ -163,7 +170,7 @@ export async function POST(req: NextRequest) {
                 qty: item.qty ?? null,
                 up: item.up ?? null,
                 value: Number(item.qty ?? 0) * Number(item.up ?? 0),
-                sea_or_air: null,
+                sea_or_air: getSeaOrAir(item.shipper),
                 tax_refund: null,
                 shipper_remarks: null,
                 samples_by_air: null,
