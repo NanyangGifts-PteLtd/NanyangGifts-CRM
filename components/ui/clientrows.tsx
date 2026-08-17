@@ -348,6 +348,7 @@ export function ClientRow({
             <style>{Array.from(hiddenColumnKeys).filter((key) => key.startsWith('client:')).map((key) => `[data-client-column="${key.slice(7)}"]{display:none!important}`).join('')}</style>
             <div
                 data-client-row
+                data-client-id={client.id}
                 style={{ width: boardWidth, minWidth: boardWidth }}
                 className={`box-border border-b flex text-[15px] items-center flex-shrink-0 border-r border-[#D0D4E4] hover:blue-50 group transition-colors ${isSelected ? "bg-blue-50" : ""
                     }`}

@@ -25,6 +25,7 @@ import { AddGroupModal } from './Add-Group-Modal';
 import { fetchCustomColumns, addCustomColumn, deleteCustomColumn, type CustomColumn } from '@/lib/custom-columns'
 import ClientsLiveRefresh from './RealtimeRefresh';
 import { toast } from 'sonner';
+import type { SearchResult } from '../app/types';
 
 type OptionEntry = { value: string; color: string };
 type HeaderCol = {
@@ -71,6 +72,7 @@ interface CRMBoardProps {
   setClientAssignees: React.Dispatch<React.SetStateAction<ClientAssigneeMap>>;
   subitemAssignees: SubitemAssigneeMap;
   setSubitemAssignees: React.Dispatch<React.SetStateAction<SubitemAssigneeMap>>;
+  searchTarget?: SearchResult | null;
 }
 
 export async function fetchAllSubitemAssignees(): Promise<SubitemAssigneeMap> {
@@ -93,6 +95,7 @@ export function CRMBoard({ clients,
   setClientAssignees,
   subitemAssignees,
   setSubitemAssignees,
+  searchTarget,
 }: CRMBoardProps) {
 
   const [filterStatus, setFilterStatus] = useState<string | 'All'>('All');
@@ -105,6 +108,21 @@ export function CRMBoard({ clients,
   const [filterImportance, setFilterImportance] = useState('All');
   const [filterReplyStatus, setFilterReplyStatus] = useState('All');
   const [filterChannel, setFilterChannel] = useState('All');
+  const processedSearchTarget = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!searchTarget) return;
+    if (processedSearchTarget.current === searchTarget.id) return;
+    processedSearchTarget.current = searchTarget.id;
+    const selector = searchTarget.subitemId ? `[data-subitem-id="${searchTarget.subitemId}"]` : `[data-client-id="${searchTarget.clientId}"]`;
+    window.setTimeout(() => {
+      const element = document.querySelector<HTMLElement>(selector);
+      if (!element) return;
+      element.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+      element.classList.add('search-result-highlight');
+      window.setTimeout(() => element.classList.remove('search-result-highlight'), 1800);
+    }, searchTarget.subitemId ? 100 : 0);
+  }, [searchTarget]);
   const [focusedFilterColumn, setFocusedFilterColumn] = useState<string | null>(null);
   const expandedIdSet = React.useMemo(() => new Set(expandedIds), [expandedIds]);
   const allExpanded = clients.length > 0 && clients.every((c) => expandedIdSet.has(c.id));
@@ -1462,17 +1480,7 @@ export function CRMBoard({ clients,
         )
       );
 
-    const q = search.trim().toLowerCase();
-    const clientAssignedProfiles = (clientAssignees[client.id] ?? [])
-      .map((id) => profiles.find((p) => p.id === id)).filter(Boolean) as Profile[];
-    const matchesSearch = !q ||
-      client.name.toLowerCase().includes(q) ||
-      client.company.toLowerCase().includes(q) ||
-      clientAssignedProfiles.some((p) =>
-        (p.full_name ?? '').toLowerCase().includes(q) || (p.email ?? '').toLowerCase().includes(q)
-      ) ||
-      client.subitems.some((s) => (s.name ?? '').toLowerCase().includes(q));
-    return matchesStatus && matchesSubitemStatus && matchesPayment && matchesPaymentStatus && matchesPeople && matchesImportance && matchesReplyStatus && matchesChannel && matchesSearch && matchesSubprogress;
+    return matchesStatus && matchesSubitemStatus && matchesPayment && matchesPaymentStatus && matchesPeople && matchesImportance && matchesReplyStatus && matchesChannel && matchesSubprogress;
   });
 
   const groupedClients = groups.map((group) => ({

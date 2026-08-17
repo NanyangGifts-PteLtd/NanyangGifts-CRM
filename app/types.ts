@@ -197,3 +197,16 @@ export interface Notification {
   read: boolean;
   type: 'info' | 'warning' | 'success' | 'error';
 }
+
+export type SearchResult = {
+  id: string;
+  clientId: string;
+  subitemId?: string;
+  kind: 'client' | 'subitem' | 'payment' | 'timeline';
+  label: string;
+  context: string;
+  field: string;
+  value: string;
+  query: string;
+  score?: number;
+};

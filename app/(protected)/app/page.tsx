@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from 'react';
-import type { Client, ClientAssigneeMap, SubitemAssigneeMap, Profile, Notification } from '../../types';
+import type { Client, ClientAssigneeMap, SubitemAssigneeMap, Profile, Notification, SearchResult } from '../../types';
 import { fetchClientsWithSubitems } from '@/lib/crm';
 import { CRMBoard } from '@/components/CRMBoard';
 import Sidebar, { type SidePanel } from '../../../components/Sidebar';
@@ -27,6 +27,15 @@ export default function Page() {
   const [subitemAssignees, setSubitemAssignees] = useState<SubitemAssigneeMap>({});
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [searchTarget, setSearchTarget] = useState<SearchResult | null>(null);
+
+  const selectSearchResult = useCallback((result: SearchResult) => {
+    const client = clients.find((item) => item.id === result.clientId);
+    if (client && result.subitemId && !expandedClientIds.includes(client.id)) {
+      setExpandedClientIds((previous) => [...previous, client.id]);
+    }
+    setSearchTarget(result);
+  }, [clients, expandedClientIds]);
 
   const reloadClients = useCallback(async () => {
     try {
@@ -137,6 +146,7 @@ export default function Page() {
             setClientAssignees={setClientAssignees}
             subitemAssignees={subitemAssignees}
             setSubitemAssignees={setSubitemAssignees}
+            searchTarget={searchTarget}
           />
         );
 
@@ -200,7 +210,9 @@ export default function Page() {
           currentUserRole={currentUserRole}
           clients={clients}
           clientAssignees={clientAssignees}
+          subitemAssignees={subitemAssignees}
           profiles={profiles}
+          onSelectSearchResult={selectSearchResult}
         />
 
         <main className="min-h-0 flex-1 overflow-y-auto pl-10">
