@@ -1,5 +1,8 @@
 "use client";
 
+import { useMemo, useState } from "react";
+import { ImagePlus, Trash2 } from "lucide-react";
+
 export type ShipperRow = {
     id: string;
     subitem_id?: string | null;
@@ -47,6 +50,134 @@ type ShipperGridProps = {
 function display(value: unknown) {
     if (value === null || value === undefined || value === "") return "-";
     return String(value);
+}
+
+const IMAGE_MARKER = /\[\[shipper-image:(https?:\/\/[^\]]+)\]\]/g;
+
+function parseRemarks(value: unknown) {
+    const raw = String(value ?? "");
+    const images: string[] = [];
+    const text = raw.replace(IMAGE_MARKER, (_match, url: string) => {
+        images.push(url);
+        return "";
+    }).replace(/\n{3,}/g, "\n\n").trim();
+    return { text, images };
+}
+
+function serializeRemarks(text: string, images: string[]) {
+    const markers = images.map((url) => `[[shipper-image:${url}]]`).join("\n");
+    return markers ? `${text.trim()}\n\n${markers}`.trim() : text;
+}
+
+function RemarksCell({
+    row,
+    field,
+    editable,
+    token,
+    saveCell,
+}: {
+    row: ShipperRow;
+    field: "logistics_remarks" | "shipper_remarks";
+    editable: boolean;
+    token?: string;
+    saveCell: (row: ShipperRow, field: string, value: string) => Promise<void>;
+}) {
+    const initial = useMemo(() => parseRemarks(row[field]), [row, field]);
+    const [text, setText] = useState(initial.text);
+    const [images, setImages] = useState(initial.images);
+    const [uploading, setUploading] = useState(false);
+
+    const save = async (nextText = text, nextImages = images) => {
+        await saveCell(row, field, serializeRemarks(nextText, nextImages));
+    };
+
+    const uploadImage = async (file: File) => {
+        if (!file.type.startsWith("image/")) return;
+        setUploading(true);
+        try {
+            const form = new FormData();
+            form.append("file", file);
+            form.append("subitemId", row.subitem_id ?? "");
+            form.append("shipperId", row.shipper_id ?? "");
+            form.append("shipperToken", token ?? "");
+            const response = await fetch("/api/shipper/upload-image", { method: "POST", body: form });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result?.error || "Failed to upload image");
+            const nextImages = [...images, result.url as string];
+            setImages(nextImages);
+            await save(text, nextImages);
+        } finally {
+            setUploading(false);
+        }
+    };
+
+    const removeImage = async (url: string) => {
+        setUploading(true);
+        try {
+            const response = await fetch("/api/shipper/delete-image", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ url }),
+            });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result?.error || "Failed to remove image");
+
+            const nextImages = images.filter((image) => image !== url);
+            setImages(nextImages);
+            await save(text, nextImages);
+        } finally {
+            setUploading(false);
+        }
+    };
+
+    const imagePreview = images.map((url) => (
+        <div key={url} className="relative mt-1 w-fit">
+            <a href={url} target="_blank" rel="noreferrer" className="block">
+                <img src={url} alt="Attached remark" className="max-h-24 max-w-full rounded border border-slate-200 object-contain" />
+            </a>
+            {editable && (
+                <button
+                    type="button"
+                    onClick={() => void removeImage(url)}
+                    disabled={uploading}
+                    className="absolute right-1 top-1 rounded bg-white/90 p-1 text-red-500 shadow hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    title="Remove attached image"
+                >
+                    <Trash2 size={12} />
+                </button>
+            )}
+        </div>
+    ));
+
+    if (!editable) return <div>{text || "-"}{imagePreview}</div>;
+
+    return (
+        <div onPaste={(event) => {
+            const image = Array.from(event.clipboardData.files).find((file) => file.type.startsWith("image/"));
+            if (image) {
+                event.preventDefault();
+                void uploadImage(image);
+            }
+        }}>
+            <textarea
+                value={text}
+                onChange={(event) => setText(event.target.value)}
+                rows={3}
+                className="w-full min-w-[50px] resize-y rounded border border-slate-200 px-1 py-1 text-[13px] outline-none focus:border-blue-400"
+                onBlur={() => void save()}
+            />
+            {imagePreview}
+            <label className="mt-1 flex cursor-pointer items-center gap-1 text-[10px] text-slate-400 hover:text-slate-600">
+                <ImagePlus size={12} />
+                <span>{uploading ? "加载中..." : "在此粘贴或附上图片"}</span>
+                <input type="file" accept="image/*" className="sr-only" disabled={uploading} onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file) void uploadImage(file);
+                    event.target.value = "";
+                }} />
+            </label>
+        </div>
+    );
 }
 
 export default function ShipperGrid({ rows, mode, token }: ShipperGridProps) {
@@ -145,7 +276,15 @@ export default function ShipperGrid({ rows, mode, token }: ShipperGridProps) {
                                                 key={col.key}
                                                 className="border border-slate-300 px-1 py-2 whitespace-pre-wrap"
                                             >
-                                                {editable ? (
+                                                {col.key === "logistics_remarks" || col.key === "shipper_remarks" ? (
+                                                    <RemarksCell
+                                                        row={row}
+                                                        field={col.key}
+                                                        editable={editable}
+                                                        token={token}
+                                                        saveCell={saveCell}
+                                                    />
+                                                ) : editable ? (
                                                     <textarea
                                                         defaultValue={value == null ? "" : String(value)}
                                                         rows={col.key === "delivery_info" ? 5 : 2}
