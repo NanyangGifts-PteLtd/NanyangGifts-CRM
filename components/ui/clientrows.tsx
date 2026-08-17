@@ -422,7 +422,6 @@ export function ClientRow({
                                     <div className="mb-4 flex items-center justify-between">
                                         <div>
                                             <h2 className="text-sm font-semibold text-gray-900">Activity Log</h2>
-                                            style={{ width: boardWidth, minWidth: boardWidth }}
                                             <p className="text-[12.6px] text-gray-500">{client.name}</p>
                                         </div>
 
