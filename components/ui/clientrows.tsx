@@ -33,6 +33,7 @@ export type ClientRowProps = {
     subitemAssigneeMap: Record<string, string[]>;
     onChangeSubitemAssignees: (subitemId: string, ids: string[]) => void;
     colWidth: Record<string, number>;
+    boardWidth: number;
     columnOrderMap: Record<string, number>;
     onDragStart: (event: React.DragEvent<HTMLDivElement>) => void;
     onDragEnd: () => void;
@@ -114,6 +115,7 @@ export function ClientRow({
     subitemAssigneeMap,
     onChangeSubitemAssignees,
     colWidth,
+    boardWidth,
     columnOrderMap,
     onDragStart,
     onDragEnd,
@@ -346,6 +348,7 @@ export function ClientRow({
             <style>{Array.from(hiddenColumnKeys).filter((key) => key.startsWith('client:')).map((key) => `[data-client-column="${key.slice(7)}"]{display:none!important}`).join('')}</style>
             <div
                 data-client-row
+                style={{ width: boardWidth, minWidth: boardWidth }}
                 className={`box-border border-b flex text-[15px] items-center flex-shrink-0 border-r border-[#D0D4E4] hover:blue-50 group transition-colors ${isSelected ? "bg-blue-50" : ""
                     }`}
             >
@@ -419,6 +422,7 @@ export function ClientRow({
                                     <div className="mb-4 flex items-center justify-between">
                                         <div>
                                             <h2 className="text-sm font-semibold text-gray-900">Activity Log</h2>
+                                            style={{ width: boardWidth, minWidth: boardWidth }}
                                             <p className="text-[12.6px] text-gray-500">{client.name}</p>
                                         </div>
 

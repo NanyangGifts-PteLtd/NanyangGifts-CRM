@@ -602,8 +602,8 @@ export function CRMBoard({ clients,
 
   const totalMinWidth = visibleClientHeaderCols.reduce((sum, col) => sum + col.width, 0);
   const colWidth = React.useMemo(
-    () => Object.fromEntries(mergedHeaderCols.map((c) => [c.key, c.width])),
-    [mergedHeaderCols]
+    () => Object.fromEntries(visibleClientHeaderCols.map((c) => [c.key, c.width])),
+    [visibleClientHeaderCols]
   );
 
   // Persist client column widths per-user in DB (fallback to localStorage)
@@ -2069,8 +2069,16 @@ export function CRMBoard({ clients,
                   )}
 
                   <div
-                    onMouseDown={(e) => startResize(col.key, e.clientX)}
-                    className="absolute right-0 top-0 h-full w-1 cursor-col-resize"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      startResize(col.key, e.clientX);
+                    }}
+                    onDragStart={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                    }}
+                    className="absolute right-0 top-0 z-40 h-full w-2 cursor-col-resize border-l border-transparent hover:border-[#7BCBD5]"
                   />
                 </div>
               );
@@ -2215,7 +2223,18 @@ export function CRMBoard({ clients,
                             </div>
                           )}
                           {isDragOver && isDraggable && <div className={`pointer-events-none absolute inset-y-0 z-20 w-1 bg-[#0f8da8] shadow-[0_0_5px_rgba(15,141,168,0.6)] ${dragOverHeaderEdge === 'left' ? 'left-0' : 'right-0'}`} />}
-                          <div onMouseDown={(event) => startResize(col.key, event.clientX)} className="absolute right-0 top-0 h-full w-1 cursor-col-resize" />
+                          <div
+                            onMouseDown={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              startResize(col.key, event.clientX);
+                            }}
+                            onDragStart={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                            }}
+                            className="absolute right-0 top-0 z-40 h-full w-2 cursor-col-resize border-l border-transparent hover:border-[#7BCBD5]"
+                          />
                         </div>
                       );
                     })}
@@ -2244,6 +2263,7 @@ export function CRMBoard({ clients,
                   subitemAssigneeMap={subitemAssignees}
                   onChangeSubitemAssignees={handleSubitemAssigneesChange}
                   colWidth={colWidth}
+                  boardWidth={totalMinWidth}
                   columnOrderMap={clientColumnOrderMap}
                   onDragStart={(event) => handleDragStart(client.id, event)}
                   onDragEnd={handleDragEnd}

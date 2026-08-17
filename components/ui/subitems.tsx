@@ -1361,9 +1361,14 @@ export function SubitemsTable({
                                         <div
                                             onMouseDown={(e) => {
                                                 e.preventDefault();
+                                                e.stopPropagation();
                                                 startResize(col.key, e.clientX);
                                             }}
-                                            className="absolute top-0 right-0 h-full w-2 cursor-col-resize hover:bg-[#7BCBD5]/20"
+                                            onDragStart={(e) => {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                            }}
+                                            className="absolute top-0 right-0 z-40 h-full w-3 cursor-col-resize border-l border-transparent hover:border-[#7BCBD5]"
                                         />
                                     </th>
                                 );
