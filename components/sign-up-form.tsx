@@ -23,6 +23,7 @@ export function SignUpForm({
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [repeatPassword, setRepeatPassword] = useState("");
+  const [role, setRole] = useState<"sales" | "pm" | "admin">("sales");
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
@@ -45,6 +46,7 @@ export function SignUpForm({
         password,
         options: {
           emailRedirectTo: `https://nanyanggifts.vercel.app/auth/callback`,
+          data: { role },
         },
       });
       if (error) throw error;
@@ -76,6 +78,20 @@ export function SignUpForm({
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                 />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="role">Role</Label>
+                <select
+                  id="role"
+                  value={role}
+                  onChange={(e) => setRole(e.target.value as "sales" | "pm" | "admin")}
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  required
+                >
+                  <option value="sales">Sales</option>
+                  <option value="pm">PM</option>
+                  <option value="admin">Admin</option>
+                </select>
               </div>
               <div className="grid gap-2">
                 <div className="flex items-center">

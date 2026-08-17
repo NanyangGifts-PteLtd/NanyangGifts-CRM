@@ -772,12 +772,9 @@ export function ClientRow({
                 </div>
 
                 <div data-client-column="dateCreated" className="flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height: 30, minWidth: colWidth.dateCreated, width: colWidth.dateCreated, order: columnOrderMap.dateCreated ?? 16 }}>
-                    <input
-                        type="date"
-                        value={toDateInputValue(client.dateCreated)}
-                        onChange={(e) => onUpdate({ dateCreated: e.target.value })}
-                        className="text-[12.6px] border-none outline-none bg-transparent cursor-pointer w-full"
-                    />
+                    <span className="block px-1 text-[12.6px] text-gray-700">
+                        {client.createdAt ? new Date(client.createdAt).toLocaleDateString("en-SG") : "-"}
+                    </span>
                 </div>
                 {/* custom cols */}
                 {clientCustomCols.map((col) => (

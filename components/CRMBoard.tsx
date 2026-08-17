@@ -1232,6 +1232,10 @@ export function CRMBoard({ clients,
 
   const handleDeleteGroup = useCallback(async () => {
     if (!groupToDelete) return;
+    if (currentUserRole !== 'director' && currentUserRole !== 'dev') {
+      toast.error('Group deletion is restricted', { description: 'Only directors and dev users can delete groups.' });
+      return;
+    }
     try {
       setIsDeletingGroup(true);
       const supabase = createSupabaseClient();
@@ -1253,7 +1257,7 @@ export function CRMBoard({ clients,
     } finally {
       setIsDeletingGroup(false);
     }
-  }, [groupToDelete, clients, setClients, notifyChange]);
+  }, [groupToDelete, clients, setClients, notifyChange, currentUserRole]);
 
 
   // Custom col handlers
@@ -1641,7 +1645,7 @@ export function CRMBoard({ clients,
         replyStatus: 'replyStatus', followUp: 'followUp', status: 'status', channel: 'channel',
         importance: 'importance', name: 'name', people: 'people', company: 'company', email: 'email',
         phone: 'phone', requirements: 'requirements', nbd: 'nbd', totalPrice: 'totalPrice',
-        companyAddress: 'companyAddress', billingAddress: 'billingAddress', dateCreated: 'dateCreated',
+        companyAddress: 'companyAddress', billingAddress: 'billingAddress',
       };
       const field = entry.fieldName ? fieldMap[entry.fieldName] : undefined;
       if (!field || !entry.clientId) return;
@@ -1675,7 +1679,7 @@ export function CRMBoard({ clients,
         requirements: createdClient.requirements ?? '', nbd: createdClient.nbd ?? '',
         groupId: createdClient.group_id ?? defaultGroupId, totalPrice: createdClient.total_price ?? '',
         companyAddress: createdClient.company_address ?? '', billingAddress: createdClient.billing_address ?? '',
-        dateCreated: createdClient.date_created ?? '', expanded: createdClient.expanded ?? true,
+        createdAt: createdClient.created_at ?? '', expanded: createdClient.expanded ?? true,
         color: createdClient.color ?? '#7BCBD5', subitems: [], activityLog: [], customFields: {}
       };
       setClients((prev) => [newClient, ...prev]);

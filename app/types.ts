@@ -63,6 +63,7 @@ export interface TimelineRow {
 
 export interface Subitem {
   id: string;
+  createdAt: string | null;
   name: string;
   people: string;
   status: SubitemStatus | string;
@@ -155,7 +156,7 @@ export interface Client {
   nbd: string;
   totalPrice: string;
   companyAddress: string;
-  dateCreated: string;
+  createdAt: string;
   billingAddress: string;
   expanded: boolean;
   color: string;

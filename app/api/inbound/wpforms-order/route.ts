@@ -101,6 +101,7 @@ export async function POST(req: NextRequest) {
         const notes = asText(body.notes);
         const qty = asNumberString(body.qty, "");
         const dateCreated = todayForInput();
+        const createdAt = new Date().toISOString();
         const nbd = formatDateForInput(body.nbd, "");
         const followUp = addDays(dateCreated, 3);
 
@@ -187,7 +188,7 @@ export async function POST(req: NextRequest) {
             total_price: "",
             company_address: "",
             billing_address: "",
-            date_created: dateCreated,
+            created_at: createdAt,
             expanded: false,
             color: "#7BCBD5",
             activity_log: [

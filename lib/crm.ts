@@ -76,6 +76,7 @@ export async function setSalesRoundRobinActive(userId: string, isActive: boolean
 type Subitems = {
     id: string;
     client_id: string;
+    created_at: string | null;
     name: string | null;
     people: string | null;
     status: string | null;
@@ -146,7 +147,7 @@ type Clients = {
     total_price: string | null;
     company_address: string | null;
     billing_address: string | null;
-    date_created: string | null;
+    created_at: string | null;
     group_id: string;
     expanded: boolean | null;
     color: string | null;
@@ -274,6 +275,7 @@ function mapActivityEntry(row: ActivityLogRow): ActivityEntry {
 function mapSubitems(row: Subitems): Subitem {
     return {
         id: row.id,
+        createdAt: row.created_at ?? null,
         name: row.name ?? '',
         people: row.people ?? '',
         status: row.status ?? '',
@@ -346,7 +348,7 @@ function mapClients(row: Clients): Client {
         totalPrice: row.total_price ?? '',
         companyAddress: row.company_address ?? '',
         billingAddress: row.billing_address ?? '',
-        dateCreated: row.date_created ?? '',
+        createdAt: row.created_at ?? '',
         groupId: row.group_id ?? null,
         expanded: row.expanded ?? false,
         color: row.color ?? '#7BCBD5',
@@ -438,7 +440,7 @@ export async function fetchClientsWithSubitems() {
         )
     )
     `)
-        .order('date_created', { ascending: true });
+        .order('created_at', { ascending: true });
 
     if (clientsError) {
         console.error('fetchClientsWithSubitems clients error:', clientsError);
@@ -472,13 +474,6 @@ export async function fetchClientsWithSubitems() {
 }
 
 export async function createClientRow(currentUserId?: string | null, groupId?: string | null) {
-    const singaporeDate = new Intl.DateTimeFormat('en-CA', {
-        timeZone: 'Asia/Singapore',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-    }).format(new Date());
-
     const { data, error } = await supabase
         .from('clients')
         .insert({
@@ -497,7 +492,6 @@ export async function createClientRow(currentUserId?: string | null, groupId?: s
             total_price: '',
             company_address: '',
             billing_address: '',
-            date_created: singaporeDate,
             group_id: groupId ?? null,
             expanded: true,
             color: '#7BCBD5',
@@ -552,7 +546,6 @@ export async function updateClientRow(
         ...(updates.totalPrice !== undefined ? { total_price: updates.totalPrice } : {}),
         ...(updates.companyAddress !== undefined ? { company_address: updates.companyAddress } : {}),
         ...(updates.billingAddress !== undefined ? { billing_address: updates.billingAddress } : {}),
-        ...(updates.dateCreated !== undefined ? { date_created: updates.dateCreated } : {}),
         ...(updates.groupId !== undefined ? { group_id: updates.groupId } : {}),
         ...(updates.expanded !== undefined ? { expanded: updates.expanded } : {}),
         ...(updates.color !== undefined ? { color: updates.color } : {}),
@@ -578,7 +571,7 @@ export async function updateClientRow(
                     key === 'totalPrice' ? 'total_price' :
                         key === 'companyAddress' ? 'company_address' :
                             key === 'billingAddress' ? 'billing_address' :
-                                key === 'dateCreated' ? 'date_created' :
+                                key === 'createdAt' ? 'created_at' :
                                     key === 'groupId' ? 'group_id' :
                                         key
             ];
@@ -596,7 +589,45 @@ export async function updateClientRow(
     }
 }
 
+async function assertDeletionAllowed(table: 'clients' | 'subitems', id: string) {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('You must be signed in to delete this item.');
+
+    const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single();
+    if (profileError) throw profileError;
+    if (profile?.role === 'director' || profile?.role === 'dev') return;
+
+    const { data: item, error: itemError } = await supabase
+        .from(table)
+        .select('created_at')
+        .eq('id', id)
+        .single();
+    if (itemError) throw itemError;
+
+    const createdAt = item.created_at;
+    if (!createdAt) throw new Error('This item has no creation date and cannot be deleted by this role.');
+    const ageInHours = (Date.now() - new Date(createdAt).getTime()) / 3_600_000;
+    if (ageInHours >= 72) throw new Error('This item is more than 72 hours old and can only be deleted by a director or dev.');
+
+    const assigneeTable = table === 'clients' ? 'client_assignees' : 'subitem_assignees';
+    const foreignKey = table === 'clients' ? 'client_id' : 'subitem_id';
+    const { data: creator } = await supabase
+        .from(assigneeTable)
+        .select('user_id')
+        .eq(foreignKey, id)
+        .limit(1)
+        .maybeSingle();
+    if (!creator?.user_id || creator.user_id !== user.id) {
+        throw new Error('You can only delete items created by you, unless you are a director or dev.');
+    }
+}
+
 export async function deleteClientRow(clientId: string) {
+    await assertDeletionAllowed('clients', clientId);
     const { error } = await supabase
         .from('clients')
         .delete()
@@ -823,6 +854,7 @@ export async function updateSubitemRow(subitemId: string, updates: Partial<Subit
     }
 }
 export async function deleteSubitemRow(subitemId: string) {
+    await assertDeletionAllowed('subitems', subitemId);
     const { data: existing, error: fetchError } = await supabase
         .from('subitems')
         .select('*')

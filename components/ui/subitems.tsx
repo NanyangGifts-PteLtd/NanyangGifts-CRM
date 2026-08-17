@@ -38,6 +38,7 @@ type ColumnDef = {
 
 export const SUBITEM_COLS: ColumnDef[] = [
     { key: "name", label: "Subitem", width: 290, minWidth: 170 },
+    { key: "createdAt", label: "Date Created", width: 105, minWidth: 7 },
     { key: "people", label: "People", width: 82, minWidth: 7 },
     { key: "localOverseas", label: "Local/Overseas", width: 100, minWidth: 7 },
     { key: "status", label: "Status", width: 80, minWidth: 7 },
@@ -930,6 +931,8 @@ export function SubitemsTable({
         switch (key) {
             case "name":
                 return renderNameCell(sub);
+            case "createdAt":
+                return <span className="block px-1 text-xs text-gray-600">{sub.createdAt ? new Date(sub.createdAt).toLocaleDateString("en-SG") : "-"}</span>;
             case "people":
                 return (
                     <AssigneeMultiSelect

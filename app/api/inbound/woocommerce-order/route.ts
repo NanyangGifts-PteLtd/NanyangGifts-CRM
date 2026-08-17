@@ -136,6 +136,7 @@ export async function POST(req: NextRequest) {
         const orderTotal = asNumberString(body.orderTotal, "");
         const subitems = normalizeSubitems(body.subitems);
         const dateCreated = todayForInput();
+        const createdAt = new Date().toISOString();
         const followUp = addDays(dateCreated, 3);
 
         if (!externalId) {
@@ -221,7 +222,7 @@ export async function POST(req: NextRequest) {
             total_price: orderTotal,
             company_address: companyAddress,
             billing_address: billingAddress,
-            date_created: dateCreated,
+            created_at: createdAt,
             expanded: false,
             color: "#7BCBD5",
             activity_log: [
