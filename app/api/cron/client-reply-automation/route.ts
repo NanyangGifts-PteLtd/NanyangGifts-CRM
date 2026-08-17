@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
         const kind = overdueDue ? "reply_overdue" : "reply_reminder";
         const message = overdueDue
             ? `${client.name} is overdue for a reply. Reply Status has been changed to Overdue.`
-            : `${client.name} has been Waiting... for 2 days. There is 1 day left to reply.`;
+            : `${client.name} has been Waiting for a reply for 2 days. Please reply within 1 day before it becomes overdue.`;
         const recipients = (client.client_assignees ?? []).map((assignment: { user_id: string }) => assignment.user_id);
         if (recipients.length === 0) continue;
 

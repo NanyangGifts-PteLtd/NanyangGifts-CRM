@@ -158,6 +158,7 @@ export interface Client {
   totalPrice: string;
   companyAddress: string;
   createdAt: string;
+  waitingStartedAt?: string | null;
   billingAddress: string;
   expanded: boolean;
   color: string;
