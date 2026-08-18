@@ -60,6 +60,22 @@ export default function Page() {
   }, [reloadClients]);
 
   useEffect(() => {
+    if (activePanel !== 'crm' && searchTarget) {
+      setSearchTarget(null);
+    }
+  }, [activePanel, searchTarget]);
+
+  useEffect(() => {
+    if (!searchTarget) return;
+
+    const timeout = window.setTimeout(() => {
+      setSearchTarget(null);
+    }, 2500);
+
+    return () => window.clearTimeout(timeout);
+  }, [searchTarget]);
+
+  useEffect(() => {
     const loadUserAndRole = async () => {
       const supabase = createSupabaseClient();
 
