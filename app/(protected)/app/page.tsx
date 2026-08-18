@@ -30,6 +30,8 @@ export default function Page() {
   const [searchTarget, setSearchTarget] = useState<SearchResult | null>(null);
 
   const selectSearchResult = useCallback((result: SearchResult) => {
+    // currently setting to CRM panel since only CRM panel has search results, change in the future when other panels have search results
+    setActivePanel('crm');
     const client = clients.find((item) => item.id === result.clientId);
     if (client && result.subitemId && !expandedClientIds.includes(client.id)) {
       setExpandedClientIds((previous) => [...previous, client.id]);

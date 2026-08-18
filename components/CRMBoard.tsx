@@ -113,15 +113,28 @@ export function CRMBoard({ clients,
   useEffect(() => {
     if (!searchTarget) return;
     if (processedSearchTarget.current === searchTarget.id) return;
-    processedSearchTarget.current = searchTarget.id;
+
     const selector = searchTarget.subitemId ? `[data-subitem-id="${searchTarget.subitemId}"]` : `[data-client-id="${searchTarget.clientId}"]`;
-    window.setTimeout(() => {
+    let attempts = 0;
+
+    const tryHighlight = () => {
       const element = document.querySelector<HTMLElement>(selector);
-      if (!element) return;
+      if (!element) {
+        attempts += 1;
+        if (attempts < 25) {
+          window.setTimeout(tryHighlight, 150);
+          return;
+        }
+        return;
+      }
+
+      processedSearchTarget.current = searchTarget.id;
       element.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
       element.classList.add('search-result-highlight');
       window.setTimeout(() => element.classList.remove('search-result-highlight'), 1800);
-    }, searchTarget.subitemId ? 100 : 0);
+    };
+
+    window.setTimeout(tryHighlight, searchTarget.subitemId ? 100 : 0);
   }, [searchTarget]);
   const [focusedFilterColumn, setFocusedFilterColumn] = useState<string | null>(null);
   const expandedIdSet = React.useMemo(() => new Set(expandedIds), [expandedIds]);
