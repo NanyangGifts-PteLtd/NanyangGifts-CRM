@@ -2,7 +2,7 @@
 
 import React, { useMemo, useState } from "react";
 import type { ActivityEntry, Profile, Subitem, TimelineRow } from "../../app/types";
-import { Calendar, CreditCard, FileText, Package, Plus, Trash2, MoreHorizontal, EyeOff, Filter, Activity, X } from "lucide-react";
+import { Calendar, CreditCard, FileText, Package, Plus, Trash2, MoreHorizontal, EyeOff, Filter, Activity, X, Info } from "lucide-react";
 import { StatusBadge } from "./statusbadge";
 import { EditableCell } from "./editablecell";
 import { SamplesSection } from "./sample";
@@ -29,6 +29,17 @@ const CURRENCY_RATES: Record<string, number> = {
     MYR: 0.333,
 };
 
+const SUBITEM_COLUMN_DESCRIPTIONS: Record<string, string> = {
+    tcSgd: "Total unit cost in SGD, excluding manpower, shipping etc",
+    manpower: "Manpower & Printing Costs",
+    ls: "Local shipping (SGD)",
+    os: "Oversea shipping (SGD)",
+    tc: "Total Cost including manpower and shipping",
+    uc: "Unit Cost",
+    pl: "Production Lead Time",
+    sl: "Shipping Lead Time",
+};
+
 type ColumnDef = {
     key: string;
     label: string;
@@ -48,15 +59,15 @@ export const SUBITEM_COLS: ColumnDef[] = [
     { key: "supplier", label: "Supplier", width: 80, minWidth: 7 },
     { key: "cost", label: "Cost", width: 90, minWidth: 7 },
     { key: "currency", label: "Currency", width: 100, minWidth: 7 },
+    { key: "cSgd", label: "C-SGD", width: 57, minWidth: 7 },
+    { key: "tcSgd", label: "TC-SGD", width: 70, minWidth: 7 },
     { key: "manpower", label: "Manpower", width: 80, minWidth: 7 },
     { key: "ls", label: "LS", width: 57, minWidth: 7 },
     { key: "os", label: "OS", width: 56, minWidth: 7 },
-    { key: "cSgd", label: "C-SGD", width: 57, minWidth: 7 },
     { key: "tc", label: "T.C", width: 58, minWidth: 7 },
     { key: "uc", label: "U.C", width: 90, minWidth: 7 },
     { key: "pl", label: "PL", width: 44, minWidth: 7 },
     { key: "sl", label: "SL", width: 44, minWidth: 7 },
-    { key: "tcSgd", label: "TC-SGD", width: 70, minWidth: 7 },
     { key: "price", label: "Price", width: 80, minWidth: 7 },
     { key: "up", label: "U.P", width: 60, minWidth: 7 },
     { key: "cnTracking", label: "CN Tracking #", width: 130, minWidth: 7 },
@@ -238,6 +249,7 @@ export function SubitemsTable({
     const [draggedColumnKey, setDraggedColumnKey] = useState<string | null>(null);
     const [dragOverColumnKey, setDragOverColumnKey] = useState<string | null>(null);
     const [dragOverColumnEdge, setDragOverColumnEdge] = useState<'left' | 'right' | null>(null);
+    const [openColumnInfo, setOpenColumnInfo] = useState<string | null>(null);
     const [openColumnMenu, setOpenColumnMenu] = useState<string | null>(null);
 
     const [pushingSubitemId, setPushingSubitemId] = useState<string | null>(null);
@@ -1403,7 +1415,37 @@ export function SubitemsTable({
                                         }}
                                         className={`group overflow-visible relative border-r border-[#D0D4E4] text-center text-[12.6px] font-semibold whitespace-nowrap text-gray-500 ${isDragging ? 'opacity-60' : ''} ${isDragTarget ? (draggedColumnKey ? 'cursor-grabbing' : 'cursor-grab') : ''}`}
                                     >
-                                        <div className="overflow-hidden text-ellipsis whitespace-nowrap px-2">{col.label}</div>
+                                        <div className="flex items-center justify-center gap-1 overflow-hidden px-2">
+                                            <span className="truncate">{col.label}</span>
+                                            {tablePrefix === 'subitem' && SUBITEM_COLUMN_DESCRIPTIONS[col.key] && (
+                                                <button
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setOpenColumnInfo(openColumnInfo === col.key ? null : col.key);
+                                                    }}
+                                                    onMouseDown={(e) => e.stopPropagation()}
+                                                    className="shrink-0 rounded p-0.5 text-gray-400 hover:bg-gray-200 hover:text-gray-700"
+                                                    title="Show column information"
+                                                    aria-label={`Show information for ${col.label}`}
+                                                >
+                                                    <Info size={13} strokeWidth={1.7} />
+                                                </button>
+                                            )}
+                                        </div>
+                                        {tablePrefix === 'subitem' && openColumnInfo === col.key && SUBITEM_COLUMN_DESCRIPTIONS[col.key] && (
+                                            <div
+                                                className="absolute left-0 top-full z-[90] mt-1 w-max max-w-[min(28rem,calc(100vw-2rem))] rounded-lg border border-gray-200 bg-white p-3 text-left font-normal whitespace-normal shadow-xl"
+                                                onClick={(e) => e.stopPropagation()}
+                                                onMouseDown={(e) => e.stopPropagation()}
+                                            >
+                                                <div className="mb-1 flex items-center gap-2 text-[11px] font-medium text-gray-500">
+                                                    <Info size={14} className="text-gray-500" />
+                                                    Column description
+                                                </div>
+                                                <p className="break-words text-sm leading-5 text-gray-700">{SUBITEM_COLUMN_DESCRIPTIONS[col.key]}</p>
+                                            </div>
+                                        )}
                                         {isDragTarget && (
                                             <button type="button" onClick={(e) => { e.stopPropagation(); setOpenColumnMenu(openColumnMenu === `${tablePrefix}:${col.key}` ? null : `${tablePrefix}:${col.key}`); }} onMouseDown={(e) => e.stopPropagation()} className="absolute right-0.5 top-0.5 z-30 hidden rounded bg-white/90 p-0.5 text-gray-400 shadow-sm hover:text-gray-700 group-hover:block" title={`Column options for ${col.label}`}>
                                                 <MoreHorizontal size={12} />
