@@ -4,8 +4,23 @@ import { TimelineRow } from '../../app/types';
 import { EditableCell } from './editablecell';
 import { Calendar } from 'lucide-react';
 import { StatusBadge } from './statusbadge';
+import { toast } from 'sonner';
 
 export type OptionEntry = { value: string; color: string };
+
+export function parseDateUTC(value: string | null | undefined): Date | null {
+    if (!value) return null;
+    const date = new Date(`${value}T00:00:00Z`);
+    return Number.isNaN(date.getTime()) ? null : date;
+}
+
+export function formatDateUTC(date: Date): string {
+    return date.toISOString().slice(0, 10);
+}
+
+export function diffDaysUTC(start: Date, end: Date): number {
+    return Math.round((end.getTime() - start.getTime()) / 86_400_000);
+}
 
 
 export const DEFAULT_TIMELINE_ROWS = [
@@ -110,8 +125,70 @@ export function TimelineSection({
     onDeleteTimelineProgress?: (name: string) => void | Promise<void>;
     onUpdateOptionColor?: (name: string, color: string) => void | Promise<void>;
 }) {
-    const updateRow = (id: string, field: keyof TimelineRow, val: string) =>
-        onUpdate(rows.map((r) => (r.id === id ? { ...r, [field]: val } : r)));
+    const updateRow = (id: string, field: keyof TimelineRow, val: string) => {
+        const nextRows = rows.map((r) => (r.id === id ? { ...r, [field]: val } : r));
+        const target = nextRows.find((r) => r.id === id);
+
+        if (target) {
+            const start = parseDateUTC(target.timelineStart);
+            const end = parseDateUTC(target.timelineEnd);
+
+            if (field === 'duration') {
+                const durationDays = Number(val);
+                if (val.trim() !== '' && Number.isFinite(durationDays)) {
+                    if (durationDays < 0) {
+                        toast.warning('Negative duration entered', { description: `${target.name} duration of ${durationDays} days is negative — dates were not automatically updated. Please check the entered value.` });
+                    } else if (start) {
+                        const computedEnd = new Date(start);
+                        computedEnd.setUTCDate(computedEnd.getUTCDate() + durationDays);
+                        const nextEnd = formatDateUTC(computedEnd);
+                        if (nextEnd !== target.timelineEnd) {
+                            target.timelineEnd = nextEnd;
+                            toast.success('Timeline end date updated', { description: `${target.name} end date automatically set to ${nextEnd} based on the ${durationDays}-day duration.` });
+                        }
+                    } else if (end) {
+                        const computedStart = new Date(end);
+                        computedStart.setUTCDate(computedStart.getUTCDate() - durationDays);
+                        const nextStart = formatDateUTC(computedStart);
+                        if (nextStart !== target.timelineStart) {
+                            target.timelineStart = nextStart;
+                            toast.success('Timeline start date updated', { description: `${target.name} start date automatically set to ${nextStart} based on the ${durationDays}-day duration.` });
+                        }
+                    }
+                }
+            } else if (field === 'timelineStart' || field === 'timelineEnd') {
+                if (start && end) {
+                    const durationDays = diffDaysUTC(start, end);
+                    const nextDuration = String(durationDays);
+                    if (nextDuration !== (target.duration || '')) {
+                        target.duration = nextDuration;
+                        if (durationDays < 0) {
+                            toast.warning('Negative duration calculated', { description: `${target.name} end date is before its start date, giving a duration of ${durationDays} days. Please check these dates.` });
+                        } else {
+                            toast.success('Duration updated', { description: `${target.name} duration automatically calculated as ${durationDays} day${durationDays === 1 ? '' : 's'}.` });
+                        }
+                    }
+                } else if (target.duration) {
+                    const durationDays = Number(target.duration);
+                    if (Number.isFinite(durationDays) && durationDays >= 0) {
+                        if (field === 'timelineStart' && start && !end) {
+                            const computedEnd = new Date(start);
+                            computedEnd.setUTCDate(computedEnd.getUTCDate() + durationDays);
+                            target.timelineEnd = formatDateUTC(computedEnd);
+                            toast.success('Timeline end date updated', { description: `${target.name} end date automatically set based on the ${durationDays}-day duration.` });
+                        } else if (field === 'timelineEnd' && end && !start) {
+                            const computedStart = new Date(end);
+                            computedStart.setUTCDate(computedStart.getUTCDate() - durationDays);
+                            target.timelineStart = formatDateUTC(computedStart);
+                            toast.success('Timeline start date updated', { description: `${target.name} start date automatically set based on the ${durationDays}-day duration.` });
+                        }
+                    }
+                }
+            }
+        }
+
+        onUpdate(nextRows);
+    };
 
     return (
         <div className="ml-8 mr-2 mb-2 w-fit max-w-[1500px] overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
@@ -125,7 +202,7 @@ export function TimelineSection({
                     <thead>
                         <tr className="border-b border-gray-200 bg-gray-50">
                             {[
-                                { label: 'Subitem', w: 300 },
+                                { label: 'Process', w: 300 },
                                 { label: 'Person', w: 30 },
                                 { label: 'Remarks', w: 200 },
                                 { label: 'No. of Cartons', w: 30 },
@@ -207,7 +284,16 @@ export function TimelineSection({
                                     </td>
 
                                     <td className="border-r border-gray-100 px-2 py-1">
-                                        <EditableCell value={row.dependency} onChange={(v) => updateRow(row.id, 'dependency', v)} />
+                                        <select
+                                            value={row.dependency || ''}
+                                            onChange={(event) => updateRow(row.id, 'dependency', event.target.value)}
+                                            className="w-full rounded border border-gray-200 bg-white px-1 py-1 text-xs outline-none focus:border-[#7BCBD5]"
+                                        >
+                                            <option value="">-</option>
+                                            {rows.filter((candidate) => candidate.id !== row.id).map((candidate) => (
+                                                <option key={candidate.id} value={candidate.name}>{candidate.name}</option>
+                                            ))}
+                                        </select>
                                     </td>
                                 </tr>
                             );

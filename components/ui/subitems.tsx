@@ -7,7 +7,7 @@ import { StatusBadge } from "./statusbadge";
 import { EditableCell } from "./editablecell";
 import { SamplesSection } from "./sample";
 import { AssigneeMultiSelect } from "./assignee-multiselect";
-import { TimelineSection, DEFAULT_TIMELINE_ROWS } from "./timeline";
+import { TimelineSection, DEFAULT_TIMELINE_ROWS, parseDateUTC, formatDateUTC, diffDaysUTC } from "./timeline";
 import { CustomColumn } from "@/lib/custom-columns";
 import { toast } from "sonner";
 import {
@@ -1157,6 +1157,69 @@ export function SubitemsTable({
     const renderCell = (sub: Subitem, key: string) =>
         tableMode === "payment" ? renderPaymentCell(sub, key) : renderSubitemCell(sub, key);
 
+    const updateTimelineRowsWithDependencies = (previousRows: TimelineRow[], nextRows: TimelineRow[]) => {
+        const previousById = new Map(previousRows.map((row) => [row.id, row]));
+        const triggered = nextRows.some((row) => {
+            const previous = previousById.get(row.id);
+            return previous && (previous.dependency !== row.dependency || previous.timelineEnd !== row.timelineEnd);
+        });
+        if (!triggered) return nextRows;
+
+        const resolvedRows = nextRows.map((row) => ({ ...row }));
+        let automaticUpdates = 0;
+        const negativeDurationRowNames = new Set<string>();
+        for (let pass = 0; pass < resolvedRows.length; pass += 1) {
+            let changedThisPass = false;
+            for (const row of resolvedRows) {
+                if (!row.dependency) continue;
+                const dependency = resolvedRows.find((candidate) => candidate.name === row.dependency);
+                if (!dependency?.timelineEnd) continue;
+
+                const dependencyEnd = new Date(`${dependency.timelineEnd}T00:00:00Z`);
+                if (Number.isNaN(dependencyEnd.getTime())) continue;
+                dependencyEnd.setUTCDate(dependencyEnd.getUTCDate() + 1);
+                const nextStart = dependencyEnd.toISOString().slice(0, 10);
+                if (row.timelineStart !== nextStart) {
+                    row.timelineStart = nextStart;
+                    automaticUpdates += 1;
+                    changedThisPass = true;
+
+                    const start = parseDateUTC(row.timelineStart);
+                    const end = parseDateUTC(row.timelineEnd);
+                    if (start && end) {
+                        const durationDays = diffDaysUTC(start, end);
+                        row.duration = String(durationDays);
+                        if (durationDays < 0) negativeDurationRowNames.add(row.name);
+                    } else if (row.duration) {
+                        const durationDays = Number(row.duration);
+                        if (Number.isFinite(durationDays) && start && durationDays >= 0) {
+                            const computedEnd = new Date(start);
+                            computedEnd.setUTCDate(computedEnd.getUTCDate() + durationDays);
+                            row.timelineEnd = formatDateUTC(computedEnd);
+                        }
+                    }
+                }
+            }
+            if (!changedThisPass) break;
+        }
+
+        if (automaticUpdates > 0) {
+            toast.success('Timeline dates updated', {
+                description: `${automaticUpdates} dependent process start date${automaticUpdates === 1 ? '' : 's'} automatically updated to the day after its dependency ends.`,
+                action: {
+                    label: 'Details',
+                    onClick: () => toast('Dependency automation', { description: 'A dependent process starts one day after the selected dependency process ends.' }),
+                },
+            });
+        }
+        if (negativeDurationRowNames.size > 0) {
+            toast.warning('Negative duration calculated', {
+                description: `${Array.from(negativeDurationRowNames).join(', ')}: end date is before the auto-updated start date. Please check these dates.`,
+            });
+        }
+        return resolvedRows;
+    };
+
     const totalColSpan = 1 + cols.length + subitemCustomCols.length + 1;
 
     return (
@@ -1482,7 +1545,9 @@ export function SubitemsTable({
                                     <ExpandedRow colSpan={totalColSpan} tone="blue">
                                         <TimelineSection
                                             rows={sub.timelineRows?.length ? sub.timelineRows : DEFAULT_TIMELINE_ROWS}
-                                            onUpdate={(rows) => onUpdateSubitem(sub.id, { timelineRows: rows })}
+                                            onUpdate={(rows) => onUpdateSubitem(sub.id, {
+                                                timelineRows: updateTimelineRowsWithDependencies(sub.timelineRows?.length ? sub.timelineRows : DEFAULT_TIMELINE_ROWS, rows),
+                                            })}
                                             timelineProgressOptions={subitemSubprogressOptions}
                                             onAddTimelineProgress={onAddSubitemSubprogress}
                                             onDeleteTimelineProgress={onDeleteSubitemSubprogress}
