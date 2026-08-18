@@ -72,6 +72,8 @@ export const SUBITEM_COLS: ColumnDef[] = [
     { key: "up", label: "U.P", width: 60, minWidth: 7 },
     { key: "markup", label: "Markup", width: 80, minWidth: 7 },
     { key: "percentMarkup", label: "% Markup", width: 85, minWidth: 7 },
+    { key: "idealMarkup", label: "Ideal Markup", width: 95, minWidth: 7 },
+    { key: "priceToSet", label: "Price to Set", width: 95, minWidth: 7 },
     { key: "cnTracking", label: "CN Tracking #", width: 130, minWidth: 7 },
     { key: "sgTracking", label: "SG Tracking #", width: 130, minWidth: 7 },
     { key: "createdAt", label: "Date Created", width: 105, minWidth: 7 },
@@ -941,6 +943,8 @@ export function SubitemsTable({
         const price = parseNumber(sub.up) * qty;
         const markup = price - tc;
         const percentMarkup = tc !== 0 ? markup / tc * 100 : null;
+        const idealMarkup = parseNumber(sub.customFields?.idealMarkup);
+        const priceToSet = qty > 0 ? (idealMarkup != 0 ? (idealMarkup + tc) / qty : null) : null;
     
         
         switch (key) {
@@ -1053,6 +1057,21 @@ export function SubitemsTable({
                 return <div className="flex justify-center text-xs text-gray-800">{formatMoney(markup)}</div>;
             case "percentMarkup":
                 return <div className="flex justify-center text-xs text-gray-800">{percentMarkup === null ? "" : `${formatMoney(percentMarkup)}%`}</div>;
+            case "idealMarkup":
+                return (
+                    <EditableCell
+                        value={sub.customFields?.idealMarkup ?? ""}
+                        onChange={(value) => onUpdateSubitem(sub.id, {
+                            customFields: {
+                                ...(sub.customFields ?? {}),
+                                idealMarkup: value,
+                            },
+                        })}
+                        type="number"
+                    />
+                );
+            case "priceToSet":
+                return <div className="flex justify-center text-xs text-gray-800">{priceToSet === null ? "" : formatMoney(priceToSet)}</div>;
             case "cnTracking":
                 return <EditableCell value={sub.cnTracking} onChange={(v) => onUpdateSubitem(sub.id, { cnTracking: v })} />;
             case "sgTracking":
