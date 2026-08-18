@@ -38,7 +38,6 @@ type ColumnDef = {
 
 export const SUBITEM_COLS: ColumnDef[] = [
     { key: "name", label: "Subitem", width: 290, minWidth: 170 },
-    { key: "createdAt", label: "Date Created", width: 105, minWidth: 7 },
     { key: "people", label: "People", width: 82, minWidth: 7 },
     { key: "localOverseas", label: "Local/Overseas", width: 100, minWidth: 7 },
     { key: "status", label: "Status", width: 80, minWidth: 7 },
@@ -62,7 +61,7 @@ export const SUBITEM_COLS: ColumnDef[] = [
     { key: "up", label: "U.P", width: 60, minWidth: 7 },
     { key: "cnTracking", label: "CN Tracking #", width: 130, minWidth: 7 },
     { key: "sgTracking", label: "SG Tracking #", width: 130, minWidth: 7 },
-    
+    { key: "createdAt", label: "Date Created", width: 105, minWidth: 7 },
 ];
 
 export const PAYMENT_COLS: ColumnDef[] = [
