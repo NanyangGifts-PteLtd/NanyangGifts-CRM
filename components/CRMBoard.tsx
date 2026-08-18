@@ -52,6 +52,8 @@ const CLIENT_HEADER_COLS: HeaderCol[] = [
   { key: 'phone', label: 'Phone', width: 80, minWidth: 7 },
   { key: 'requirements', label: 'Requirements', width: 90, minWidth: 7 },
   { key: 'nbd', label: 'NBD', width: 100, minWidth: 7 },
+  { key: 'logoRequirementsFile', label: 'Logo/Requirements File', width: 150, minWidth: 7 },
+  { key: 'filesMiscellaneous', label: 'Files (Miscellaneous)', width: 170, minWidth: 7 },
   { key: 'totalPrice', label: 'Total Price', width: 80, minWidth: 7 },
   { key: 'companyAddress', label: 'Company Address', width: 115, minWidth: 7 },
   { key: 'billingAddress', label: 'Billing Address', width: 115, minWidth: 7 },

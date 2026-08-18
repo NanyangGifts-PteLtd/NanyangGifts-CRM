@@ -181,6 +181,7 @@ export function ClientRow({
     const [closeConfirmed, setCloseConfirmed] = useState(false);
     const [showActivityLog, setShowActivityLog] = useState(false);
     const [undoneActivityIds, setUndoneActivityIds] = useState<Set<string>>(new Set());
+    const [attachmentDrafts, setAttachmentDrafts] = useState<Record<string, string>>({});
 
     // generating estimate
     const {
@@ -255,6 +256,97 @@ export function ClientRow({
 
         return "";
     }
+    const renderAttachmentField = (fieldKey: string) => {
+        const value = String(client.customFields?.[fieldKey] ?? "");
+        const draft = attachmentDrafts[fieldKey] ?? "";
+
+        const saveSingleValue = (nextValue: string) => {
+            updateClientCustomField(client.id, fieldKey, nextValue.trim());
+        };
+
+        const handleLinkSubmit = (entry: string) => {
+            const trimmed = entry.trim();
+            if (!trimmed) return;
+            saveSingleValue(trimmed);
+            setAttachmentDrafts((previous) => ({ ...previous, [fieldKey]: "" }));
+        };
+
+        const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+            const files = Array.from(event.target.files ?? []);
+            if (!files.length) return;
+
+            try {
+                const file = files[0];
+                const dataUrl = await new Promise<string>((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = () => resolve(String(reader.result ?? ""));
+                    reader.onerror = () => reject(new Error(`Failed to read ${file.name}`));
+                    reader.readAsDataURL(file);
+                });
+
+                saveSingleValue(dataUrl);
+            } finally {
+                event.target.value = "";
+            }
+        };
+
+        const isLink = /^https?:\/\//i.test(value) || /^mailto:/i.test(value);
+        const displayLabel = isLink
+            ? value.replace(/^https?:\/\//i, '').replace(/^mailto:/i, '')
+            : value
+                ? 'Open file'
+                : 'No file yet';
+
+        return (
+            <div className="flex min-h-[30px] flex-col gap-1 px-1 py-0.5">
+                {value && (
+                    <div className="flex max-w-full items-center gap-1 rounded bg-sky-50 px-1.5 py-0.5">
+                        <a
+                            href={value}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="max-w-[180px] truncate text-[10px] font-medium text-sky-700 hover:underline"
+                            title={value}
+                        >
+                            {displayLabel}
+                        </a>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                saveSingleValue("");
+                                setAttachmentDrafts((previous) => ({ ...previous, [fieldKey]: "" }));
+                            }}
+                            className="text-[9px] text-slate-500 hover:text-red-500"
+                            title="Remove attachment"
+                        >
+                            ×
+                        </button>
+                    </div>
+                )}
+                {!value && (
+                    <div className="flex items-center gap-1">
+                        <input
+                            value={draft}
+                            onChange={(event) => setAttachmentDrafts((previous) => ({ ...previous, [fieldKey]: event.target.value }))}
+                            onKeyDown={(event) => {
+                                if (event.key === 'Enter') {
+                                    event.preventDefault();
+                                    handleLinkSubmit(draft);
+                                }
+                            }}
+                            placeholder="Paste link and Enter"
+                            className="min-w-0 flex-1 rounded border border-slate-200 bg-white px-1 py-0.5 text-[11px] text-slate-700 outline-none focus:border-[#7BCBD5]"
+                        />
+                        <label className="inline-flex cursor-pointer items-center rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-medium text-slate-700 hover:bg-slate-100">
+                            Attach
+                            <input type="file" className="hidden" onChange={handleFileChange} />
+                        </label>
+                    </div>
+                )}
+            </div>
+        );
+    };
+
     // activity log text
     function displayLogValue(value: unknown) {
         if (value == null || value === '') return 'empty';
@@ -756,10 +848,16 @@ export function ClientRow({
                         className="text-[12.6px] border-none outline-none bg-transparent cursor-pointer w-full"
                     />
                 </div>
-                <div data-client-column="totalPrice" className="flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height: 30, minWidth: colWidth.totalPrice, width: colWidth.totalPrice, order: columnOrderMap.totalPrice ?? 13 }}>
+                <div data-client-column="logoRequirementsFile" className="flex-1 min-w-0 border-r border-[#D0D4E4] overflow-hidden bg-white" style={{ height: 30, minWidth: colWidth.logoRequirementsFile, width: colWidth.logoRequirementsFile, order: columnOrderMap.logoRequirementsFile ?? 13 }}>
+                    {renderAttachmentField('logoRequirementsFile')}
+                </div>
+                <div data-client-column="filesMiscellaneous" className="flex-1 min-w-0 border-r border-[#D0D4E4] overflow-hidden bg-white" style={{ height: 30, minWidth: colWidth.filesMiscellaneous, width: colWidth.filesMiscellaneous, order: columnOrderMap.filesMiscellaneous ?? 14 }}>
+                    {renderAttachmentField('filesMiscellaneous')}
+                </div>
+                <div data-client-column="totalPrice" className="flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height: 30, minWidth: colWidth.totalPrice, width: colWidth.totalPrice, order: columnOrderMap.totalPrice ?? 15 }}>
                     <EditableCell className="!px-8" value={client.totalPrice} onChange={(v) => onUpdate({ totalPrice: v })} type="Number" />
                 </div>
-                <div data-client-column="companyAddress" className="flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height: 30, minWidth: colWidth.companyAddress, width: colWidth.companyAddress, order: columnOrderMap.companyAddress ?? 14 }}>
+                <div data-client-column="companyAddress" className="flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height: 30, minWidth: colWidth.companyAddress, width: colWidth.companyAddress, order: columnOrderMap.companyAddress ?? 16 }}>
                     <EditableCell
                         value={client.companyAddress}
                         onChange={(v) => onUpdate({ companyAddress: v })}
