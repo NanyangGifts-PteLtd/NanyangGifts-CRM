@@ -2,14 +2,13 @@
 "use client";
 
 import { Client, Subitem, ClientStatus, ReplyStatus, ActivityEntry, Profile } from "../../app/types";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { ChevronDown, ChevronRight, Activity, Trash2, ReceiptText, FileBox } from "lucide-react";
 import { EditableCell } from "./editablecell";
 import { StatusBadge } from "./statusbadge";
 import { SubitemsTable } from "./subitems";
 import { AssigneeMultiSelect } from "./assignee-multiselect";
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from "../ui/alert-dialog";
-import { useGenerateEstimate } from '../hooks/use-generate-estimate-button';
 import { Tooltip } from "radix-ui";
 import type { CustomColumn } from '@/lib/custom-columns';
 
@@ -180,41 +179,10 @@ export function ClientRow({
     const [closeFiles, setCloseFiles] = useState<File[]>([]);
     const [closeConfirmed, setCloseConfirmed] = useState(false);
     const [showActivityLog, setShowActivityLog] = useState(false);
+    const [showOnlyAttachedActivities, setShowOnlyAttachedActivities] = useState(false);
     const [undoneActivityIds, setUndoneActivityIds] = useState<Set<string>>(new Set());
     const [attachmentDrafts, setAttachmentDrafts] = useState<Record<string, string>>({});
 
-    // generating estimate
-    const {
-        handleGenerateEstimate,
-        isGeneratingEstimate,
-        estimateError,
-        estimateSuccess,
-    } = useGenerateEstimate();
-    const [showEstimateSuccess, setShowEstimateSuccess] = useState(false);
-    const [fadeEstimateSuccess, setFadeEstimateSuccess] = useState(false);
-
-    useEffect(() => {
-        if (!estimateSuccess) return;
-
-        setShowEstimateSuccess(true);
-        setFadeEstimateSuccess(false);
-
-        const fadeTimer = setTimeout(() => {
-            setShowEstimateSuccess(false);
-            setFadeEstimateSuccess(false);
-        }, 2000);
-
-        const hideTimer = setTimeout(() => {
-            setShowEstimateSuccess(false);
-            setFadeEstimateSuccess(false);
-        })
-
-        return () => {
-            clearTimeout(fadeTimer);
-            clearTimeout(hideTimer);
-        };
-    }, [estimateSuccess])
-    
     // normalise dates
     function toDateInputValue(value: unknown): string {
         if (!value) return "";
@@ -497,6 +465,7 @@ export function ClientRow({
                                     <button
                                         type="button"
                                         onClick={() => setShowActivityLog(true)}
+                                        onPointerDown={(event) => event.stopPropagation()}
                                         className="flex whitespace-nowrap px-2 py-1 text-[10px] font-medium text-cyan-500 hover:bg-gray-50 hover:text-cyan-600 transition transform active:scale-95 duration-150"
                                     >
                                         <Activity size={10} className="transition transform active:scale-150 duration-200" />
@@ -510,35 +479,64 @@ export function ClientRow({
                             </Tooltip.Root>
                         </Tooltip.Provider>
                         {showActivityLog && (
-                            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
-                                <div className="w-full max-w-2xl rounded-xl bg-white p-4 shadow-xl">
+                            <div
+                                className="fixed inset-0 z-50 flex items-center justify-center bg-black/30"
+                                onPointerDown={(event) => event.stopPropagation()}
+                                onDragStart={(event) => event.stopPropagation()}
+                            >
+                                <div
+                                    className="w-full max-w-2xl rounded-xl bg-white p-4 shadow-xl"
+                                    onPointerDown={(event) => event.stopPropagation()}
+                                    onDragStart={(event) => event.stopPropagation()}
+                                >
                                     <div className="mb-4 flex items-center justify-between">
                                         <div>
                                             <h2 className="text-sm font-semibold text-gray-900">Activity Log</h2>
                                             <p className="text-[12.6px] text-gray-500">{client.name}</p>
                                         </div>
 
-                                        <button
-                                            type="button"
-                                            onClick={() => setShowActivityLog(false)}
-                                            className="text-[12.6px] text-gray-500 hover:text-gray-700"
-                                        >
-                                            Close
-                                        </button>
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowOnlyAttachedActivities((previous) => !previous)}
+                                                className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium transition-colors ${showOnlyAttachedActivities
+                                                    ? 'border-teal-300 bg-teal-100 text-teal-700'
+                                                    : 'border-gray-200 bg-white text-gray-500 hover:bg-gray-50 hover:text-gray-700'
+                                                    }`}
+                                                title="Filter to activities with an attached file"
+                                                aria-pressed={showOnlyAttachedActivities}
+                                            >
+                                                <FileBox size={13} />
+                                                {showOnlyAttachedActivities ? 'Attached files' : 'All activities'}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowActivityLog(false)}
+                                                className="text-[12.6px] text-gray-500 hover:text-gray-700"
+                                            >
+                                                Close
+                                            </button>
+                                        </div>
                                     </div>
                                     <div className="max-h-[420px] space-y-3 overflow-y-auto">
-                                        {(client.activityLog?.filter((entry) => !entry.subitemId).length ?? 0) === 0 ? (
-                                            <div className="rounded-lg border border-dashed border-gray-200 p-6 text-center text-sm text-gray-500">
-                                                No activity yet.
-                                            </div>
-                                        ) : (
-                                            [...(client.activityLog ?? [])]
+                                        {(() => {
+                                            const clientActivities = [...(client.activityLog ?? [])]
                                                 .filter((entry) => !entry.subitemId)
+                                                .filter((entry) => !showOnlyAttachedActivities || Boolean(entry.link))
                                                 .sort(
                                                     (a, b) =>
                                                         new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-                                                )
-                                                .map((entry) => (
+                                                );
+
+                                            if (clientActivities.length === 0) {
+                                                return (
+                                            <div className="rounded-lg border border-dashed border-gray-200 p-6 text-center text-sm text-gray-500">
+                                                {showOnlyAttachedActivities ? 'No activities with attached files yet.' : 'No activity yet.'}
+                                            </div>
+                                                );
+                                            }
+
+                                            return clientActivities.map((entry) => (
                                                     <div
                                                         key={entry.id}
                                                         className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2"
@@ -584,8 +582,8 @@ export function ClientRow({
                                                             )}
                                                         </div>
                                                     </div>
-                                                ))
-                                        )}
+                                            ));
+                                        })()}
                                     </div>
                                 </div>
                             </div>
@@ -594,11 +592,11 @@ export function ClientRow({
                             <Tooltip.Root>
                                 <Tooltip.Trigger asChild>
                                     <button
-                                        onClick={() => handleGenerateEstimate(client.id)}
-                                        disabled={isGeneratingEstimate}
+                                        type="button"
                                         className="px-2 py-2 text-[10px] font-medium text-teal-500"
+                                        aria-label="Generate estimate placeholder"
                                     >
-                                        {isGeneratingEstimate ? 'Generating...' : ''}<ReceiptText size={15} color="#7BCBD5" className="transition transform active:scale-150 duration-200" />
+                                        <ReceiptText size={15} color="#7BCBD5" className="transition transform active:scale-150 duration-200" />
                                     </button>
                                 </Tooltip.Trigger>
                                 <Tooltip.Portal>
@@ -607,12 +605,6 @@ export function ClientRow({
                                 </Tooltip.Portal>
                             </Tooltip.Root>
                         </Tooltip.Provider>
-                        {estimateError && (
-                            <div className="mt-1 text-[11px] text-red-600">{estimateError}</div>
-                        )}
-                        {showEstimateSuccess && (
-                            <div className={`mt-1 text-[11px] text-teal-500 transition-opacity duration-500 ${fadeEstimateSuccess ? "opacity-0" : "opacity-100"}`}>Successfully generated!</div>
-                        )}
                         <Tooltip.Provider>
                             <Tooltip.Root>
                                 <Tooltip.Trigger asChild>
