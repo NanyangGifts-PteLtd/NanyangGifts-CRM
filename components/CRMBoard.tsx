@@ -55,6 +55,7 @@ const CLIENT_HEADER_COLS: HeaderCol[] = [
   { key: 'logoRequirementsFile', label: 'Logo/Requirements File', width: 150, minWidth: 7 },
   { key: 'filesMiscellaneous', label: 'Files (Miscellaneous)', width: 170, minWidth: 7 },
   { key: 'totalPrice', label: 'Total Price', width: 80, minWidth: 7 },
+  { key: 'totalMarkup', label: 'Total Markup', width: 90, minWidth: 7 },
   { key: 'companyAddress', label: 'Company Address', width: 115, minWidth: 7 },
   { key: 'billingAddress', label: 'Billing Address', width: 115, minWidth: 7 },
   { key: 'dateCreated', label: 'Date Created', width: 90, minWidth: 7 },
@@ -2242,7 +2243,7 @@ export function CRMBoard({ clients,
                             setDragOverHeaderKey(null);
                             setDragOverHeaderEdge(null);
                           }}
-                          className={`group relative flex h-7 justify-center items-center overflow-visible border-[#D0D4E4] border-r flex-shrink-0 ${isDragging ? 'opacity-60' : ''} ${isDraggable ? (draggedHeaderKey ? 'cursor-grabbing' : 'cursor-grab') : ''} ${isDragOver && isDraggable ? 'bg-[#dff9ff]' : ''}`}
+                          className={`group relative flex h-7 justify-center items-center overflow-visible border-[#D0D4E4] border-r flex-shrink-0 ${col.key === 'totalPrice' || col.key === 'totalMarkup' ? 'border-b-2 border-red-500' : ''} ${isDragging ? 'opacity-60' : ''} ${isDraggable ? (draggedHeaderKey ? 'cursor-grabbing' : 'cursor-grab') : ''} ${isDragOver && isDraggable ? 'bg-[#dff9ff]' : ''}`}
                           style={{ minWidth: col.width, width: col.width }}
                         >
                           {col.key === 'selectCheckbox' ? (

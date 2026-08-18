@@ -12,6 +12,12 @@ import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, A
 import { Tooltip } from "radix-ui";
 import type { CustomColumn } from '@/lib/custom-columns';
 
+const CURRENCY_RATES: Record<string, number> = {
+    RMB: 0.2,
+    SGD: 1,
+    MYR: 0.333,
+};
+
 type OptionEntry = { value: string; color: string };
 
 export type ClientRowProps = {
@@ -314,6 +320,26 @@ export function ClientRow({
             </div>
         );
     };
+
+    const aggregateSubitemValues = client.subitems.reduce(
+        (totals, subitem) => {
+            const quantity = Number.parseFloat(String(subitem.qty ?? '').replace(/,/g, '')) || 0;
+            const cost = Number.parseFloat(String(subitem.cost ?? '').replace(/,/g, '')) || 0;
+            const manpower = Number.parseFloat(String(subitem.manpower ?? '').replace(/,/g, '')) || 0;
+            const localShipping = Number.parseFloat(String(subitem.ls ?? '').replace(/,/g, '')) || 0;
+            const overseasShipping = Number.parseFloat(String(subitem.os ?? '').replace(/,/g, '')) || 0;
+            const unitPrice = Number.parseFloat(String(subitem.up ?? '').replace(/,/g, '')) || 0;
+            const currencyRate = CURRENCY_RATES[subitem.currency ?? 'RMB'] ?? 0.2;
+            const totalCost = cost * currencyRate * quantity + manpower + localShipping + overseasShipping;
+            const price = unitPrice * quantity;
+
+            return {
+                totalPrice: totals.totalPrice + price,
+                totalMarkup: totals.totalMarkup + price - totalCost,
+            };
+        },
+        { totalPrice: 0, totalMarkup: 0 },
+    );
 
     // activity log text
     function displayLogValue(value: unknown) {
@@ -847,9 +873,12 @@ export function ClientRow({
                     {renderAttachmentField('filesMiscellaneous')}
                 </div>
                 <div data-client-column="totalPrice" className="flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height: 30, minWidth: colWidth.totalPrice, width: colWidth.totalPrice, order: columnOrderMap.totalPrice ?? 15 }}>
-                    <EditableCell className="!px-8" value={client.totalPrice} onChange={(v) => onUpdate({ totalPrice: v })} type="Number" />
+                    <span className="block px-2 text-center text-[12.6px] text-gray-800">{aggregateSubitemValues.totalPrice.toFixed(2)}</span>
                 </div>
-                <div data-client-column="companyAddress" className="flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height: 30, minWidth: colWidth.companyAddress, width: colWidth.companyAddress, order: columnOrderMap.companyAddress ?? 16 }}>
+                <div data-client-column="totalMarkup" className="flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height: 30, minWidth: colWidth.totalMarkup, width: colWidth.totalMarkup, order: columnOrderMap.totalMarkup ?? 16 }}>
+                    <span className="block px-2 text-center text-[12.6px] text-gray-800">{aggregateSubitemValues.totalMarkup.toFixed(2)}</span>
+                </div>
+                <div data-client-column="companyAddress" className="flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height: 30, minWidth: colWidth.companyAddress, width: colWidth.companyAddress, order: columnOrderMap.companyAddress ?? 17 }}>
                     <EditableCell
                         value={client.companyAddress}
                         onChange={(v) => onUpdate({ companyAddress: v })}
@@ -857,7 +886,7 @@ export function ClientRow({
                     />
                 </div>
 
-                <div data-client-column="billingAddress" className="flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height: 30, minWidth: colWidth.billingAddress, width: colWidth.billingAddress, order: columnOrderMap.billingAddress ?? 15 }}>
+                <div data-client-column="billingAddress" className="flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height: 30, minWidth: colWidth.billingAddress, width: colWidth.billingAddress, order: columnOrderMap.billingAddress ?? 18 }}>
                     <EditableCell
                         value={client.billingAddress}
                         onChange={(v) => onUpdate({ billingAddress: v })}
@@ -865,7 +894,7 @@ export function ClientRow({
                     />
                 </div>
 
-                <div data-client-column="dateCreated" className="flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height: 30, minWidth: colWidth.dateCreated, width: colWidth.dateCreated, order: columnOrderMap.dateCreated ?? 16 }}>
+                <div data-client-column="dateCreated" className="flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height: 30, minWidth: colWidth.dateCreated, width: colWidth.dateCreated, order: columnOrderMap.dateCreated ?? 19 }}>
                     <span className="block px-1 text-[12.6px] text-gray-700">
                         {client.createdAt ? new Date(client.createdAt).toLocaleDateString("en-SG") : "-"}
                     </span>

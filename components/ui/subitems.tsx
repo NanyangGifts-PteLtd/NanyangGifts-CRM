@@ -70,6 +70,8 @@ export const SUBITEM_COLS: ColumnDef[] = [
     { key: "sl", label: "SL", width: 44, minWidth: 7 },
     { key: "price", label: "Price", width: 80, minWidth: 7 },
     { key: "up", label: "U.P", width: 60, minWidth: 7 },
+    { key: "markup", label: "Markup", width: 80, minWidth: 7 },
+    { key: "percentMarkup", label: "% Markup", width: 85, minWidth: 7 },
     { key: "cnTracking", label: "CN Tracking #", width: 130, minWidth: 7 },
     { key: "sgTracking", label: "SG Tracking #", width: 130, minWidth: 7 },
     { key: "createdAt", label: "Date Created", width: 105, minWidth: 7 },
@@ -934,9 +936,11 @@ export function SubitemsTable({
         const os = parseNumber(sub.os);
         const cSgd = cost * (CURRENCY_RATES[sub.currency ?? "RMB"] ?? 0.2);
         const tcSgd = cSgd * qty;
-        const tc = cost + manpower + ls + os + tcSgd;
+        const tc = tcSgd + manpower + ls + os;
         const uc = qty > 0 ? tc / qty : null;
         const price = parseNumber(sub.up) * qty;
+        const markup = price - tc;
+        const percentMarkup = tc !== 0 ? markup / tc * 100 : null;
     
         
         switch (key) {
@@ -1045,6 +1049,10 @@ export function SubitemsTable({
                 return <div className="flex justify-center text-xs text-gray-800">{formatMoney(price)} </div>;
             case "up":
                 return <EditableCell value={sub.up} onChange={(v) => onUpdateSubitem(sub.id, { up: v })} type="number" />;
+            case "markup":
+                return <div className="flex justify-center text-xs text-gray-800">{formatMoney(markup)}</div>;
+            case "percentMarkup":
+                return <div className="flex justify-center text-xs text-gray-800">{percentMarkup === null ? "" : `${formatMoney(percentMarkup)}%`}</div>;
             case "cnTracking":
                 return <EditableCell value={sub.cnTracking} onChange={(v) => onUpdateSubitem(sub.id, { cnTracking: v })} />;
             case "sgTracking":
