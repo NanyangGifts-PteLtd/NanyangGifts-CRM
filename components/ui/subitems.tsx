@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import type { ActivityEntry, Profile, Subitem } from "../../app/types";
+import type { ActivityEntry, Profile, Subitem, TimelineRow } from "../../app/types";
 import { Calendar, CreditCard, FileText, Package, Plus, Trash2, MoreHorizontal, EyeOff, Filter, Activity, X } from "lucide-react";
 import { StatusBadge } from "./statusbadge";
 import { EditableCell } from "./editablecell";
