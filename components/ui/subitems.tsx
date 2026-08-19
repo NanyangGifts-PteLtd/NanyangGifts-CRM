@@ -9,6 +9,7 @@ import { SamplesSection } from "./sample";
 import { AssigneeMultiSelect } from "./assignee-multiselect";
 import { TimelineSection, DEFAULT_TIMELINE_ROWS, parseDateUTC, formatDateUTC, diffDaysUTC } from "./timeline";
 import { CustomColumn } from "@/lib/custom-columns";
+import { calculateSubitemFinancials } from "@/lib/subitem-calculations";
 import { toast } from "sonner";
 import {
     AlertDialog,
@@ -22,12 +23,6 @@ import {
 } from "./alert-dialog";
 
 export const dynamic = "force-dynamic";
-
-const CURRENCY_RATES: Record<string, number> = {
-    RMB: 0.2,
-    SGD: 1,
-    MYR: 0.333,
-};
 
 const SUBITEM_COLUMN_DESCRIPTIONS: Record<string, string> = {
     tcSgd: "Total unit cost in SGD, excluding manpower, shipping etc",
@@ -766,17 +761,10 @@ export function SubitemsTable({
         () =>
             selectedSubitems.reduce(
                 (acc, sub) => {
-                    const qty = parseNumber(sub.qty);
-                    const tc =
-                        parseNumber(sub.cost) +
-                        parseNumber(sub.manpower) +
-                        parseNumber(sub.ls) +
-                        parseNumber(sub.os) +
-                        parseNumber(sub.tcSgd);
-                    const totalPrice = parseNumber(sub.up) * qty;
-                    acc.totalCost += tc;
-                    acc.totalPrice += totalPrice;
-                    acc.totalMarkup += totalPrice - tc;
+                    const financials = calculateSubitemFinancials(sub);
+                    acc.totalCost += financials.tc;
+                    acc.totalPrice += financials.price;
+                    acc.totalMarkup += financials.markup;
                     return acc;
                 },
                 { totalCost: 0, totalPrice: 0, totalMarkup: 0 }
@@ -931,18 +919,8 @@ export function SubitemsTable({
     );
 
     const renderSubitemCell = (sub: Subitem, key: string) => {
-        const qty = parseNumber(sub.qty);
-        const cost = parseNumber(sub.cost);
-        const manpower = parseNumber(sub.manpower);
-        const ls = parseNumber(sub.ls);
-        const os = parseNumber(sub.os);
-        const cSgd = cost * (CURRENCY_RATES[sub.currency ?? "RMB"] ?? 0.2);
-        const tcSgd = cSgd * qty;
-        const tc = tcSgd + manpower + ls + os;
+        const { quantity: qty, cSgd, tcSgd, tc, price, markup, percentMarkup } = calculateSubitemFinancials(sub);
         const uc = qty > 0 ? tc / qty : null;
-        const price = parseNumber(sub.up) * qty;
-        const markup = price - tc;
-        const percentMarkup = tc !== 0 ? markup / tc * 100 : null;
         const idealMarkup = parseNumber(sub.customFields?.idealMarkup);
         const priceToSet = qty > 0 ? (idealMarkup != 0 ? (idealMarkup + tc) / qty : null) : null;
     

@@ -11,12 +11,7 @@ import { AssigneeMultiSelect } from "./assignee-multiselect";
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from "../ui/alert-dialog";
 import { Tooltip } from "radix-ui";
 import type { CustomColumn } from '@/lib/custom-columns';
-
-const CURRENCY_RATES: Record<string, number> = {
-    RMB: 0.2,
-    SGD: 1,
-    MYR: 0.333,
-};
+import { calculateSubitemFinancials } from '@/lib/subitem-calculations';
 
 type OptionEntry = { value: string; color: string };
 
@@ -323,19 +318,11 @@ export function ClientRow({
 
     const aggregateSubitemValues = client.subitems.reduce(
         (totals, subitem) => {
-            const quantity = Number.parseFloat(String(subitem.qty ?? '').replace(/,/g, '')) || 0;
-            const cost = Number.parseFloat(String(subitem.cost ?? '').replace(/,/g, '')) || 0;
-            const manpower = Number.parseFloat(String(subitem.manpower ?? '').replace(/,/g, '')) || 0;
-            const localShipping = Number.parseFloat(String(subitem.ls ?? '').replace(/,/g, '')) || 0;
-            const overseasShipping = Number.parseFloat(String(subitem.os ?? '').replace(/,/g, '')) || 0;
-            const unitPrice = Number.parseFloat(String(subitem.up ?? '').replace(/,/g, '')) || 0;
-            const currencyRate = CURRENCY_RATES[subitem.currency ?? 'RMB'] ?? 0.2;
-            const totalCost = cost * currencyRate * quantity + manpower + localShipping + overseasShipping;
-            const price = unitPrice * quantity;
+            const { price, markup } = calculateSubitemFinancials(subitem);
 
             return {
                 totalPrice: totals.totalPrice + price,
-                totalMarkup: totals.totalMarkup + price - totalCost,
+                totalMarkup: totals.totalMarkup + markup,
             };
         },
         { totalPrice: 0, totalMarkup: 0 },
