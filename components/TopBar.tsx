@@ -499,11 +499,11 @@ export default function TopBar({
 
 
             <button
-              key="Account Settings"
+              key="Change Password"
               onClick={() => { setShowProfile(false); setShowChangePassword(true); }}
               className="w-full text-left px-4 py-2 text-xs hover:bg-[#e7fdff] text-gray-700"
             >
-              Account Settings
+              Change Password
             </button>
 
             <div className="text-left">
