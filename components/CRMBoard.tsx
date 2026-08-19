@@ -2243,8 +2243,9 @@ export function CRMBoard({ clients,
                             setDragOverHeaderKey(null);
                             setDragOverHeaderEdge(null);
                           }}
-                          className={`group relative flex h-7 justify-center items-center overflow-visible border-[#D0D4E4] border-r flex-shrink-0 ${col.key === 'totalPrice' || col.key === 'totalMarkup' ? 'border-b-2 border-red-500' : ''} ${isDragging ? 'opacity-60' : ''} ${isDraggable ? (draggedHeaderKey ? 'cursor-grabbing' : 'cursor-grab') : ''} ${isDragOver && isDraggable ? 'bg-[#dff9ff]' : ''}`}
-                          style={{ minWidth: col.width, width: col.width }}
+                          className={`group relative flex h-7 justify-center items-center overflow-visible border-[#D0D4E4] border-r flex-shrink-0 ${isDragging ? 'opacity-60' : ''} ${isDraggable ? (draggedHeaderKey ? 'cursor-grabbing' : 'cursor-grab') : ''} ${isDragOver && isDraggable ? 'bg-[#dff9ff]' : ''}`}
+                          data-highlight-aggregate={col.key === 'totalPrice' || col.key === 'totalMarkup' ? 'true' : undefined}
+                          style={{ minWidth: col.width, width: col.width, boxShadow: col.key === 'totalPrice' || col.key === 'totalMarkup' ? 'inset 0 -2px 0 #ef4444' : undefined }}
                         >
                           {col.key === 'selectCheckbox' ? (
                             <input type="checkbox" checked={allFilteredSelected} onChange={toggleSelectAll} className="w-3 h-3 rounded cursor-pointer accent-[#7BCBD5]" />
