@@ -423,8 +423,7 @@ export function ClientRow({
                 data-client-row
                 data-client-id={client.id}
                 style={{ width: boardWidth, minWidth: boardWidth }}
-                className={`box-border border-b flex text-[15px] items-center flex-shrink-0 border-r border-[#D0D4E4] hover:blue-50 group transition-colors ${isSelected ? "bg-blue-50" : ""
-                    }`}
+                className="box-border border-b flex text-[15px] items-center flex-shrink-0 border-r border-[#D0D4E4] group transition-colors"
             >
                 <div
                     data-client-column="selectCheckbox"
@@ -832,12 +831,12 @@ export function ClientRow({
                     <EditableCell className="!justify-start px-1" value={client.company} onChange={(v) => onUpdate({ company: v })} placeholder="" />
                 </div>
 
-                <div data-client-column="email" className="flex-1 min-w-0 items-center py-1 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height: 30, minWidth: colWidth.email, width: colWidth.email, order: columnOrderMap.email ?? 9 }}>
-                    <EditableCell className="!justify-start px-1" value={client.email} onChange={(v) => onUpdate({ email: v })} placeholder="" />
+                <div data-client-column="email" className="flex-1 min-w-0 items-center py-1 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis text-blue-600" style={{ height: 30, minWidth: colWidth.email, width: colWidth.email, order: columnOrderMap.email ?? 9 }}>
+                    <EditableCell className="!justify-start px-1 text-blue-600" value={client.email} onChange={(v) => onUpdate({ email: v })} placeholder="" />
                 </div>
 
-                <div data-client-column="phone" className="flex-1 min-w-0 py-1 items-center border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height: 30, minWidth: colWidth.phone, width: colWidth.phone, order: columnOrderMap.phone ?? 10 }}>
-                    <EditableCell value={client.phone} onChange={(v) => onUpdate({ phone: v })} placeholder="" />
+                <div data-client-column="phone" className="flex-1 min-w-0 py-1 items-center border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis text-blue-600" style={{ height: 30, minWidth: colWidth.phone, width: colWidth.phone, order: columnOrderMap.phone ?? 10 }}>
+                    <EditableCell className="text-blue-600" value={client.phone} onChange={(v) => onUpdate({ phone: v })} placeholder="" />
                 </div>
 
                 <div data-client-column="requirements" className="flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height: 30, minWidth: colWidth.requirements, width: colWidth.requirements, order: columnOrderMap.requirements ?? 11 }}>

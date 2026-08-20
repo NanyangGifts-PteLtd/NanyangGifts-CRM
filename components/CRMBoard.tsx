@@ -1780,7 +1780,7 @@ export function CRMBoard({ clients,
   }, [clients, setClients, notifyChange]);
 
   return (
-    <div className="flex flex-col h-full bg-white">
+    <div className="crm-board flex flex-col h-full bg-white">
       <div className="flex items-center gap-2 px-2 py-1 border-b border-gray-200 bg-white flex-shrink-0">
         <button onClick={addClient} className="flex items-center gap-1 px-2 py-1 bg-[#43adc4] hover:bg-[#0f8da8] text-white rounded-md text-[10px] font-medium transition-colors transition transform active:scale-95 duration-150">
           <Plus size={12} /> Add Client
@@ -2187,7 +2187,7 @@ export function CRMBoard({ clients,
                 </button>
                 <div className="h-5 w-1 rounded bg-[#7BCBD5]" />
                 <div>
-                  <div className="font-semibold text-slate-700">{group.name}</div>
+                  <div className="crm-group-name text-slate-700">{group.name}</div>
                   <div className="text-xs italic font-normal text-slate-500">{groupClients.length} {groupClients.length === 1 ? 'Client' : 'Clients'}</div>
                 </div>
                 <button onClick={() => setGroupToDelete(group)} className="rounded-md mb-auto p-1.5 text-gray-300 hover:bg-red-50 hover:text-red-600 transition-colors" title="Delete group">
@@ -2197,7 +2197,7 @@ export function CRMBoard({ clients,
 
               {!collapsedGroups[group.id] && (
                 <div data-client-group={group.id} onDragOver={(event) => handleDragOver(event, group.id, 'top')} onDrop={() => handleDrop(group.id)} onDragLeave={() => { setDragOverGroupId(null); setDragOverGroupEdge(null); }} className="relative" style={{ minWidth: totalMinWidth }}>
-                  <div className="relative flex text-[12.6px] items-center justify-center min-w-0 flex-shrink-0 border border-[#D0D4E4] overflow-visible bg-gradient-to-r from-[#e7fdff] to-[#a3dfff]" style={{ minWidth: totalMinWidth, width: totalMinWidth }}>
+                  <div className="relative flex text-[12.6px] items-center justify-center min-w-0 flex-shrink-0 border border-[#D0D4E4] overflow-visible bg-white" style={{ minWidth: totalMinWidth, width: totalMinWidth }}>
                     {visibleClientHeaderCols.map((col) => {
                       const fixedKeys = new Set(['selectCheckbox', 'client', 'addClientCol', 'empty']);
                       const isDraggable = !col.isCustom && !fixedKeys.has(col.key);
