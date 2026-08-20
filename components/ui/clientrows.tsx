@@ -200,6 +200,21 @@ export function ClientRow({
 
 
 }: ClientRowProps) {
+    const [permissionNotice, setPermissionNotice] = useState<{ left: number; top: number } | null>(null);
+    const showPermissionNotice = (target: HTMLElement) => {
+        const rect = target.getBoundingClientRect();
+        setPermissionNotice({ left: Math.min(rect.left, window.innerWidth - 300), top: Math.min(rect.bottom + 8, window.innerHeight - 48) });
+        window.setTimeout(() => setPermissionNotice(null), 2600);
+    };
+    const pmProfiles = profiles.filter((profile) => profile.role?.toLowerCase() === 'pm');
+    let pmAssignedIds: string[] = [];
+    try {
+        const storedPmIds = JSON.parse(client.customFields?.pmAssigneeIds ?? '[]');
+        if (Array.isArray(storedPmIds)) pmAssignedIds = storedPmIds.filter((id): id is string => typeof id === 'string');
+    } catch {
+        pmAssignedIds = [];
+    }
+    const canEditClient = !!currentUserId && (clientAssignedIds.includes(currentUserId) || pmAssignedIds.includes(currentUserId));
     const subitemCount = client.subitems.length;
     const [showCloseDialog, setShowCloseDialog] = useState(false);
     const [pendingStatus, setPendingStatus] = useState<ClientStatus | null>(null);
@@ -468,9 +483,26 @@ export function ClientRow({
             onDrop={(event) => onSubitemDrop?.(event, client.id)}
         >
             <style>{Array.from(hiddenColumnKeys).filter((key) => key.startsWith('client:')).map((key) => `[data-client-column="${key.slice(7)}"]{display:none!important}`).join('')}</style>
+            {permissionNotice && <div role="alert" className="fixed z-[10000] rounded-md bg-slate-800 px-3 py-2 text-xs font-medium text-white shadow-xl" style={permissionNotice}>You can only edit items that are assigned to you</div>}
             <div
                 data-client-row
                 data-client-id={client.id}
+                onMouseMove={(event) => {
+                    const column = (event.target as HTMLElement).closest<HTMLElement>('[data-client-column]')?.dataset.clientColumn;
+                    event.currentTarget.title = !canEditClient && column && !['people', 'pm', 'selectCheckbox'].includes(column) ? 'You can only edit items that are assigned to you' : '';
+                }}
+                onClickCapture={(event) => {
+                    if (canEditClient) return;
+                    const target = event.target as HTMLElement;
+                    const column = target.closest<HTMLElement>('[data-client-column]')?.dataset.clientColumn;
+                    const isAssignmentColumn = column === 'people' || column === 'pm';
+                    const isEditControl = !!target.closest('button, input, textarea, select, [data-editable-cell]');
+                    if (!isAssignmentColumn && column && isEditControl && !target.closest('[data-view-action]')) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        showPermissionNotice(target);
+                    }
+                }}
                 style={{ width: boardWidth, minWidth: boardWidth }}
                 className="box-border border-b flex text-[15px] items-center flex-shrink-0 border-r border-[#D0D4E4] group transition-colors"
             >
@@ -527,6 +559,7 @@ export function ClientRow({
                                 <Tooltip.Trigger asChild>
                                     <button
                                         type="button"
+                                        data-view-action
                                         onClick={() => setShowActivityLog(true)}
                                         onPointerDown={(event) => event.stopPropagation()}
                                         className="flex whitespace-nowrap px-2 py-1 text-[10px] font-medium text-cyan-500 hover:bg-gray-50 hover:text-cyan-600 transition transform active:scale-95 duration-150"
@@ -631,13 +664,13 @@ export function ClientRow({
                                                             {(entry.action === 'field_changed' || entry.action === 'subitem_field_changed') && entry.oldValue !== undefined && entry.oldValue !== null && (
                                                                 <button
                                                                     type="button"
-                                                                    disabled={undoneActivityIds.has(entry.id)}
+                                                                    disabled={undoneActivityIds.has(entry.id) || !canEditClient}
                                                                     onClick={async () => {
                                                                         if (undoneActivityIds.has(entry.id)) return;
                                                                         await onUndoActivity?.(entry);
                                                                         setUndoneActivityIds((previous) => new Set(previous).add(entry.id));
                                                                     }}
-                                                                    title={undoneActivityIds.has(entry.id) ? 'The action has already been undone' : 'Undo this action'}
+                                                                    title={!canEditClient ? 'You can only edit items that are assigned to you' : undoneActivityIds.has(entry.id) ? 'The action has already been undone' : 'Undo this action'}
                                                                     className="shrink-0 rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] font-medium text-gray-600 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
                                                                 >
                                                                     {undoneActivityIds.has(entry.id) ? 'Undone' : 'Undo'}
@@ -688,11 +721,23 @@ export function ClientRow({
                     className="flex-1 min-w-0 py-1 overflow-hidden whitespace-nowrap text-ellipsis border-r border-[#D0D4E4]"
                     style={{ minWidth: colWidth.people, width: colWidth.people, order: columnOrderMap.people ?? 2 }}
                 >
-                    <AssigneeMultiSelect
+                    <div data-assignment-editor><AssigneeMultiSelect
                         profiles={profiles}
                         selectedIds={clientAssignedIds}
                         onChange={onChangeClientAssignees}
-                    />
+                    /></div>
+                </div>
+
+                <div
+                    data-client-column="pm"
+                    className="flex-1 min-w-0 py-1 overflow-hidden whitespace-nowrap text-ellipsis border-r border-[#D0D4E4]"
+                    style={{ minWidth: colWidth.pm, width: colWidth.pm, order: columnOrderMap.pm ?? 3 }}
+                >
+                    <div data-assignment-editor><AssigneeMultiSelect
+                        profiles={pmProfiles}
+                        selectedIds={pmAssignedIds}
+                        onChange={(ids) => onUpdate({ customFields: { ...(client.customFields ?? {}), pmAssigneeIds: JSON.stringify(ids) } })}
+                    /></div>
                 </div>
 
                 <div
@@ -1012,6 +1057,8 @@ export function ClientRow({
                     onSubitemDragStart={onSubitemDragStart}
                     onSubitemDragEnd={onSubitemDragEnd}
                     profiles={profiles}
+                    clientAssignedIds={clientAssignedIds}
+                    clientPmAssignedIds={pmAssignedIds}
                     subitemAssigneeMap={subitemAssigneeMap}
                     onChangeSubitemAssignees={onChangeSubitemAssignees}
                     paymentOptions={paymentOptions}

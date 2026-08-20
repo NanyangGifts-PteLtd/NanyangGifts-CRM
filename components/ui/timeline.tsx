@@ -5,6 +5,7 @@ import { EditableCell } from './editablecell';
 import { Calendar } from 'lucide-react';
 import { StatusBadge } from './statusbadge';
 import { toast } from 'sonner';
+import { useState } from 'react';
 
 export type OptionEntry = { value: string; color: string };
 
@@ -118,6 +119,7 @@ export function TimelineSection({
     onDeleteTimelineProgress,
     onUpdateOptionColor,
     onRenameOption,
+    readOnly = false,
 }: {
     rows: TimelineRow[];
     onUpdate: (rows: TimelineRow[]) => void;
@@ -126,7 +128,9 @@ export function TimelineSection({
     onDeleteTimelineProgress?: (name: string) => void | Promise<void>;
     onUpdateOptionColor?: (name: string, color: string) => void | Promise<void>;
     onRenameOption?: (oldName: string, newName: string) => void | Promise<void>;
+    readOnly?: boolean;
 }) {
+    const [permissionNotice, setPermissionNotice] = useState<{ left: number; top: number } | null>(null);
     const updateRow = (id: string, field: keyof TimelineRow, val: string) => {
         const nextRows = rows.map((r) => (r.id === id ? { ...r, [field]: val } : r));
         const target = nextRows.find((r) => r.id === id);
@@ -193,7 +197,8 @@ export function TimelineSection({
     };
 
     return (
-        <div className="ml-8 mr-2 mb-2 w-fit max-w-[1500px] overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
+        <div onClickCapture={(event) => { if (!readOnly) return; event.preventDefault(); event.stopPropagation(); const rect = (event.target as HTMLElement).getBoundingClientRect(); setPermissionNotice({ left: Math.min(rect.left, window.innerWidth - 300), top: Math.min(rect.bottom + 8, window.innerHeight - 48) }); window.setTimeout(() => setPermissionNotice(null), 2600); }} title={readOnly ? 'You can only edit items that are assigned to you' : undefined} className="ml-8 mr-2 mb-2 w-fit max-w-[1500px] overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
+            {permissionNotice && <div role="alert" className="fixed z-[10000] rounded-md bg-slate-800 px-3 py-2 text-xs font-medium text-white shadow-xl" style={permissionNotice}>You can only edit items that are assigned to you</div>}
             <div className="flex items-center gap-2 bg-gradient-to-r from-[#9bd9e0] to-[#7BCBD5] px-3 py-1.5">
                 <Calendar size={12} className="text-white" />
                 <span className="text-xs font-semibold text-white">Project Timeline</span>

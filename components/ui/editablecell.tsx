@@ -96,6 +96,7 @@ export function EditableCell({
 
     return (
         <div
+            data-editable-cell
             onClick={() => setEditing(true)}
             title={value}
             className={`flex w-15 justify-center py-0.5 text-xs cursor-text hover:bg-blue-50 rounded min-h-[22px] items-center ${multiline ? 'whitespace-nowrap overflow-hidden text-ellipsis' : 'truncate'

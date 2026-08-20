@@ -8,6 +8,7 @@ export type ProfileOption = {
     full_name: string | null;
     email: string | null;
     avatar_url?: string | null;
+    role?: string | null;
 };
 
 export async function fetchClientAssigneeMap() {
@@ -53,7 +54,7 @@ export async function addClientAssignee(
 export async function fetchProfiles() {
     const { data, error } = await supabase
         .from('profiles')
-        .select('id, full_name, email, avatar_url')
+        .select('id, full_name, email, avatar_url, role')
         .order('full_name', { ascending: true });
 
     if (error) throw error;

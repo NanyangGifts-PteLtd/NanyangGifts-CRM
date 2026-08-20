@@ -117,6 +117,8 @@ type SubitemProps = {
     onSubitemDragStart?: (subitemId: string, event: React.DragEvent<HTMLElement>) => void;
     onSubitemDragEnd?: () => void;
     profiles: Profile[];
+    clientAssignedIds: string[];
+    clientPmAssignedIds: string[];
     subitemAssigneeMap: Record<string, string[]>;
     onChangeSubitemAssignees: (subitemId: string, ids: string[]) => void;
     paymentOptions: OptionEntry[];
@@ -212,6 +214,8 @@ export function SubitemsTable({
     onSubitemDragStart,
     onSubitemDragEnd,
     profiles,
+    clientAssignedIds,
+    clientPmAssignedIds,
     subitemAssigneeMap,
     onChangeSubitemAssignees,
     paymentOptions,
@@ -253,6 +257,12 @@ export function SubitemsTable({
     clientActivityLog = [],
     onUndoActivity,
 }: SubitemProps) {
+    const [permissionNotice, setPermissionNotice] = useState<{ left: number; top: number } | null>(null);
+    const showPermissionNotice = (target: HTMLElement) => {
+        const rect = target.getBoundingClientRect();
+        setPermissionNotice({ left: Math.min(rect.left, window.innerWidth - 300), top: Math.min(rect.bottom + 8, window.innerHeight - 48) });
+        window.setTimeout(() => setPermissionNotice(null), 2600);
+    };
     const [tableMode, setTableMode] = useState<TableMode | null>(null);
     const [newSubitemName, setNewSubitemName] = useState("");
     const [isAddingSubitem, setIsAddingSubitem] = useState(false);
@@ -299,6 +309,7 @@ export function SubitemsTable({
     const [pendingPushSubitemId, setPendingPushSubitemId] = useState<string | null>(null);
     const [activitySubitem, setActivitySubitem] = useState<Subitem | null>(null);
     const [undoneActivityIds, setUndoneActivityIds] = useState<Set<string>>(new Set());
+    const canEditSubitem = (subitemId: string) => !!currentUserId && (clientAssignedIds.includes(currentUserId) || clientPmAssignedIds.includes(currentUserId) || (subitemAssigneeMap[subitemId] ?? []).includes(currentUserId));
 
     const setDragPreview = (event: React.DragEvent, source: HTMLElement) => {
         if (!event.dataTransfer) return;
@@ -791,6 +802,10 @@ export function SubitemsTable({
 
 
     async function handlePushToShipperView(subitemId: string, overwrite = false) {
+        if (!canEditSubitem(subitemId)) {
+            toast.error("You can only edit items that are assigned to you");
+            return;
+        }
         try {
             setPushingSubitemId(subitemId);
 
@@ -908,6 +923,7 @@ export function SubitemsTable({
 
                 <button
                     type="button"
+                    data-view-action
                     onClick={() => setActivitySubitem(sub)}
                     className="flex items-center justify-center rounded-sm border border-cyan-200 p-1 text-cyan-500 transition hover:bg-cyan-50"
                     title="Activity log"
@@ -922,9 +938,9 @@ export function SubitemsTable({
                             e.stopPropagation();
                             void handlePushToShipperView(sub.id);
                         }}
-                        disabled={pushingSubitemId === sub.id}
+                        disabled={pushingSubitemId === sub.id || !canEditSubitem(sub.id)}
                         className="rounded-sm border border-teal-200 px-2 py-1 text-[11px] font-medium text-teal-500 transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
-                        title="Push to shipper view"
+                        title={!canEditSubitem(sub.id) ? "You can only edit items that are assigned to you" : "Push to shipper view"}
                     >
                         {pushingSubitemId === sub.id ? "Pushing..." : "Push"}
                     </button>
@@ -954,11 +970,11 @@ export function SubitemsTable({
                 }
             case "people":
                 return (
-                    <AssigneeMultiSelect
+                    <div data-subitem-assignment-editor><AssigneeMultiSelect
                         profiles={profiles}
                         selectedIds={subitemAssigneeMap[sub.id] ?? []}
                         onChange={(ids) => onChangeSubitemAssignees(sub.id, ids)}
-                    />
+                    /></div>
                 );
             case "localOverseas":
                 return (
@@ -1274,6 +1290,7 @@ export function SubitemsTable({
             style={{ borderLeft: `7px solid ${clientColor}` }}
             data-client-id={clientId}
         >
+            {permissionNotice && <div role="alert" className="fixed z-[10000] rounded-md bg-slate-800 px-3 py-2 text-xs font-medium text-white shadow-xl" style={permissionNotice}>You can only edit items that are assigned to you</div>}
             <AlertDialog open={!!pendingPushSubitemId} onOpenChange={(open) => !open && setPendingPushSubitemId(null)}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
@@ -1341,13 +1358,13 @@ export function SubitemsTable({
                                     {!entry.meta?.automated && entry.action === 'subitem_field_changed' && !entry.fieldName?.startsWith('timeline:') && entry.oldValue !== undefined && (
                                         <button
                                             type="button"
-                                            disabled={undoneActivityIds.has(entry.id)}
+                                            disabled={undoneActivityIds.has(entry.id) || !canEditSubitem(entry.subitemId ?? '')}
                                             onClick={async () => {
                                                 if (undoneActivityIds.has(entry.id)) return;
                                                 await onUndoActivity?.(entry);
                                                 setUndoneActivityIds((previous) => new Set(previous).add(entry.id));
                                             }}
-                                            title={undoneActivityIds.has(entry.id) ? 'The action has already been undone' : 'Undo this action'}
+                                            title={!canEditSubitem(entry.subitemId ?? '') ? 'You can only edit items that are assigned to you' : undoneActivityIds.has(entry.id) ? 'The action has already been undone' : 'Undo this action'}
                                             className="shrink-0 rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] font-medium text-gray-600 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
                                         >
                                             {undoneActivityIds.has(entry.id) ? 'Undone' : 'Undo'}
@@ -1549,7 +1566,16 @@ export function SubitemsTable({
                     <tbody>
                         {subitems.map((sub) => (
                             <React.Fragment key={sub.id}>
-                                <tr data-subitem-id={sub.id} className="relative group border-b border-r border-[#D0D4E4] hover:bg-blue-50/30">
+                                <tr data-subitem-id={sub.id} onMouseMove={(event) => { event.currentTarget.title = !canEditSubitem(sub.id) && !(event.target as HTMLElement).closest('[data-subitem-assignment-editor]') ? 'You can only edit items that are assigned to you' : ''; }} onClickCapture={(event) => {
+                                    if (canEditSubitem(sub.id)) return;
+                                    const target = event.target as HTMLElement;
+                                    const isEditControl = !!target.closest('button, input, textarea, select, [data-editable-cell]');
+                                    if (isEditControl && !target.closest('[data-subitem-assignment-editor], [data-view-action]')) {
+                                        event.preventDefault();
+                                        event.stopPropagation();
+                                        showPermissionNotice(target);
+                                    }
+                                }} className="relative group border-b border-r border-[#D0D4E4] hover:bg-blue-50/30">
                                     <td className="border-r border-[#D0D4E4] px-2 py-1 text-center">
                                         <input
                                             type="checkbox"
@@ -1639,13 +1665,14 @@ export function SubitemsTable({
                                             onDeleteTimelineProgress={onDeleteSubitemSubprogress}
                                             onUpdateOptionColor={(name, color) => onUpdateOptionColor?.('subitem_subprogress', name, color)}
                                             onRenameOption={(oldName, newName) => onRenameOption?.('subitem_subprogress', oldName, newName)}
+                                            readOnly={!canEditSubitem(sub.id)}
                                         />
                                     </ExpandedRow>
                                 )}
 
                                 {sub.showSample && (
                                     <ExpandedRow colSpan={totalColSpan} tone="purple">
-                                        <SamplesSection subitem={sub} onUpdate={(u) => onUpdateSubitem(sub.id, u)} />
+                                        <SamplesSection subitem={sub} onUpdate={(u) => onUpdateSubitem(sub.id, u)} readOnly={!canEditSubitem(sub.id)} />
                                     </ExpandedRow>
                                 )}
                             </React.Fragment>

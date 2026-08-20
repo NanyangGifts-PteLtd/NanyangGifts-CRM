@@ -43,6 +43,7 @@ const CLIENT_HEADER_COLS: HeaderCol[] = [
   { key: 'selectCheckbox', label: '', width: 60, minWidth: 7 },
   { key: 'client', label: 'Client', width: 250, minWidth: 7 },
   { key: 'people', label: 'People', width: 60, minWidth: 7 },
+  { key: 'pm', label: 'PM', width: 60, minWidth: 7 },
   { key: 'replyStatus', label: 'Reply Status', width: 80, minWidth: 7 },
   { key: 'followUp', label: 'Follow Up', width: 100, minWidth: 7 },
   { key: 'status', label: 'Status', width: 80, minWidth: 7 },
@@ -165,6 +166,30 @@ export function CRMBoard({ clients,
   const [clientMoveSearch, setClientMoveSearch] = useState('');
   const [isMovingClients, setIsMovingClients] = useState(false);
   const [isDuplicatingClients, setIsDuplicatingClients] = useState(false);
+
+  const clientPmAssigneeIds = useCallback((client: Client) => {
+    try {
+      const ids = JSON.parse(client.customFields?.pmAssigneeIds ?? '[]');
+      return Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string') : [];
+    } catch {
+      return [];
+    }
+  }, []);
+
+  const canEditClientRecord = useCallback((clientId: string) => {
+    if (!currentUserId) return false;
+    const client = clients.find((item) => item.id === clientId);
+    return !!client && ((clientAssignees[clientId] ?? []).includes(currentUserId) || clientPmAssigneeIds(client).includes(currentUserId));
+  }, [clientAssignees, clientPmAssigneeIds, clients, currentUserId]);
+
+  const canEditSubitemRecord = useCallback((clientId: string, subitemId: string) => {
+    if (!currentUserId) return false;
+    return canEditClientRecord(clientId) || (subitemAssignees[subitemId] ?? []).includes(currentUserId);
+  }, [canEditClientRecord, currentUserId, subitemAssignees]);
+
+  const showAssignmentPermissionError = useCallback(() => {
+    toast.error('You can only edit items that are assigned to you');
+  }, []);
   const [pendingDeleteSelected, setPendingDeleteSelected] = useState(false);
 
   const [replyStatusEntries, setReplyStatusEntries] = useState<OptionEntry[]>([]);
@@ -1813,6 +1838,12 @@ export function CRMBoard({ clients,
   };
 
   const updateClient = useCallback(async (clientId: string, updates: Partial<Client>) => {
+    const existingClient = clients.find((client) => client.id === clientId);
+    const pmAssignmentOnly = Object.keys(updates).length === 1 && updates.customFields !== undefined && updates.customFields.pmAssigneeIds !== undefined && Object.entries(updates.customFields).every(([key, value]) => key === 'pmAssigneeIds' || existingClient?.customFields?.[key] === value);
+    if (!pmAssignmentOnly && !canEditClientRecord(clientId)) {
+      showAssignmentPermissionError();
+      return;
+    }
     let nextUpdates = { ...updates };
     let movedToGroupName: string | null = null;
     if (updates.status) {
@@ -1854,15 +1885,19 @@ export function CRMBoard({ clients,
       console.error('Failed to update client', error);
       toast.error('Client update failed', { description: error?.message || 'The client change could not be saved.' });
     }
-  }, [clients, groups, setClients]);
+  }, [canEditClientRecord, clients, groups, setClients, showAssignmentPermissionError]);
 
-  const updateSubitem = useCallback(async (_clientId: string, subitemId: string, updates: Partial<Subitem>) => {
+  const updateSubitem = useCallback(async (clientId: string, subitemId: string, updates: Partial<Subitem>) => {
+    if (!canEditSubitemRecord(clientId, subitemId)) {
+      showAssignmentPermissionError();
+      return;
+    }
     setClients((prev) => prev.map((c) => ({
       ...c, subitems: c.subitems.map((s) => s.id === subitemId ? { ...s, ...updates } : s),
     })));
     try { await updateSubitemRow(subitemId, updates); }
     catch (error: any) { setClients(clients); console.error('Failed to update subitem', error); }
-  }, [clients]);
+  }, [canEditSubitemRecord, clients, showAssignmentPermissionError]);
 
   const undoActivity = useCallback(async (entry: import('../app/types').ActivityEntry) => {
     if (entry.action === 'field_changed') {
@@ -1874,6 +1909,7 @@ export function CRMBoard({ clients,
       };
       const field = entry.fieldName ? fieldMap[entry.fieldName] : undefined;
       if (!field || !entry.clientId) return;
+      if (!canEditClientRecord(entry.clientId)) { showAssignmentPermissionError(); return; }
       const updates = { [field]: entry.oldValue } as Partial<Client>;
       await updateClient(entry.clientId, updates);
       toast.success('Change undone', { description: `${entry.fieldName} was restored to its previous value.` });
@@ -1881,6 +1917,7 @@ export function CRMBoard({ clients,
     }
 
     if (entry.action === 'subitem_field_changed' && entry.subitemId && entry.fieldName && !entry.fieldName.startsWith('timeline:')) {
+      if (!entry.clientId || !canEditSubitemRecord(entry.clientId, entry.subitemId)) { showAssignmentPermissionError(); return; }
       if (entry.fieldName === 'parentClient') {
         const oldClientId = typeof entry.meta?.oldClientId === 'string' ? entry.meta.oldClientId : null;
         const newClientId = typeof entry.meta?.newClientId === 'string' ? entry.meta.newClientId : null;
@@ -1910,7 +1947,7 @@ export function CRMBoard({ clients,
       await updateSubitemRow(entry.subitemId, updates);
       toast.success('Change undone', { description: `${entry.fieldName} was restored to its previous value.` });
     }
-  }, [updateClient, setClients]);
+  }, [canEditClientRecord, canEditSubitemRecord, clients, setClients, showAssignmentPermissionError, updateClient]);
 
   const addClient = useCallback(async () => {
     try {
@@ -1938,11 +1975,12 @@ export function CRMBoard({ clients,
   }, [currentUserId, groups, setClients, setExpandedIds, notifyChange]);
 
   const deleteClient = useCallback(async (clientId: string) => {
+    if (!canEditClientRecord(clientId)) { showAssignmentPermissionError(); return; }
     setClients((prev) => prev.filter((c) => c.id !== clientId));
     setSelectedIds((prev) => { const next = new Set(prev); next.delete(clientId); return next; });
     try { await deleteClientRow(clientId); notifyChange('Client deleted', 'The client and its related records were removed.'); }
     catch (error: any) { setClients(clients); console.error('Failed to delete client', error); toast.error('Client could not be deleted', { description: error?.message || 'The client was not deleted.' }); }
-  }, [clients, setClients, notifyChange]);
+  }, [canEditClientRecord, clients, setClients, notifyChange, showAssignmentPermissionError]);
 
   const pendingClientToDelete = useMemo(
     () => clients.find((client) => client.id === pendingDeleteClientId) ?? null,
@@ -1958,13 +1996,15 @@ export function CRMBoard({ clients,
 
   const deleteSelected = useCallback(async () => {
     const ids = [...selectedIds];
+    if (ids.some((clientId) => !canEditClientRecord(clientId))) { showAssignmentPermissionError(); return; }
     setClients((prev) => prev.filter((c) => !selectedIds.has(c.id)));
     setSelectedIds(new Set());
     try { await Promise.all(ids.map((id) => deleteClientRow(id))); notifyChange('Clients deleted', `${ids.length} selected client${ids.length === 1 ? '' : 's'} were removed.`); }
     catch (error: any) { setClients(clients); console.error('Failed to delete selected', error); toast.error('Selected clients could not be deleted', { description: error?.message || 'The selected clients were not deleted.' }); }
-  }, [selectedIds, clients, setClients, notifyChange]);
+  }, [canEditClientRecord, selectedIds, clients, setClients, notifyChange, showAssignmentPermissionError]);
 
   const duplicateSelectedClients = useCallback(async () => {
+    if ([...selectedIds].some((clientId) => !canEditClientRecord(clientId))) { showAssignmentPermissionError(); return; }
     setIsDuplicatingClients(true);
     try {
       await Promise.all([...selectedIds].map((clientId) => duplicateClientRow(clientId)));
@@ -1980,9 +2020,10 @@ export function CRMBoard({ clients,
     } finally {
       setIsDuplicatingClients(false);
     }
-  }, [reloadClients, selectedIds, setClientAssignees, setSubitemAssignees]);
+  }, [canEditClientRecord, reloadClients, selectedIds, setClientAssignees, setSubitemAssignees, showAssignmentPermissionError]);
 
   const moveSelectedClients = useCallback(async (targetGroupId: string) => {
+    if ([...selectedIds].some((clientId) => !canEditClientRecord(clientId))) { showAssignmentPermissionError(); return; }
     setIsMovingClients(true);
     try {
       await Promise.all([...selectedIds].map((clientId) => updateClientRow(clientId, { groupId: targetGroupId })));
@@ -1997,11 +2038,12 @@ export function CRMBoard({ clients,
       setShowClientMoveMenu(false);
       setClientMoveSearch('');
     }
-  }, [reloadClients, selectedIds]);
+  }, [canEditClientRecord, reloadClients, selectedIds, showAssignmentPermissionError]);
 
   const addSubitem = useCallback(async (clientId: string, name: string) => {
       const trimmedName = name.trim();
       if (!trimmedName) return;
+      if (!canEditClientRecord(clientId)) { showAssignmentPermissionError(); throw new Error('You can only edit items that are assigned to you'); }
       try {
         const createdSubitem = await createSubitemRow(clientId, trimmedName, currentUserId);
         setClients((previous) => previous.map((client) => client.id === clientId ? { ...client, subitems: [...client.subitems, createdSubitem] } : client));
@@ -2009,14 +2051,15 @@ export function CRMBoard({ clients,
         notifyChange('Subitem added', `${trimmedName} is now available under the client.`);
       }
     catch (error: any) { console.error('Failed to add subitem', error); toast.error('Subitem could not be added', { description: error?.message || 'The subitem was not saved.' }); throw error; }
-  }, [currentUserId, notifyChange, setClients, setSubitemAssignees]);
+  }, [canEditClientRecord, currentUserId, notifyChange, setClients, setSubitemAssignees, showAssignmentPermissionError]);
 
   const deleteSubitem = useCallback(async (_clientId: string, subitemId: string) => {
+    if (!canEditSubitemRecord(_clientId, subitemId)) { showAssignmentPermissionError(); return; }
     setSelectedSubitemIds((previous) => previous.filter((id) => id !== subitemId));
     setClients((prev) => prev.map((c) => ({ ...c, subitems: c.subitems.filter((s) => s.id !== subitemId) })));
     try { await deleteSubitemRow(subitemId); notifyChange('Subitem deleted', 'The subitem was removed.'); }
     catch (error: any) { setClients(clients); console.error('Failed to delete subitem', error); toast.error('Subitem could not be deleted', { description: error?.message || 'The subitem was not deleted.' }); }
-  }, [clients, setClients, notifyChange]);
+  }, [canEditSubitemRecord, clients, setClients, notifyChange, showAssignmentPermissionError]);
 
   const moveSelectedSubitems = useCallback(async (subitemIds: string[], targetClientId: string) => {
     setIsMovingSubitems(true);
