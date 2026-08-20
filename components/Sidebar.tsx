@@ -3,10 +3,9 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutGrid, Mail, BarChart2, SquareChartGantt, BotMessageSquare, PackageSearch, Users } from 'lucide-react';
+import { LayoutGrid, Mail, BarChart2, SquareChartGantt, BotMessageSquare, PackageSearch, Users, UserRoundCog } from 'lucide-react';
 import logo from "./logo.png";
 import Image from 'next/image';
-import type { User } from "@supabase/supabase-js";
 
 export type SidePanel =
   | 'crm'
@@ -15,6 +14,7 @@ export type SidePanel =
   | 'ganttchart'
   | 'roundrobin'
   | 'team'
+  | 'useradmin'
   | 'shipper';
 
 interface SidebarProps {
@@ -23,7 +23,7 @@ interface SidebarProps {
   emailUnread: number;
   collapsed: boolean;
   onToggleCollapsed: () => void;
-  user: User | null;
+  currentUserRole?: string | null;
 }
 
 const navItems: { id: SidePanel; icon: React.ReactNode; label: string; href?: string, external?: boolean }[] = [
@@ -33,6 +33,7 @@ const navItems: { id: SidePanel; icon: React.ReactNode; label: string; href?: st
   { id: 'ganttchart', icon: <SquareChartGantt size={17.5} />, label: 'Gantt Chart' },
   { id: 'roundrobin', icon: <BotMessageSquare size={17.5} />, label: 'Round Robin' },
   { id: 'team', icon: <Users size={17.5} />, label: 'Team' },
+  { id: 'useradmin', icon: <UserRoundCog size={17.5} />, label: 'User Admin' },
   { id: 'shipper', icon: <PackageSearch size={17.5} />, label: 'Shipper', href: '/app/shipper', external: true },
 ];
 
@@ -42,18 +43,9 @@ export default function Sidebar({
   emailUnread,
   collapsed,
   onToggleCollapsed,
-  user,
+  currentUserRole,
 }: SidebarProps) {
   const pathname = usePathname();
-
-  const displayName =
-    user?.user_metadata?.full_name ||
-    user?.user_metadata?.name ||
-    user?.email ||
-    'User';
-
-  const userEmail = user?.email || 'No email';
-  const initial = displayName?.trim()?.charAt(0)?.toUpperCase() || 'U';
 
   const itemClass = (active: boolean) =>
     `w-full flex items-center gap-3 px-2 py-2 rounded-md text-left group relative transition transform active:scale-95 duration-150 ${active
@@ -85,7 +77,7 @@ export default function Sidebar({
       </div>
 
       <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-0.5">
-        {navItems.map((item) => {
+        {navItems.filter((item) => item.id !== 'useradmin' || currentUserRole === 'director' || currentUserRole === 'dev').map((item) => {
           const isRouteItem = !!item.href;
           const isActive = isRouteItem
             ? pathname === item.href

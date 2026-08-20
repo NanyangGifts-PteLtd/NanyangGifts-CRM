@@ -14,6 +14,7 @@ import GanttChart from '@/components/Gantt-Chart';
 import { fetchClientAssigneeMap } from '@/lib/assignments';
 import { fetchAllSubitemAssignees } from '@/components/CRMBoard';
 import { TeamPanel } from '@/components/TeamPanel';
+import { UserAdminPanel } from '@/components/UserAdminPanel';
 
 export default function Page() {
   const [clients, setClients] = useState<Client[]>([]);
@@ -201,6 +202,11 @@ export default function Page() {
       case 'team':
         return <TeamPanel profiles={profiles} />;
 
+      case 'useradmin':
+        return currentUserRole === 'director' || currentUserRole === 'dev'
+          ? <UserAdminPanel profiles={profiles} />
+          : null;
+
       default:
         return null;
     }
@@ -214,7 +220,7 @@ export default function Page() {
         emailUnread={0}
         collapsed={sidebarCollapsed}
         onToggleCollapsed={() => setSidebarCollapsed((v) => !v)}
-        user={user}
+        currentUserRole={currentUserRole}
       />
 
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
