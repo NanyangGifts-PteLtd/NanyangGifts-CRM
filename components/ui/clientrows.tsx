@@ -334,6 +334,11 @@ export function ClientRow({
         { totalPrice: 0, totalMarkup: 0 },
     );
 
+    const clientCreationActivity = client.activityLog?.find((entry) => entry.action === "client_added");
+    const clientCreatedTooltip = client.createdAt
+        ? `Created by ${clientCreationActivity?.actorName ?? "Unknown user"} on ${new Date(client.createdAt).toLocaleDateString("en-SG")} at ${new Date(client.createdAt).toLocaleTimeString("en-SG")}`
+        : "";
+
     // activity log text
     function displayLogValue(value: unknown) {
         if (value == null || value === '') return 'empty';
@@ -382,6 +387,10 @@ export function ClientRow({
                     <span className="text-gray-600">{displayActivityValue(entry.fieldName, entry.newValue ?? "empty")}</span>
                 </>
             );
+        }
+
+        if (entry.action === "client_added") {
+            return <>created this client</>;
         }
 
         if (entry.action === "subitem_added") {
@@ -539,7 +548,7 @@ export function ClientRow({
                                     <div className="max-h-[420px] space-y-3 overflow-y-auto">
                                         {(() => {
                                             const clientActivities = [...(client.activityLog ?? [])]
-                                                .filter((entry) => !entry.subitemId)
+                                                .filter((entry) => !entry.subitemId || entry.action === 'subitem_added' || entry.action === 'subitem_deleted')
                                                 .filter((entry) => !showOnlyAttachedActivities || Boolean(entry.link))
                                                 .sort(
                                                     (a, b) =>
@@ -887,7 +896,7 @@ export function ClientRow({
                 </div>
 
                 <div data-client-column="dateCreated" className="flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height: 30, minWidth: colWidth.dateCreated, width: colWidth.dateCreated, order: columnOrderMap.dateCreated ?? 19 }}>
-                    <span className="block px-1 text-[12.6px] text-gray-700">
+                    <span title={clientCreatedTooltip} className="block px-1 text-[12.6px] text-gray-700">
                         {client.createdAt ? new Date(client.createdAt).toLocaleDateString("en-SG") : "-"}
                     </span>
                 </div>

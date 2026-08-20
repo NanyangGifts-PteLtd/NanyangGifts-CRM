@@ -929,7 +929,13 @@ export function SubitemsTable({
             case "name":
                 return renderNameCell(sub);
             case "createdAt":
-                return <span className="block px-1 text-xs text-gray-600">{sub.createdAt ? new Date(sub.createdAt).toLocaleDateString("en-SG") : "-"}</span>;
+                {
+                    const subitemCreationActivity = clientActivityLog.find((entry) => entry.subitemId === sub.id && entry.action === "subitem_added");
+                    const createdTooltip = sub.createdAt
+                        ? `Created by ${subitemCreationActivity?.actorName ?? "Unknown user"} on ${new Date(sub.createdAt).toLocaleDateString("en-SG")} at ${new Date(sub.createdAt).toLocaleTimeString("en-SG")}`
+                        : "";
+                    return <span title={createdTooltip} className="block px-1 text-xs text-gray-600">{sub.createdAt ? new Date(sub.createdAt).toLocaleDateString("en-SG") : "-"}</span>;
+                }
             case "people":
                 return (
                     <AssigneeMultiSelect
@@ -1281,10 +1287,27 @@ export function SubitemsTable({
                         <div className="max-h-[420px] space-y-2 overflow-y-auto">
                             {clientActivityLog.filter((entry) => entry.subitemId === activitySubitem.id).length === 0 ? (
                                 <div className="rounded-lg border border-dashed border-gray-200 p-6 text-center text-sm text-gray-500">No activity yet.</div>
-                            ) : clientActivityLog.filter((entry) => entry.subitemId === activitySubitem.id).map((entry) => (
+                            ) : clientActivityLog.filter((entry) => entry.subitemId === activitySubitem.id).map((entry) => {
+                                const fieldName = entry.fieldName ?? '';
+                                const timelineMatch = fieldName.match(/^timeline:\s*(.*?):(.*)$/);
+                                const displayActivityValue = (value: unknown) => {
+                                    if (value == null || value === '') return 'empty';
+                                    if (typeof value === 'object') return JSON.stringify(value);
+                                    return String(value);
+                                };
+
+                                return (
                                 <div key={entry.id} className="flex items-start justify-between gap-3 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-xs">
                                     <div>
-                                        <div className="text-gray-800">{entry.fieldName || entry.action}: {String(entry.oldValue ?? 'empty')} <span className="text-gray-400">to</span> {String(entry.newValue ?? 'empty')}</div>
+                                        <div className="text-gray-800">
+                                            {entry.action === 'subitem_added' ? (
+                                                <><span className="font-medium">{entry.actorName}</span> created this subitem</>
+                                            ) : timelineMatch ? (
+                                                <>changed timeline row <span className="font-medium">{timelineMatch[1]}</span> field <span className="font-medium">{timelineMatch[2]}</span> from {displayActivityValue(entry.oldValue)} to {displayActivityValue(entry.newValue)}</>
+                                            ) : (
+                                                <>{entry.fieldName || entry.action}: {displayActivityValue(entry.oldValue)} <span className="text-gray-400">to</span> {displayActivityValue(entry.newValue)}</>
+                                            )}
+                                        </div>
                                         <div className="mt-1 text-gray-400">{entry.actorName} · {new Date(entry.createdAt).toLocaleString()}</div>
                                     </div>
                                     {!entry.meta?.automated && entry.action === 'subitem_field_changed' && !entry.fieldName?.startsWith('timeline:') && entry.oldValue !== undefined && (
@@ -1303,7 +1326,8 @@ export function SubitemsTable({
                                         </button>
                                     )}
                                 </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     </div>
                 </div>

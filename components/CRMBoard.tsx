@@ -1769,9 +1769,9 @@ export function CRMBoard({ clients,
   }, [selectedIds, clients, setClients, notifyChange]);
 
   const addSubitem = useCallback(async (clientId: string) => {
-      try { await createSubitemRow(clientId); await reloadClients(); notifyChange('Subitem added', 'The new subitem is now available under the client.'); }
+      try { await createSubitemRow(clientId, currentUserId); await reloadClients(); notifyChange('Subitem added', 'The new subitem is now available under the client.'); }
     catch (error: any) { console.error('Failed to add subitem', error); toast.error('Subitem could not be added', { description: error?.message || 'The subitem was not saved.' }); }
-  }, [reloadClients, notifyChange]);
+  }, [currentUserId, reloadClients, notifyChange]);
 
   const deleteSubitem = useCallback(async (_clientId: string, subitemId: string) => {
     setClients((prev) => prev.map((c) => ({ ...c, subitems: c.subitems.filter((s) => s.id !== subitemId) })));

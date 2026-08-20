@@ -234,7 +234,7 @@ async function logTimelineRowDiffs(params: {
                 subitemId: params.subitemId,
                 subitemName: params.subitemName,
                 action: 'subitem_field_changed',
-                fieldName: `timeline: ${newRow.name ?? rowId}:${String(field)}`,
+                fieldName: `timeline:${newRow.name ?? rowId}:${String(field)}`,
                 oldValue,
                 newValue
             });
@@ -365,7 +365,7 @@ function mapClients(row: Clients): Client {
 async function insertActivityLog(params: {
     clientId: string;
     subitemId?: string | null;
-    action: 'field_changed' | 'subitem_added' | 'subitem_deleted' | 'subitem_field_changed' | 'ocf_created';
+    action: 'field_changed' | 'client_added' | 'subitem_added' | 'subitem_deleted' | 'subitem_field_changed' | 'ocf_created';
     fieldName?: string | null;
     oldValue?: unknown;
     newValue?: unknown;
@@ -506,11 +506,16 @@ export async function createClientRow(currentUserId?: string | null, groupId?: s
 
     if (error) throw error;
 
-    const nextAssignee = await getNextSalesAssignee();
-
-    if (nextAssignee?.user_id) {
-        await addClientAssignee(data.id, nextAssignee.user_id, currentUserId);
+    if (currentUserId) {
+        await addClientAssignee(data.id, currentUserId, currentUserId);
     }
+
+    await insertActivityLog({
+        clientId: data.id,
+        action: 'client_added',
+        title: 'created this client',
+    });
+
     return data;
 }
 
@@ -648,7 +653,7 @@ export async function deleteClientRow(clientId: string) {
 }
 
 // subitem functions
-export async function createSubitemRow(clientId: string) {
+export async function createSubitemRow(clientId: string, currentUserId?: string | null) {
     const timelineRows = [
         { id: crypto.randomUUID(), name: 'Sample', person: '', remarks: '', subProgress: '', timelineStart: '', timelineEnd: '', duration: '', dependency: '' },
         { id: crypto.randomUUID(), name: 'Production 📦', person: '', remarks: '', subProgress: '', timelineStart: '', timelineEnd: '', duration: '', dependency: 'Sample' },
@@ -716,6 +721,13 @@ export async function createSubitemRow(clientId: string) {
         .single();
 
     if (error) throw error;
+
+    if (currentUserId) {
+        const { error: assigneeError } = await supabase
+            .from('subitem_assignees')
+            .insert({ subitem_id: data.id, user_id: currentUserId, assigned_by: currentUserId });
+        if (assigneeError) throw assigneeError;
+    }
 
     await insertActivityLog({
         clientId,
@@ -836,7 +848,17 @@ export async function updateSubitemRow(subitemId: string, updates: Partial<Subit
 
     if (error) throw error;
 
-    const ignoredFields = new Set(['showTimeline', 'showPayments', 'showSample', 'customFields']);
+    if (updates.timelineRows !== undefined) {
+        await logTimelineRowDiffs({
+            clientId: existing.client_id,
+            subitemId,
+            subitemName: existing.name,
+            oldRows: existing.timeline_rows ?? [],
+            newRows: updates.timelineRows,
+        });
+    }
+
+    const ignoredFields = new Set(['showTimeline', 'showPayments', 'showSample', 'customFields', 'timelineRows']);
     const fieldMap: Record<string, string> = {
         replyStatus: 'reply_status', localOverseas: 'local_overseas', paymentStatus: 'payment_status',
         totalUc: 'total_uc', lsRmb: 'ls_rmb', totalC: 'total_c', modeOfPayment: 'mode_of_payment',
