@@ -1014,6 +1014,59 @@ export function CRMBoard({ clients,
     notifyChange('Label color changed', `${name} now uses the selected color.`);
   }, [getOptionGroupId, notifyChange]);
 
+  const renameOptionValue = useCallback(async (code: string, oldName: string, newName: string) => {
+    const trimmed = newName.trim();
+    if (!trimmed || trimmed === oldName) return;
+
+    const groupId = await getOptionGroupId(code);
+    if (!groupId) {
+      toast.error('Label could not be renamed', { description: `The ${code.replaceAll('_', ' ')} option group was not found.` });
+      return;
+    }
+
+    const supabase = createSupabaseClient();
+    const { error: optionError } = await supabase.from('option_values').update({ value: trimmed }).eq('group_id', groupId).eq('value', oldName);
+    if (optionError) {
+      toast.error('Label could not be renamed', { description: optionError.message });
+      return;
+    }
+
+    const fieldMap: Record<string, { table: 'clients' | 'subitems'; column: string }> = {
+      reply_status: { table: 'clients', column: 'reply_status' }, client_status: { table: 'clients', column: 'status' },
+      channel: { table: 'clients', column: 'channel' }, importance: { table: 'clients', column: 'importance' },
+      payment: { table: 'subitems', column: 'payment' }, payment_status: { table: 'subitems', column: 'payment_status' },
+      mode_of_payment: { table: 'subitems', column: 'mode_of_payment' }, shipper: { table: 'subitems', column: 'shipper' },
+      local_overseas: { table: 'subitems', column: 'local_overseas' }, subitem_status: { table: 'subitems', column: 'status' },
+      currency: { table: 'subitems', column: 'currency' },
+    };
+    const field = fieldMap[code];
+    if (field) {
+      const { error } = await supabase.from(field.table).update({ [field.column]: trimmed }).eq(field.column, oldName);
+      if (error) {
+        await supabase.from('option_values').update({ value: oldName }).eq('group_id', groupId).eq('value', trimmed);
+        toast.error('Label could not be renamed', { description: error.message });
+        return;
+      }
+    } else if (code === 'subitem_subprogress') {
+      const { data: rows, error: readError } = await supabase.from('subitems').select('id, timeline_rows');
+      if (readError) { toast.error('Existing timeline labels could not be updated', { description: readError.message }); return; }
+      for (const row of rows ?? []) {
+        const timelineRows = (row.timeline_rows ?? []).map((timelineRow: { subProgress?: string }) => timelineRow.subProgress === oldName ? { ...timelineRow, subProgress: trimmed } : timelineRow);
+        if (JSON.stringify(timelineRows) !== JSON.stringify(row.timeline_rows ?? [])) await supabase.from('subitems').update({ timeline_rows: timelineRows }).eq('id', row.id);
+      }
+    }
+
+    const setters: Record<string, React.Dispatch<React.SetStateAction<OptionEntry[]>>> = {
+      reply_status: setReplyStatusEntries, client_status: setClientStatusEntries, channel: setChannelEntries,
+      importance: setImportanceEntries, payment: setPaymentEntries, payment_status: setPaymentStatusEntries,
+      mode_of_payment: setModeOfPaymentEntries, shipper: setShipperEntries, local_overseas: setLocalOverseasEntries,
+      subitem_status: setSubitemStatusEntries, currency: setCurrencyEntries, subitem_subprogress: setSubitemSubprogressEntries,
+    };
+    setters[code]?.((previous) => previous.map((entry) => entry.value === oldName ? { ...entry, value: trimmed } : entry));
+    await reloadClients();
+    notifyChange('Label renamed', `${oldName} was renamed to ${trimmed}.`);
+  }, [getOptionGroupId, notifyChange, reloadClients]);
+
   const handleAddShipper = useCallback(
     async (name: string) => {
       await insertOptionValue('shipper', name, shipperEntries, setShipperEntries);
@@ -2564,6 +2617,7 @@ export function CRMBoard({ clients,
                   onDeleteCustomColumn={handleDeleteCustomColumn}
                   onRequestAddSubitemCol={() => setShowAddColModal('subitem')}
                   onUpdateOptionColor={updateOptionColor}
+                  onRenameOption={renameOptionValue}
                   onFilterColumn={openColumnFilter}
                   hiddenColumnKeys={hiddenColumnKeys}
                   onHideColumn={hideColumn}
