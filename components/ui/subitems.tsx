@@ -251,6 +251,19 @@ export function SubitemsTable({
     const [openColumnInfo, setOpenColumnInfo] = useState<string | null>(null);
     const [openColumnMenu, setOpenColumnMenu] = useState<string | null>(null);
 
+    React.useEffect(() => {
+        if (!openColumnMenu && !openColumnInfo) return;
+        const handler = (event: MouseEvent) => {
+            const target = event.target as HTMLElement;
+            if (target.closest('[data-subitem-menu-trigger], [data-subitem-menu], [data-subitem-info-trigger], [data-subitem-info]')) return;
+            setOpenColumnMenu(null);
+            setOpenColumnInfo(null);
+        };
+
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, [openColumnMenu, openColumnInfo]);
+
     const [pushingSubitemId, setPushingSubitemId] = useState<string | null>(null);
     const [pendingPushSubitemId, setPendingPushSubitemId] = useState<string | null>(null);
     const [activitySubitem, setActivitySubitem] = useState<Subitem | null>(null);
@@ -1449,6 +1462,7 @@ export function SubitemsTable({
                                             {tablePrefix === 'subitem' && SUBITEM_COLUMN_DESCRIPTIONS[col.key] && (
                                                 <button
                                                     type="button"
+                                                    data-subitem-info-trigger
                                                     onClick={(e) => {
                                                         e.stopPropagation();
                                                         setOpenColumnInfo(openColumnInfo === col.key ? null : col.key);
@@ -1464,6 +1478,7 @@ export function SubitemsTable({
                                         </div>
                                         {tablePrefix === 'subitem' && openColumnInfo === col.key && SUBITEM_COLUMN_DESCRIPTIONS[col.key] && (
                                             <div
+                                                data-subitem-info
                                                 className="absolute left-0 top-full z-[90] mt-1 w-max max-w-[min(28rem,calc(100vw-2rem))] rounded-lg border border-gray-200 bg-white p-3 text-left font-normal whitespace-normal shadow-xl"
                                                 onClick={(e) => e.stopPropagation()}
                                                 onMouseDown={(e) => e.stopPropagation()}
@@ -1476,12 +1491,12 @@ export function SubitemsTable({
                                             </div>
                                         )}
                                         {isDragTarget && (
-                                            <button type="button" onClick={(e) => { e.stopPropagation(); setOpenColumnMenu(openColumnMenu === `${tablePrefix}:${col.key}` ? null : `${tablePrefix}:${col.key}`); }} onMouseDown={(e) => e.stopPropagation()} className="absolute right-0.5 top-0.5 z-30 hidden rounded bg-white/90 p-0.5 text-gray-400 shadow-sm hover:text-gray-700 group-hover:block" title={`Column options for ${col.label}`}>
+                                            <button type="button" data-subitem-menu-trigger onClick={(e) => { e.stopPropagation(); setOpenColumnMenu(openColumnMenu === `${tablePrefix}:${col.key}` ? null : `${tablePrefix}:${col.key}`); }} onMouseDown={(e) => e.stopPropagation()} className="absolute right-0.5 top-0.5 z-30 hidden rounded bg-white/90 p-0.5 text-gray-400 shadow-sm hover:text-gray-700 group-hover:block" title={`Column options for ${col.label}`}>
                                                 <MoreHorizontal size={12} />
                                             </button>
                                         )}
                                         {openColumnMenu === `${tablePrefix}:${col.key}` && (
-                                            <div className="absolute left-0 top-full z-[80] mt-1 w-36 rounded-md border border-gray-200 bg-white p-1 text-left shadow-xl">
+                                            <div data-subitem-menu className="absolute left-0 top-full z-[80] mt-1 w-36 rounded-md border border-gray-200 bg-white p-1 text-left shadow-xl">
                                                 {((tablePrefix === 'subitem' && ['people', 'status'].includes(col.key)) || (tablePrefix === 'payment' && ['payment', 'paymentStatus'].includes(col.key))) && <button type="button" onClick={() => { onFilterColumn?.(col.key === 'people' ? 'people' : `${tablePrefix}:${col.key}`); setOpenColumnMenu(null); }} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-[10px] font-medium text-gray-700 hover:bg-gray-50"><Filter size={12} /> Filter</button>}
                                                 <button type="button" onClick={() => onHideColumn(`${tablePrefix}:${col.key}`)} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-[10px] font-medium text-gray-700 hover:bg-gray-50">
                                                     <EyeOff size={12} /> Hide column
@@ -1524,8 +1539,8 @@ export function SubitemsTable({
                                             ×
                                         </button>
                                     </div>
-                                    <button type="button" onClick={() => setOpenColumnMenu(`${tablePrefix}:custom:${col.id}`)} className="absolute right-0.5 top-0.5 z-30 hidden rounded bg-white/90 p-0.5 text-gray-400 shadow-sm hover:text-gray-700 group-hover:block" title={`Column options for ${col.name}`}><MoreHorizontal size={12} /></button>
-                                    {openColumnMenu === `${tablePrefix}:custom:${col.id}` && <div className="absolute left-0 top-full z-[80] mt-1 w-36 rounded-md border border-gray-200 bg-white p-1 text-left shadow-xl"><button type="button" onClick={() => onHideColumn(`${tablePrefix}:custom:${col.id}`)} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-[10px] font-medium text-gray-700 hover:bg-gray-50"><EyeOff size={12} /> Hide column</button></div>}
+                                    <button type="button" data-subitem-menu-trigger onClick={() => setOpenColumnMenu(`${tablePrefix}:custom:${col.id}`)} className="absolute right-0.5 top-0.5 z-30 hidden rounded bg-white/90 p-0.5 text-gray-400 shadow-sm hover:text-gray-700 group-hover:block" title={`Column options for ${col.name}`}><MoreHorizontal size={12} /></button>
+                                    {openColumnMenu === `${tablePrefix}:custom:${col.id}` && <div data-subitem-menu className="absolute left-0 top-full z-[80] mt-1 w-36 rounded-md border border-gray-200 bg-white p-1 text-left shadow-xl"><button type="button" onClick={() => onHideColumn(`${tablePrefix}:custom:${col.id}`)} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-[10px] font-medium text-gray-700 hover:bg-gray-50"><EyeOff size={12} /> Hide column</button></div>}
                                 </th>
                             ))}
 

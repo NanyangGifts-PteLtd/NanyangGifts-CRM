@@ -147,9 +147,7 @@ export function CRMBoard({ clients,
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
-  const [archivedGroupIds, setArchivedGroupIds] = useState<Set<string>>(new Set());
   const [openGroupMenu, setOpenGroupMenu] = useState<string | null>(null);
-  const archivedGroupsLoadedFor = useRef<string | null>(null);
   const filterRef = useRef<HTMLDivElement>(null);
   const [ocfClient, setOcfClient] = useState<Client | null>(null);
   const [isOcfModalOpen, setIsOcfModalOpen] = useState(false);
@@ -225,21 +223,6 @@ export function CRMBoard({ clients,
     setShowFilter(true);
   }, []);
 
-  const archiveGroup = useCallback((groupId: string) => {
-    setArchivedGroupIds((previous) => new Set(previous).add(groupId));
-    setOpenGroupMenu(null);
-    notifyChange('Group archived', 'The group is now collapsed for your account.');
-  }, [notifyChange]);
-
-  const unarchiveGroup = useCallback((groupId: string) => {
-    setArchivedGroupIds((previous) => {
-      const next = new Set(previous);
-      next.delete(groupId);
-      return next;
-    });
-    setOpenGroupMenu(null);
-    notifyChange('Group unarchived', 'The group will remain available in your board.');
-  }, [notifyChange]);
   const hiddenSettingsLoadedFor = useRef<string | null>(null);
 
   const hideColumn = useCallback((key: string) => {
@@ -286,41 +269,6 @@ export function CRMBoard({ clients,
 
     return () => { mounted = false; };
   }, [currentUserId]);
-
-  useEffect(() => {
-    if (!currentUserId) {
-      archivedGroupsLoadedFor.current = null;
-      setArchivedGroupIds(new Set());
-      return;
-    }
-
-    let mounted = true;
-    archivedGroupsLoadedFor.current = null;
-    (async () => {
-      try {
-        const { loadUserSetting } = await import('@/lib/user-settings');
-        const value = await loadUserSetting('archivedGroups');
-        if (!mounted) return;
-        const ids = Array.isArray(value) ? value.filter((id): id is string => typeof id === 'string') : [];
-        setArchivedGroupIds(new Set(ids));
-        setCollapsedGroups((previous) => ids.reduce((next, id) => ({ ...next, [id]: true }), previous));
-        archivedGroupsLoadedFor.current = currentUserId;
-      } catch (error) {
-        console.warn('Failed to load archived groups', error);
-        if (mounted) archivedGroupsLoadedFor.current = currentUserId;
-      }
-    })();
-
-    return () => { mounted = false; };
-  }, [currentUserId]);
-
-  useEffect(() => {
-    if (!currentUserId || archivedGroupsLoadedFor.current !== currentUserId) return;
-    const ids = Array.from(archivedGroupIds);
-    void import('@/lib/user-settings')
-      .then(({ saveUserSetting }) => saveUserSetting('archivedGroups', ids))
-      .catch((error) => console.warn('Failed to save archived groups', error));
-  }, [archivedGroupIds, currentUserId]);
 
   useEffect(() => {
     if (!currentUserId || hiddenSettingsLoadedFor.current !== currentUserId) return;
@@ -883,6 +831,7 @@ export function CRMBoard({ clients,
         setProfiles(profilesData);
         setCurrentUserId(user?.id ?? null);
         setGroups(groupsData);
+        setCollapsedGroups(Object.fromEntries(groupsData.map((group) => [group.id, true])));
         setReplyStatusEntries(replyOpts);
         setClientStatusEntries(statusOpts);
         setChannelEntries(channelOpts);
@@ -913,6 +862,20 @@ export function CRMBoard({ clients,
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [showFilter]);
+
+  useEffect(() => {
+    if (!openGroupMenu && !openColumnMenu && !showHideColumns) return;
+    const handler = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (target.closest('[data-crm-menu-trigger], [data-crm-menu]')) return;
+      setOpenGroupMenu(null);
+      setOpenColumnMenu(null);
+      setShowHideColumns(false);
+    };
+
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [openGroupMenu, openColumnMenu, showHideColumns]);
 
 
   // --- Option handlers ---
@@ -1243,6 +1206,10 @@ export function CRMBoard({ clients,
 
   // --- Groups ---
   const handleAddGroup = useCallback(async (name: string) => {
+    if (!['director', 'admin', 'dev'].includes(currentUserRole ?? '')) {
+      toast.error('Group creation is restricted', { description: 'Only directors, admins, and dev users can create groups.' });
+      return;
+    }
     const trimmed = name.trim();
     if (!trimmed) return;
     if (groups.some((g) => g.name.toLowerCase() === trimmed.toLowerCase())) {
@@ -1257,6 +1224,7 @@ export function CRMBoard({ clients,
         .select('id, name, color, sort_order').single();
       if (error) throw error;
       setGroups((prev) => [...prev, data]);
+      setCollapsedGroups((prev) => ({ ...prev, [data.id]: true }));
       notifyChange('Group added', `${trimmed} is now available on the board.`);
     } catch (error) {
       console.error('Failed to add group', error);
@@ -1266,8 +1234,8 @@ export function CRMBoard({ clients,
 
   const handleDeleteGroup = useCallback(async () => {
     if (!groupToDelete) return;
-    if (currentUserRole !== 'director' && currentUserRole !== 'dev') {
-      toast.error('Group deletion is restricted', { description: 'Only directors and dev users can delete groups.' });
+    if (!['director', 'admin', 'dev'].includes(currentUserRole ?? '')) {
+      setOpenGroupMenu(null);
       return;
     }
     try {
@@ -1785,7 +1753,7 @@ export function CRMBoard({ clients,
         <button onClick={addClient} className="flex items-center gap-1 px-2 py-1 bg-[#43adc4] hover:bg-[#0f8da8] text-white rounded-md text-[10px] font-medium transition-colors transition transform active:scale-95 duration-150">
           <Plus size={12} /> Add Client
         </button>
-        <button onClick={() => setShowAddGroupModal(true)} className="flex items-center gap-1 px-2 py-1 bg-[#43adc4] hover:bg-[#0f8da8] text-white rounded-md text-[10px] font-medium transition-colors transition transform active:scale-95 duration-150">
+        <button onClick={() => setShowAddGroupModal(true)} disabled={!['director', 'admin', 'dev'].includes(currentUserRole ?? '')} className="flex items-center gap-1 px-2 py-1 bg-[#43adc4] hover:bg-[#0f8da8] text-white rounded-md text-[10px] font-medium transition-colors transition transform active:scale-95 duration-150 disabled:cursor-not-allowed disabled:opacity-50">
           <Plus size={12} /> Add Group
         </button>
         <AddGroupModal open={showAddGroupModal} onClose={() => setShowAddGroupModal(false)} onSubmit={handleAddGroup} />
@@ -1859,14 +1827,14 @@ export function CRMBoard({ clients,
           )}
         </div>
 
-        <div className="relative">
+        <div className="relative" data-crm-menu-trigger>
           <button onClick={() => setShowHideColumns((open) => !open)} className="flex items-center gap-1 px-2 py-1 bg-[#43adc4] hover:bg-[#0f8da8] text-white rounded-md text-[10px] font-medium transition-colors transform active:scale-95 duration-150">
             <EyeOff size={12} /> Hide
             {hiddenColumnKeys.size > 0 && <span className="rounded-full bg-white/25 px-1.5">{hiddenColumnKeys.size}</span>}
             <ChevronDown size={11} />
           </button>
           {showHideColumns && (
-            <div className="absolute top-full left-0 mt-1 w-64 max-h-[min(520px,calc(100vh-5rem))] overflow-y-auto rounded-lg border border-gray-200 bg-white p-2 shadow-xl z-50">
+            <div data-crm-menu className="absolute top-full left-0 mt-1 w-64 max-h-[min(520px,calc(100vh-5rem))] overflow-y-auto rounded-lg border border-gray-200 bg-white p-2 shadow-xl z-50">
               <div className="flex items-center justify-between border-b border-gray-100 px-2 pb-2">
                 <span className="text-xs font-semibold text-gray-800">Display columns</span>
                 <button onClick={() => setHiddenColumnKeys(new Set())} className="text-[10px] font-medium text-gray-400 hover:text-gray-700">Show all</button>
@@ -2162,6 +2130,7 @@ export function CRMBoard({ clients,
               >
                 <button
                   type="button"
+                  data-crm-menu-trigger
                   onClick={(event) => { event.stopPropagation(); setOpenGroupMenu(openGroupMenu === group.id ? null : group.id); }}
                   onMouseDown={(event) => event.stopPropagation()}
                   className="absolute -left-9 top-1/2 z-30 -translate-y-1/2 rounded bg-white/90 p-1 text-gray-400 opacity-0 shadow-sm transition-opacity hover:text-gray-700 group-hover:opacity-100"
@@ -2170,16 +2139,16 @@ export function CRMBoard({ clients,
                   <MoreHorizontal size={14} />
                 </button>
                 {openGroupMenu === group.id && (
-                  <div className="absolute -left-9 top-full z-[90] mt-1 w-40 rounded-md border border-gray-200 bg-white p-1 text-left shadow-xl">
-                    {archivedGroupIds.has(group.id) ? (
-                      <button type="button" onClick={() => unarchiveGroup(group.id)} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-[10px] font-medium text-gray-700 hover:bg-gray-50">
-                        Unarchive group
-                      </button>
-                    ) : (
-                      <button type="button" onClick={() => archiveGroup(group.id)} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-[10px] font-medium text-gray-700 hover:bg-gray-50">
-                        Archive group
-                      </button>
-                    )}
+                  <div data-crm-menu className="absolute -left-9 top-full z-[90] mt-1 w-40 rounded-md border border-gray-200 bg-white p-1 text-left shadow-xl">
+                    <button
+                      type="button"
+                      disabled={!['director', 'admin', 'dev'].includes(currentUserRole ?? '') || isDeletingGroup}
+                      onClick={() => { setOpenGroupMenu(null); setGroupToDelete(group); }}
+                      title={!['director', 'admin', 'dev'].includes(currentUserRole ?? '') ? 'You do not have the necessary permission.' : 'Delete group'}
+                      className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-[10px] font-medium text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:text-gray-400 disabled:hover:bg-transparent"
+                    >
+                      <Trash2 size={12} /> Delete group
+                    </button>
                   </div>
                 )}
                 <button onClick={() => toggleGroup(group.id)} className="text-sm text-gray-500">
@@ -2190,9 +2159,6 @@ export function CRMBoard({ clients,
                   <div className="crm-group-name text-slate-700">{group.name}</div>
                   <div className="text-xs italic font-normal text-slate-500">{groupClients.length} {groupClients.length === 1 ? 'Client' : 'Clients'}</div>
                 </div>
-                <button onClick={() => setGroupToDelete(group)} className="rounded-md mb-auto p-1.5 text-gray-300 hover:bg-red-50 hover:text-red-600 transition-colors" title="Delete group">
-                  <Trash2 size={14} />
-                </button>
               </div>
 
               {!collapsedGroups[group.id] && (
@@ -2257,6 +2223,7 @@ export function CRMBoard({ clients,
                           {!['selectCheckbox', 'client', 'addClientCol', 'empty'].includes(col.key) && (
                             <button
                               type="button"
+                              data-crm-menu-trigger
                               onClick={(event) => { event.stopPropagation(); setOpenColumnMenu(openColumnMenu === `client:${group.id}:${col.key}` ? null : `client:${group.id}:${col.key}`); }}
                               onMouseDown={(event) => event.stopPropagation()}
                               className="absolute right-0.5 top-0.5 z-30 hidden rounded bg-white/90 p-0.5 text-gray-400 shadow-sm hover:text-gray-700 group-hover:block"
@@ -2266,7 +2233,7 @@ export function CRMBoard({ clients,
                             </button>
                           )}
                           {openColumnMenu === `client:${group.id}:${col.key}` && (
-                            <div className="absolute left-0 top-full z-[80] mt-1 w-36 rounded-md border border-gray-200 bg-white p-1 text-left shadow-xl">
+                            <div data-crm-menu className="absolute left-0 top-full z-[80] mt-1 w-36 rounded-md border border-gray-200 bg-white p-1 text-left shadow-xl">
                               {['people', 'status', 'replyStatus', 'importance', 'channel'].includes(col.key) && <button type="button" onClick={() => { openColumnFilter(col.key === 'people' ? 'people' : `client:${col.key}`); setOpenColumnMenu(null); }} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-[10px] font-medium text-gray-700 hover:bg-gray-50"><Filter size={12} /> Filter</button>}
                               <button type="button" onClick={() => hideColumn(`client:${col.key}`)} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-[10px] font-medium text-gray-700 hover:bg-gray-50">
                                 <EyeOff size={12} /> Hide column

@@ -3,7 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { Client, Subitem, ClientStatus, ReplyStatus, ActivityEntry, Profile } from "../../app/types";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ChevronDown, ChevronRight, Activity, Trash2, ReceiptText, FileBox, Paperclip, Plus, Link as LinkIcon, FileText, X } from "lucide-react";
 import { EditableCell } from "./editablecell";
 import { StatusBadge } from "./statusbadge";
@@ -195,6 +195,18 @@ export function ClientRow({
     const [attachmentLinkDialog, setAttachmentLinkDialog] = useState<string | null>(null);
     const [attachmentPreview, setAttachmentPreview] = useState<string | null>(null);
 
+    useEffect(() => {
+        if (!attachmentSourceMenu) return;
+        const handler = (event: MouseEvent) => {
+            const target = event.target as HTMLElement;
+            if (target.closest('[data-attachment-menu-trigger], [data-attachment-menu]')) return;
+            setAttachmentSourceMenu(null);
+        };
+
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, [attachmentSourceMenu]);
+
     // normalise dates
     function toDateInputValue(value: unknown): string {
         if (!value) return "";
@@ -302,9 +314,9 @@ export function ClientRow({
                     ))}
                 </div>
 
-                <button type="button" onClick={() => setAttachmentSourceMenu(attachmentSourceMenu === fieldKey ? null : fieldKey)} className="flex h-7 w-7 shrink-0 items-center justify-center gap-0.5 rounded text-slate-400 opacity-0 transition-opacity group-hover/attachment:opacity-100 hover:bg-sky-50 hover:text-sky-600" title="Add attachment"><Plus size={12} /><FileText size={14} /></button>
+                <button type="button" data-attachment-menu-trigger onClick={() => setAttachmentSourceMenu(attachmentSourceMenu === fieldKey ? null : fieldKey)} className="flex h-7 w-7 shrink-0 items-center justify-center gap-0.5 rounded text-slate-400 opacity-0 transition-opacity group-hover/attachment:opacity-100 hover:bg-sky-50 hover:text-sky-600" title="Add attachment"><Plus size={12} /><FileText size={14} /></button>
                 {attachmentSourceMenu === fieldKey && (
-                    <div className="absolute right-0 top-full z-[110] mt-1 w-40 rounded-lg border border-slate-200 bg-white p-1 shadow-xl">
+                    <div data-attachment-menu className="absolute right-0 top-full z-[110] mt-1 w-40 rounded-lg border border-slate-200 bg-white p-1 shadow-xl">
                         <label className="flex cursor-pointer items-center gap-2 rounded px-2 py-2 text-xs text-slate-700 hover:bg-slate-50"><Paperclip size={14} /> From computer<input type="file" multiple className="hidden" onChange={handleFileChange} /></label>
                         <button type="button" onClick={() => { setAttachmentSourceMenu(null); setAttachmentLinkDialog(fieldKey); }} className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-xs text-slate-700 hover:bg-slate-50"><LinkIcon size={14} /> From link</button>
                     </div>
