@@ -31,7 +31,7 @@ export type ClientRowProps = {
     onToggleSelect: () => void;
     onUpdate: (u: Partial<Client>) => void;
     onUpdateSubitem: (subitemId: string, u: Partial<Subitem>) => void;
-    onAddSubitem: () => void;
+    onAddSubitem: (name: string) => void | Promise<void>;
     onDeleteSubitem: (id: string) => void;
     selectedSubitemIds: string[];
     onToggleSubitemSelection: (subitemId: string) => void;

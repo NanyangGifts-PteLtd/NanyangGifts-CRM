@@ -653,7 +653,7 @@ export async function deleteClientRow(clientId: string) {
 }
 
 // subitem functions
-export async function createSubitemRow(clientId: string, currentUserId?: string | null) {
+export async function createSubitemRow(clientId: string, name: string, currentUserId?: string | null) {
     const timelineRows = [
         { id: crypto.randomUUID(), name: 'Sample', person: '', remarks: '', subProgress: '', timelineStart: '', timelineEnd: '', duration: '', dependency: '' },
         { id: crypto.randomUUID(), name: 'Production 📦', person: '', remarks: '', subProgress: '', timelineStart: '', timelineEnd: '', duration: '', dependency: 'Sample' },
@@ -668,7 +668,7 @@ export async function createSubitemRow(clientId: string, currentUserId?: string 
         .from('subitems')
         .insert({
             client_id: clientId,
-            name: 'New Item',
+            name: name.trim(),
             people: '',
             status: '',
             local_overseas: 'Local',
@@ -736,7 +736,7 @@ export async function createSubitemRow(clientId: string, currentUserId?: string 
         action: 'subitem_added',
     });
 
-    return data;
+    return mapSubitems(data as Subitems);
 }
 
 export async function duplicateSubitemRow(subitemId: string) {

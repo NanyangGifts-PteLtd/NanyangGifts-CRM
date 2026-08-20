@@ -1914,10 +1914,17 @@ export function CRMBoard({ clients,
     catch (error: any) { setClients(clients); console.error('Failed to delete selected', error); toast.error('Selected clients could not be deleted', { description: error?.message || 'The selected clients were not deleted.' }); }
   }, [selectedIds, clients, setClients, notifyChange]);
 
-  const addSubitem = useCallback(async (clientId: string) => {
-      try { await createSubitemRow(clientId, currentUserId); await reloadClients(); notifyChange('Subitem added', 'The new subitem is now available under the client.'); }
-    catch (error: any) { console.error('Failed to add subitem', error); toast.error('Subitem could not be added', { description: error?.message || 'The subitem was not saved.' }); }
-  }, [currentUserId, reloadClients, notifyChange]);
+  const addSubitem = useCallback(async (clientId: string, name: string) => {
+      const trimmedName = name.trim();
+      if (!trimmedName) return;
+      try {
+        const createdSubitem = await createSubitemRow(clientId, trimmedName, currentUserId);
+        setClients((previous) => previous.map((client) => client.id === clientId ? { ...client, subitems: [...client.subitems, createdSubitem] } : client));
+        if (currentUserId) setSubitemAssignees((previous) => ({ ...previous, [createdSubitem.id]: [currentUserId] }));
+        notifyChange('Subitem added', `${trimmedName} is now available under the client.`);
+      }
+    catch (error: any) { console.error('Failed to add subitem', error); toast.error('Subitem could not be added', { description: error?.message || 'The subitem was not saved.' }); throw error; }
+  }, [currentUserId, notifyChange, setClients, setSubitemAssignees]);
 
   const deleteSubitem = useCallback(async (_clientId: string, subitemId: string) => {
     setSelectedSubitemIds((previous) => previous.filter((id) => id !== subitemId));
@@ -2553,7 +2560,7 @@ export function CRMBoard({ clients,
                   onToggleSelect={() => toggleSelect(client.id)}
                   onUpdate={(updates) => updateClient(client.id, updates)}
                   onUpdateSubitem={(subitemId, updates) => updateSubitem(client.id, subitemId, updates)}
-                  onAddSubitem={() => addSubitem(client.id)}
+                  onAddSubitem={(name) => addSubitem(client.id, name)}
                   onDeleteSubitem={(subitemId) => setPendingDeleteSubitem({ clientId: client.id, subitemId })}
                   selectedSubitemIds={selectedSubitemIds}
                   onToggleSubitemSelection={toggleSubitemSelection}

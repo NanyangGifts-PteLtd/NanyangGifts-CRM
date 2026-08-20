@@ -108,7 +108,7 @@ type SubitemProps = {
     subitems: Subitem[];
     clientColor: string;
     onUpdateSubitem: (id: string, u: Partial<Subitem>) => void;
-    onAddSubitem: () => void;
+    onAddSubitem: (name: string) => void | Promise<void>;
     onDeleteSubitem: (id: string) => void;
     selectedSubitemIds: string[];
     onToggleSubitemSelection: (subitemId: string) => void;
@@ -254,9 +254,29 @@ export function SubitemsTable({
     onUndoActivity,
 }: SubitemProps) {
     const [tableMode, setTableMode] = useState<TableMode | null>(null);
+    const [newSubitemName, setNewSubitemName] = useState("");
+    const [isAddingSubitem, setIsAddingSubitem] = useState(false);
+    const [pendingSubitemName, setPendingSubitemName] = useState<string | null>(null);
     const [subitemCols, setSubitemCols] = useState<ColumnDef[]>([...SUBITEM_COLS]);
     const [paymentCols, setPaymentCols] = useState<ColumnDef[]>([...PAYMENT_COLS]);
     const [draggedColumnKey, setDraggedColumnKey] = useState<string | null>(null);
+
+    const submitNewSubitem = async () => {
+        const name = newSubitemName.trim();
+        if (!name || isAddingSubitem) return;
+        setIsAddingSubitem(true);
+        setPendingSubitemName(name);
+        setNewSubitemName("");
+        try {
+            await onAddSubitem(name);
+        } catch {
+            // The board displays the persistence error; keep the typed name for retrying.
+            setNewSubitemName(name);
+        } finally {
+            setIsAddingSubitem(false);
+            setPendingSubitemName(null);
+        }
+    };
     const [dragOverColumnKey, setDragOverColumnKey] = useState<string | null>(null);
     const [dragOverColumnEdge, setDragOverColumnEdge] = useState<'left' | 'right' | null>(null);
     const [openColumnInfo, setOpenColumnInfo] = useState<string | null>(null);
@@ -1631,14 +1651,39 @@ export function SubitemsTable({
                             </React.Fragment>
                         ))}
 
-                        <tr>
-                            <td colSpan={totalColSpan} className="px-3 py-2">
-                                <button
-                                    onClick={onAddSubitem}
-                                    className="flex items-center gap-1.5 text-xs text-gray-400 transition duration-150 hover:text-[#7BCBD5] active:scale-95"
-                                >
-                                    <Plus size={12} /> Add subitem
-                                </button>
+                        {pendingSubitemName && (
+                            <tr className="border-b border-r border-[#D0D4E4] bg-blue-50/40" aria-label={`Creating ${pendingSubitemName}`}>
+                                <td className="border-r border-[#D0D4E4] px-2 py-1 text-center"><input type="checkbox" disabled className="h-3 w-3 opacity-40" /></td>
+                                {visibleCols.map((col) => (
+                                    <td key={col.key} className="h-[33px] border-r border-[#D0D4E4] px-2 text-xs">
+                                        {col.key === "name" ? <span className="flex items-center gap-2 text-gray-700"><span>{pendingSubitemName}</span><span className="inline-flex gap-0.5" aria-label="Saving"><span className="h-1 w-1 animate-pulse rounded-full bg-[#7BCBD5]" /><span className="h-1 w-1 animate-pulse rounded-full bg-[#7BCBD5] [animation-delay:150ms]" /><span className="h-1 w-1 animate-pulse rounded-full bg-[#7BCBD5] [animation-delay:300ms]" /></span></span> : <span className="block h-2 w-2/3 animate-pulse rounded bg-gray-100" />}
+                                    </td>
+                                ))}
+                                {visibleCustomCols.map((col) => <td key={col.id} className="border-r border-[#D0D4E4] px-2"><span className="block h-2 w-2/3 animate-pulse rounded bg-gray-100" /></td>)}
+                                <td className="border-r border-[#D0D4E4]" />
+                            </tr>
+                        )}
+
+                        <tr className="group/add-subitem bg-white hover:bg-[#f5fbff] focus-within:bg-[#f5fbff]">
+                            <td className="border-r border-[#D0D4E4]" style={{ width: 34 }} />
+                            <td colSpan={Math.max(totalColSpan - 1, 1)} className="px-2 py-1.5">
+                                <div className="relative max-w-sm">
+                                    <Plus size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500" />
+                                    <input
+                                        value={newSubitemName}
+                                        onChange={(event) => setNewSubitemName(event.target.value)}
+                                        onKeyDown={(event) => {
+                                            if (event.key === "Enter") {
+                                                event.preventDefault();
+                                                void submitNewSubitem();
+                                            }
+                                        }}
+                                        disabled={isAddingSubitem}
+                                        placeholder={isAddingSubitem ? "Adding subitem…" : "Add subitem"}
+                                        aria-label="New subitem name"
+                                        className="h-7 w-full rounded border border-transparent bg-transparent pl-7 pr-2 text-xs text-gray-700 outline-none transition group-hover/add-subitem:border-gray-500 group-hover/add-subitem:bg-white focus:border-[#3799b1] focus:bg-white focus:ring-2 focus:ring-[#7BCBD5]/25 disabled:cursor-wait disabled:opacity-50"
+                                    />
+                                </div>
                             </td>
                         </tr>
                     </tbody>
