@@ -18,7 +18,7 @@ import {
   AlertDialogCancel,
 } from './ui/alert-dialog';
 import { fetchProfiles, saveClientAssignees, saveSubitemAssignees } from '@/lib/assignments';
-import { createClientRow, updateClientRow, deleteClientRow, createSubitemRow, updateSubitemRow, deleteSubitemRow, moveSubitemRow, duplicateSubitemRow } from '@/lib/crm';
+import { createClientRow, updateClientRow, deleteClientRow, createSubitemRow, updateSubitemRow, deleteSubitemRow, moveSubitemRow, duplicateSubitemRow, duplicateClientRow } from '@/lib/crm';
 import { fetchClientAssigneeMap } from '@/lib/assignments';
 import { GenerateOcfModal } from './Generate-OCF-Modal';
 import { AddGroupModal } from './Add-Group-Modal';
@@ -161,6 +161,10 @@ export function CRMBoard({ clients,
   const [subitemMoveSearch, setSubitemMoveSearch] = useState('');
   const [isMovingSubitems, setIsMovingSubitems] = useState(false);
   const [isDuplicatingSubitems, setIsDuplicatingSubitems] = useState(false);
+  const [showClientMoveMenu, setShowClientMoveMenu] = useState(false);
+  const [clientMoveSearch, setClientMoveSearch] = useState('');
+  const [isMovingClients, setIsMovingClients] = useState(false);
+  const [isDuplicatingClients, setIsDuplicatingClients] = useState(false);
   const [pendingDeleteSelected, setPendingDeleteSelected] = useState(false);
 
   const [replyStatusEntries, setReplyStatusEntries] = useState<OptionEntry[]>([]);
@@ -1619,6 +1623,14 @@ export function CRMBoard({ clients,
     }, { totalPrice: 0, totalMarkup: 0 }),
     [selectedSubitems],
   );
+
+  const selectedClientTotals = useMemo(() => clients.filter((client) => selectedIds.has(client.id)).reduce((totals, client) => {
+    const clientTotals = client.subitems.reduce((subitemTotals, subitem) => {
+      const financials = calculateSubitemFinancials(subitem);
+      return { totalPrice: subitemTotals.totalPrice + financials.price, totalMarkup: subitemTotals.totalMarkup + financials.markup };
+    }, { totalPrice: 0, totalMarkup: 0 });
+    return { totalPrice: totals.totalPrice + clientTotals.totalPrice, totalMarkup: totals.totalMarkup + clientTotals.totalMarkup };
+  }, { totalPrice: 0, totalMarkup: 0 }), [clients, selectedIds]);
   const orderedMoveGroups = useMemo(() => {
     const orderedGroups = groups.map((group) => ({
     name: group.name,
@@ -1745,6 +1757,16 @@ export function CRMBoard({ clients,
       setSelectedIds((prev) => { const next = new Set(prev); filteredClients.forEach((c) => next.add(c.id)); return next; });
     }
   }, [allFilteredSelected, filteredClients, selectedSubitemIds.length]);
+
+  const toggleSelectGroup = useCallback((groupClientIds: string[]) => {
+    if (selectedSubitemIds.length > 0 || groupClientIds.length === 0) return;
+    setSelectedIds((previous) => {
+      const next = new Set(previous);
+      const allGroupClientsSelected = groupClientIds.every((clientId) => next.has(clientId));
+      groupClientIds.forEach((clientId) => allGroupClientsSelected ? next.delete(clientId) : next.add(clientId));
+      return next;
+    });
+  }, [selectedSubitemIds.length]);
 
   // --- Assignees ---
   const handleClientAssigneesChange = useCallback(async (clientId: string, ids: string[]) => {
@@ -1942,6 +1964,41 @@ export function CRMBoard({ clients,
     catch (error: any) { setClients(clients); console.error('Failed to delete selected', error); toast.error('Selected clients could not be deleted', { description: error?.message || 'The selected clients were not deleted.' }); }
   }, [selectedIds, clients, setClients, notifyChange]);
 
+  const duplicateSelectedClients = useCallback(async () => {
+    setIsDuplicatingClients(true);
+    try {
+      await Promise.all([...selectedIds].map((clientId) => duplicateClientRow(clientId)));
+      await reloadClients();
+      const [nextClientAssignees, nextSubitemAssignees] = await Promise.all([fetchClientAssigneeMap(), fetchAllSubitemAssignees()]);
+      setClientAssignees(nextClientAssignees);
+      setSubitemAssignees(nextSubitemAssignees);
+      toast.success('Clients duplicated', { description: `${selectedIds.size} selected client${selectedIds.size === 1 ? '' : 's'} were copied with their subitems.` });
+      setSelectedIds(new Set());
+    } catch (error) {
+      await reloadClients();
+      toast.error('Clients could not be duplicated', { description: error instanceof Error ? error.message : 'The selected clients were not duplicated.' });
+    } finally {
+      setIsDuplicatingClients(false);
+    }
+  }, [reloadClients, selectedIds, setClientAssignees, setSubitemAssignees]);
+
+  const moveSelectedClients = useCallback(async (targetGroupId: string) => {
+    setIsMovingClients(true);
+    try {
+      await Promise.all([...selectedIds].map((clientId) => updateClientRow(clientId, { groupId: targetGroupId })));
+      await reloadClients();
+      toast.success('Clients moved', { description: `${selectedIds.size} selected client${selectedIds.size === 1 ? '' : 's'} were moved to the chosen group.` });
+      setSelectedIds(new Set());
+    } catch (error) {
+      await reloadClients();
+      toast.error('Clients could not be moved', { description: error instanceof Error ? error.message : 'The selected clients were not moved.' });
+    } finally {
+      setIsMovingClients(false);
+      setShowClientMoveMenu(false);
+      setClientMoveSearch('');
+    }
+  }, [reloadClients, selectedIds]);
+
   const addSubitem = useCallback(async (clientId: string, name: string) => {
       const trimmedName = name.trim();
       if (!trimmedName) return;
@@ -2015,6 +2072,25 @@ export function CRMBoard({ clients,
 
   return (
     <div className="crm-board flex flex-col h-full bg-white">
+      {selectedIds.size > 0 && (
+        <div className="fixed bottom-8 left-1/2 z-[100] flex min-h-16 w-[min(900px,calc(100vw-2rem))] -translate-x-1/2 items-center gap-5 rounded-2xl border border-slate-200 bg-white px-6 py-4 shadow-2xl">
+          <div className="whitespace-nowrap text-base font-medium text-slate-800">{selectedIds.size} Client{selectedIds.size === 1 ? '' : 's'} selected</div>
+          <button type="button" disabled={isDuplicatingClients} onClick={() => void duplicateSelectedClients()} className="flex items-center gap-1.5 rounded px-3 py-2 text-sm text-slate-500 hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60"><Copy size={17} /> {isDuplicatingClients ? 'Duplicating...' : 'Duplicate'}</button>
+          <div className="relative">
+            <button type="button" disabled={isMovingClients} onClick={() => setShowClientMoveMenu((open) => !open)} className="flex items-center gap-1.5 rounded px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60"><MoveRight size={17} /> {isMovingClients ? 'Moving...' : 'Move'}</button>
+            {showClientMoveMenu && !isMovingClients && <div className="absolute bottom-full left-0 mb-2 max-h-96 w-72 overflow-y-auto rounded-xl border border-slate-200 bg-white p-3 shadow-2xl">
+              <div className="mb-3 text-base font-medium text-slate-800">Move to group</div>
+              <div className="relative mb-2"><Search size={15} className="absolute left-2.5 top-2.5 text-slate-400" /><input autoFocus value={clientMoveSearch} onChange={(event) => setClientMoveSearch(event.target.value)} placeholder="Search groups" className="h-10 w-full rounded border border-slate-200 pl-8 pr-2 text-sm outline-none focus:border-sky-400" /></div>
+              {groups.filter((group) => group.name.toLowerCase().includes(clientMoveSearch.toLowerCase())).map((group) => <button key={group.id} type="button" onClick={() => void moveSelectedClients(group.id)} className="block w-full rounded px-2 py-2 text-left text-sm text-slate-700 hover:bg-sky-50">{group.name}</button>)}
+              {groups.filter((group) => group.name.toLowerCase().includes(clientMoveSearch.toLowerCase())).length === 0 && <div className="px-2 py-5 text-center text-sm text-slate-400">No groups found.</div>}
+            </div>}
+          </div>
+          <button type="button" disabled={!['director', 'admin', 'dev'].includes(currentUserRole ?? '')} onClick={() => setPendingDeleteSelected(true)} title={!['director', 'admin', 'dev'].includes(currentUserRole ?? '') ? 'You do not have the necessary permission.' : 'Delete selected clients'} className="flex items-center gap-1.5 rounded px-3 py-2 text-sm text-red-500 hover:bg-red-50 disabled:cursor-not-allowed disabled:text-slate-300"><Trash2 size={17} /> Delete</button>
+          <div className="ml-auto whitespace-nowrap text-center text-sm text-slate-600"><div>Total Price</div><div className="font-medium text-slate-900">{selectedClientTotals.totalPrice.toFixed(2)}</div></div>
+          <div className="whitespace-nowrap text-center text-sm text-slate-600"><div>Total Markup</div><div className={`font-medium ${selectedClientTotals.totalMarkup >= 0 ? 'text-green-600' : 'text-red-500'}`}>{selectedClientTotals.totalMarkup.toFixed(2)}</div></div>
+          <button type="button" onClick={() => setSelectedIds(new Set())} className="rounded p-1 text-slate-400 hover:bg-slate-50 hover:text-slate-700" title="Clear selection"><X size={21} /></button>
+        </div>
+      )}
       {selectedSubitemIds.length > 0 && (
         <div className="fixed bottom-8 left-1/2 z-[100] flex min-h-16 w-[min(900px,calc(100vw-2rem))] -translate-x-1/2 items-center gap-5 rounded-2xl border border-slate-200 bg-white px-6 py-4 shadow-2xl">
           <div className="whitespace-nowrap text-base font-medium text-slate-800">{selectedSubitemIds.length} Subitem{selectedSubitemIds.length === 1 ? '' : 's'} selected</div>
@@ -2174,17 +2250,6 @@ export function CRMBoard({ clients,
         </div>
 
         <div className="flex-1" />
-        {selectedIds.size > 0 && (
-          <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-md px-3 py-1.5">
-            <span className="text-[10px] text-red-600 font-medium">{selectedIds.size} selected</span>
-            <button onClick={() => setPendingDeleteSelected(true)} className="flex items-center gap-1 text-[10px] text-red-600 hover:text-red-800 font-semibold transition-colors">
-              <Trash2 size={12} /> Delete
-            </button>
-            <button onClick={() => setSelectedIds(new Set())} className="text-gray-400 hover:text-gray-600 transition-colors">
-              <X size={13} />
-            </button>
-          </div>
-        )}
       </div>
 
       <AlertDialog open={pendingDeleteSelected} onOpenChange={setPendingDeleteSelected}>
@@ -2535,7 +2600,14 @@ export function CRMBoard({ clients,
                           style={{ minWidth: col.width, width: col.width, boxShadow: col.key === 'totalPrice' || col.key === 'totalMarkup' ? 'inset 0 -2px 0 #ef4444' : undefined }}
                         >
                           {col.key === 'selectCheckbox' ? (
-                            <input type="checkbox" checked={allFilteredSelected} onChange={toggleSelectAll} disabled={selectedSubitemIds.length > 0} title={selectedSubitemIds.length > 0 ? "Clients and subitems cannot be selected together" : "Select all clients"} className={`w-3 h-3 rounded accent-[#7BCBD5] ${selectedSubitemIds.length > 0 ? 'cursor-not-allowed opacity-40' : 'cursor-pointer'}`} />
+                            <input
+                              type="checkbox"
+                              checked={groupClients.length > 0 && groupClients.every((client) => selectedIds.has(client.id))}
+                              onChange={() => toggleSelectGroup(groupClients.map((client) => client.id))}
+                              disabled={selectedSubitemIds.length > 0 || groupClients.length === 0}
+                              title={selectedSubitemIds.length > 0 ? "Clients and subitems cannot be selected together" : "Select clients in this group"}
+                              className={`w-3 h-3 rounded accent-[#7BCBD5] ${selectedSubitemIds.length > 0 || groupClients.length === 0 ? 'cursor-not-allowed opacity-40' : 'cursor-pointer'}`}
+                            />
                           ) : col.key === 'addClientCol' ? (
                             <button type="button" onClick={() => setShowAddColModal('client')} className="mx-auto flex h-5 w-5 items-center justify-center rounded-md text-teal-500 hover:bg-teal-100 hover:text-black" title="Add client column"><Plus size={14} /></button>
                           ) : (

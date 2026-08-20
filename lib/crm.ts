@@ -1041,3 +1041,49 @@ export async function deleteSubitemRow(subitemId: string) {
 
     if (error) throw error;
 }
+
+export async function duplicateClientRow(clientId: string) {
+    const { data: existing, error: clientError } = await supabase.from('clients').select('*').eq('id', clientId).single();
+    if (clientError) throw clientError;
+
+    const clientCopy = { ...existing };
+    delete clientCopy.id;
+    delete clientCopy.created_at;
+    delete clientCopy.waiting_started_at;
+    delete clientCopy.activity_log;
+    const { data: duplicate, error: duplicateError } = await supabase.from('clients').insert({
+        ...clientCopy,
+        name: `${existing.name ?? 'New Client'} (Copy)`,
+        activity_log: [],
+    }).select('*').single();
+    if (duplicateError) throw duplicateError;
+
+    const { data: sourceSubitems, error: subitemError } = await supabase.from('subitems').select('*').eq('client_id', clientId);
+    if (subitemError) throw subitemError;
+    for (const source of sourceSubitems ?? []) {
+        const copy = { ...source };
+        delete copy.id;
+        delete copy.created_at;
+        delete copy.waiting_started_at;
+        const timelineRows = Array.isArray(copy.timeline_rows) ? copy.timeline_rows.map((row: TimelineRow) => ({ ...row, id: crypto.randomUUID() })) : [];
+        const { data: newSubitem, error: copyError } = await supabase.from('subitems').insert({ ...copy, client_id: duplicate.id, timeline_rows: timelineRows }).select('id').single();
+        if (copyError) throw copyError;
+
+        const { data: assignees, error: assigneeError } = await supabase.from('subitem_assignees').select('user_id').eq('subitem_id', source.id);
+        if (assigneeError) throw assigneeError;
+        if (assignees?.length) {
+            const { error } = await supabase.from('subitem_assignees').insert(assignees.map((assignee) => ({ subitem_id: newSubitem.id, user_id: assignee.user_id, assigned_by: null })));
+            if (error) throw error;
+        }
+    }
+
+    const { data: clientAssignees, error: clientAssigneeError } = await supabase.from('client_assignees').select('user_id').eq('client_id', clientId);
+    if (clientAssigneeError) throw clientAssigneeError;
+    if (clientAssignees?.length) {
+        const { error } = await supabase.from('client_assignees').insert(clientAssignees.map((assignee) => ({ client_id: duplicate.id, user_id: assignee.user_id, assigned_by: null })));
+        if (error) throw error;
+    }
+
+    await insertActivityLog({ clientId: duplicate.id, action: 'client_added', title: 'duplicated this client' });
+    return duplicate;
+}
