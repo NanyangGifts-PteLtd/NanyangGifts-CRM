@@ -196,6 +196,7 @@ export function CRMBoard({ clients,
   const channelColors = Object.fromEntries(channelEntries.map((e) => [e.value, e.color]));
 
   const [groups, setGroups] = useState<CRMGroup[]>([]);
+  const allGroupsCollapsed = groups.length > 0 && groups.every((group) => collapsedGroups[group.id]);
   const [groupToDelete, setGroupToDelete] = useState<CRMGroup | null>(null);
   const [isDeletingGroup, setIsDeletingGroup] = useState(false);
   const [draggedClientId, setDraggedClientId] = useState<string | null>(null);
@@ -1700,9 +1701,36 @@ export function CRMBoard({ clients,
     allExpanded ? setExpandedIds([]) : setExpandedIds(clients.map((c) => c.id));
   }, [allExpanded, clients, setExpandedIds]);
 
+  const toggleCollapseAllGroups = useCallback(() => {
+    setCollapsedGroups((previous) => {
+      const shouldExpand = groups.length > 0 && groups.every((group) => previous[group.id]);
+      return Object.fromEntries(groups.map((group) => [group.id, !shouldExpand]));
+    });
+  }, [groups]);
+
   const toggleGroup = useCallback((id: string) => {
     setCollapsedGroups((prev) => ({ ...prev, [id]: !prev[id] }));
   }, []);
+
+  useEffect(() => {
+    const handleKeyboardShortcut = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.matches('input, textarea, select, [contenteditable="true"]')) return;
+      if (!event.ctrlKey || event.altKey || event.shiftKey) return;
+
+      if (event.key.toLowerCase() === 'g') {
+        event.preventDefault();
+        toggleCollapseAllGroups();
+      }
+      if (event.key.toLowerCase() === 'i') {
+        event.preventDefault();
+        toggleExpandAll();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyboardShortcut);
+    return () => window.removeEventListener('keydown', handleKeyboardShortcut);
+  }, [toggleCollapseAllGroups, toggleExpandAll]);
 
   const toggleSelect = useCallback((id: string) => {
     if (selectedSubitemIds.length > 0) return;
@@ -2019,9 +2047,14 @@ export function CRMBoard({ clients,
         </button>
         <AddGroupModal open={showAddGroupModal} onClose={() => setShowAddGroupModal(false)} onSubmit={handleAddGroup} />
 
-        <button onClick={toggleExpandAll} className="flex items-center gap-1 px-2 py-1 bg-[#43adc4] hover:bg-[#0f8da8] text-white rounded-md text-[10px] font-medium transition-colors transition transform active:scale-95 duration-150">
+        <button onClick={toggleCollapseAllGroups} disabled={groups.length === 0} title="Ctrl + G" className="flex items-center gap-1 px-2 py-1 bg-[#43adc4] hover:bg-[#0f8da8] text-white rounded-md text-[10px] font-medium transition-colors transition transform active:scale-95 duration-150 disabled:cursor-not-allowed disabled:opacity-50">
+          {allGroupsCollapsed ? <ChevronsDown size={12} /> : <ChevronsUp size={12} />}
+          {allGroupsCollapsed ? 'Expand All Groups' : 'Collapse All Groups'}
+        </button>
+
+        <button onClick={toggleExpandAll} title="Ctrl + I" className="flex items-center gap-1 px-2 py-1 bg-[#43adc4] hover:bg-[#0f8da8] text-white rounded-md text-[10px] font-medium transition-colors transition transform active:scale-95 duration-150">
           {allExpanded ? <ChevronsUp size={12} /> : <ChevronsDown size={12} />}
-          {allExpanded ? 'Collapse All' : 'Expand All'}
+          {allExpanded ? 'Collapse All Clients' : 'Expand All Clients'}
         </button>
 
         <div ref={filterRef} className="relative">
