@@ -33,6 +33,9 @@ export type ClientRowProps = {
     onUpdateSubitem: (subitemId: string, u: Partial<Subitem>) => void;
     onAddSubitem: () => void;
     onDeleteSubitem: (id: string) => void;
+    selectedSubitemIds: string[];
+    onToggleSubitemSelection: (subitemId: string) => void;
+    onToggleAllSubitems: (subitemIds: string[]) => void;
     onSubitemDragStart?: (subitemId: string, event: React.DragEvent<HTMLElement>) => void;
     onSubitemDragEnd?: () => void;
     onSubitemDragOver?: (event: React.DragEvent<HTMLDivElement>, clientId: string) => void;
@@ -120,6 +123,9 @@ export function ClientRow({
     onUpdateSubitem,
     onAddSubitem,
     onDeleteSubitem,
+    selectedSubitemIds,
+    onToggleSubitemSelection,
+    onToggleAllSubitems,
     onSubitemDragStart,
     onSubitemDragEnd,
     onSubitemDragOver,
@@ -475,7 +481,9 @@ export function ClientRow({
                         type="checkbox"
                         checked={isSelected}
                         onChange={onToggleSelect}
-                        className="w-3 h-3 rounded cursor-pointer accent-[#7BCBD5] transition transform active:scale-150 duration-200"
+                        disabled={selectedSubitemIds.length > 0}
+                        title={selectedSubitemIds.length > 0 ? "Clients and subitems cannot be selected together" : "Select client"}
+                        className={`w-3 h-3 rounded accent-[#7BCBD5] transition transform active:scale-150 duration-200 ${selectedSubitemIds.length > 0 ? 'cursor-not-allowed opacity-40' : 'cursor-pointer'}`}
                     />
                     <button
                         onClick={onToggleExpand}
@@ -991,6 +999,10 @@ export function ClientRow({
                     onUpdateSubitem={onUpdateSubitem}
                     onAddSubitem={onAddSubitem}
                     onDeleteSubitem={onDeleteSubitem}
+                    selectedSubitemIds={selectedSubitemIds}
+                    onToggleSubitemSelection={onToggleSubitemSelection}
+                    clientIsSelected={isSelected}
+                    onToggleAllSubitems={onToggleAllSubitems}
                     onSubitemDragStart={onSubitemDragStart}
                     onSubitemDragEnd={onSubitemDragEnd}
                     profiles={profiles}

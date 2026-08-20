@@ -101,7 +101,6 @@ export const PAYMENT_COLS: ColumnDef[] = [
 
 type TableMode = "subitem" | "payment" | "timeline";
 type OptionEntry = { value: string; color: string };
-
 const CUSTOM_COL_WIDTH = 120;
 
 type SubitemProps = {
@@ -111,6 +110,10 @@ type SubitemProps = {
     onUpdateSubitem: (id: string, u: Partial<Subitem>) => void;
     onAddSubitem: () => void;
     onDeleteSubitem: (id: string) => void;
+    selectedSubitemIds: string[];
+    onToggleSubitemSelection: (subitemId: string) => void;
+    clientIsSelected: boolean;
+    onToggleAllSubitems: (subitemIds: string[]) => void;
     onSubitemDragStart?: (subitemId: string, event: React.DragEvent<HTMLElement>) => void;
     onSubitemDragEnd?: () => void;
     profiles: Profile[];
@@ -201,6 +204,10 @@ export function SubitemsTable({
     onUpdateSubitem,
     onAddSubitem,
     onDeleteSubitem,
+    selectedSubitemIds,
+    onToggleSubitemSelection,
+    clientIsSelected,
+    onToggleAllSubitems,
     onSubitemDragStart,
     onSubitemDragEnd,
     profiles,
@@ -247,8 +254,6 @@ export function SubitemsTable({
     const [tableMode, setTableMode] = useState<TableMode | null>(null);
     const [subitemCols, setSubitemCols] = useState<ColumnDef[]>([...SUBITEM_COLS]);
     const [paymentCols, setPaymentCols] = useState<ColumnDef[]>([...PAYMENT_COLS]);
-    const [selectedSubitemIds, setSelectedSubitemIds] = useState<string[]>([]);
-    const [selectionBox, setSelectionBox] = useState({ x: 0, y: 0, visible: false });
     const [draggedColumnKey, setDraggedColumnKey] = useState<string | null>(null);
     const [dragOverColumnKey, setDragOverColumnKey] = useState<string | null>(null);
     const [dragOverColumnEdge, setDragOverColumnEdge] = useState<'left' | 'right' | null>(null);
@@ -762,32 +767,6 @@ export function SubitemsTable({
         };
     }, []);
 
-    const toggleSubitemSelection = (subitemId: string, x: number, y: number) => {
-        setSelectedSubitemIds((prev) =>
-            prev.includes(subitemId) ? prev.filter((id) => id !== subitemId) : [...prev, subitemId]
-        );
-        setSelectionBox({ x: x + 16, y: y + 16, visible: true });
-    };
-
-    const selectedSubitems = useMemo(
-        () => subitems.filter((s) => selectedSubitemIds.includes(s.id)),
-        [subitems, selectedSubitemIds]
-    );
-
-    const selectionTotals = useMemo(
-        () =>
-            selectedSubitems.reduce(
-                (acc, sub) => {
-                    const financials = calculateSubitemFinancials(sub);
-                    acc.totalCost += financials.tc;
-                    acc.totalPrice += financials.price;
-                    acc.totalMarkup += financials.markup;
-                    return acc;
-                },
-                { totalCost: 0, totalPrice: 0, totalMarkup: 0 }
-            ),
-        [selectedSubitems]
-    );
 
     async function handlePushToShipperView(subitemId: string, overwrite = false) {
         try {
@@ -929,13 +908,6 @@ export function SubitemsTable({
                     </button>
                 ) : null}
 
-                <button
-                    onClick={() => onDeleteSubitem(sub.id)}
-                    className="p-1 text-gray-300 transition-colors hover:text-red-400"
-                    title="Delete subitem"
-                >
-                    <Trash2 size={15} />
-                </button>
             </div>
         </div>
     );
@@ -1356,40 +1328,6 @@ export function SubitemsTable({
                     </div>
                 </div>
             ) : null}
-            {selectedSubitemIds.length > 0 && selectionBox.visible && (
-                <div
-                    className="fixed z-50 rounded-xl border border-gray-200 bg-white/95 px-4 py-3 text-xs text-gray-700 shadow-xl backdrop-blur-sm"
-                    style={{ left: selectionBox.x, top: selectionBox.y }}
-                >
-                    <div className="mb-2 font-semibold text-gray-900">
-                        {selectedSubitemIds.length} subitem{selectedSubitemIds.length > 1 ? "s" : ""} selected
-                    </div>
-                    <div className="space-y-1 whitespace-nowrap">
-                        <div>
-                            Total price: <span className="font-medium">{selectionTotals.totalPrice.toFixed(2)}</span>
-                        </div>
-                        <div>
-                            Total cost: <span className="font-medium">{selectionTotals.totalCost.toFixed(2)}</span>
-                        </div>
-                        <div>
-                            Total markup:{" "}
-                            <span className={`font-medium ${selectionTotals.totalMarkup >= 0 ? "text-green-600" : "text-red-500"}`}>
-                                {selectionTotals.totalMarkup.toFixed(2)}
-                            </span>
-                        </div>
-                    </div>
-                    <button
-                        onClick={() => {
-                            setSelectedSubitemIds([]);
-                            setSelectionBox((p) => ({ ...p, visible: false }));
-                        }}
-                        className="mt-2 text-[11px] text-gray-400 hover:text-gray-600"
-                    >
-                        Clear selection
-                    </button>
-                </div>
-            )}
-
             <div className="w-full overflow-visible">
                 <table
                     className="table-fixed border-collapse border-b border-[#D0D4E4]"
@@ -1408,7 +1346,16 @@ export function SubitemsTable({
 
                     <thead>
                         <tr className="border-b border-t border-r border-[#D0D4E4] bg-gray-50">
-                            <th className="w-11 px-2 py-1 text-center" />
+                            <th className="w-11 px-2 py-1 text-center">
+                                <input
+                                    type="checkbox"
+                                    checked={subitems.length > 0 && subitems.every((subitem) => selectedSubitemIds.includes(subitem.id))}
+                                    onChange={() => onToggleAllSubitems(subitems.map((subitem) => subitem.id))}
+                                    disabled={clientIsSelected}
+                                    title={clientIsSelected ? "Clients and subitems cannot be selected together" : "Select all subitems in this client"}
+                                    className={`h-3 w-3 rounded accent-[#7BCBD5] ${clientIsSelected ? 'cursor-not-allowed opacity-40' : 'cursor-pointer'}`}
+                                />
+                            </th>
 
                             {visibleCols.map((col) => {
                                 const isDragTarget = col.key !== 'name';
@@ -1577,10 +1524,12 @@ export function SubitemsTable({
                                             checked={selectedSubitemIds.includes(sub.id)}
                                             onClick={(e) => {
                                                 e.stopPropagation();
-                                                toggleSubitemSelection(sub.id, e.clientX, e.clientY);
+                                                if (!clientIsSelected) onToggleSubitemSelection(sub.id);
                                             }}
                                             onChange={() => { }}
-                                            className="h-3 w-3 cursor-pointer rounded accent-[#7BCBD5]"
+                                            disabled={clientIsSelected}
+                                            title={clientIsSelected ? "Clients and subitems cannot be selected together" : "Select subitem"}
+                                            className={`h-3 w-3 rounded accent-[#7BCBD5] ${clientIsSelected ? 'cursor-not-allowed opacity-40' : 'cursor-pointer'}`}
                                         />
                                     </td>
 
@@ -1634,7 +1583,16 @@ export function SubitemsTable({
                                         </td>
                                     ))}
 
-                                    <td className="border-r border-[#D0D4E4]" style={{ width: 32 }} />
+                                    <td className="border-r border-[#D0D4E4] text-center" style={{ width: 32 }}>
+                                        <button
+                                            type="button"
+                                            onClick={() => onDeleteSubitem(sub.id)}
+                                            className="p-1 text-gray-300 transition-colors hover:text-red-400"
+                                            title="Delete subitem"
+                                        >
+                                            <Trash2 size={15} />
+                                        </button>
+                                    </td>
                                 </tr>
 
                                 {sub.showTimeline && (

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { ChevronDown, Plus, Trash2, Filter, ChevronsDown, ChevronsUp, X, MoreHorizontal, EyeOff } from 'lucide-react';
+import { ChevronDown, Plus, Trash2, Filter, ChevronsDown, ChevronsUp, X, MoreHorizontal, EyeOff, Copy, MoveRight, Search } from 'lucide-react';
 import { Client, Subitem, ClientStatus, Profile, ClientAssigneeMap, SubitemAssigneeMap, CRMGroup } from '../app/types';
 import { createClient as createSupabaseClient } from '@/lib/supabase/client';
 import { ClientRow } from './ui/clientrows';
@@ -26,6 +26,7 @@ import { fetchCustomColumns, addCustomColumn, deleteCustomColumn, type CustomCol
 import ClientsLiveRefresh from './RealtimeRefresh';
 import { toast } from 'sonner';
 import type { SearchResult } from '../app/types';
+import { calculateSubitemFinancials } from '@/lib/subitem-calculations';
 
 type OptionEntry = { value: string; color: string };
 type HeaderCol = {
@@ -154,6 +155,11 @@ export function CRMBoard({ clients,
   const [showAddGroupModal, setShowAddGroupModal] = useState(false);
   const [pendingDeleteClientId, setPendingDeleteClientId] = useState<string | null>(null);
   const [pendingDeleteSubitem, setPendingDeleteSubitem] = useState<{ clientId: string; subitemId: string } | null>(null);
+  const [pendingDeleteSelectedSubitems, setPendingDeleteSelectedSubitems] = useState<string[] | null>(null);
+  const [selectedSubitemIds, setSelectedSubitemIds] = useState<string[]>([]);
+  const [showSubitemMoveMenu, setShowSubitemMoveMenu] = useState(false);
+  const [subitemMoveSearch, setSubitemMoveSearch] = useState('');
+  const [isMovingSubitems, setIsMovingSubitems] = useState(false);
   const [pendingDeleteSelected, setPendingDeleteSelected] = useState(false);
 
   const [replyStatusEntries, setReplyStatusEntries] = useState<OptionEntry[]>([]);
@@ -1542,6 +1548,31 @@ export function CRMBoard({ clients,
     clients: displayedClients.filter((c) => c.groupId === group.id),
   }));
 
+  const parentClientOptions = useMemo(
+    () => clients.map((client) => ({ id: client.id, name: client.name || 'Unnamed client', groupName: groups.find((group) => group.id === client.groupId)?.name || 'Ungrouped' })),
+    [clients, groups],
+  );
+
+  const selectedSubitems = useMemo(
+    () => clients.flatMap((client) => client.subitems.filter((subitem) => selectedSubitemIds.includes(subitem.id))),
+    [clients, selectedSubitemIds],
+  );
+  const selectedSubitemTotals = useMemo(
+    () => selectedSubitems.reduce((totals, subitem) => {
+      const financials = calculateSubitemFinancials(subitem);
+      return { totalPrice: totals.totalPrice + financials.price, totalMarkup: totals.totalMarkup + financials.markup };
+    }, { totalPrice: 0, totalMarkup: 0 }),
+    [selectedSubitems],
+  );
+  const orderedMoveGroups = useMemo(() => {
+    const orderedGroups = groups.map((group) => ({
+    name: group.name,
+    clients: parentClientOptions.filter((client) => client.groupName === group.name && (!subitemMoveSearch.trim() || client.name.toLowerCase().includes(subitemMoveSearch.trim().toLowerCase()))),
+    })).filter((group) => group.clients.length > 0);
+    const ungroupedClients = parentClientOptions.filter((client) => client.groupName === 'Ungrouped' && (!subitemMoveSearch.trim() || client.name.toLowerCase().includes(subitemMoveSearch.trim().toLowerCase())));
+    return ungroupedClients.length ? [...orderedGroups, { name: 'Ungrouped', clients: ungroupedClients }] : orderedGroups;
+  }, [groups, parentClientOptions, subitemMoveSearch]);
+
   const filteredClients = displayedClients;
   const allFilteredSelected = filteredClients.length > 0 && filteredClients.every((c) => selectedIds.has(c.id));
 
@@ -1620,16 +1651,18 @@ export function CRMBoard({ clients,
   }, []);
 
   const toggleSelect = useCallback((id: string) => {
+    if (selectedSubitemIds.length > 0) return;
     setSelectedIds((prev) => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; });
-  }, []);
+  }, [selectedSubitemIds.length]);
 
   const toggleSelectAll = useCallback(() => {
+    if (selectedSubitemIds.length > 0) return;
     if (allFilteredSelected) {
       setSelectedIds((prev) => { const next = new Set(prev); filteredClients.forEach((c) => next.delete(c.id)); return next; });
     } else {
       setSelectedIds((prev) => { const next = new Set(prev); filteredClients.forEach((c) => next.add(c.id)); return next; });
     }
-  }, [allFilteredSelected, filteredClients]);
+  }, [allFilteredSelected, filteredClients, selectedSubitemIds.length]);
 
   // --- Assignees ---
   const handleClientAssigneesChange = useCallback(async (clientId: string, ids: string[]) => {
@@ -1833,13 +1866,74 @@ export function CRMBoard({ clients,
   }, [currentUserId, reloadClients, notifyChange]);
 
   const deleteSubitem = useCallback(async (_clientId: string, subitemId: string) => {
+    setSelectedSubitemIds((previous) => previous.filter((id) => id !== subitemId));
     setClients((prev) => prev.map((c) => ({ ...c, subitems: c.subitems.filter((s) => s.id !== subitemId) })));
     try { await deleteSubitemRow(subitemId); notifyChange('Subitem deleted', 'The subitem was removed.'); }
     catch (error: any) { setClients(clients); console.error('Failed to delete subitem', error); toast.error('Subitem could not be deleted', { description: error?.message || 'The subitem was not deleted.' }); }
   }, [clients, setClients, notifyChange]);
 
+  const moveSelectedSubitems = useCallback(async (subitemIds: string[], targetClientId: string) => {
+    setIsMovingSubitems(true);
+    try {
+      await Promise.all(subitemIds.map((subitemId) => moveSubitemRow(subitemId, targetClientId)));
+      await reloadClients();
+      toast.success('Subitems moved', { description: `${subitemIds.length} subitem${subitemIds.length === 1 ? '' : 's'} moved to the selected client.` });
+    } catch (error) {
+      await reloadClients();
+      toast.error('Subitems could not be moved', { description: error instanceof Error ? error.message : 'The subitems were not moved.' });
+    } finally {
+      setIsMovingSubitems(false);
+    }
+  }, [reloadClients]);
+
+  const toggleSubitemSelection = useCallback((subitemId: string) => {
+    if (selectedIds.size > 0) return;
+    setSelectedSubitemIds((previous) => previous.includes(subitemId)
+      ? previous.filter((id) => id !== subitemId)
+      : [...previous, subitemId]);
+  }, [selectedIds.size]);
+
+  const toggleAllSubitems = useCallback((subitemIds: string[]) => {
+    if (selectedIds.size > 0) return;
+    setSelectedSubitemIds((previous) => {
+      const allSelected = subitemIds.length > 0 && subitemIds.every((id) => previous.includes(id));
+      return allSelected
+        ? previous.filter((id) => !subitemIds.includes(id))
+        : [...new Set([...previous, ...subitemIds])];
+    });
+  }, [selectedIds.size]);
+
+  const clearSubitemSelection = useCallback(() => {
+    setSelectedSubitemIds([]);
+    setShowSubitemMoveMenu(false);
+    setSubitemMoveSearch('');
+  }, []);
+
   return (
     <div className="crm-board flex flex-col h-full bg-white">
+      {selectedSubitemIds.length > 0 && (
+        <div className="fixed bottom-8 left-1/2 z-[100] flex min-h-16 w-[min(900px,calc(100vw-2rem))] -translate-x-1/2 items-center gap-5 rounded-2xl border border-slate-200 bg-white px-6 py-4 shadow-2xl">
+          <div className="whitespace-nowrap text-base font-medium text-slate-800">{selectedSubitemIds.length} Subitem{selectedSubitemIds.length === 1 ? '' : 's'} selected</div>
+          <button type="button" title="Duplicate placeholder" className="flex items-center gap-1.5 rounded px-3 py-2 text-sm text-slate-500 hover:bg-slate-50"><Copy size={17} /> Duplicate</button>
+          <div className="relative">
+            <button type="button" disabled={isMovingSubitems} onClick={() => setShowSubitemMoveMenu((open) => !open)} className="flex items-center gap-1.5 rounded px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60"><MoveRight size={17} /> {isMovingSubitems ? 'Moving...' : 'Move'}</button>
+            {showSubitemMoveMenu && !isMovingSubitems && (
+              <div className="absolute bottom-full left-0 mb-2 max-h-96 w-80 overflow-y-auto rounded-xl border border-slate-200 bg-white p-3 shadow-2xl">
+                <div className="mb-3 text-base font-medium text-slate-800">Choose a new parent</div>
+                <div className="relative mb-3"><Search size={15} className="absolute left-2.5 top-2.5 text-slate-400" /><input autoFocus value={subitemMoveSearch} onChange={(event) => setSubitemMoveSearch(event.target.value)} placeholder="Search clients" className="h-10 w-full rounded border border-slate-200 pl-8 pr-2 text-sm outline-none focus:border-sky-400" /></div>
+                {orderedMoveGroups.map((group) => (
+                  <div key={group.name} className="mb-3"><div className="px-1 py-1 text-xs font-medium text-sky-600">{group.name}</div>{group.clients.map((client) => <button key={client.id} type="button" onClick={async () => { setShowSubitemMoveMenu(false); await moveSelectedSubitems(selectedSubitemIds, client.id); clearSubitemSelection(); }} className="block w-full rounded px-2 py-2 text-left text-sm text-slate-700 hover:bg-sky-50">{client.name}</button>)}</div>
+                ))}
+                {orderedMoveGroups.length === 0 && <div className="px-2 py-5 text-center text-sm text-slate-400">No clients found.</div>}
+              </div>
+            )}
+          </div>
+          <button type="button" disabled={!['director', 'admin', 'dev'].includes(currentUserRole ?? '')} onClick={() => setPendingDeleteSelectedSubitems(selectedSubitemIds)} title={!['director', 'admin', 'dev'].includes(currentUserRole ?? '') ? 'You do not have the necessary permission.' : 'Delete selected subitems'} className="flex items-center gap-1.5 rounded px-3 py-2 text-sm text-red-500 hover:bg-red-50 disabled:cursor-not-allowed disabled:text-slate-300"><Trash2 size={17} /> Delete</button>
+          <div className="ml-auto whitespace-nowrap text-center text-sm text-slate-600"><div>Total Price</div><div className="font-medium text-slate-900">{selectedSubitemTotals.totalPrice.toFixed(2)}</div></div>
+          <div className="whitespace-nowrap text-center text-sm text-slate-600"><div>Total Markup</div><div className={`font-medium ${selectedSubitemTotals.totalMarkup >= 0 ? 'text-green-600' : 'text-red-500'}`}>{selectedSubitemTotals.totalMarkup.toFixed(2)}</div></div>
+          <button type="button" onClick={clearSubitemSelection} className="rounded p-1 text-slate-400 hover:bg-slate-50 hover:text-slate-700" title="Clear selection"><X size={21} /></button>
+        </div>
+      )}
       <div className="flex items-center gap-2 px-2 py-1 border-b border-gray-200 bg-white flex-shrink-0">
         <button onClick={addClient} className="flex items-center gap-1 px-2 py-1 bg-[#43adc4] hover:bg-[#0f8da8] text-white rounded-md text-[10px] font-medium transition-colors transition transform active:scale-95 duration-150">
           <Plus size={12} /> Add Client
@@ -2030,6 +2124,31 @@ export function CRMBoard({ clients,
         </AlertDialogContent>
       </AlertDialog>
 
+      <AlertDialog open={!!pendingDeleteSelectedSubitems} onOpenChange={(open) => !open && setPendingDeleteSelectedSubitems(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete selected subitems?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete {pendingDeleteSelectedSubitems?.length ?? 0} selected subitems. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async () => {
+                const selected = pendingDeleteSelectedSubitems;
+                if (!selected) return;
+                setPendingDeleteSelectedSubitems(null);
+                setSelectedSubitemIds((previous) => previous.filter((id) => !selected.includes(id)));
+                await Promise.all(selected.map((subitemId) => deleteSubitem('', subitemId)));
+              }}
+            >
+              Delete subitems
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <AlertDialog open={!!pendingDeleteSubitem} onOpenChange={(open) => !open && setPendingDeleteSubitem(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -2147,7 +2266,9 @@ export function CRMBoard({ clients,
                       type="checkbox"
                       checked={allFilteredSelected}
                       onChange={toggleSelectAll}
-                      className="w-3 h-3 rounded cursor-pointer accent-[#7BCBD5]"
+                      disabled={selectedSubitemIds.length > 0}
+                      title={selectedSubitemIds.length > 0 ? "Clients and subitems cannot be selected together" : "Select all clients"}
+                      className={`w-3 h-3 rounded accent-[#7BCBD5] ${selectedSubitemIds.length > 0 ? 'cursor-not-allowed opacity-40' : 'cursor-pointer'}`}
                     />
                   ) : col.key === 'addClientCol' ? (
                     <button
@@ -2305,7 +2426,7 @@ export function CRMBoard({ clients,
                           style={{ minWidth: col.width, width: col.width, boxShadow: col.key === 'totalPrice' || col.key === 'totalMarkup' ? 'inset 0 -2px 0 #ef4444' : undefined }}
                         >
                           {col.key === 'selectCheckbox' ? (
-                            <input type="checkbox" checked={allFilteredSelected} onChange={toggleSelectAll} className="w-3 h-3 rounded cursor-pointer accent-[#7BCBD5]" />
+                            <input type="checkbox" checked={allFilteredSelected} onChange={toggleSelectAll} disabled={selectedSubitemIds.length > 0} title={selectedSubitemIds.length > 0 ? "Clients and subitems cannot be selected together" : "Select all clients"} className={`w-3 h-3 rounded accent-[#7BCBD5] ${selectedSubitemIds.length > 0 ? 'cursor-not-allowed opacity-40' : 'cursor-pointer'}`} />
                           ) : col.key === 'addClientCol' ? (
                             <button type="button" onClick={() => setShowAddColModal('client')} className="mx-auto flex h-5 w-5 items-center justify-center rounded-md text-teal-500 hover:bg-teal-100 hover:text-black" title="Add client column"><Plus size={14} /></button>
                           ) : (
@@ -2365,6 +2486,9 @@ export function CRMBoard({ clients,
                   onUpdateSubitem={(subitemId, updates) => updateSubitem(client.id, subitemId, updates)}
                   onAddSubitem={() => addSubitem(client.id)}
                   onDeleteSubitem={(subitemId) => setPendingDeleteSubitem({ clientId: client.id, subitemId })}
+                  selectedSubitemIds={selectedSubitemIds}
+                  onToggleSubitemSelection={toggleSubitemSelection}
+                  onToggleAllSubitems={toggleAllSubitems}
                   onSubitemDragStart={(subitemId, event) => handleSubitemDragStart(subitemId, client.id, event)}
                   onSubitemDragEnd={handleSubitemDragEnd}
                   onSubitemDragOver={handleSubitemDragOver}
