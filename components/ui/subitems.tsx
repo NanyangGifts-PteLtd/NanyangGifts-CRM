@@ -111,6 +111,8 @@ type SubitemProps = {
     onUpdateSubitem: (id: string, u: Partial<Subitem>) => void;
     onAddSubitem: () => void;
     onDeleteSubitem: (id: string) => void;
+    onSubitemDragStart?: (subitemId: string, event: React.DragEvent<HTMLElement>) => void;
+    onSubitemDragEnd?: () => void;
     profiles: Profile[];
     subitemAssigneeMap: Record<string, string[]>;
     onChangeSubitemAssignees: (subitemId: string, ids: string[]) => void;
@@ -199,6 +201,8 @@ export function SubitemsTable({
     onUpdateSubitem,
     onAddSubitem,
     onDeleteSubitem,
+    onSubitemDragStart,
+    onSubitemDragEnd,
     profiles,
     subitemAssigneeMap,
     onChangeSubitemAssignees,
@@ -840,7 +844,12 @@ export function SubitemsTable({
     }
 
     const renderNameCell = (sub: Subitem) => (
-        <div className="flex items-center gap-1 h-[30px]">
+        <div
+            draggable={Boolean(onSubitemDragStart)}
+            onDragStart={(event) => onSubitemDragStart?.(sub.id, event)}
+            onDragEnd={onSubitemDragEnd}
+            className="flex h-[30px] cursor-grab items-center gap-1 active:cursor-grabbing"
+        >
             <FileText size={11} className="text-gray-400 shrink-0" />
             <EditableCell
                 value={sub.name}
@@ -1315,6 +1324,8 @@ export function SubitemsTable({
                                         <div className="text-gray-800">
                                             {entry.action === 'subitem_added' ? (
                                                 <><span className="font-medium">{entry.actorName}</span> created this subitem</>
+                                            ) : entry.fieldName === 'parentClient' ? (
+                                                <>parent client changed from <span className="font-medium">{displayActivityValue(entry.oldValue)}</span> to <span className="font-medium">{displayActivityValue(entry.newValue)}</span></>
                                             ) : timelineMatch ? (
                                                 <>changed timeline row <span className="font-medium">{timelineMatch[1]}</span> field <span className="font-medium">{timelineMatch[2]}</span> from {displayActivityValue(entry.oldValue)} to {displayActivityValue(entry.newValue)}</>
                                             ) : (

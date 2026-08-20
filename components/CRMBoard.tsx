@@ -18,7 +18,7 @@ import {
   AlertDialogCancel,
 } from './ui/alert-dialog';
 import { fetchProfiles, saveClientAssignees, saveSubitemAssignees } from '@/lib/assignments';
-import { createClientRow, updateClientRow, deleteClientRow, createSubitemRow, updateSubitemRow, deleteSubitemRow } from '@/lib/crm';
+import { createClientRow, updateClientRow, deleteClientRow, createSubitemRow, updateSubitemRow, deleteSubitemRow, moveSubitemRow } from '@/lib/crm';
 import { fetchClientAssigneeMap } from '@/lib/assignments';
 import { GenerateOcfModal } from './Generate-OCF-Modal';
 import { AddGroupModal } from './Add-Group-Modal';
@@ -192,6 +192,8 @@ export function CRMBoard({ clients,
   const [groupToDelete, setGroupToDelete] = useState<CRMGroup | null>(null);
   const [isDeletingGroup, setIsDeletingGroup] = useState(false);
   const [draggedClientId, setDraggedClientId] = useState<string | null>(null);
+  const [draggedSubitem, setDraggedSubitem] = useState<{ id: string; sourceClientId: string } | null>(null);
+  const [dragOverSubitemClientId, setDragOverSubitemClientId] = useState<string | null>(null);
   const [draggedGroupId, setDraggedGroupId] = useState<string | null>(null);
   const [dragOverGroupId, setDragOverGroupId] = useState<string | null>(null);
   const [dragOverGroupEdge, setDragOverGroupEdge] = useState<'top' | 'bottom' | null>(null);
@@ -1353,6 +1355,74 @@ export function CRMBoard({ clients,
     setDragOverGroupEdge(null);
   }, []);
 
+  const handleSubitemDragStart = useCallback((subitemId: string, sourceClientId: string, event: React.DragEvent<HTMLElement>) => {
+    event.dataTransfer?.setData('text/plain', subitemId);
+    event.dataTransfer?.setData('application/x-crm-subitem', subitemId);
+    if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
+
+    const source = event.currentTarget;
+    const preview = source.cloneNode(true) as HTMLElement;
+    preview.style.position = 'fixed';
+    preview.style.left = '-10000px';
+    preview.style.top = '-10000px';
+    preview.style.width = `${Math.min(source.getBoundingClientRect().width, 360)}px`;
+    preview.style.height = '30px';
+    preview.style.background = '#ffffff';
+    preview.style.border = '1px solid #8edbe7';
+    preview.style.boxShadow = '0 8px 20px rgba(15, 23, 42, 0.22)';
+    preview.style.opacity = '1';
+    preview.style.pointerEvents = 'none';
+    document.body.appendChild(preview);
+    event.dataTransfer?.setDragImage(preview, 24, 15);
+    window.setTimeout(() => preview.remove(), 0);
+    setDraggedSubitem({ id: subitemId, sourceClientId });
+    setDraggedClientId(null);
+  }, []);
+
+  const handleSubitemDragOver = useCallback((event: React.DragEvent<HTMLDivElement>, clientId: string) => {
+    if (!Array.from(event.dataTransfer.types).includes('application/x-crm-subitem')) return;
+    event.preventDefault();
+    event.stopPropagation();
+    setDragOverSubitemClientId(clientId);
+  }, []);
+
+  const handleSubitemDragEnd = useCallback(() => {
+    setDraggedSubitem(null);
+    setDragOverSubitemClientId(null);
+  }, []);
+
+  const handleSubitemDrop = useCallback(async (event: React.DragEvent<HTMLDivElement>, targetClientId: string) => {
+    if (!Array.from(event.dataTransfer.types).includes('application/x-crm-subitem')) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const movingSubitem = draggedSubitem;
+    handleSubitemDragEnd();
+    if (!movingSubitem || movingSubitem.sourceClientId === targetClientId) return;
+
+    const sourceClient = clients.find((client) => client.id === movingSubitem.sourceClientId);
+    const subitem = sourceClient?.subitems.find((item) => item.id === movingSubitem.id);
+    if (!subitem) return;
+
+    setClients((previous) => previous.map((client) => {
+      if (client.id === movingSubitem.sourceClientId) {
+        return { ...client, subitems: client.subitems.filter((item) => item.id !== movingSubitem.id) };
+      }
+      if (client.id === targetClientId) {
+        return { ...client, subitems: [...client.subitems, subitem] };
+      }
+      return client;
+    }));
+
+    try {
+      await moveSubitemRow(movingSubitem.id, targetClientId);
+      await reloadClients();
+    } catch (error) {
+      console.error('Failed to move subitem', error);
+      await reloadClients();
+      toast.error('Subitem could not be moved', { description: error instanceof Error ? error.message : 'The subitem was not moved.' });
+    }
+  }, [clients, draggedSubitem, handleSubitemDragEnd, reloadClients, setClients]);
+
   const handleGroupDragStart = useCallback((groupId: string, event: React.DragEvent) => {
     event.dataTransfer?.setData('text/plain', groupId);
     event.dataTransfer?.setData('application/x-crm-group-row', groupId);
@@ -1674,6 +1744,27 @@ export function CRMBoard({ clients,
     }
 
     if (entry.action === 'subitem_field_changed' && entry.subitemId && entry.fieldName && !entry.fieldName.startsWith('timeline:')) {
+      if (entry.fieldName === 'parentClient') {
+        const oldClientId = typeof entry.meta?.oldClientId === 'string' ? entry.meta.oldClientId : null;
+        const newClientId = typeof entry.meta?.newClientId === 'string' ? entry.meta.newClientId : null;
+        if (!oldClientId || !newClientId) return;
+
+        setClients((previous) => previous.map((client) => {
+          if (client.id === newClientId) {
+            return { ...client, subitems: client.subitems.filter((subitem) => subitem.id !== entry.subitemId) };
+          }
+          if (client.id === oldClientId) {
+            const movedSubitem = clients.find((item) => item.id === newClientId)?.subitems.find((subitem) => subitem.id === entry.subitemId);
+            return movedSubitem ? { ...client, subitems: [...client.subitems, movedSubitem] } : client;
+          }
+          return client;
+        }));
+
+        await moveSubitemRow(entry.subitemId, oldClientId);
+        toast.success('Move undone', { description: 'The subitem was moved back to its previous client.' });
+        return;
+      }
+
       const updates = { [entry.fieldName]: entry.oldValue } as Partial<Subitem>;
       setClients((previous) => previous.map((client) => ({
         ...client,
@@ -2274,6 +2365,11 @@ export function CRMBoard({ clients,
                   onUpdateSubitem={(subitemId, updates) => updateSubitem(client.id, subitemId, updates)}
                   onAddSubitem={() => addSubitem(client.id)}
                   onDeleteSubitem={(subitemId) => setPendingDeleteSubitem({ clientId: client.id, subitemId })}
+                  onSubitemDragStart={(subitemId, event) => handleSubitemDragStart(subitemId, client.id, event)}
+                  onSubitemDragEnd={handleSubitemDragEnd}
+                  onSubitemDragOver={handleSubitemDragOver}
+                  onSubitemDrop={handleSubitemDrop}
+                  isSubitemDropTarget={dragOverSubitemClientId === client.id && draggedSubitem?.sourceClientId !== client.id}
                   onDelete={() => setPendingDeleteClientId(client.id)}
                   profiles={profiles}
                   clientAssignedIds={clientAssignees[client.id] ?? []}

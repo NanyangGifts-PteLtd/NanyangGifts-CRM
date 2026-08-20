@@ -33,6 +33,11 @@ export type ClientRowProps = {
     onUpdateSubitem: (subitemId: string, u: Partial<Subitem>) => void;
     onAddSubitem: () => void;
     onDeleteSubitem: (id: string) => void;
+    onSubitemDragStart?: (subitemId: string, event: React.DragEvent<HTMLElement>) => void;
+    onSubitemDragEnd?: () => void;
+    onSubitemDragOver?: (event: React.DragEvent<HTMLDivElement>, clientId: string) => void;
+    onSubitemDrop?: (event: React.DragEvent<HTMLDivElement>, clientId: string) => void;
+    isSubitemDropTarget?: boolean;
     onDelete: () => void;
     onOpenOcfModal: (client: Client) => void;
     profiles: Profile[];
@@ -115,6 +120,11 @@ export function ClientRow({
     onUpdateSubitem,
     onAddSubitem,
     onDeleteSubitem,
+    onSubitemDragStart,
+    onSubitemDragEnd,
+    onSubitemDragOver,
+    onSubitemDrop,
+    isSubitemDropTarget,
     onDelete,
     onOpenOcfModal,
     profiles,
@@ -444,7 +454,11 @@ export function ClientRow({
     }
 
     return (
-        <div className="mb-0 w-fit min-w-0">
+        <div
+            className={`mb-0 w-fit min-w-0 ${isSubitemDropTarget ? 'ring-2 ring-inset ring-[#0f8da8]' : ''}`}
+            onDragOver={(event) => onSubitemDragOver?.(event, client.id)}
+            onDrop={(event) => onSubitemDrop?.(event, client.id)}
+        >
             <style>{Array.from(hiddenColumnKeys).filter((key) => key.startsWith('client:')).map((key) => `[data-client-column="${key.slice(7)}"]{display:none!important}`).join('')}</style>
             <div
                 data-client-row
@@ -977,6 +991,8 @@ export function ClientRow({
                     onUpdateSubitem={onUpdateSubitem}
                     onAddSubitem={onAddSubitem}
                     onDeleteSubitem={onDeleteSubitem}
+                    onSubitemDragStart={onSubitemDragStart}
+                    onSubitemDragEnd={onSubitemDragEnd}
                     profiles={profiles}
                     subitemAssigneeMap={subitemAssigneeMap}
                     onChangeSubitemAssignees={onChangeSubitemAssignees}

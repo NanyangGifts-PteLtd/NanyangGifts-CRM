@@ -886,6 +886,66 @@ export async function updateSubitemRow(subitemId: string, updates: Partial<Subit
         });
     }
 }
+
+export async function moveSubitemRow(subitemId: string, targetClientId: string) {
+    const { data: existing, error: fetchError } = await supabase
+        .from('subitems')
+        .select('id, name, client_id')
+        .eq('id', subitemId)
+        .single();
+    if (fetchError) throw fetchError;
+    if (existing.client_id === targetClientId) return;
+
+    const { data: clients, error: clientsError } = await supabase
+        .from('clients')
+        .select('id, name')
+        .in('id', [existing.client_id, targetClientId]);
+    if (clientsError) throw clientsError;
+
+    const oldClientName = clients?.find((client) => client.id === existing.client_id)?.name ?? existing.client_id;
+    const newClientName = clients?.find((client) => client.id === targetClientId)?.name ?? targetClientId;
+
+    const { error } = await supabase
+        .from('subitems')
+        .update({ client_id: targetClientId })
+        .eq('id', subitemId);
+
+    if (error) throw error;
+
+    const { error: activityMoveError } = await supabase
+        .from('activity_log')
+        .update({ client_id: targetClientId })
+        .eq('subitem_id', subitemId);
+    if (activityMoveError) throw activityMoveError;
+
+    await insertActivityLog({
+        clientId: existing.client_id,
+        subitemId: null,
+        subitemName: existing.name,
+        action: 'subitem_deleted',
+        oldValue: { id: existing.id, name: existing.name },
+        description: `Subitem moved to ${newClientName}`,
+    });
+
+    await insertActivityLog({
+        clientId: targetClientId,
+        subitemId,
+        subitemName: existing.name,
+        action: 'subitem_added',
+        description: `Subitem moved from ${oldClientName}`,
+    });
+    await insertActivityLog({
+        clientId: targetClientId,
+        subitemId,
+        subitemName: existing.name,
+        action: 'subitem_field_changed',
+        fieldName: 'parentClient',
+        oldValue: oldClientName,
+        newValue: newClientName,
+        meta: { oldClientId: existing.client_id, newClientId: targetClientId },
+    });
+}
+
 export async function deleteSubitemRow(subitemId: string) {
     await assertDeletionAllowed('subitems', subitemId);
     const { data: existing, error: fetchError } = await supabase
