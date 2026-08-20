@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        const redirectTo = new URL("/auth/confirm", request.url).toString();
+        const redirectTo = new URL("/auth/invite", request.url).toString();
         const { data, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
             redirectTo,
             data: { role },
