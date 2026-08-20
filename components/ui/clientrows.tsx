@@ -1,9 +1,10 @@
 // for rendering client rows
 "use client";
+/* eslint-disable @next/next/no-img-element */
 
 import { Client, Subitem, ClientStatus, ReplyStatus, ActivityEntry, Profile } from "../../app/types";
 import { useState } from "react";
-import { ChevronDown, ChevronRight, Activity, Trash2, ReceiptText, FileBox } from "lucide-react";
+import { ChevronDown, ChevronRight, Activity, Trash2, ReceiptText, FileBox, Paperclip, Plus, Link as LinkIcon, FileText, X } from "lucide-react";
 import { EditableCell } from "./editablecell";
 import { StatusBadge } from "./statusbadge";
 import { SubitemsTable } from "./subitems";
@@ -14,6 +15,13 @@ import type { CustomColumn } from '@/lib/custom-columns';
 import { calculateSubitemFinancials } from '@/lib/subitem-calculations';
 
 type OptionEntry = { value: string; color: string };
+type AttachmentItem = {
+    id: string;
+    kind: "file" | "link";
+    name: string;
+    url: string;
+    mimeType?: string;
+};
 
 export type ClientRowProps = {
     client: Client;
@@ -183,6 +191,9 @@ export function ClientRow({
     const [showOnlyAttachedActivities, setShowOnlyAttachedActivities] = useState(false);
     const [undoneActivityIds, setUndoneActivityIds] = useState<Set<string>>(new Set());
     const [attachmentDrafts, setAttachmentDrafts] = useState<Record<string, string>>({});
+    const [attachmentSourceMenu, setAttachmentSourceMenu] = useState<string | null>(null);
+    const [attachmentLinkDialog, setAttachmentLinkDialog] = useState<string | null>(null);
+    const [attachmentPreview, setAttachmentPreview] = useState<string | null>(null);
 
     // normalise dates
     function toDateInputValue(value: unknown): string {
@@ -226,90 +237,85 @@ export function ClientRow({
         return "";
     }
     const renderAttachmentField = (fieldKey: string) => {
-        const value = String(client.customFields?.[fieldKey] ?? "");
+        const rawValue = String(client.customFields?.[fieldKey] ?? "");
         const draft = attachmentDrafts[fieldKey] ?? "";
-
-        const saveSingleValue = (nextValue: string) => {
-            updateClientCustomField(client.id, fieldKey, nextValue.trim());
+        const parseItems = (): AttachmentItem[] => {
+            try {
+                const parsed = JSON.parse(rawValue) as unknown;
+                if (Array.isArray(parsed)) return parsed.filter((item): item is AttachmentItem => Boolean(item && typeof item === "object" && "url" in item));
+            } catch {
+                if (rawValue) {
+                    return [{ id: `legacy-${fieldKey}`, kind: /^https?:\/\//i.test(rawValue) ? "link" : "file", name: /^https?:\/\//i.test(rawValue) ? rawValue : "Attachment", url: rawValue }];
+                }
+            }
+            return [];
         };
 
-        const handleLinkSubmit = (entry: string) => {
-            const trimmed = entry.trim();
-            if (!trimmed) return;
-            saveSingleValue(trimmed);
-            setAttachmentDrafts((previous) => ({ ...previous, [fieldKey]: "" }));
+        const items = parseItems();
+        const saveItems = (nextItems: AttachmentItem[]) => updateClientCustomField(client.id, fieldKey, JSON.stringify(nextItems));
+        const addItem = (item: AttachmentItem) => {
+            saveItems([...items, item]);
+            setAttachmentSourceMenu(null);
+            setAttachmentLinkDialog(null);
         };
 
         const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-            const files = Array.from(event.target.files ?? []);
-            if (!files.length) return;
-
             try {
-                const file = files[0];
-                const dataUrl = await new Promise<string>((resolve, reject) => {
-                    const reader = new FileReader();
-                    reader.onload = () => resolve(String(reader.result ?? ""));
-                    reader.onerror = () => reject(new Error(`Failed to read ${file.name}`));
-                    reader.readAsDataURL(file);
-                });
-
-                saveSingleValue(dataUrl);
+                const nextItems = await Promise.all(Array.from(event.target.files ?? []).map(async (file) => {
+                    const url = await new Promise<string>((resolve, reject) => {
+                        const reader = new FileReader();
+                        reader.onload = () => resolve(String(reader.result ?? ""));
+                        reader.onerror = () => reject(new Error(`Failed to read ${file.name}`));
+                        reader.readAsDataURL(file);
+                    });
+                    return { id: crypto.randomUUID(), kind: "file" as const, name: file.name, url, mimeType: file.type };
+                }));
+                if (nextItems.length) saveItems([...items, ...nextItems]);
             } finally {
                 event.target.value = "";
+                setAttachmentSourceMenu(null);
             }
         };
 
-        const isLink = /^https?:\/\//i.test(value) || /^mailto:/i.test(value);
-        const displayLabel = isLink
-            ? value.replace(/^https?:\/\//i, '').replace(/^mailto:/i, '')
-            : value
-                ? 'Open file'
-                : 'No file yet';
+        const isImage = (item: AttachmentItem) => item.mimeType?.startsWith("image/") || /^data:image\//i.test(item.url);
+        const removeItem = (id: string) => saveItems(items.filter((item) => item.id !== id));
 
         return (
-            <div className="flex min-h-[30px] flex-col gap-1 px-1 py-0.5">
-                {value && (
-                    <div className="flex max-w-full items-center gap-1 rounded bg-sky-50 px-1.5 py-0.5">
-                        <a
-                            href={value}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="max-w-[180px] truncate text-[10px] font-medium text-sky-700 hover:underline"
-                            title={value}
-                        >
-                            {displayLabel}
-                        </a>
-                        <button
-                            type="button"
-                            onClick={() => {
-                                saveSingleValue("");
-                                setAttachmentDrafts((previous) => ({ ...previous, [fieldKey]: "" }));
-                            }}
-                            className="text-[9px] text-slate-500 hover:text-red-500"
-                            title="Remove attachment"
-                        >
-                            ×
-                        </button>
+            <div className="group/attachment relative flex min-h-[34px] items-center gap-1 px-1 py-0.5">
+                <div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
+                    {items.map((item) => (
+                        <div key={item.id} className="relative shrink-0" onMouseEnter={() => setAttachmentPreview(`${fieldKey}:${item.id}`)} onMouseLeave={() => setAttachmentPreview(null)}>
+                            <a href={item.url} target="_blank" rel="noreferrer" title={item.name} className="flex h-7 w-8 items-center justify-center overflow-hidden rounded border border-sky-200 bg-sky-50 text-sky-700 hover:border-sky-400">
+                                {isImage(item) ? <img src={item.url} alt={item.name} className="h-full w-full object-cover" /> : item.kind === "link" ? <LinkIcon size={13} /> : <FileText size={13} />}
+                            </a>
+                            {attachmentPreview === `${fieldKey}:${item.id}` && (
+                                <div className="pointer-events-none absolute bottom-full left-0 z-[100] mb-1 w-64 rounded-md border border-slate-200 bg-white p-2 shadow-xl">
+                                    {isImage(item) ? (
+                                        <img src={item.url} alt={item.name} className="block max-h-52 w-full object-contain" />
+                                    ) : (
+                                        <div className="flex items-center gap-2 p-2 text-[11px] text-slate-700"><FileText size={16} /> <span className="break-words">{item.name}</span></div>
+                                    )}
+                                </div>
+                            )}
+                            <button type="button" onClick={() => removeItem(item.id)} title="Remove attachment" className="absolute -right-1 -top-1 hidden h-3.5 w-3.5 items-center justify-center rounded-full bg-white text-[10px] text-slate-500 shadow group-hover/attachment:flex hover:text-red-500"><X size={9} /></button>
+                        </div>
+                    ))}
+                </div>
+
+                <button type="button" onClick={() => setAttachmentSourceMenu(attachmentSourceMenu === fieldKey ? null : fieldKey)} className="flex h-7 w-7 shrink-0 items-center justify-center gap-0.5 rounded text-slate-400 opacity-0 transition-opacity group-hover/attachment:opacity-100 hover:bg-sky-50 hover:text-sky-600" title="Add attachment"><Plus size={12} /><FileText size={14} /></button>
+                {attachmentSourceMenu === fieldKey && (
+                    <div className="absolute right-0 top-full z-[110] mt-1 w-40 rounded-lg border border-slate-200 bg-white p-1 shadow-xl">
+                        <label className="flex cursor-pointer items-center gap-2 rounded px-2 py-2 text-xs text-slate-700 hover:bg-slate-50"><Paperclip size={14} /> From computer<input type="file" multiple className="hidden" onChange={handleFileChange} /></label>
+                        <button type="button" onClick={() => { setAttachmentSourceMenu(null); setAttachmentLinkDialog(fieldKey); }} className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-xs text-slate-700 hover:bg-slate-50"><LinkIcon size={14} /> From link</button>
                     </div>
                 )}
-                {!value && (
-                    <div className="flex items-center gap-1">
-                        <input
-                            value={draft}
-                            onChange={(event) => setAttachmentDrafts((previous) => ({ ...previous, [fieldKey]: event.target.value }))}
-                            onKeyDown={(event) => {
-                                if (event.key === 'Enter') {
-                                    event.preventDefault();
-                                    handleLinkSubmit(draft);
-                                }
-                            }}
-                            placeholder="Paste link and Enter"
-                            className="min-w-0 flex-1 rounded border border-slate-200 bg-white px-1 py-0.5 text-[11px] text-slate-700 outline-none focus:border-[#7BCBD5]"
-                        />
-                        <label className="inline-flex cursor-pointer items-center rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-medium text-slate-700 hover:bg-slate-100">
-                            Attach
-                            <input type="file" className="hidden" onChange={handleFileChange} />
-                        </label>
+                {attachmentLinkDialog === fieldKey && (
+                    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/30 p-4" onMouseDown={() => setAttachmentLinkDialog(null)}>
+                        <div className="w-full max-w-sm rounded-lg bg-white p-4 shadow-xl" onMouseDown={(event) => event.stopPropagation()}>
+                            <div className="mb-3 flex items-center justify-between"><h3 className="text-sm font-medium text-slate-800">Add link</h3><button type="button" onClick={() => setAttachmentLinkDialog(null)}><X size={16} /></button></div>
+                            <input autoFocus value={draft} onChange={(event) => setAttachmentDrafts((previous) => ({ ...previous, [fieldKey]: event.target.value }))} placeholder="Paste a link" className="mb-3 h-9 w-full rounded border border-slate-200 px-2 text-sm outline-none focus:border-sky-400" />
+                            <button type="button" disabled={!draft.trim()} onClick={() => addItem({ id: crypto.randomUUID(), kind: "link", name: draft.trim(), url: draft.trim() })} className="w-full rounded bg-sky-600 px-3 py-2 text-sm text-white disabled:opacity-50">Add link</button>
+                        </div>
                     </div>
                 )}
             </div>
@@ -852,10 +858,10 @@ export function ClientRow({
                         className="text-[12.6px] border-none outline-none bg-transparent cursor-pointer w-full"
                     />
                 </div>
-                <div data-client-column="logoRequirementsFile" className="flex-1 min-w-0 border-r border-[#D0D4E4] overflow-hidden bg-white" style={{ height: 30, minWidth: colWidth.logoRequirementsFile, width: colWidth.logoRequirementsFile, order: columnOrderMap.logoRequirementsFile ?? 13 }}>
+                <div data-client-column="logoRequirementsFile" className="flex-1 min-w-0 border-r border-[#D0D4E4] overflow-visible bg-white" style={{ height: 30, minWidth: colWidth.logoRequirementsFile, width: colWidth.logoRequirementsFile, order: columnOrderMap.logoRequirementsFile ?? 13 }}>
                     {renderAttachmentField('logoRequirementsFile')}
                 </div>
-                <div data-client-column="filesMiscellaneous" className="flex-1 min-w-0 border-r border-[#D0D4E4] overflow-hidden bg-white" style={{ height: 30, minWidth: colWidth.filesMiscellaneous, width: colWidth.filesMiscellaneous, order: columnOrderMap.filesMiscellaneous ?? 14 }}>
+                <div data-client-column="filesMiscellaneous" className="flex-1 min-w-0 border-r border-[#D0D4E4] overflow-visible bg-white" style={{ height: 30, minWidth: colWidth.filesMiscellaneous, width: colWidth.filesMiscellaneous, order: columnOrderMap.filesMiscellaneous ?? 14 }}>
                     {renderAttachmentField('filesMiscellaneous')}
                 </div>
                 <div data-client-column="totalPrice" className="flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height: 30, minWidth: colWidth.totalPrice, width: colWidth.totalPrice, order: columnOrderMap.totalPrice ?? 15 }}>
