@@ -18,7 +18,7 @@ import {
   AlertDialogCancel,
 } from './ui/alert-dialog';
 import { fetchProfiles, saveClientAssignees, saveSubitemAssignees } from '@/lib/assignments';
-import { createClientRow, updateClientRow, deleteClientRow, createSubitemRow, updateSubitemRow, deleteSubitemRow, moveSubitemRow } from '@/lib/crm';
+import { createClientRow, updateClientRow, deleteClientRow, createSubitemRow, updateSubitemRow, deleteSubitemRow, moveSubitemRow, duplicateSubitemRow } from '@/lib/crm';
 import { fetchClientAssigneeMap } from '@/lib/assignments';
 import { GenerateOcfModal } from './Generate-OCF-Modal';
 import { AddGroupModal } from './Add-Group-Modal';
@@ -160,6 +160,7 @@ export function CRMBoard({ clients,
   const [showSubitemMoveMenu, setShowSubitemMoveMenu] = useState(false);
   const [subitemMoveSearch, setSubitemMoveSearch] = useState('');
   const [isMovingSubitems, setIsMovingSubitems] = useState(false);
+  const [isDuplicatingSubitems, setIsDuplicatingSubitems] = useState(false);
   const [pendingDeleteSelected, setPendingDeleteSelected] = useState(false);
 
   const [replyStatusEntries, setReplyStatusEntries] = useState<OptionEntry[]>([]);
@@ -1886,6 +1887,21 @@ export function CRMBoard({ clients,
     }
   }, [reloadClients]);
 
+  const duplicateSelectedSubitems = useCallback(async () => {
+    setIsDuplicatingSubitems(true);
+    try {
+      await Promise.all(selectedSubitemIds.map((subitemId) => duplicateSubitemRow(subitemId)));
+      await reloadClients();
+      toast.success('Subitems duplicated', { description: `${selectedSubitemIds.length} subitem${selectedSubitemIds.length === 1 ? '' : 's'} duplicated.` });
+      clearSubitemSelection();
+    } catch (error) {
+      await reloadClients();
+      toast.error('Subitems could not be duplicated', { description: error instanceof Error ? error.message : 'The selected subitems were not duplicated.' });
+    } finally {
+      setIsDuplicatingSubitems(false);
+    }
+  }, [reloadClients, selectedSubitemIds]);
+
   const toggleSubitemSelection = useCallback((subitemId: string) => {
     if (selectedIds.size > 0) return;
     setSelectedSubitemIds((previous) => previous.includes(subitemId)
@@ -1914,7 +1930,7 @@ export function CRMBoard({ clients,
       {selectedSubitemIds.length > 0 && (
         <div className="fixed bottom-8 left-1/2 z-[100] flex min-h-16 w-[min(900px,calc(100vw-2rem))] -translate-x-1/2 items-center gap-5 rounded-2xl border border-slate-200 bg-white px-6 py-4 shadow-2xl">
           <div className="whitespace-nowrap text-base font-medium text-slate-800">{selectedSubitemIds.length} Subitem{selectedSubitemIds.length === 1 ? '' : 's'} selected</div>
-          <button type="button" title="Duplicate placeholder" className="flex items-center gap-1.5 rounded px-3 py-2 text-sm text-slate-500 hover:bg-slate-50"><Copy size={17} /> Duplicate</button>
+          <button type="button" disabled={isDuplicatingSubitems} onClick={() => void duplicateSelectedSubitems()} className="flex items-center gap-1.5 rounded px-3 py-2 text-sm text-slate-500 hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60"><Copy size={17} /> {isDuplicatingSubitems ? 'Duplicating...' : 'Duplicate'}</button>
           <div className="relative">
             <button type="button" disabled={isMovingSubitems} onClick={() => setShowSubitemMoveMenu((open) => !open)} className="flex items-center gap-1.5 rounded px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60"><MoveRight size={17} /> {isMovingSubitems ? 'Moving...' : 'Move'}</button>
             {showSubitemMoveMenu && !isMovingSubitems && (

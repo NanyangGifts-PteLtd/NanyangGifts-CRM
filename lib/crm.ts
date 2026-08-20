@@ -739,6 +739,61 @@ export async function createSubitemRow(clientId: string, currentUserId?: string 
     return data;
 }
 
+export async function duplicateSubitemRow(subitemId: string) {
+    const { data: existing, error: fetchError } = await supabase
+        .from('subitems')
+        .select('*')
+        .eq('id', subitemId)
+        .single();
+    if (fetchError) throw fetchError;
+
+    const copy = { ...existing };
+    delete copy.id;
+    delete copy.created_at;
+    delete copy.waiting_started_at;
+    const duplicateTimelineRows = Array.isArray(copy.timeline_rows)
+        ? copy.timeline_rows.map((row: TimelineRow) => ({ ...row, id: crypto.randomUUID() }))
+        : [];
+
+    const { data: duplicate, error: duplicateError } = await supabase
+        .from('subitems')
+        .insert({
+            ...copy,
+            name: `${existing.name ?? 'New Item'} (Copy)`,
+            timeline_rows: duplicateTimelineRows,
+        })
+        .select('*')
+        .single();
+    if (duplicateError) throw duplicateError;
+
+    const { data: assignees, error: assigneeFetchError } = await supabase
+        .from('subitem_assignees')
+        .select('user_id')
+        .eq('subitem_id', subitemId);
+    if (assigneeFetchError) throw assigneeFetchError;
+
+    if (assignees?.length) {
+        const { error: assigneeCopyError } = await supabase
+            .from('subitem_assignees')
+            .insert(assignees.map((assignee) => ({
+                subitem_id: duplicate.id,
+                user_id: assignee.user_id,
+                assigned_by: null,
+            })));
+        if (assigneeCopyError) throw assigneeCopyError;
+    }
+
+    await insertActivityLog({
+        clientId: duplicate.client_id,
+        subitemId: duplicate.id,
+        subitemName: duplicate.name,
+        action: 'subitem_added',
+        title: 'duplicated this subitem',
+    });
+
+    return duplicate;
+}
+
 export async function fetchOptionsByGroupCode(code: string): Promise<{ value: string; color: string }[]> {
     const supabase = createClient()
     const { data: group } = await supabase

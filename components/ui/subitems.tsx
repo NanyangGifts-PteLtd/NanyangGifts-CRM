@@ -1294,7 +1294,9 @@ export function SubitemsTable({
                                 <div key={entry.id} className="flex items-start justify-between gap-3 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-xs">
                                     <div>
                                         <div className="text-gray-800">
-                                            {entry.action === 'subitem_added' ? (
+                                            {entry.title ? (
+                                                <><span className="font-medium">{entry.actorName}</span> {entry.title}</>
+                                            ) : entry.action === 'subitem_added' ? (
                                                 <><span className="font-medium">{entry.actorName}</span> created this subitem</>
                                             ) : entry.fieldName === 'parentClient' ? (
                                                 <>parent client changed from <span className="font-medium">{displayActivityValue(entry.oldValue)}</span> to <span className="font-medium">{displayActivityValue(entry.newValue)}</span></>
