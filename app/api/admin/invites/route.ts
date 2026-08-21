@@ -28,9 +28,10 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: "Only directors and dev users can invite accounts." }, { status: 403 });
         }
 
-        const body = await request.json() as { email?: string; role?: string };
+        const body = await request.json() as { email?: string; role?: string; shipperId?: string };
         const email = body.email?.trim().toLowerCase();
         const role = body.role as AllowedRole | undefined;
+        const shipperId = body.shipperId?.trim() || null;
 
         if (!email || !role || !ALLOWED_ROLES.includes(role)) {
             return NextResponse.json(
@@ -38,11 +39,18 @@ export async function POST(request: NextRequest) {
                 { status: 400 },
             );
         }
+        if (role === "shipper" && !shipperId) {
+            return NextResponse.json({ error: "Choose the shipper view this account can access." }, { status: 400 });
+        }
+        if (shipperId) {
+            const { data: shipper, error: shipperError } = await supabaseAdmin.from("shippers").select("id").eq("id", shipperId).maybeSingle();
+            if (shipperError || !shipper) return NextResponse.json({ error: "The selected shipper view does not exist." }, { status: 400 });
+        }
 
         const redirectTo = new URL("/auth/invite", request.url).toString();
         const { data, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
             redirectTo,
-            data: { role },
+            data: { role, ...(role === "shipper" ? { shipper_id: shipperId } : {}) },
         });
 
         if (inviteError) {

@@ -13,7 +13,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 
 export function LoginForm({
@@ -23,14 +23,17 @@ export function LoginForm({
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     const supabase = createClient();
     setIsLoading(true);
     setError(null);
+    setMessage(null);
 
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
@@ -42,7 +45,17 @@ export function LoginForm({
         await supabase.auth.signOut({ scope: "local" });
         throw new Error("Your account has been suspended, please check with your superior.");
       }
-      // Update this route to redirect to an authenticated route. The user already has an active session.
+      const { data: profile, error: profileError } = await supabase.from("profiles").select("role").eq("id", data.user!.id).maybeSingle();
+      if (profileError) throw profileError;
+      if (profile?.role === "shipper") {
+        const next = searchParams.get("next");
+        if (next?.startsWith("/app/shipper/")) {
+          router.push(next);
+        } else {
+          setMessage("You have successfully logged in, please access the website through the provided URL.");
+        }
+        return;
+      }
       router.push("/app");
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : "An error occurred");
@@ -93,6 +106,7 @@ export function LoginForm({
                 />
               </div>
               {error && <p className="text-sm text-red-500">{error}</p>}
+              {message && <p className="rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{message}</p>}
               <Button type="submit" className="w-full" disabled={isLoading}>
                 {isLoading ? "Logging in..." : "Login"}
               </Button>

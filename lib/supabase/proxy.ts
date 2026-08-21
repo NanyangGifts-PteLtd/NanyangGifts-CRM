@@ -50,6 +50,22 @@ export async function updateSession(request: NextRequest) {
   const isAuthPage = pathname.startsWith("/auth");
   const isAppPage = pathname.startsWith("/app");
 
+  const { data: roleProfile } = user
+    ? await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle()
+    : { data: null };
+  const isShipperUser = roleProfile?.role === "shipper" || user?.user_metadata?.role === "shipper";
+
+  if (isShipperUser) {
+    const isAssignedShipperPage = pathname.startsWith("/app/shipper/");
+    if (isAppPage && !isAssignedShipperPage) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/auth/login";
+      url.searchParams.set("shipper", "1");
+      return NextResponse.redirect(url);
+    }
+    if (isAuthPage) return supabaseResponse;
+  }
+
   if (user?.app_metadata?.suspended === true) {
     // Keep the login page reachable so the client can clear the old session and
     // display the suspension message instead of redirecting in a loop.
@@ -75,6 +91,7 @@ export async function updateSession(request: NextRequest) {
   if (!user && isAppPage) {
     const url = request.nextUrl.clone();
     url.pathname = "/auth/login";
+    if (pathname.startsWith("/app/shipper/")) url.searchParams.set("next", pathname);
     return NextResponse.redirect(url);
   }
 

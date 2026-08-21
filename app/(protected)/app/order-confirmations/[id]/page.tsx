@@ -46,7 +46,8 @@ export default async function OrderConfirmationPage({ params }: PageProps) {
         )
     `)
         .eq("id", id)
-        .single();
+        .limit(1)
+        .maybeSingle();
 
     if (error) {
         console.error("OCF fetch error:", error);

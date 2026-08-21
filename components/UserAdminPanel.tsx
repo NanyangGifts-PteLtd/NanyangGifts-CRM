@@ -15,6 +15,8 @@ interface UserAdminPanelProps {
 export function UserAdminPanel({ profiles }: UserAdminPanelProps) {
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<AllowedRole>('sales');
+  const [shipperId, setShipperId] = useState('');
+  const [shippers, setShippers] = useState<Array<{ id: string; name: string | null }>>([]);
   const [isSending, setIsSending] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -27,6 +29,14 @@ export function UserAdminPanel({ profiles }: UserAdminPanelProps) {
       if (!response.ok) return;
       const result = await response.json() as { users: Array<{ id: string; suspended: boolean }> };
       setSuspendedById(Object.fromEntries(result.users.map((user) => [user.id, user.suspended])));
+    });
+  }, []);
+
+  useEffect(() => {
+    void fetch('/api/admin/shippers').then(async (response) => {
+      if (!response.ok) return;
+      const result = await response.json() as { shippers: Array<{ id: string; name: string | null }> };
+      setShippers(result.shippers);
     });
   }, []);
 
@@ -69,7 +79,7 @@ export function UserAdminPanel({ profiles }: UserAdminPanelProps) {
       const response = await fetch('/api/admin/invites', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, role }),
+        body: JSON.stringify({ email, role, shipperId: role === 'shipper' ? shipperId : undefined }),
       });
       const result = await response.json() as { error?: string; email?: string; role?: string };
       if (!response.ok) throw new Error(result.error || 'The invitation could not be sent.');
@@ -108,6 +118,14 @@ export function UserAdminPanel({ profiles }: UserAdminPanelProps) {
               className="h-10 rounded-md border border-slate-200 px-3 text-sm font-normal text-slate-900 outline-none focus:border-[#16a5c4] focus:ring-2 focus:ring-[#16a5c4]/20"
             />
           </label>
+
+          {role === 'shipper' && <label className="grid gap-1.5 text-xs font-medium text-slate-600">
+            Shipper view
+            <select required value={shipperId} onChange={(event) => setShipperId(event.target.value)} className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm font-normal text-slate-900 outline-none focus:border-[#16a5c4] focus:ring-2 focus:ring-[#16a5c4]/20">
+              <option value="">Select shipper</option>
+              {shippers.map((shipper) => <option key={shipper.id} value={shipper.id}>{shipper.name || 'Unnamed shipper'}</option>)}
+            </select>
+          </label>}
 
           <label className="grid gap-1.5 text-xs font-medium text-slate-600">
             Initial role
