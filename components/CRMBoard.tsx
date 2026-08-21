@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { ChevronDown, Plus, Trash2, Filter, ChevronsDown, ChevronsUp, X, MoreHorizontal, EyeOff, Copy, MoveRight, Search } from 'lucide-react';
+import { ChevronDown, Plus, Trash2, Filter, ChevronsDown, ChevronsUp, X, MoreHorizontal, EyeOff, Copy, MoveRight, Search, Columns3, ListRestart } from 'lucide-react';
 import { Client, Subitem, ClientStatus, Profile, ClientAssigneeMap, SubitemAssigneeMap, CRMGroup } from '../app/types';
 import { createClient as createSupabaseClient } from '@/lib/supabase/client';
 import { ClientRow } from './ui/clientrows';
@@ -246,6 +246,7 @@ export function CRMBoard({ clients,
   const [hiddenColumnKeys, setHiddenColumnKeys] = useState<Set<string>>(new Set());
   const [openColumnMenu, setOpenColumnMenu] = useState<string | null>(null);
   const [showHideColumns, setShowHideColumns] = useState(false);
+  const [showBoardMoreMenu, setShowBoardMoreMenu] = useState(false);
 
   const notifyChange = useCallback((title: string, description: string) => {
     toast.success(title, {
@@ -903,18 +904,19 @@ export function CRMBoard({ clients,
   }, [showFilter]);
 
   useEffect(() => {
-    if (!openGroupMenu && !openColumnMenu && !showHideColumns) return;
+    if (!openGroupMenu && !openColumnMenu && !showHideColumns && !showBoardMoreMenu) return;
     const handler = (event: MouseEvent) => {
       const target = event.target as HTMLElement;
       if (target.closest('[data-crm-menu-trigger], [data-crm-menu]')) return;
       setOpenGroupMenu(null);
       setOpenColumnMenu(null);
       setShowHideColumns(false);
+      setShowBoardMoreMenu(false);
     };
 
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
-  }, [openGroupMenu, openColumnMenu, showHideColumns]);
+  }, [openGroupMenu, openColumnMenu, showHideColumns, showBoardMoreMenu]);
 
 
   // --- Option handlers ---
@@ -2270,13 +2272,6 @@ export function CRMBoard({ clients,
           )}
         </div>
 
-        <button onClick={() => setShowRestoreConfirm(true)} className="flex items-center gap-1 px-2 py-1 bg-[#43adc4] hover:bg-[#0f8da8] text-white rounded-md text-[10px] font-medium transition-colors transform active:scale-95 duration-150">
-          Restore default column widths
-        </button>
-        <button onClick={() => setShowRestoreArrangementConfirm(true)} className="flex items-center gap-1 px-2 py-1 bg-[#43adc4] hover:bg-[#0f8da8] text-white rounded-md text-[10px] font-medium transition-colors transform active:scale-95 duration-150">
-          Restore default column arrangement
-        </button>
-
         <div className="flex items-center gap-1">
           {clientStatuses.map((st) => {
             const count = clients.filter((c) => c.status === st).length;
@@ -2290,6 +2285,21 @@ export function CRMBoard({ clients,
               </button>
             );
           })}
+          <div className="relative ml-1" data-crm-menu-trigger>
+            <button type="button" onClick={() => setShowBoardMoreMenu((open) => !open)} className="flex h-6 w-6 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 hover:text-gray-800" title="More board actions">
+              <MoreHorizontal size={16} />
+            </button>
+            {showBoardMoreMenu && (
+              <div data-crm-menu className="absolute right-0 top-full z-50 mt-1 w-64 rounded-lg border border-gray-200 bg-white p-1.5 shadow-xl">
+                <button type="button" onClick={() => { setShowBoardMoreMenu(false); setShowRestoreConfirm(true); }} className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs font-medium text-gray-700 hover:bg-gray-50">
+                  <Columns3 size={15} className="text-[#43adc4]" /> Restore default column widths
+                </button>
+                <button type="button" onClick={() => { setShowBoardMoreMenu(false); setShowRestoreArrangementConfirm(true); }} className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs font-medium text-gray-700 hover:bg-gray-50">
+                  <ListRestart size={15} className="text-[#43adc4]" /> Restore default column arrangement
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="flex-1" />
