@@ -27,6 +27,7 @@ import ClientsLiveRefresh from './RealtimeRefresh';
 import { toast } from 'sonner';
 import type { SearchResult } from '../app/types';
 import { calculateSubitemFinancials } from '@/lib/subitem-calculations';
+import { ClientDetailView } from './ClientDetailView';
 
 type OptionEntry = { value: string; color: string };
 type HeaderCol = {
@@ -166,6 +167,7 @@ export function CRMBoard({ clients,
   const [clientMoveSearch, setClientMoveSearch] = useState('');
   const [isMovingClients, setIsMovingClients] = useState(false);
   const [isDuplicatingClients, setIsDuplicatingClients] = useState(false);
+  const [detailClientId, setDetailClientId] = useState<string | null>(null);
 
   const clientPmAssigneeIds = useCallback((client: Client) => {
     try {
@@ -2117,6 +2119,11 @@ export function CRMBoard({ clients,
 
   return (
     <div className="crm-board flex flex-col h-full bg-white">
+      {detailClientId && (() => {
+        const detailClient = clients.find((client) => client.id === detailClientId);
+        if (!detailClient) return null;
+        return <ClientDetailView key={detailClient.id} client={detailClient} clients={groupedClients.flatMap(({ clients: groupClients }) => groupClients)} profiles={profiles} assigneeIds={clientAssignees[detailClient.id] ?? []} pmIds={clientPmAssigneeIds(detailClient)} canEdit={canEditClientRecord(detailClient.id)} onClose={() => setDetailClientId(null)} onNavigate={(client) => setDetailClientId(client.id)} onUpdate={(updates) => updateClient(detailClient.id, updates)} onChangeAssignees={(ids) => handleClientAssigneesChange(detailClient.id, ids)} onUndo={undoActivity} statusOptions={clientStatusEntries} replyStatusOptions={replyStatusEntries} channelOptions={channelEntries} importanceOptions={importanceEntries} groupNamesById={Object.fromEntries(groups.map((group) => [group.id, group.name]))} />;
+      })()}
       {selectedIds.size > 0 && (
         <div className="fixed bottom-8 left-1/2 z-[100] flex min-h-16 w-[min(900px,calc(100vw-2rem))] -translate-x-1/2 items-center gap-5 rounded-2xl border border-slate-200 bg-white px-6 py-4 shadow-2xl">
           <div className="whitespace-nowrap text-base font-medium text-slate-800">{selectedIds.size} Client{selectedIds.size === 1 ? '' : 's'} selected</div>
@@ -2714,6 +2721,7 @@ export function CRMBoard({ clients,
                   isExpanded={expandedIdSet.has(client.id)}
                   onToggleExpand={() => setExpandedIds((prev) => prev.includes(client.id) ? prev.filter((id) => id !== client.id) : [...prev, client.id])}
                   onOpenOcfModal={handleOpenOcfModal}
+                  onOpenDetail={() => setDetailClientId(client.id)}
                   isSelected={selectedIds.has(client.id)}
                   onToggleSelect={() => toggleSelect(client.id)}
                   onUpdate={(updates) => updateClient(client.id, updates)}

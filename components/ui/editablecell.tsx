@@ -7,6 +7,7 @@ export function EditableCell({
     type = 'text',
     placeholder = '–',
     className = '',
+    readOnly = false,
     multiline = false,
 }: {
     value: string;
@@ -48,6 +49,7 @@ export function EditableCell({
     }, [local, editing, multiline]);
 
     const save = () => {
+        if (readOnly) return;
         onChange(local);
         setEditing(false);
     };
@@ -97,9 +99,9 @@ export function EditableCell({
     return (
         <div
             data-editable-cell
-            onClick={() => setEditing(true)}
+            onClick={() => !readOnly && setEditing(true)}
             title={value}
-            className={`flex w-15 justify-center py-0.5 text-xs cursor-text hover:bg-blue-50 rounded min-h-[22px] items-center ${multiline ? 'whitespace-nowrap overflow-hidden text-ellipsis' : 'truncate'
+            className={`flex w-15 justify-center py-0.5 text-xs ${readOnly ? 'cursor-default' : 'cursor-text hover:bg-blue-50'} rounded min-h-[22px] items-center ${multiline ? 'whitespace-nowrap overflow-hidden text-ellipsis' : 'truncate'
                 } ${className}`}
         >
             {value || <span className="text-gray-300 select-none">{placeholder}</span>}

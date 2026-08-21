@@ -43,6 +43,7 @@ export type ClientRowProps = {
     isSubitemDropTarget?: boolean;
     onDelete: () => void;
     onOpenOcfModal: (client: Client) => void;
+    onOpenDetail: () => void;
     profiles: Profile[];
     clientAssignedIds: string[];
     onChangeClientAssignees: (ids: string[]) => void;
@@ -134,6 +135,7 @@ export function ClientRow({
     isSubitemDropTarget,
     onDelete,
     onOpenOcfModal,
+    onOpenDetail,
     profiles,
     clientAssignedIds,
     onChangeClientAssignees,
@@ -497,7 +499,7 @@ export function ClientRow({
                     const column = target.closest<HTMLElement>('[data-client-column]')?.dataset.clientColumn;
                     const isAssignmentColumn = column === 'people' || column === 'pm';
                     const isEditControl = !!target.closest('button, input, textarea, select, [data-editable-cell]');
-                    if (!isAssignmentColumn && column && isEditControl && !target.closest('[data-view-action]')) {
+                    if (!isAssignmentColumn && column && isEditControl && !target.closest('[data-view-action], [data-activity-log]')) {
                         event.preventDefault();
                         event.stopPropagation();
                         showPermissionNotice(target);
@@ -536,6 +538,7 @@ export function ClientRow({
                     data-client-column="client"
                     onDragStart={(event) => onDragStart(event)}
                     onDragEnd={onDragEnd}
+                    onClick={(event) => { if (!(event.target as HTMLElement).closest('button, input, [data-editable-cell], [data-activity-log]')) onOpenDetail(); }}
                     className={`box-border flex items-center min-w-0 px-1 border-r border-[#D0D4E4] overflow-hidden ${isDragging ? "opacity-40" : ""} ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
                     style={{ height: 30, minWidth: colWidth.client, width: colWidth.client, order: columnOrderMap.client ?? 1 }}
                 >
@@ -576,6 +579,7 @@ export function ClientRow({
                         </Tooltip.Provider>
                         {showActivityLog && (
                             <div
+                                data-activity-log
                                 className="fixed inset-0 z-50 flex items-center justify-center bg-black/30"
                                 onPointerDown={(event) => event.stopPropagation()}
                                 onDragStart={(event) => event.stopPropagation()}
@@ -603,7 +607,7 @@ export function ClientRow({
                                                 aria-pressed={showOnlyAttachedActivities}
                                             >
                                                 <FileBox size={13} />
-                                                {showOnlyAttachedActivities ? 'Attached files' : 'All activities'}
+                                                {showOnlyAttachedActivities ? 'Attached files' : 'Filter activities with attached files'}
                                             </button>
                                             <button
                                                 type="button"
