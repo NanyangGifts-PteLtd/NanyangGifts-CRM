@@ -13,6 +13,7 @@ export function UpdatePasswordForm({
   className,
   ...props
 }: React.ComponentPropsWithoutRef<"div">) {
+  const [fullName, setFullName] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [isInviteSetup, setIsInviteSetup] = useState(false);
@@ -27,6 +28,10 @@ export function UpdatePasswordForm({
 
   const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isInviteSetup && !fullName.trim()) {
+      setError("Please enter your full name.");
+      return;
+    }
     if (password !== confirmPassword) {
       setError("Passwords do not match.");
       return;
@@ -46,7 +51,7 @@ export function UpdatePasswordForm({
         const response = await fetch("/api/auth/complete-invite-password", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ password }),
+          body: JSON.stringify({ password, fullName }),
         });
         const result = await response.json() as { error?: string };
         if (!response.ok) throw new Error(result.error ?? "Unable to save your password.");
@@ -80,6 +85,18 @@ export function UpdatePasswordForm({
         <CardContent>
           <form onSubmit={handleForgotPassword}>
             <div className="flex flex-col gap-6">
+              {isInviteSetup && <div className="grid gap-2">
+                <Label htmlFor="full-name">Full Name</Label>
+                <Input
+                  id="full-name"
+                  type="text"
+                  placeholder="Your full name"
+                  required
+                  autoComplete="name"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                />
+              </div>}
               <div className="grid gap-2">
                 <Label htmlFor="password">New password</Label>
                 <Input
@@ -104,7 +121,7 @@ export function UpdatePasswordForm({
                 {confirmPassword && confirmPassword !== password && <p className="text-sm text-red-500">Passwords do not match.</p>}
               </div>
               {error && <p className="text-sm text-red-500">{error}</p>}
-              <Button type="submit" className="w-full" disabled={isLoading || !password || !confirmPassword || password !== confirmPassword}>
+              <Button type="submit" className="w-full" disabled={isLoading || (isInviteSetup && !fullName.trim()) || !password || !confirmPassword || password !== confirmPassword}>
                 {isLoading ? "Saving..." : "Save new password"}
               </Button>
             </div>
