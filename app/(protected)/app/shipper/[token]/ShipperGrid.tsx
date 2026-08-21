@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { ImagePlus, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ImagePlus, PaintBucket, Trash2 } from "lucide-react";
 
 export type ShipperRow = {
     id: string;
@@ -39,6 +39,8 @@ export type ShipperRow = {
     samples_by_sea: string | null;
     air_received: string | null;
     sea_received: string | null;
+    pushed_at?: string | null;
+    cell_fills?: Record<string, string> | null;
 };
 
 type ShipperGridProps = {
@@ -50,6 +52,56 @@ type ShipperGridProps = {
 function display(value: unknown) {
     if (value === null || value === undefined || value === "") return "-";
     return String(value);
+}
+
+function numberValue(value: unknown) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function formulaValue(row: ShipperRow, key: string) {
+    if (key === "value") return numberValue(row.qty) * numberValue(row.up);
+    if (key === "total_cost") return numberValue(row.freight_cost) + numberValue(row.gst) + numberValue(row.other_fees);
+    return row[key as keyof ShipperRow];
+}
+
+function formatDmy(value: string | null | undefined) {
+    if (!value) return "";
+    const match = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    return match ? `${match[3]}/${match[2]}/${match[1]}` : value;
+}
+
+function parseDmy(value: string) {
+    const match = value.trim().match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (!match) return null;
+    const [, day, month, year] = match;
+    const date = new Date(`${year}-${month}-${day}T00:00:00`);
+    return !Number.isNaN(date.getTime()) && date.getFullYear() === Number(year) && date.getMonth() + 1 === Number(month) && date.getDate() === Number(day) ? `${year}-${month}-${day}` : null;
+}
+
+function dateCellTooltip(value: string | null | undefined) {
+    const formatted = formatDmy(value);
+    return /^\d{2}\/\d{2}\/\d{4}$/.test(formatted) ? `${formatted}, UTC+08:00` : "";
+}
+
+function DateCell({ value, editable, tooltip, onSave }: { value: string | null; editable: boolean; tooltip: string; onSave: (value: string) => Promise<void> }) {
+    const [draft, setDraft] = useState(formatDmy(value));
+    const [error, setError] = useState(false);
+    if (!editable) return <div title={tooltip} className="flex min-h-[42px] items-center justify-center px-2">{formatDmy(value) || "-"}</div>;
+    return <input value={draft} onChange={(event) => { setDraft(event.target.value); setError(false); }} onBlur={() => { if (!draft.trim()) { void onSave(""); return; } const parsed = parseDmy(draft); if (!parsed) { setError(true); return; } void onSave(parsed); }} title={tooltip || "Use DD/MM/YYYY"} placeholder="DD/MM/YYYY" className={`min-h-[42px] w-full border-0 bg-transparent px-2 text-center outline-none focus:bg-blue-50 ${error ? "bg-red-50 text-red-700" : ""}`} />;
+}
+
+function SpreadsheetTextCell({ value, onSave }: { value: unknown; onSave: (value: string) => Promise<void> }) {
+    const [draft, setDraft] = useState(value == null ? "" : String(value));
+    const ref = useRef<HTMLTextAreaElement>(null);
+    const resize = () => {
+        if (!ref.current) return;
+        ref.current.style.height = "auto";
+        ref.current.style.height = `${Math.max(42, ref.current.scrollHeight)}px`;
+    };
+    useEffect(() => { setDraft(value == null ? "" : String(value)); }, [value]);
+    useEffect(() => { resize(); }, [draft]);
+    return <textarea ref={ref} value={draft} rows={1} onChange={(event) => setDraft(event.target.value)} onBlur={() => void onSave(draft)} className="block min-h-[42px] w-full resize-none overflow-hidden border-0 bg-transparent px-2 py-2 text-center text-[13px] whitespace-pre-wrap break-words outline-none focus:bg-blue-50" />;
 }
 
 const IMAGE_MARKER = /\[\[shipper-image:(https?:\/\/[^\]]+)\]\]/g;
@@ -153,7 +205,7 @@ function RemarksCell({
     if (!editable) return <div>{text || "-"}{imagePreview}</div>;
 
     return (
-        <div className="min-w-[240px]" onPaste={(event) => {
+        <div className="min-h-[42px] min-w-[240px]" onPaste={(event) => {
             const image = Array.from(event.clipboardData.files).find((file) => file.type.startsWith("image/"));
             if (image) {
                 event.preventDefault();
@@ -164,7 +216,7 @@ function RemarksCell({
                 value={text}
                 onChange={(event) => setText(event.target.value)}
                 rows={3}
-                className="w-full min-w-[50px] resize-y rounded border border-slate-200 px-1 py-1 text-[13px] outline-none focus:border-blue-400"
+                className="min-h-[42px] w-full min-w-[50px] resize-none border-0 bg-transparent px-2 py-2 text-center text-[13px] outline-none focus:bg-blue-50"
                 onBlur={() => void save()}
             />
             {imagePreview}
@@ -182,6 +234,18 @@ function RemarksCell({
 }
 
 export default function ShipperGrid({ rows, mode, token }: ShipperGridProps) {
+    const [selection, setSelection] = useState<{ startRow: number; startCol: number; endRow: number; endCol: number } | null>(null);
+    const [dragSelecting, setDragSelecting] = useState(false);
+    const [cellFills, setCellFills] = useState<Record<string, string>>({});
+    const fillColors = [
+        "#ffffff", "#f3f4f6", "#d1d5db", "#9ca3af", "#6b7280", "#374151",
+        "#fff200", "#fde68a", "#fed7aa", "#fdba74", "#fb923c", "#f97316",
+        "#fecdd3", "#fda4af", "#fb7185", "#f43f5e", "#e11d48", "#be123c",
+        "#e9d5ff", "#ddd6fe", "#c4b5fd", "#a78bfa", "#8b5cf6", "#7c3aed",
+        "#bae6fd", "#7dd3fc", "#38bdf8", "#0ea5e9", "#0284c7", "#0369a1",
+        "#bbf7d0", "#86efac", "#4ade80", "#22c55e", "#16a34a", "#15803d",
+        "#ccfbf1", "#99f6e4", "#5eead4", "#2dd4bf", "#14b8a6", "#0f766e",
+    ];
     const columns = [
         { key: "serial_number", label: "序号", editableByPm: true, editableByShipper: true },
         { key: "waybill_date", label: "运单日期", editableByPm: true, editableByShipper: true },
@@ -193,7 +257,7 @@ export default function ShipperGrid({ rows, mode, token }: ShipperGridProps) {
         { key: "freight_cost", label: "运费", editableByPm: true, editableByShipper: true },
         { key: "gst", label: "消费税", editableByPm: true, editableByShipper: true },
         { key: "other_fees", label: "其他费用", editableByPm: true, editableByShipper: true },
-        { key: "total_cost", label: "总计费用", editableByPm: true, editableByShipper: true },
+        { key: "total_cost", label: "总计费用", editableByPm: false, editableByShipper: false, formula: true },
         { key: "channel", label: "渠道", editableByPm: true, editableByShipper: true },
         { key: "logistics_remarks", label: "备注", editableByPm: true, editableByShipper: true, width: 280 },
 
@@ -202,10 +266,10 @@ export default function ShipperGrid({ rows, mode, token }: ShipperGridProps) {
         { key: "cn_tracking_no", label: "单号 / CN Tracking #", editableByPm: true, editableByShipper: false },
         { key: "cartons", label: "箱子 / Cartons", editableByPm: true, editableByShipper: false },
         { key: "item_name", label: "货名 / Item name", editableByPm: true, editableByShipper: false },
-        { key: "delivery_info", label: "地址 / Address", editableByPm: true, editableByShipper: false },
+        { key: "delivery_info", label: "地址 / Address", editableByPm: true, editableByShipper: false, width: 420 },
         { key: "qty", label: "数量 / Qty", editableByPm: true, editableByShipper: false },
         { key: "up", label: "单价 / Unit Price", editableByPm: true, editableByShipper: false },
-        { key: "value", label: "货值 / Value", editableByPm: true, editableByShipper: false },
+        { key: "value", label: "货值 / Value", editableByPm: false, editableByShipper: false, formula: true },
         { key: "sea_or_air", label: "海运、空运 / Sea or Air?", editableByPm: true, editableByShipper: false },
         { key: "tax_refund", label: "退税?", editableByPm: true, editableByShipper: false },
         { key: "shipper_remarks", label: "备注 / Remarks", editableByPm: true, editableByShipper: false, width: 280 },
@@ -235,17 +299,65 @@ export default function ShipperGrid({ rows, mode, token }: ShipperGridProps) {
         }
     }
 
+    useEffect(() => {
+        const stopSelecting = () => setDragSelecting(false);
+        window.addEventListener("mouseup", stopSelecting);
+        return () => window.removeEventListener("mouseup", stopSelecting);
+    }, []);
+
+    useEffect(() => {
+        setCellFills(Object.fromEntries(rows.flatMap((row) => Object.entries(row.cell_fills ?? {}).map(([column, color]) => [`${row.id}:${column}`, color]))));
+    }, [rows]);
+
+    const selectionBounds = selection && {
+        firstRow: Math.min(selection.startRow, selection.endRow), lastRow: Math.max(selection.startRow, selection.endRow),
+        firstCol: Math.min(selection.startCol, selection.endCol), lastCol: Math.max(selection.startCol, selection.endCol),
+    };
+    const cellSelected = (rowIndex: number, colIndex: number) => !!selectionBounds && rowIndex >= selectionBounds.firstRow && rowIndex <= selectionBounds.lastRow && colIndex >= selectionBounds.firstCol && colIndex <= selectionBounds.lastCol;
+    const selectCell = (event: React.MouseEvent, rowIndex: number, colIndex: number) => {
+        if (event.shiftKey && selection) setSelection((previous) => previous ? { ...previous, endRow: rowIndex, endCol: colIndex } : previous);
+        else setSelection({ startRow: rowIndex, startCol: colIndex, endRow: rowIndex, endCol: colIndex });
+        setDragSelecting(true);
+    };
+    const fillSelectedCells = (color: string) => {
+        if (!selectionBounds) return;
+        setCellFills((previous) => {
+            const next = { ...previous };
+            const affectedRows = new Set<string>();
+            for (let rowIndex = selectionBounds.firstRow; rowIndex <= selectionBounds.lastRow; rowIndex += 1) {
+                for (let colIndex = selectionBounds.firstCol; colIndex <= selectionBounds.lastCol; colIndex += 1) {
+                    const row = rows[rowIndex];
+                    const col = columns[colIndex];
+                    if (!row || !col) continue;
+                    affectedRows.add(row.id);
+                    const key = `${row.id}:${col.key}`;
+                    if (color) next[key] = color;
+                    else delete next[key];
+                }
+            }
+            affectedRows.forEach((rowId) => {
+                const row = rows.find((item) => item.id === rowId);
+                if (!row) return;
+                const rowFills = Object.fromEntries(Object.entries(next).filter(([key]) => key.startsWith(`${rowId}:`)).map(([key, fill]) => [key.slice(rowId.length + 1), fill]));
+                void saveCell(row, "cell_fills", JSON.stringify(rowFills)).catch((error) => console.error("Failed to save cell fill", error));
+            });
+            return next;
+        });
+    };
+
     return (
-        <div className="w-full">
+        <div className="w-full overflow-auto">
+            <div className="sticky left-0 z-40 mb-1 flex min-h-10 w-fit items-center gap-1 rounded-md border border-slate-300 bg-white p-1.5 shadow-md">{selectionBounds ? <><span className="px-1 text-xs font-medium text-slate-500">Fill</span><div className="grid grid-cols-12 gap-1">{fillColors.map((color) => <button key={color} type="button" onClick={() => fillSelectedCells(color)} className="h-5 w-5 rounded border border-slate-300 transition hover:scale-110" style={{ backgroundColor: color }} title="Fill selected cells" />)}</div><button type="button" onClick={() => fillSelectedCells("")} className="ml-1 rounded border border-slate-300 px-2 py-1 text-[10px] text-slate-600 hover:bg-slate-50">Clear</button></> : <button type="button" disabled={rows.length === 0} onClick={() => setSelection({ startRow: 0, startCol: 0, endRow: 0, endCol: 0 })} className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-40" title="Select the top-left cell and choose a fill colour"><PaintBucket size={15} /> Fill colour</button>}</div>
             <div className="rounded-md border border-slate-300 bg-white shadow-sm">
-                <table className="min-w-[2400px] border-collapse text-[13px] text-black">
+                <table className="min-w-[2400px] border-separate border-spacing-0 text-[13px] text-black">
                     <thead>
                         <tr>
+                            <th className="sticky left-0 top-0 z-30 min-w-12 border-b-2 border-r-2 border-slate-400 bg-slate-100 px-2 py-2 text-center text-xs font-semibold text-slate-700 shadow-[2px_2px_4px_rgba(15,23,42,0.12)]">#</th>
                             {columns.map((col) => (
                                 <th
                                     key={col.key}
                                     style={col.width ? { minWidth: col.width, width: col.width } : undefined}
-                                    className={`sticky top-0 z-20 border border-slate-400 px-3 py-2 text-center whitespace-nowrap ${col.editableByShipper ? "bg-white text-black" : "bg-[#4588ed] text-white" 
+                                    className={`sticky top-0 z-20 border-b-2 border-r border-slate-400 px-3 py-2 text-center whitespace-nowrap shadow-[0_2px_4px_rgba(15,23,42,0.12)] ${col.editableByShipper ? "bg-white text-black" : "bg-[#4588ed] text-white"}
                                         }`}
                                 >
                                     {col.label}
@@ -267,7 +379,8 @@ export default function ShipperGrid({ rows, mode, token }: ShipperGridProps) {
                         ) : (
                             rows.map((row, index) => (
                                 <tr key={row.id} className="bg-white text-black align-top">
-                                    {columns.map((col) => {
+                                    <td className="sticky left-0 z-10 min-w-12 border-b border-r-2 border-slate-300 bg-slate-50 px-2 text-center text-xs text-slate-500 shadow-[2px_0_4px_rgba(15,23,42,0.10)]">{index + 1}</td>
+                                    {columns.map((col, colIndex) => {
                                         const value = row[col.key as keyof ShipperRow];
                                         const editable =
                                             ((mode === "pm" || mode === "dev") && col.editableByPm) ||
@@ -276,8 +389,10 @@ export default function ShipperGrid({ rows, mode, token }: ShipperGridProps) {
                                         return (
                                             <td
                                                 key={col.key}
-                                                className="border border-slate-300 px-1 py-2 whitespace-pre-wrap"
-                                                style={col.width ? { minWidth: col.width, width: col.width } : undefined}
+                                                onMouseDown={(event) => selectCell(event, index, colIndex)}
+                                                onMouseEnter={() => { if (dragSelecting && selection) setSelection((previous) => previous ? { ...previous, endRow: index, endCol: colIndex } : previous); }}
+                                                style={{ ...(col.width ? { minWidth: col.width, width: col.width } : {}), backgroundColor: cellFills[`${row.id}:${col.key}`] }}
+                                                className={`border-b border-r border-slate-300 p-0 text-center align-middle whitespace-pre-wrap ${col.formula ? "bg-slate-50 font-medium" : ""} ${cellSelected(index, colIndex) ? "ring-2 ring-inset ring-sky-600" : ""}`}
                                             >
                                                 {col.key === "logistics_remarks" || col.key === "shipper_remarks" ? (
                                                     <RemarksCell
@@ -287,17 +402,12 @@ export default function ShipperGrid({ rows, mode, token }: ShipperGridProps) {
                                                         token={token}
                                                         saveCell={saveCell}
                                                     />
+                                                ) : col.key === "info_provided_date" ? (
+                                                    <DateCell value={row.info_provided_date} editable={editable} tooltip={dateCellTooltip(row.info_provided_date)} onSave={(nextValue) => saveCell(row, col.key, nextValue)} />
                                                 ) : editable ? (
-                                                    <textarea
-                                                        defaultValue={value == null ? "" : String(value)}
-                                                        rows={col.key === "delivery_info" ? 5 : 2}
-                                                        className="w-full min-w-[50px] resize-y rounded border border-slate-200 px-1 py-1 text-[13px] outline-none focus:border-blue-400"
-                                                        onBlur={(e) => {
-                                                            void saveCell(row, col.key, e.target.value);
-                                                        }}
-                                                    />
+                                                    <SpreadsheetTextCell value={value} onSave={(nextValue) => saveCell(row, col.key, nextValue)} />
                                                 ) : (
-                                                    display(value)
+                                                    <div className="flex min-h-[42px] items-center justify-center px-2">{display(formulaValue(row, col.key))}</div>
                                                 )}
                                             </td>
                                         );

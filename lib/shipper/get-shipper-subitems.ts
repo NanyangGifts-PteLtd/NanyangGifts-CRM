@@ -38,9 +38,11 @@ export async function getShipperSubitems(shipperId?: string): Promise<ShipperRow
         samples_by_air,
         samples_by_sea,
         air_received,
-        sea_received
+        sea_received,
+        pushed_at,
+        cell_fills
     `)
-        .order("id", { ascending: false });
+        .order("pushed_at", { ascending: true });
 
     if (shipperId) {
         query = query.eq("shipper_id", shipperId);

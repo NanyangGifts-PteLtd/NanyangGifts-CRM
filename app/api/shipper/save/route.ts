@@ -25,7 +25,6 @@ const FIELD_MAP: Record<string, string> = {
     freight_cost: "freight_cost",
     gst: "gst",
     other_fees: "other_fees",
-    total_cost: "total_cost",
     channel: "channel",
     logistics_remarks: "logistics_remarks",
     ic: "ic",
@@ -36,11 +35,14 @@ const FIELD_MAP: Record<string, string> = {
     delivery_info: "delivery_info",
     qty: "qty",
     up: "up",
-    value: "value",
     sea_or_air: "sea_or_air",
     tax_refund: "tax_refund",
     shipper_remarks: "shipper_remarks",
     samples_by_air: "samples_by_air",
+    samples_by_sea: "samples_by_sea",
+    air_received: "air_received",
+    sea_received: "sea_received",
+    cell_fills: "cell_fills",
 };
 
 function toNumberOrNull(value: unknown): number | null {
@@ -90,7 +92,7 @@ export async function POST(req: NextRequest) {
 
         if (existingError) throw existingError;
 
-        const nextValue =
+        let nextValue =
             dbKey === 'qty' ||
                 dbKey === 'cost' ||
                 dbKey === 'ls' ||
@@ -99,9 +101,22 @@ export async function POST(req: NextRequest) {
                 dbKey === 'uc' ||
                 dbKey === 'tc_sgd' ||
                 dbKey === 'price' ||
-                dbKey === 'up'
+                dbKey === 'up' ||
+                dbKey === 'freight_cost' ||
+                dbKey === 'gst' ||
+                dbKey === 'other_fees'
                 ? toNumberOrNull(body.value)
                 : body.value;
+
+        if (dbKey === "cell_fills") {
+            try {
+                const parsed = typeof body.value === "string" ? JSON.parse(body.value) : body.value;
+                if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") throw new Error("Invalid fill data");
+                nextValue = parsed;
+            } catch {
+                return NextResponse.json({ error: "Invalid cell fill data" }, { status: 400 });
+            }
+        }
 
         const payload: Record<string, unknown> = {
             shipper_id: shipperId,
@@ -117,7 +132,14 @@ export async function POST(req: NextRequest) {
             const nextUp = toNumberOrNull(
                 body.field === 'up' ? body.value : existing?.up
             );
-            payload.price = nextQty !== null && nextUp !== null ? nextQty * nextUp : null;
+            payload.value = nextQty !== null && nextUp !== null ? nextQty * nextUp : null;
+        }
+
+        if (body.field === 'freight_cost' || body.field === 'gst' || body.field === 'other_fees') {
+            const nextFreight = toNumberOrNull(body.field === 'freight_cost' ? body.value : existing?.freight_cost) ?? 0;
+            const nextGst = toNumberOrNull(body.field === 'gst' ? body.value : existing?.gst) ?? 0;
+            const nextOtherFees = toNumberOrNull(body.field === 'other_fees' ? body.value : existing?.other_fees) ?? 0;
+            payload.total_cost = nextFreight + nextGst + nextOtherFees;
         }
 
         const { error: upsertError } = await supabase

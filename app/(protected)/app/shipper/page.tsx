@@ -1,6 +1,6 @@
 import { getShipperSubitems } from "@/lib/shipper/get-shipper-subitems";
 import { getShippers } from "@/lib/shipper/get-shipper-by-token";
-import ShipperGrid from "./[token]/ShipperGrid";
+import { ShipperMasterSheets } from "./ShipperMasterSheets";
 
 export default async function ShipperMasterPage() {
     try {
@@ -16,17 +16,7 @@ export default async function ShipperMasterPage() {
         return (
             <main className="p-4">
                 <h1 className="mb-4 text-lg font-semibold">PM Master View</h1>
-                <div className="space-y-8">
-                    {orderedShippers.map((shipper) => (
-                        <section key={shipper.id}>
-                            <h2 className="mb-3 text-base font-semibold text-slate-700">{shipper.name}</h2>
-                            <ShipperGrid
-                                rows={rows.filter((row) => row.shipper_id === shipper.id)}
-                                mode="pm"
-                            />
-                        </section>
-                    ))}
-                </div>
+                <ShipperMasterSheets shippers={orderedShippers} rows={rows} />
             </main>
         );
     } catch (e) {
