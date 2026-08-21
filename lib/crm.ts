@@ -482,7 +482,7 @@ export async function createClientRow(currentUserId?: string | null, groupId?: s
         .insert({
             name: 'New Client',
             people: '',
-            reply_status: '',
+            reply_status: 'Waiting...',
             follow_up: '',
             status: 'New Lead',
             channel: '',

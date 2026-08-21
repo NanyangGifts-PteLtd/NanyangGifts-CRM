@@ -50,7 +50,8 @@ async function getNextAssigneeExcluding(currentUserId: string) {
         const { data, error } = await supabase.rpc("get_next_sales_assignee");
         if (error) throw error;
 
-        const nextUserId = data?.[0]?.user_id as string | undefined;
+        const nextAssignee = Array.isArray(data) ? data[0] : data;
+        const nextUserId = nextAssignee?.user_id as string | undefined;
         if (nextUserId && nextUserId !== currentUserId) return nextUserId;
     }
 
