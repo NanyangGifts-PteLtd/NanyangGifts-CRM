@@ -50,6 +50,18 @@ export async function updateSession(request: NextRequest) {
   const isAuthPage = pathname.startsWith("/auth");
   const isAppPage = pathname.startsWith("/app");
 
+  if (user?.app_metadata?.suspended === true) {
+    // Keep the login page reachable so the client can clear the old session and
+    // display the suspension message instead of redirecting in a loop.
+    if (pathname !== "/auth/login") {
+      const url = request.nextUrl.clone();
+      url.pathname = "/auth/login";
+      url.searchParams.set("suspended", "1");
+      return NextResponse.redirect(url);
+    }
+    return supabaseResponse;
+  }
+
   if (error) {
     // Ignore the stale or invalid session and route the user to the login page.
     // This prevents redirect loops when the cookie is expired.

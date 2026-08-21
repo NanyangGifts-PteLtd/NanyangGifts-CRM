@@ -33,11 +33,15 @@ export function LoginForm({
     setError(null);
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
       if (error) throw error;
+      if (data.user?.app_metadata?.suspended === true) {
+        await supabase.auth.signOut({ scope: "local" });
+        throw new Error("Your account has been suspended, please check with your superior.");
+      }
       // Update this route to redirect to an authenticated route. The user already has an active session.
       router.push("/app");
     } catch (error: unknown) {

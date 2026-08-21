@@ -20,6 +20,10 @@ export default async function AuthGate({
         redirect("/auth/update-password");
     }
 
+    if (user.app_metadata?.suspended === true) {
+        redirect("/auth/login?suspended=1");
+    }
+
     return (
             <>{children}</>
     );
