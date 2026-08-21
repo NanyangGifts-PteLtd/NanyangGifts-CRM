@@ -108,19 +108,27 @@ export async function GET(request: NextRequest) {
 
         const recipients = [...new Set([...oldAssigneeIds, newAssigneeId])];
         const dedupeKey = `reply_reassigned:${client.id}:${now.toISOString().slice(0, 10)}`;
-        const { data: inserted, error: notificationError } = await supabase.from("notifications").upsert(
-            recipients.map((userId) => ({
-                user_id: userId,
-                client_id: client.id,
-                type: "info",
-                message: userId === newAssigneeId
-                    ? `${client.name} was assigned to you after waiting for a reply.`
-                    : `${client.name} was reassigned to another sales user after waiting for a reply.`,
-                read: false,
-                dedupe_key: `${dedupeKey}:${userId}`,
-            })),
-            { onConflict: "user_id,dedupe_key", ignoreDuplicates: true },
-        ).select("id");
+        const notificationRows = recipients.map((userId) => ({
+            user_id: userId,
+            client_id: client.id,
+            type: "info",
+            message: userId === newAssigneeId
+                ? `${client.name} was assigned to you after waiting for a reply.`
+                : `${client.name} was reassigned to another sales user after waiting for a reply.`,
+            read: false,
+            dedupe_key: `${dedupeKey}:${userId}`,
+        }));
+        const { data: existingNotifications, error: existingNotificationError } = await supabase
+            .from("notifications")
+            .select("dedupe_key")
+            .in("dedupe_key", notificationRows.map((row) => row.dedupe_key));
+        if (existingNotificationError) throw existingNotificationError;
+
+        const existingDedupeKeys = new Set((existingNotifications ?? []).map((notification) => notification.dedupe_key));
+        const notificationsToInsert = notificationRows.filter((row) => !existingDedupeKeys.has(row.dedupe_key));
+        const { data: inserted, error: notificationError } = notificationsToInsert.length
+            ? await supabase.from("notifications").insert(notificationsToInsert).select("id")
+            : { data: [], error: null };
         if (notificationError) throw notificationError;
 
         reassigned += 1;
