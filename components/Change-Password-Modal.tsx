@@ -10,9 +10,11 @@ interface ChangePasswordModalProps {
 }
 
 export default function ChangePasswordModal({ open, onClose }: ChangePasswordModalProps) {
+    const [currentPassword, setCurrentPassword] = useState('');
     const [password, setPassword] = useState('');
     const [confirm, setConfirm] = useState('');
     const [showPassword, setShowPassword] = useState(false);
+    const [showCurrentPassword, setShowCurrentPassword] = useState(false);
     const [showConfirm, setShowConfirm] = useState(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -22,7 +24,7 @@ export default function ChangePasswordModal({ open, onClose }: ChangePasswordMod
 
     const passwordsMatch = password === confirm;
     const isStrong = password.length >= 8;
-    const canSubmit = password && confirm && passwordsMatch && isStrong && !loading;
+    const canSubmit = currentPassword && password && confirm && passwordsMatch && isStrong && !loading;
 
     const handleSubmit = async () => {
         if (!canSubmit) return;
@@ -31,9 +33,17 @@ export default function ChangePasswordModal({ open, onClose }: ChangePasswordMod
 
         try {
             const supabase = createClient();
+            const { data: { user }, error: userError } = await supabase.auth.getUser();
+            if (userError || !user?.email) throw new Error('Unable to verify your current session. Please sign in again.');
+            const { error: verificationError } = await supabase.auth.signInWithPassword({
+                email: user.email,
+                password: currentPassword,
+            });
+            if (verificationError) throw new Error('Your current password is incorrect.');
             const { error } = await supabase.auth.updateUser({ password });
             if (error) throw error;
             setSuccess(true);
+            setCurrentPassword('');
             setPassword('');
             setConfirm('');
             setTimeout(() => {
@@ -48,6 +58,7 @@ export default function ChangePasswordModal({ open, onClose }: ChangePasswordMod
     };
 
     const handleClose = () => {
+        setCurrentPassword('');
         setPassword('');
         setConfirm('');
         setError(null);
@@ -68,6 +79,24 @@ export default function ChangePasswordModal({ open, onClose }: ChangePasswordMod
 
                 {/* Body */}
                 <div className="px-5 py-4 space-y-4">
+                    {/* Current password */}
+                    <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Current password</label>
+                        <div className="relative">
+                            <input
+                                type={showCurrentPassword ? 'text' : 'password'}
+                                value={currentPassword}
+                                onChange={(e) => setCurrentPassword(e.target.value)}
+                                placeholder="Enter your current password"
+                                autoComplete="current-password"
+                                className="w-full rounded-lg border border-gray-200 px-3 py-2 pr-9 text-sm outline-none focus:border-[#7BCBD5] focus:ring-2 focus:ring-[#7BCBD5]/20 transition"
+                            />
+                            <button type="button" onClick={() => setShowCurrentPassword((v) => !v)} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                                {showCurrentPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+                            </button>
+                        </div>
+                    </div>
+
                     {/* New password */}
                     <div>
                         <label className="block text-xs font-medium text-gray-600 mb-1">New password</label>
@@ -77,6 +106,7 @@ export default function ChangePasswordModal({ open, onClose }: ChangePasswordMod
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
                                 placeholder="Min. 8 characters"
+                                autoComplete="new-password"
                                 className="w-full rounded-lg border border-gray-200 px-3 py-2 pr-9 text-sm outline-none focus:border-[#7BCBD5] focus:ring-2 focus:ring-[#7BCBD5]/20 transition"
                             />
                             <button
@@ -101,6 +131,7 @@ export default function ChangePasswordModal({ open, onClose }: ChangePasswordMod
                                 value={confirm}
                                 onChange={(e) => setConfirm(e.target.value)}
                                 placeholder="Re-enter your password"
+                                autoComplete="new-password"
                                 className={`w-full rounded-lg border px-3 py-2 pr-9 text-sm outline-none focus:ring-2 transition ${confirm && !passwordsMatch
                                         ? 'border-red-300 focus:border-red-400 focus:ring-red-100'
                                         : 'border-gray-200 focus:border-[#7BCBD5] focus:ring-[#7BCBD5]/20'

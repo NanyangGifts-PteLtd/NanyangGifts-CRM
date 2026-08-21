@@ -86,7 +86,7 @@ export function UserAdminPanel({ profiles }: UserAdminPanelProps) {
             className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[#16a5c4] px-4 text-sm font-medium text-white hover:bg-[#0f8da8] disabled:cursor-not-allowed disabled:opacity-60"
           >
             <Send size={15} />
-            {isSending ? 'Sending...' : 'Send invite'}
+            {isSending ? 'Sending...' : 'Send invite via Email'}
           </button>
         </form>
 

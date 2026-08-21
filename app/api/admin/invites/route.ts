@@ -50,6 +50,12 @@ export async function POST(request: NextRequest) {
         }
 
         if (data.user) {
+            const { error: metadataError } = await supabaseAdmin.auth.admin.updateUserById(data.user.id, {
+                app_metadata: { ...(data.user.app_metadata ?? {}), must_change_password: true },
+            });
+            if (metadataError) {
+                return NextResponse.json({ error: `Invitation sent, but password setup could not be enforced: ${metadataError.message}` }, { status: 500 });
+            }
             const { error: profileUpsertError } = await supabaseAdmin
                 .from("profiles")
                 .upsert(

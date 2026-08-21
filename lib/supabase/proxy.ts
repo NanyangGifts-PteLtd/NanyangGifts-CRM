@@ -66,7 +66,10 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  if (user && isAuthPage) {
+  // Invited users are authenticated by their email link, but must remain on the
+  // password setup page until their initial password has been saved.
+  const isPasswordSetupPage = pathname === "/auth/update-password" || pathname === "/auth/invite";
+  if (user && isAuthPage && !isPasswordSetupPage) {
     const url = request.nextUrl.clone();
     url.pathname = "/app";
     return NextResponse.redirect(url);

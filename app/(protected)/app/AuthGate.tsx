@@ -16,6 +16,10 @@ export default async function AuthGate({
         redirect("/auth/login");
     }
 
+    if (user.app_metadata?.must_change_password === true) {
+        redirect("/auth/update-password");
+    }
+
     return (
             <>{children}</>
     );
