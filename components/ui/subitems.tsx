@@ -81,13 +81,12 @@ export const PAYMENT_COLS: ColumnDef[] = [
     { key: "shipper", label: "Shipper", width: 80, minWidth: 7 },
     { key: "supplier", label: "Supplier", width: 80, minWidth: 7 },
     { key: "description", label: "Description", width: 80, minWidth: 7 },
+    { key: "currency", label: "Currency", width: 80, minWidth: 7 },
     { key: "qty", label: "Qty", width: 40, minWidth: 7 },
     { key: "cost", label: "Cost", width: 40, minWidth: 7 },
     { key: "totalUc", label: "Total UC", width: 90, minWidth: 7 },
-    { key: "manpower", label: "Manpower / 版费 / Printing (SGD)", width: 80, minWidth: 7 },
-    { key: "manpowerRmb", label: "Manpower (RMB)", width: 90, minWidth: 7 },
-    { key: "ls", label: "LS (SGD)", width: 50, minWidth: 7 },
-    { key: "lsRmb", label: "LS (RMB)", width: 50, minWidth: 7 },
+    { key: "manpower", label: "Manpower / 版费 / Printing", width: 130, minWidth: 7 },
+    { key: "ls", label: "LS", width: 70, minWidth: 7 },
     { key: "totalC", label: "Total Cost", width: 80, minWidth: 7 },
     { key: "modeOfPayment", label: "Mode of Payment", width: 115, minWidth: 7 },
     { key: "orderNumber", label: "Order #", width: 115, minWidth: 7 },
@@ -1105,9 +1104,10 @@ export function SubitemsTable({
         const qty = parseNumber(sub.qty);
         const cost = parseNumber(sub.cost);
         const totalUc = cost * qty;
-        const manpowerRmb = parseNumber(sub.manpower) * 5;
-        const lsRmb = parseNumber(sub.ls) * 5;
-        const totalC = totalUc + manpowerRmb + lsRmb;
+        const currencyMultiplier = sub.currency === "RMB" ? 5 : sub.currency === "MYR" ? 3 : 1;
+        const manpowerInCurrency = parseNumber(sub.manpower) * currencyMultiplier;
+        const lsInCurrency = parseNumber(sub.ls) * currencyMultiplier;
+        const totalC = totalUc + manpowerInCurrency + lsInCurrency;
         const difference = parseNumber(sub.paymentAmount) - totalC;
 
         switch (key) {
@@ -1165,6 +1165,12 @@ export function SubitemsTable({
                 return <EditableCell value={sub.supplier} onChange={(v) => onUpdateSubitem(sub.id, { supplier: v })} />;
             case "description":
                 return <EditableCell className="!justify-start" value={sub.description} onChange={(v) => onUpdateSubitem(sub.id, { description: v })} multiline />;
+            case "currency":
+                return (
+                    <div className="overflow-hidden whitespace-nowrap text-ellipsis !text-center border-r border-[#D0D4E4] p-0 h-[33.1px] flex-shrink-0 transition transform active:scale-95 duration-150">
+                        <StatusBadge value={sub.currency ?? ""} onChange={(v) => onUpdateSubitem(sub.id, { currency: v })} options={currencyOptions} onAddOption={onAddCurrency} onDeleteOption={onDeleteCurrency} manageLabel="currency" onUpdateOptionColor={(name, color) => onUpdateOptionColor?.('currency', name, color)} onRenameOption={(oldName, newName) => onRenameOption?.('currency', oldName, newName)} small />
+                    </div>
+                );
             case "qty":
                 return <EditableCell value={sub.qty} onChange={(v) => onUpdateSubitem(sub.id, { qty: v })} type="number" />;
             case "cost":
@@ -1172,13 +1178,9 @@ export function SubitemsTable({
             case "totalUc":
                 return <div className="flex justify-center text-xs text-gray-800">{formatMoney(totalUc)}</div>;
             case "manpower":
-                return <EditableCell value={sub.manpower} onChange={(v) => onUpdateSubitem(sub.id, { manpower: v })} type="number" />;
-            case "manpowerRmb":
-                return <div className="flex justify-center text-xs text-gray-800">{formatMoney(manpowerRmb)}</div>;
+                return <div className="flex justify-center text-xs text-gray-800">{formatMoney(manpowerInCurrency)}</div>;
             case "ls":
-                return <EditableCell value={sub.ls} onChange={(v) => onUpdateSubitem(sub.id, { ls: v })} type="number" />;
-            case "lsRmb":
-                return <div className="flex justify-center text-xs text-gray-800">{formatMoney(lsRmb)}</div>;
+                return <div className="flex justify-center text-xs text-gray-800">{formatMoney(lsInCurrency)}</div>;
             case "totalC":
                 return <div className="flex justify-center text-xs text-gray-800">{formatMoney(totalC)}</div>;
             case "modeOfPayment":
