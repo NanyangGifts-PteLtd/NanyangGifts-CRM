@@ -14,6 +14,7 @@ export function UpdatePasswordForm({
   ...props
 }: React.ComponentPropsWithoutRef<"div">) {
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [isInviteSetup, setIsInviteSetup] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -26,6 +27,14 @@ export function UpdatePasswordForm({
 
   const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (password !== confirmPassword) {
+      setError("Passwords do not match.");
+      return;
+    }
+    if (password.length < 8) {
+      setError("Password must be at least 8 characters.");
+      return;
+    }
     const supabase = createClient();
     setIsLoading(true);
     setError(null);
@@ -41,8 +50,12 @@ export function UpdatePasswordForm({
         });
         const result = await response.json() as { error?: string };
         if (!response.ok) throw new Error(result.error ?? "Unable to save your password.");
-        const { error: refreshError } = await supabase.auth.refreshSession();
-        if (refreshError) throw refreshError;
+        // Updating an invited user's password with the admin client revokes the
+        // one-time invite refresh token. Send them to sign in with the password
+        // they just created instead of attempting to refresh that revoked token.
+        await supabase.auth.signOut({ scope: "local" });
+        router.replace("/auth/login?password-set=1");
+        return;
       } else {
         const { error } = await supabase.auth.updateUser({ password });
         if (error) throw error;
@@ -78,8 +91,20 @@ export function UpdatePasswordForm({
                   onChange={(e) => setPassword(e.target.value)}
                 />
               </div>
+              <div className="grid gap-2">
+                <Label htmlFor="confirm-password">Confirm password</Label>
+                <Input
+                  id="confirm-password"
+                  type="password"
+                  placeholder="Re-enter your new password"
+                  required
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                />
+                {confirmPassword && confirmPassword !== password && <p className="text-sm text-red-500">Passwords do not match.</p>}
+              </div>
               {error && <p className="text-sm text-red-500">{error}</p>}
-              <Button type="submit" className="w-full" disabled={isLoading}>
+              <Button type="submit" className="w-full" disabled={isLoading || !password || !confirmPassword || password !== confirmPassword}>
                 {isLoading ? "Saving..." : "Save new password"}
               </Button>
             </div>
