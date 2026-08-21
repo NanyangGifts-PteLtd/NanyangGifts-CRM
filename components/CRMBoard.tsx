@@ -189,6 +189,18 @@ export function CRMBoard({ clients,
     return canEditClientRecord(clientId) || (subitemAssignees[subitemId] ?? []).includes(currentUserId);
   }, [canEditClientRecord, currentUserId, subitemAssignees]);
 
+  const canEditSelectedClients = useMemo(
+    () => [...selectedIds].every((clientId) => canEditClientRecord(clientId)),
+    [canEditClientRecord, selectedIds],
+  );
+  const canEditSelectedSubitems = useMemo(
+    () => selectedSubitemIds.every((subitemId) => {
+      const owner = clients.find((client) => client.subitems.some((subitem) => subitem.id === subitemId));
+      return !!owner && canEditSubitemRecord(owner.id, subitemId);
+    }),
+    [canEditSubitemRecord, clients, selectedSubitemIds],
+  );
+
   const showAssignmentPermissionError = useCallback(() => {
     toast.error('You can only edit items that are assigned to you');
   }, []);
@@ -1970,13 +1982,14 @@ export function CRMBoard({ clients,
         color: createdClient.color ?? '#7BCBD5', subitems: [], activityLog: [], customFields: {}
       };
       setClients((prev) => [newClient, ...prev]);
+      if (currentUserId) setClientAssignees((previous) => ({ ...previous, [newClient.id]: [currentUserId] }));
       setExpandedIds((prev) => [...prev, newClient.id]);
       notifyChange('Client added', `${newClient.name} was added to the board.`);
       fetchClientAssigneeMap()
         .then((m) => setClientAssignees(m))
         .catch((e) => console.error('Failed to refresh assignees', e));
     } catch (error: any) { console.error('Failed to add client', error); toast.error('Client could not be added', { description: error?.message || 'The client was not saved.' }); }
-  }, [currentUserId, groups, setClients, setExpandedIds, notifyChange]);
+  }, [currentUserId, groups, setClientAssignees, setClients, setExpandedIds, notifyChange]);
 
   const deleteClient = useCallback(async (clientId: string) => {
     if (!canEditClientRecord(clientId)) { showAssignmentPermissionError(); return; }
@@ -2066,6 +2079,10 @@ export function CRMBoard({ clients,
   }, [canEditSubitemRecord, clients, setClients, notifyChange, showAssignmentPermissionError]);
 
   const moveSelectedSubitems = useCallback(async (subitemIds: string[], targetClientId: string) => {
+    if (subitemIds.some((subitemId) => {
+      const owner = clients.find((client) => client.subitems.some((subitem) => subitem.id === subitemId));
+      return !owner || !canEditSubitemRecord(owner.id, subitemId);
+    })) { showAssignmentPermissionError(); return; }
     setIsMovingSubitems(true);
     try {
       await Promise.all(subitemIds.map((subitemId) => moveSubitemRow(subitemId, targetClientId)));
@@ -2077,7 +2094,7 @@ export function CRMBoard({ clients,
     } finally {
       setIsMovingSubitems(false);
     }
-  }, [reloadClients]);
+  }, [canEditSubitemRecord, clients, reloadClients, showAssignmentPermissionError]);
 
   const duplicateSelectedSubitems = useCallback(async () => {
     setIsDuplicatingSubitems(true);
@@ -2129,7 +2146,7 @@ export function CRMBoard({ clients,
           <div className="whitespace-nowrap text-base font-medium text-slate-800">{selectedIds.size} Client{selectedIds.size === 1 ? '' : 's'} selected</div>
           <button type="button" disabled={isDuplicatingClients} onClick={() => void duplicateSelectedClients()} className="flex items-center gap-1.5 rounded px-3 py-2 text-sm text-slate-500 hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60"><Copy size={17} /> {isDuplicatingClients ? 'Duplicating...' : 'Duplicate'}</button>
           <div className="relative">
-            <button type="button" disabled={isMovingClients} onClick={() => setShowClientMoveMenu((open) => !open)} className="flex items-center gap-1.5 rounded px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60"><MoveRight size={17} /> {isMovingClients ? 'Moving...' : 'Move'}</button>
+            <button type="button" disabled={isMovingClients || !canEditSelectedClients} onClick={() => setShowClientMoveMenu((open) => !open)} title={!canEditSelectedClients ? 'You can only edit items that are assigned to you' : 'Move selected clients'} className="flex items-center gap-1.5 rounded px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"><MoveRight size={17} /> {isMovingClients ? 'Moving...' : 'Move'}</button>
             {showClientMoveMenu && !isMovingClients && <div className="absolute bottom-full left-0 mb-2 max-h-96 w-72 overflow-y-auto rounded-xl border border-slate-200 bg-white p-3 shadow-2xl">
               <div className="mb-3 text-base font-medium text-slate-800">Move to group</div>
               <div className="relative mb-2"><Search size={15} className="absolute left-2.5 top-2.5 text-slate-400" /><input autoFocus value={clientMoveSearch} onChange={(event) => setClientMoveSearch(event.target.value)} placeholder="Search groups" className="h-10 w-full rounded border border-slate-200 pl-8 pr-2 text-sm outline-none focus:border-sky-400" /></div>
@@ -2137,7 +2154,7 @@ export function CRMBoard({ clients,
               {groups.filter((group) => group.name.toLowerCase().includes(clientMoveSearch.toLowerCase())).length === 0 && <div className="px-2 py-5 text-center text-sm text-slate-400">No groups found.</div>}
             </div>}
           </div>
-          <button type="button" disabled={!['director', 'admin', 'dev'].includes(currentUserRole ?? '')} onClick={() => setPendingDeleteSelected(true)} title={!['director', 'admin', 'dev'].includes(currentUserRole ?? '') ? 'You do not have the necessary permission.' : 'Delete selected clients'} className="flex items-center gap-1.5 rounded px-3 py-2 text-sm text-red-500 hover:bg-red-50 disabled:cursor-not-allowed disabled:text-slate-300"><Trash2 size={17} /> Delete</button>
+          <button type="button" disabled={!canEditSelectedClients} onClick={() => setPendingDeleteSelected(true)} title={!canEditSelectedClients ? 'You can only delete items that are assigned to you' : 'Delete selected clients'} className="flex items-center gap-1.5 rounded px-3 py-2 text-sm text-red-500 hover:bg-red-50 disabled:cursor-not-allowed disabled:text-slate-300"><Trash2 size={17} /> Delete</button>
           <div className="ml-auto whitespace-nowrap text-center text-sm text-slate-600"><div>Total Price</div><div className="font-medium text-slate-900">{selectedClientTotals.totalPrice.toFixed(2)}</div></div>
           <div className="whitespace-nowrap text-center text-sm text-slate-600"><div>Total Markup</div><div className={`font-medium ${selectedClientTotals.totalMarkup >= 0 ? 'text-green-600' : 'text-red-500'}`}>{selectedClientTotals.totalMarkup.toFixed(2)}</div></div>
           <button type="button" onClick={() => setSelectedIds(new Set())} className="rounded p-1 text-slate-400 hover:bg-slate-50 hover:text-slate-700" title="Clear selection"><X size={21} /></button>
@@ -2148,7 +2165,7 @@ export function CRMBoard({ clients,
           <div className="whitespace-nowrap text-base font-medium text-slate-800">{selectedSubitemIds.length} Subitem{selectedSubitemIds.length === 1 ? '' : 's'} selected</div>
           <button type="button" disabled={isDuplicatingSubitems} onClick={() => void duplicateSelectedSubitems()} className="flex items-center gap-1.5 rounded px-3 py-2 text-sm text-slate-500 hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60"><Copy size={17} /> {isDuplicatingSubitems ? 'Duplicating...' : 'Duplicate'}</button>
           <div className="relative">
-            <button type="button" disabled={isMovingSubitems} onClick={() => setShowSubitemMoveMenu((open) => !open)} className="flex items-center gap-1.5 rounded px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60"><MoveRight size={17} /> {isMovingSubitems ? 'Moving...' : 'Move'}</button>
+            <button type="button" disabled={isMovingSubitems || !canEditSelectedSubitems} onClick={() => setShowSubitemMoveMenu((open) => !open)} title={!canEditSelectedSubitems ? 'You can only edit items that are assigned to you' : 'Move selected subitems'} className="flex items-center gap-1.5 rounded px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"><MoveRight size={17} /> {isMovingSubitems ? 'Moving...' : 'Move'}</button>
             {showSubitemMoveMenu && !isMovingSubitems && (
               <div className="absolute bottom-full left-0 mb-2 max-h-96 w-80 overflow-y-auto rounded-xl border border-slate-200 bg-white p-3 shadow-2xl">
                 <div className="mb-3 text-base font-medium text-slate-800">Choose a new parent</div>
@@ -2160,7 +2177,7 @@ export function CRMBoard({ clients,
               </div>
             )}
           </div>
-          <button type="button" disabled={!['director', 'admin', 'dev'].includes(currentUserRole ?? '')} onClick={() => setPendingDeleteSelectedSubitems(selectedSubitemIds)} title={!['director', 'admin', 'dev'].includes(currentUserRole ?? '') ? 'You do not have the necessary permission.' : 'Delete selected subitems'} className="flex items-center gap-1.5 rounded px-3 py-2 text-sm text-red-500 hover:bg-red-50 disabled:cursor-not-allowed disabled:text-slate-300"><Trash2 size={17} /> Delete</button>
+          <button type="button" disabled={!canEditSelectedSubitems} onClick={() => setPendingDeleteSelectedSubitems(selectedSubitemIds)} title={!canEditSelectedSubitems ? 'You can only delete items that are assigned to you' : 'Delete selected subitems'} className="flex items-center gap-1.5 rounded px-3 py-2 text-sm text-red-500 hover:bg-red-50 disabled:cursor-not-allowed disabled:text-slate-300"><Trash2 size={17} /> Delete</button>
           <div className="ml-auto whitespace-nowrap text-center text-sm text-slate-600"><div>Total Price</div><div className="font-medium text-slate-900">{selectedSubitemTotals.totalPrice.toFixed(2)}</div></div>
           <div className="whitespace-nowrap text-center text-sm text-slate-600"><div>Total Markup</div><div className={`font-medium ${selectedSubitemTotals.totalMarkup >= 0 ? 'text-green-600' : 'text-red-500'}`}>{selectedSubitemTotals.totalMarkup.toFixed(2)}</div></div>
           <button type="button" onClick={clearSubitemSelection} className="rounded p-1 text-slate-400 hover:bg-slate-50 hover:text-slate-700" title="Clear selection"><X size={21} /></button>
@@ -2372,6 +2389,11 @@ export function CRMBoard({ clients,
               onClick={async () => {
                 const selected = pendingDeleteSelectedSubitems;
                 if (!selected) return;
+                const hasLockedSubitem = selected.some((subitemId) => {
+                  const owner = clients.find((client) => client.subitems.some((subitem) => subitem.id === subitemId));
+                  return !owner || !canEditSubitemRecord(owner.id, subitemId);
+                });
+                if (hasLockedSubitem) { showAssignmentPermissionError(); return; }
                 setPendingDeleteSelectedSubitems(null);
                 setSelectedSubitemIds((previous) => previous.filter((id) => !selected.includes(id)));
                 await Promise.all(selected.map((subitemId) => deleteSubitem('', subitemId)));
@@ -2737,6 +2759,7 @@ export function CRMBoard({ clients,
                   onSubitemDrop={handleSubitemDrop}
                   isSubitemDropTarget={dragOverSubitemClientId === client.id && draggedSubitem?.sourceClientId !== client.id}
                   onDelete={() => setPendingDeleteClientId(client.id)}
+                  canDelete={canEditClientRecord(client.id)}
                   profiles={profiles}
                   clientAssignedIds={clientAssignees[client.id] ?? []}
                   onChangeClientAssignees={(ids) => handleClientAssigneesChange(client.id, ids)}

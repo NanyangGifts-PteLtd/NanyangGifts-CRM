@@ -1572,7 +1572,7 @@ export function SubitemsTable({
                                     if (canEditSubitem(sub.id)) return;
                                     const target = event.target as HTMLElement;
                                     const isEditControl = !!target.closest('button, input, textarea, select, [data-editable-cell]');
-                                    if (isEditControl && !target.closest('[data-subitem-assignment-editor], [data-view-action]')) {
+                                    if (isEditControl && !target.closest('[data-subitem-assignment-editor], [data-view-action], [data-selection-control]')) {
                                         event.preventDefault();
                                         event.stopPropagation();
                                         showPermissionNotice(target);
@@ -1580,6 +1580,7 @@ export function SubitemsTable({
                                 }} className="relative group border-b border-r border-[#D0D4E4] hover:bg-blue-50/30">
                                     <td className="border-r border-[#D0D4E4] px-2 py-1 text-center">
                                         <input
+                                            data-selection-control
                                             type="checkbox"
                                             checked={selectedSubitemIds.includes(sub.id)}
                                             onClick={(e) => {

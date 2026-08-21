@@ -42,6 +42,7 @@ export type ClientRowProps = {
     onSubitemDrop?: (event: React.DragEvent<HTMLDivElement>, clientId: string) => void;
     isSubitemDropTarget?: boolean;
     onDelete: () => void;
+    canDelete: boolean;
     onOpenOcfModal: (client: Client) => void;
     onOpenDetail: () => void;
     profiles: Profile[];
@@ -134,6 +135,7 @@ export function ClientRow({
     onSubitemDrop,
     isSubitemDropTarget,
     onDelete,
+    canDelete,
     onOpenOcfModal,
     onOpenDetail,
     profiles,
@@ -497,7 +499,7 @@ export function ClientRow({
                     if (canEditClient) return;
                     const target = event.target as HTMLElement;
                     const column = target.closest<HTMLElement>('[data-client-column]')?.dataset.clientColumn;
-                    const isAssignmentColumn = column === 'people' || column === 'pm';
+                    const isAssignmentColumn = column === 'people' || column === 'pm' || column === 'selectCheckbox';
                     const isEditControl = !!target.closest('button, input, textarea, select, [data-editable-cell]');
                     if (!isAssignmentColumn && column && isEditControl && !target.closest('[data-view-action], [data-activity-log]')) {
                         event.preventDefault();
@@ -514,6 +516,7 @@ export function ClientRow({
                     style={{ minWidth: colWidth.selectCheckbox, width: colWidth.selectCheckbox, order: columnOrderMap.selectCheckbox ?? 0 }}
                 >
                     <input
+                        data-selection-control
                         type="checkbox"
                         checked={isSelected}
                         onChange={onToggleSelect}
@@ -522,6 +525,7 @@ export function ClientRow({
                         className={`w-3 h-3 rounded accent-[#7BCBD5] transition transform active:scale-150 duration-200 ${selectedSubitemIds.length > 0 ? 'cursor-not-allowed opacity-40' : 'cursor-pointer'}`}
                     />
                     <button
+                        data-selection-control
                         onClick={onToggleExpand}
                         className="text-gray-400 hover:text-gray-700 transition-colors"
                     >
@@ -1036,8 +1040,9 @@ export function ClientRow({
                 <div className="flex items-center flex-shrink-0" style={{ minWidth: colWidth.empty, width: colWidth.empty, order: columnOrderMap.empty ?? 1000 }}>
                     <button
                         onClick={onDelete}
-                        title="Delete client"
-                        className="p-1 rounded text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors"
+                        disabled={!canDelete}
+                        title={canDelete ? "Delete client" : "You can only delete items that are assigned to you"}
+                        className="p-1 rounded text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-gray-300"
                     >
                         <Trash2 size={13} />
                     </button>
