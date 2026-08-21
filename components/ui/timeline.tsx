@@ -5,7 +5,7 @@ import { EditableCell } from './editablecell';
 import { Calendar } from 'lucide-react';
 import { StatusBadge } from './statusbadge';
 import { toast } from 'sonner';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 export type OptionEntry = { value: string; color: string };
 
@@ -131,6 +131,31 @@ export function TimelineSection({
     readOnly?: boolean;
 }) {
     const [permissionNotice, setPermissionNotice] = useState<{ left: number; top: number } | null>(null);
+    useEffect(() => {
+        if (readOnly) return;
+
+        const markOverdueRows = () => {
+            const today = formatDateUTC(new Date());
+            const nextRows = rows.map((row) => {
+                const progress = (row.subProgress ?? '').trim().toLowerCase();
+                const isComplete = progress === 'done' || progress === 'delivered' || progress === 'shipped out';
+                const isPastEndDate = Boolean(row.timelineEnd && row.timelineEnd < today);
+                return isPastEndDate && !isComplete && progress !== 'late' ? { ...row, subProgress: 'Late' } : row;
+            });
+            const lateCount = nextRows.filter((row, index) => row !== rows[index]).length;
+            if (lateCount > 0) {
+                onUpdate(nextRows);
+                toast.warning('Timeline progress updated', {
+                    description: `${lateCount} process${lateCount === 1 ? '' : 'es'} automatically marked Late because its end date has passed.`,
+                });
+            }
+        };
+
+        markOverdueRows();
+        const interval = window.setInterval(markOverdueRows, 60_000);
+        return () => window.clearInterval(interval);
+    }, [onUpdate, readOnly, rows]);
+
     const updateRow = (id: string, field: keyof TimelineRow, val: string) => {
         const nextRows = rows.map((r) => (r.id === id ? { ...r, [field]: val } : r));
         const target = nextRows.find((r) => r.id === id);
@@ -163,8 +188,16 @@ export function TimelineSection({
                     }
                 }
             } else if (field === 'timelineStart' || field === 'timelineEnd') {
-                if (start && end) {
-                    const durationDays = diffDaysUTC(start, end);
+                if (field === 'timelineEnd' && end && !start && !target.duration) {
+                    const today = formatDateUTC(new Date());
+                    target.timelineStart = today;
+                    toast.success('Timeline start date set', { description: `${target.name} start date automatically set to today because no start date or duration was provided.` });
+                }
+
+                const resolvedStart = parseDateUTC(target.timelineStart);
+                const resolvedEnd = parseDateUTC(target.timelineEnd);
+                if (resolvedStart && resolvedEnd) {
+                    const durationDays = diffDaysUTC(resolvedStart, resolvedEnd);
                     const nextDuration = String(durationDays);
                     if (nextDuration !== (target.duration || '')) {
                         target.duration = nextDuration;
@@ -177,13 +210,13 @@ export function TimelineSection({
                 } else if (target.duration) {
                     const durationDays = Number(target.duration);
                     if (Number.isFinite(durationDays) && durationDays >= 0) {
-                        if (field === 'timelineStart' && start && !end) {
-                            const computedEnd = new Date(start);
+                        if (field === 'timelineStart' && resolvedStart && !resolvedEnd) {
+                            const computedEnd = new Date(resolvedStart);
                             computedEnd.setUTCDate(computedEnd.getUTCDate() + durationDays);
                             target.timelineEnd = formatDateUTC(computedEnd);
                             toast.success('Timeline end date updated', { description: `${target.name} end date automatically set based on the ${durationDays}-day duration.` });
-                        } else if (field === 'timelineEnd' && end && !start) {
-                            const computedStart = new Date(end);
+                        } else if (field === 'timelineEnd' && resolvedEnd && !resolvedStart) {
+                            const computedStart = new Date(resolvedEnd);
                             computedStart.setUTCDate(computedStart.getUTCDate() - durationDays);
                             target.timelineStart = formatDateUTC(computedStart);
                             toast.success('Timeline start date updated', { description: `${target.name} start date automatically set based on the ${durationDays}-day duration.` });
