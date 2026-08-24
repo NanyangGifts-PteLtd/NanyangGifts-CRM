@@ -2053,6 +2053,7 @@ export function CRMBoard({ clients,
   const moveClientAction = useCallback(async (clientId: string, targetGroupId: string) => {
     if (!canEditClientRecord(clientId)) { showAssignmentPermissionError(); return; }
     await updateClient(clientId, { groupId: targetGroupId });
+    toast.success("Client moved", { description: "The client was moved to the selected group." });
   }, [canEditClientRecord, showAssignmentPermissionError, updateClient]);
 
   const moveSelectedClients = useCallback(async (targetGroupId: string) => {
@@ -2113,6 +2114,7 @@ export function CRMBoard({ clients,
   }, [canEditSubitemRecord, clients, reloadClients, showAssignmentPermissionError]);
 
   const duplicateSelectedSubitems = useCallback(async () => {
+    if (!canEditSelectedSubitems) { showAssignmentPermissionError(); return; }
     setIsDuplicatingSubitems(true);
     try {
       await Promise.all(selectedSubitemIds.map((subitemId) => duplicateSubitemRow(subitemId)));
@@ -2125,7 +2127,18 @@ export function CRMBoard({ clients,
     } finally {
       setIsDuplicatingSubitems(false);
     }
-  }, [reloadClients, selectedSubitemIds]);
+  }, [canEditSelectedSubitems, reloadClients, selectedSubitemIds, showAssignmentPermissionError]);
+
+  const duplicateSubitemAction = useCallback(async (subitemId: string) => {
+    const owner = clients.find((client) => client.subitems.some((subitem) => subitem.id === subitemId));
+    if (!owner || !canEditSubitemRecord(owner.id, subitemId)) { showAssignmentPermissionError(); return; }
+    try { await duplicateSubitemRow(subitemId); await reloadClients(); toast.success("Subitem duplicated"); }
+    catch (error: any) { toast.error("Subitem could not be duplicated", { description: error?.message || "Please try again." }); }
+  }, [canEditSubitemRecord, clients, reloadClients, showAssignmentPermissionError]);
+
+  const moveSubitemAction = useCallback(async (subitemId: string, targetClientId: string) => {
+    await moveSelectedSubitems([subitemId], targetClientId);
+  }, [moveSelectedSubitems]);
 
   const toggleSubitemSelection = useCallback((subitemId: string) => {
     if (selectedIds.size > 0) return;
@@ -2179,7 +2192,7 @@ export function CRMBoard({ clients,
       {selectedSubitemIds.length > 0 && (
         <div className="fixed bottom-8 left-1/2 z-[100] flex min-h-16 w-[min(900px,calc(100vw-2rem))] -translate-x-1/2 items-center gap-5 rounded-2xl border border-slate-200 bg-white px-6 py-4 shadow-2xl">
           <div className="whitespace-nowrap text-base font-medium text-slate-800">{selectedSubitemIds.length} Subitem{selectedSubitemIds.length === 1 ? '' : 's'} selected</div>
-          <button type="button" disabled={isDuplicatingSubitems} onClick={() => void duplicateSelectedSubitems()} className="flex items-center gap-1.5 rounded px-3 py-2 text-sm text-slate-500 hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60"><Copy size={17} /> {isDuplicatingSubitems ? 'Duplicating...' : 'Duplicate'}</button>
+          <button type="button" disabled={isDuplicatingSubitems || !canEditSelectedSubitems} title={!canEditSelectedSubitems ? 'You can only edit items that are assigned to you' : 'Duplicate selected subitems'} onClick={() => void duplicateSelectedSubitems()} className="flex items-center gap-1.5 rounded px-3 py-2 text-sm text-slate-500 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"><Copy size={17} /> {isDuplicatingSubitems ? 'Duplicating...' : 'Duplicate'}</button>
           <div className="relative">
             <button type="button" disabled={isMovingSubitems || !canEditSelectedSubitems} onClick={() => setShowSubitemMoveMenu((open) => !open)} title={!canEditSelectedSubitems ? 'You can only edit items that are assigned to you' : 'Move selected subitems'} className="flex items-center gap-1.5 rounded px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"><MoveRight size={17} /> {isMovingSubitems ? 'Moving...' : 'Move'}</button>
             {showSubitemMoveMenu && !isMovingSubitems && (
@@ -2193,7 +2206,7 @@ export function CRMBoard({ clients,
               </div>
             )}
           </div>
-          <button type="button" disabled={!canEditSelectedSubitems} onClick={() => setPendingDeleteSelectedSubitems(selectedSubitemIds)} title={!canEditSelectedSubitems ? 'You can only delete items that are assigned to you' : 'Delete selected subitems'} className="flex items-center gap-1.5 rounded px-3 py-2 text-sm text-red-500 hover:bg-red-50 disabled:cursor-not-allowed disabled:text-slate-300"><Trash2 size={17} /> Delete</button>
+          <button type="button" disabled={!canEditSelectedSubitems} onClick={() => setPendingDeleteSelectedSubitems(selectedSubitemIds)} title={!canEditSelectedSubitems ? 'You can only delete items that are assigned to you' : 'Delete selected subitems'} className="flex items-center gap-1.5 rounded px-3 py-2 text-sm text-red-500 hover:bg-red-50 disabled:cursor-not-allowed disabled:text-slate-300 disabled:hover:bg-transparent"><Trash2 size={17} /> Delete</button>
           <div className="ml-auto whitespace-nowrap text-center text-sm text-slate-600"><div>Total Price</div><div className="font-medium text-slate-900">{selectedSubitemTotals.totalPrice.toFixed(2)}</div></div>
           <div className="whitespace-nowrap text-center text-sm text-slate-600"><div>Total Markup</div><div className={`font-medium ${selectedSubitemTotals.totalMarkup >= 0 ? 'text-green-600' : 'text-red-500'}`}>{selectedSubitemTotals.totalMarkup.toFixed(2)}</div></div>
           <button type="button" onClick={clearSubitemSelection} className="rounded p-1 text-slate-400 hover:bg-slate-50 hover:text-slate-700" title="Clear selection"><X size={21} /></button>
@@ -2841,6 +2854,9 @@ export function CRMBoard({ clients,
                   groups={groups}
                   onDuplicateClient={() => duplicateClientAction(client.id)}
                   onMoveClient={(groupId) => moveClientAction(client.id, groupId)}
+                  subitemMoveTargetGroups={groupedClients.map(({ group, clients: groupClients }) => ({ name: group.name, clients: groupClients.map((target) => ({ id: target.id, name: target.name })) }))}
+                  onDuplicateSubitemAction={duplicateSubitemAction}
+                  onMoveSubitemAction={moveSubitemAction}
                 />
               ))}
 

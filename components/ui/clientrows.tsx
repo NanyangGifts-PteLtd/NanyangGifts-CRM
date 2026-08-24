@@ -120,6 +120,9 @@ export type ClientRowProps = {
     groups: Array<{ id: string; name: string }>;
     onDuplicateClient: () => void | Promise<void>;
     onMoveClient: (groupId: string) => void | Promise<void>;
+    subitemMoveTargetGroups: Array<{ name: string; clients: Array<{ id: string; name: string }> }>;
+    onDuplicateSubitemAction: (subitemId: string) => void | Promise<void>;
+    onMoveSubitemAction: (subitemId: string, targetClientId: string) => void | Promise<void>;
 
 
 };
@@ -208,7 +211,7 @@ export function ClientRow({
     currentUserId,
     onPushToShipperView
     , onUndoActivity
-    , groupNamesById, groups, onDuplicateClient, onMoveClient
+    , groupNamesById, groups, onDuplicateClient, onMoveClient, subitemMoveTargetGroups, onDuplicateSubitemAction, onMoveSubitemAction
 
 
 }: ClientRowProps) {
@@ -1162,6 +1165,9 @@ export function ClientRow({
                     onPushToShipperView={onPushToShipperView}
                     clientActivityLog={client.activityLog ?? []}
                     onUndoActivity={onUndoActivity}
+                    moveTargetGroups={subitemMoveTargetGroups}
+                    onDuplicateSubitemAction={onDuplicateSubitemAction}
+                    onMoveSubitemAction={onMoveSubitemAction}
 
 
                 />

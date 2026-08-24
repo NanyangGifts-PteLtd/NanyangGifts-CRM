@@ -11,6 +11,7 @@ import { TimelineSection, DEFAULT_TIMELINE_ROWS, parseDateUTC, formatDateUTC, di
 import { CustomColumn } from "@/lib/custom-columns";
 import { calculateSubitemFinancials } from "@/lib/subitem-calculations";
 import { toast } from "sonner";
+import { SubitemActionsMenu } from "@/components/SubitemActionsMenu";
 import {
     AlertDialog,
     AlertDialogAction,
@@ -174,6 +175,9 @@ type SubitemProps = {
     onPushToShipperView?: (subitemId: string) => Promise<void> | void;
     clientActivityLog?: ActivityEntry[];
     onUndoActivity?: (entry: ActivityEntry) => void | Promise<void>;
+    moveTargetGroups: Array<{ name: string; clients: Array<{ id: string; name: string }> }>;
+    onDuplicateSubitemAction: (subitemId: string) => void | Promise<void>;
+    onMoveSubitemAction: (subitemId: string, targetClientId: string) => void | Promise<void>;
 };
 
 function parseNumber(v: string | number | undefined | null) {
@@ -271,6 +275,9 @@ export function SubitemsTable({
     onPushToShipperView,
     clientActivityLog = [],
     onUndoActivity,
+    moveTargetGroups,
+    onDuplicateSubitemAction,
+    onMoveSubitemAction,
 }: SubitemProps) {
     const [permissionNotice, setPermissionNotice] = useState<{ left: number; top: number } | null>(null);
     const showPermissionNotice = (target: HTMLElement) => {
@@ -1684,13 +1691,14 @@ export function SubitemsTable({
                                     if (canEditSubitem(sub.id)) return;
                                     const target = event.target as HTMLElement;
                                     const isEditControl = !!target.closest('button, input, textarea, select, [data-editable-cell]');
-                                    if (isEditControl && !target.closest('[data-subitem-assignment-editor], [data-view-action], [data-selection-control]')) {
+                                    if (isEditControl && !target.closest('[data-subitem-assignment-editor], [data-view-action], [data-selection-control], [data-subitem-action-menu]')) {
                                         event.preventDefault();
                                         event.stopPropagation();
                                         showPermissionNotice(target);
                                     }
                                 }} className="relative group border-b border-r border-[#D0D4E4] hover:bg-blue-50/30">
-                                    <td className="border-r border-[#D0D4E4] px-2 py-1 text-center">
+                                    <td className="group relative overflow-visible border-r border-[#D0D4E4] px-2 py-1 text-center">
+                                        <SubitemActionsMenu subitemName={sub.name} targetGroups={moveTargetGroups} canEdit={canEditSubitem(sub.id)} onDuplicate={() => onDuplicateSubitemAction(sub.id)} onMove={(targetClientId) => onMoveSubitemAction(sub.id, targetClientId)} onDelete={() => onDeleteSubitem(sub.id)} />
                                         <input
                                             data-selection-control
                                             type="checkbox"
