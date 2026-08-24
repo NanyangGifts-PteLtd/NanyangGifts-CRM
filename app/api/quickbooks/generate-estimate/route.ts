@@ -45,7 +45,6 @@ async function getOrCreateItem(subitem: any) {
     const found = existing?.QueryResponse?.Item?.[0];
     if (found) return found;
 
-    const unitPrice = Number(subitem.price || subitem.up || 0);
     const created = await qboRequest('/item', {
         method: 'POST',
         body: JSON.stringify({
@@ -54,7 +53,9 @@ async function getOrCreateItem(subitem: any) {
             IncomeAccountRef: {
                 value: process.env.QUICKBOOKS_INCOME_ACCOUNT_ID!,
             },
-            SalesTaxCodeRef: '59'
+            SalesTaxCodeRef: {
+                value: '59',
+            },
         }),
     });
 

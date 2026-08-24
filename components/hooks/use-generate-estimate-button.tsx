@@ -37,10 +37,16 @@ export function useGenerateEstimate() {
         }
     }
 
+    function resetEstimateState() {
+        setEstimateError(null);
+        setEstimateSuccess(false);
+    }
+
     return {
         handleGenerateEstimate,
         isGeneratingEstimate,
         estimateError,
-        estimateSuccess
+        estimateSuccess,
+        resetEstimateState,
     };
 }

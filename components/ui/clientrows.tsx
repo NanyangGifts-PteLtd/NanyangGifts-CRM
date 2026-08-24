@@ -13,6 +13,7 @@ import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, A
 import { Tooltip } from "radix-ui";
 import type { CustomColumn } from '@/lib/custom-columns';
 import { calculateSubitemFinancials } from '@/lib/subitem-calculations';
+import { useGenerateEstimate } from '@/components/hooks/use-generate-estimate-button';
 
 type OptionEntry = { value: string; color: string };
 type AttachmentItem = {
@@ -231,6 +232,18 @@ export function ClientRow({
     const [attachmentSourceMenu, setAttachmentSourceMenu] = useState<string | null>(null);
     const [attachmentLinkDialog, setAttachmentLinkDialog] = useState<string | null>(null);
     const [attachmentPreview, setAttachmentPreview] = useState<string | null>(null);
+    const [showEstimateDialog, setShowEstimateDialog] = useState(false);
+    const [estimateResult, setEstimateResult] = useState<{ estimateId?: string | null; docNumber?: string | null } | null>(null);
+    const { handleGenerateEstimate, isGeneratingEstimate, estimateError, resetEstimateState } = useGenerateEstimate();
+    const estimateEligibleSubitems = client.subitems.filter((subitem) => ["Quoted", "Shortlisted", "Awarded"].includes(subitem.status?.trim()));
+    const generateEstimate = async () => {
+        try {
+            const result = await handleGenerateEstimate(client.id) as { estimateId?: string | null; docNumber?: string | null };
+            setEstimateResult(result);
+        } catch {
+            // The hook already retains the error for the result state in this dialog.
+        }
+    };
 
     useEffect(() => {
         if (!attachmentSourceMenu) return;
@@ -488,6 +501,20 @@ export function ClientRow({
         >
             <style>{Array.from(hiddenColumnKeys).filter((key) => key.startsWith('client:')).map((key) => `[data-client-column="${key.slice(7)}"]{display:none!important}`).join('')}</style>
             {permissionNotice && <div role="alert" className="fixed z-[10000] rounded-md bg-slate-800 px-3 py-2 text-xs font-medium text-white shadow-xl" style={permissionNotice}>You can only edit items that are assigned to you</div>}
+            <AlertDialog open={showEstimateDialog} onOpenChange={(open) => { setShowEstimateDialog(open); if (!open) { setEstimateResult(null); resetEstimateState(); } }}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>{estimateResult ? "QuickBooks estimate created" : estimateError ? "Could not create QuickBooks estimate" : "Generate QuickBooks estimate?"}</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            {estimateResult ? <>An estimate has been created for <strong>{client.company || client.name}</strong>{estimateResult.docNumber ? <> with document number <strong>{estimateResult.docNumber}</strong></> : ""}.</> : estimateError ? estimateError : <>This will find or create the QuickBooks customer for <strong>{client.company || "this client"}</strong> and create an estimate using the {estimateEligibleSubitems.length} eligible subitem{estimateEligibleSubitems.length === 1 ? "" : "s"}.</>}
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    {!estimateResult && !estimateError && <div className="rounded-md bg-slate-50 p-3 text-xs text-slate-600"><p className="font-medium text-slate-700">Included subitems</p><ul className="mt-1 list-disc pl-4">{estimateEligibleSubitems.map((subitem) => <li key={subitem.id}>{subitem.name || "Unnamed subitem"} — {subitem.status}</li>)}</ul>{!client.company.trim() && <p className="mt-2 text-red-600">A Company name is required before generating an estimate.</p>}{!estimateEligibleSubitems.length && <p className="mt-2 text-red-600">At least one subitem must be Quoted, Shortlisted, or Awarded.</p>}</div>}
+                    <AlertDialogFooter>
+                        {estimateResult || estimateError ? <AlertDialogAction onClick={() => setShowEstimateDialog(false)}>Close</AlertDialogAction> : <><AlertDialogCancel disabled={isGeneratingEstimate}>Cancel</AlertDialogCancel><AlertDialogAction disabled={isGeneratingEstimate || !client.company.trim() || !estimateEligibleSubitems.length} onClick={(event) => { event.preventDefault(); void generateEstimate(); }}>{isGeneratingEstimate ? "Generating…" : "Generate estimate"}</AlertDialogAction></>}
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
             <div
                 data-client-row
                 data-client-id={client.id}
@@ -697,8 +724,9 @@ export function ClientRow({
                                 <Tooltip.Trigger asChild>
                                     <button
                                         type="button"
+                                        onClick={() => { setEstimateResult(null); resetEstimateState(); setShowEstimateDialog(true); }}
                                         className="px-2 py-2 text-[10px] font-medium text-teal-500"
-                                        aria-label="Generate estimate placeholder"
+                                        aria-label="Generate QuickBooks estimate"
                                     >
                                         <ReceiptText size={15} color="#7BCBD5" className="transition transform active:scale-150 duration-200" />
                                     </button>
