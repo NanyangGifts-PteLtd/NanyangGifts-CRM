@@ -4,7 +4,16 @@ import { createClient } from "@/lib/supabase/server";
 type PushShipperViewBody = {
     subitemIds: string[];
     overwrite?: boolean;
+    preview?: boolean;
+    values?: Array<Record<string, unknown> & { subitemId: string }>;
 };
+
+const PREVIEW_FIELDS = [
+    "cn_tracking_no", "ic", "info_provided_date", "cartons", "qty", "up",
+    "tax_refund", "delivery_info", "sea_or_air", "shipper_remarks",
+    "samples_by_air", "samples_by_sea",
+] as const;
+const REQUIRED_PREVIEW_FIELDS = PREVIEW_FIELDS.filter((field) => field !== "cartons" && field !== "shipper_remarks");
 
 const ALLOWED_ROLES = ["pm", "director", "dev"];
 
@@ -98,6 +107,7 @@ export async function POST(req: NextRequest) {
         const shipperByName = new Map(
             (allShippers ?? []).map((shipper) => [normalize(shipper.name), shipper.id])
         );
+        const shipperNameById = new Map((allShippers ?? []).map((shipper) => [shipper.id, shipper.name]));
         const shipperIds = new Set((allShippers ?? []).map((shipper) => shipper.id));
         const resolveShipperId = (label: string | null | undefined) => {
             const normalizedLabel = normalize(label);
@@ -117,6 +127,7 @@ export async function POST(req: NextRequest) {
         client_id,
         name,
         qty,
+        cost,
         price,
         up,
         cn_tracking,
@@ -159,25 +170,6 @@ export async function POST(req: NextRequest) {
             }
         }
 
-        if (!body.overwrite) {
-            const { data: existingRows, error: existingRowsError } = await supabase
-                .from("shipper_view_rows")
-                .select("subitem_id")
-                .in("subitem_id", subitems.map((item) => item.id));
-
-            if (existingRowsError) {
-                return NextResponse.json({ error: existingRowsError.message }, { status: 500 });
-            }
-
-            if ((existingRows ?? []).length > 0) {
-                return NextResponse.json({
-                    error: "This subitem has already been pushed. Pushing again will overwrite existing shipper-view information.",
-                    alreadyPushed: true,
-                    subitemIds: existingRows?.map((row) => row.subitem_id) ?? [],
-                }, { status: 409 });
-            }
-        }
-
         const pushedByName = profile.full_name?.trim() || profile.email || user.email || user.id;
         const pushedDate = getSingaporeDate();
 
@@ -208,7 +200,7 @@ export async function POST(req: NextRequest) {
             ocfItemBySubitemId.set(item.subitem_id, item);
         }
 
-        const rowsToUpsert = subitems.map((item) => {
+        const defaults: Array<Record<string, any>> = subitems.map((item) => {
             const ocfItem = ocfItemBySubitemId.get(item.id);
 
             return {
@@ -237,15 +229,65 @@ export async function POST(req: NextRequest) {
                 item_name: item.name ?? null,
                 delivery_info: buildDeliveryInfo(ocfItem) ?? null,
                 qty: item.qty ?? null,
-                up: item.up ?? null,
-                value: Number(item.qty ?? 0) * Number(item.up ?? 0),
+                up: item.cost ?? null,
+                value: Number(item.qty ?? 0) * Number(item.cost ?? 0),
                 sea_or_air: getSeaOrAir(item.shipper),
-                tax_refund: null,
+                tax_refund: Number(item.qty ?? 0) * Number(item.cost ?? 0) > 2500 ? "退" : "X",
                 shipper_remarks: null,
                 samples_by_air: null,
                 samples_by_sea: null,
                 air_received: null,
                 sea_received: null,
+            };
+        });
+
+        const { data: existingRows, error: existingRowsError } = await supabase
+            .from("shipper_view_rows")
+            .select("*")
+            .in("subitem_id", subitems.map((item) => item.id));
+        if (existingRowsError) return NextResponse.json({ error: existingRowsError.message }, { status: 500 });
+        const existingBySubitemId = new Map((existingRows ?? []).map((row) => [row.subitem_id, row]));
+
+        const previews: Array<Record<string, any>> = defaults.map((defaultsRow) => {
+            const existing = existingBySubitemId.get(defaultsRow.subitem_id);
+            // Existing shipper data takes precedence so a re-push can be reviewed without losing prior work.
+            if (!existing) return defaultsRow;
+            const merged = { ...defaultsRow, ...existing } as Record<string, unknown>;
+            // The original direct-push rows have several null fields. Retain useful source defaults for those.
+            for (const field of PREVIEW_FIELDS) {
+                if (merged[field] === null || merged[field] === undefined) merged[field] = defaultsRow[field];
+            }
+            return { ...merged, value: Number(merged.qty ?? 0) * Number(merged.up ?? 0) };
+        });
+
+        if (body.preview) return NextResponse.json({
+            ok: true,
+            rows: previews.map((row) => ({ ...row, shipper_name: shipperNameById.get(row.shipper_id) ?? "Selected shipper" })),
+        });
+
+        const suppliedBySubitemId = new Map((body.values ?? []).map((value) => [value.subitemId, value]));
+        const rowsToUpsert: Array<Record<string, any>> = previews.map((preview) => {
+            const supplied = suppliedBySubitemId.get(preview.subitem_id);
+            const edits = Object.fromEntries(PREVIEW_FIELDS.map((field) => [field, supplied?.[field] ?? preview[field]]));
+            const missing = REQUIRED_PREVIEW_FIELDS.filter((field) => {
+                const value = edits[field];
+                return value === null || value === undefined || String(value).trim() === "";
+            });
+            if (missing.length) throw new Error(`Complete all mandatory fields before pushing: ${missing.join(", ")}`);
+            const qty = Number(edits.qty);
+            const up = Number(edits.up);
+            if (!Number.isFinite(qty) || !Number.isFinite(up)) throw new Error("Qty and Unit Price must be valid numbers.");
+            return {
+                ...preview,
+                ...edits,
+                qty,
+                up,
+                value: qty * up,
+                // These relationships always come from the source CRM record, never the dialog.
+                subitem_id: preview.subitem_id,
+                client_id: preview.client_id,
+                shipper_id: preview.shipper_id,
+                pushed_by: user.id,
             };
         });
 
@@ -256,6 +298,12 @@ export async function POST(req: NextRequest) {
 
         if (upsertError) {
             return NextResponse.json({ error: upsertError.message }, { status: 500 });
+        }
+
+        // CN Tracking is deliberately a two-way value: the reviewed value is also stored on the CRM subitem.
+        for (const row of rowsToUpsert) {
+            const { error } = await supabase.from("subitems").update({ cn_tracking: row.cn_tracking_no }).eq("id", row.subitem_id);
+            if (error) return NextResponse.json({ error: error.message }, { status: 500 });
         }
 
         return NextResponse.json({

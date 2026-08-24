@@ -100,7 +100,23 @@ export const PAYMENT_COLS: ColumnDef[] = [
 
 type TableMode = "subitem" | "payment" | "timeline";
 type OptionEntry = { value: string; color: string };
+type ShipperPushValues = Record<string, string> & { subitemId: string };
 const CUSTOM_COL_WIDTH = 120;
+
+const SHIPPER_PUSH_FIELDS: Array<{ key: keyof Omit<ShipperPushValues, "subitemId">; label: string; required?: boolean; type?: "date" | "number" | "textarea" }> = [
+    { key: "cn_tracking_no", label: "单号 / CN Tracking #", required: true },
+    { key: "ic", label: "谁下单 / I/C", required: true },
+    { key: "info_provided_date", label: "提供资料日期", required: true, type: "date" },
+    { key: "cartons", label: "箱子 / Cartons", type: "number" },
+    { key: "qty", label: "数量 / Qty", required: true, type: "number" },
+    { key: "up", label: "单价 / Unit Price", required: true, type: "number" },
+    { key: "tax_refund", label: "退税?", required: true },
+    { key: "delivery_info", label: "地址 / Address", required: true, type: "textarea" },
+    { key: "sea_or_air", label: "海运、空运 / Sea or Air?", required: true },
+    { key: "shipper_remarks", label: "备注 / Remarks", type: "textarea" },
+    { key: "samples_by_air", label: "发样品空运 / Samples to send by air", required: true },
+    { key: "samples_by_sea", label: "发样品海运 / Samples to send by sea", required: true },
+];
 
 type SubitemProps = {
     clientId: string;
@@ -306,6 +322,9 @@ export function SubitemsTable({
 
     const [pushingSubitemId, setPushingSubitemId] = useState<string | null>(null);
     const [pendingPushSubitemId, setPendingPushSubitemId] = useState<string | null>(null);
+    const [pushPreview, setPushPreview] = useState<ShipperPushValues | null>(null);
+    const [pushPreviewShipperName, setPushPreviewShipperName] = useState("");
+    const [isLoadingPushPreview, setIsLoadingPushPreview] = useState(false);
     const [activitySubitem, setActivitySubitem] = useState<Subitem | null>(null);
     const [undoneActivityIds, setUndoneActivityIds] = useState<Set<string>>(new Set());
     const canEditSubitem = (subitemId: string) => !!currentUserId && (clientAssignedIds.includes(currentUserId) || clientPmAssignedIds.includes(currentUserId) || (subitemAssigneeMap[subitemId] ?? []).includes(currentUserId));
@@ -858,6 +877,59 @@ export function SubitemsTable({
         }
     }
 
+    async function openPushPreview(subitemId: string) {
+        if (!canEditSubitem(subitemId)) {
+            toast.error("You can only edit items that are assigned to you");
+            return;
+        }
+        setIsLoadingPushPreview(true);
+        try {
+            const response = await fetch("/api/shipper/push", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ subitemIds: [subitemId], preview: true }),
+            });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result?.error || "Could not prepare the shipper push.");
+            const row = result?.rows?.[0];
+            if (!row) throw new Error("No shipper data was available for this subitem.");
+            setPushPreview({
+                subitemId,
+                ...Object.fromEntries(SHIPPER_PUSH_FIELDS.map(({ key }) => [key, row[key] == null ? "" : String(row[key])])),
+            } as ShipperPushValues);
+            setPushPreviewShipperName(String(row.shipper_name || "Selected shipper"));
+        } catch (error: any) {
+            toast.error("Could not open shipper preview", { description: error?.message || "Please try again." });
+        } finally {
+            setIsLoadingPushPreview(false);
+        }
+    }
+
+    const updatePushPreview = (field: string, value: string) => setPushPreview((previous) => previous ? { ...previous, [field]: value } : previous);
+    const pushValue = pushPreview ? Number(pushPreview.qty || 0) * Number(pushPreview.up || 0) : 0;
+    const pushPreviewComplete = !!pushPreview && SHIPPER_PUSH_FIELDS.filter((field) => field.required).every((field) => pushPreview[field.key]?.trim());
+    async function confirmPushPreview() {
+        if (!pushPreview || !pushPreviewComplete) return;
+        setPushingSubitemId(pushPreview.subitemId);
+        try {
+            const response = await fetch("/api/shipper/push", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ subitemIds: [pushPreview.subitemId], overwrite: true, values: [pushPreview] }),
+            });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result?.error || "Failed to push to shipper view.");
+            onUpdateSubitem(pushPreview.subitemId, { cnTracking: pushPreview.cn_tracking_no });
+            setPushPreview(null);
+            setPushPreviewShipperName("");
+            toast.success("Pushed to shipper view", { description: "The reviewed shipping record was saved successfully." });
+        } catch (error: any) {
+            toast.error("Push to shipper view failed", { description: error?.message || "Please check the values and try again." });
+        } finally {
+            setPushingSubitemId(null);
+        }
+    }
+
     const renderNameCell = (sub: Subitem) => (
         <div
             draggable={Boolean(onSubitemDragStart)}
@@ -935,13 +1007,13 @@ export function SubitemsTable({
                         type="button"
                         onClick={(e) => {
                             e.stopPropagation();
-                            void handlePushToShipperView(sub.id);
+                            void openPushPreview(sub.id);
                         }}
-                        disabled={pushingSubitemId === sub.id || !canEditSubitem(sub.id)}
+                        disabled={pushingSubitemId === sub.id || isLoadingPushPreview || !canEditSubitem(sub.id)}
                         className="rounded-sm border border-teal-200 px-2 py-1 text-[11px] font-medium text-teal-500 transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
                         title={!canEditSubitem(sub.id) ? "You can only edit items that are assigned to you" : "Push to shipper view"}
                     >
-                        {pushingSubitemId === sub.id ? "Pushing..." : "Push"}
+                        {pushingSubitemId === sub.id || isLoadingPushPreview ? "Preparing..." : "Push"}
                     </button>
                 ) : null}
 
@@ -1316,6 +1388,46 @@ export function SubitemsTable({
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
+
+            {pushPreview && (
+                <div className="fixed inset-0 z-[150] flex items-center justify-center bg-slate-950/40 p-4" role="dialog" aria-modal="true" aria-labelledby="shipper-push-title">
+                    <div className="flex max-h-[calc(100vh-2rem)] w-full max-w-4xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
+                        <div className="flex items-start justify-between border-b border-slate-200 px-5 py-4">
+                            <div>
+                                <h2 id="shipper-push-title" className="text-base font-semibold text-slate-900">Pushing to {pushPreviewShipperName || "selected shipper"}</h2>
+                                <p className="mt-1 text-sm text-slate-500">Confirm the shipping details. Fields marked <span className="text-red-500">*</span> are required.</p>
+                            </div>
+                            <button type="button" onClick={() => { setPushPreview(null); setPushPreviewShipperName(""); }} disabled={pushingSubitemId === pushPreview.subitemId} className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-50" title="Close"><X size={18} /></button>
+                        </div>
+                        <div className="grid flex-1 grid-cols-1 gap-4 overflow-y-auto p-5 md:grid-cols-2">
+                            {SHIPPER_PUSH_FIELDS.slice(0, 6).map((field) => {
+                                const value = pushPreview[field.key] ?? "";
+                                const invalid = !!field.required && !value.trim();
+                                return <label key={field.key} className="block text-xs font-medium text-slate-700">{field.label}{field.required && <span className="ml-1 text-red-500">*</span>}
+                                    <input type={field.type === "date" ? "date" : field.type === "number" ? "number" : "text"} value={value} onChange={(event) => updatePushPreview(field.key, event.target.value)} className={`mt-1 h-10 w-full rounded-md border px-3 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-cyan-200 ${invalid ? "border-red-300 bg-red-50" : "border-slate-300"}`} />
+                                </label>;
+                            })}
+                            <div className="block text-xs font-medium text-slate-700">货值 / Value
+                                <div className="mt-1 flex h-10 items-center rounded-md border border-slate-200 bg-slate-100 px-3 text-sm font-medium text-slate-700">{Number.isFinite(pushValue) ? pushValue.toFixed(2) : "0.00"}</div>
+                            </div>
+                            {SHIPPER_PUSH_FIELDS.slice(6).map((field) => {
+                                const value = pushPreview[field.key] ?? "";
+                                const invalid = !!field.required && !value.trim();
+                                return <label key={field.key} className="block text-xs font-medium text-slate-700">{field.label}{field.required && <span className="ml-1 text-red-500">*</span>}
+                                    {field.type === "textarea" ? <textarea value={value} onChange={(event) => updatePushPreview(field.key, event.target.value)} rows={3} className={`mt-1 w-full rounded-md border px-3 py-2 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-cyan-200 ${invalid ? "border-red-300 bg-red-50" : "border-slate-300"}`} /> : <input value={value} onChange={(event) => updatePushPreview(field.key, event.target.value)} className={`mt-1 h-10 w-full rounded-md border px-3 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-cyan-200 ${invalid ? "border-red-300 bg-red-50" : "border-slate-300"}`} />}
+                                </label>;
+                            })}
+                        </div>
+                        <div className="flex items-center justify-between border-t border-slate-200 px-5 py-4">
+                            <p className="text-xs text-slate-500">CN Tracking # will also update the CRM Board.</p>
+                            <div className="flex gap-2">
+                                <button type="button" onClick={() => { setPushPreview(null); setPushPreviewShipperName(""); }} disabled={pushingSubitemId === pushPreview.subitemId} className="rounded-md border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50">Cancel</button>
+                                <button type="button" onClick={() => void confirmPushPreview()} disabled={!pushPreviewComplete || pushingSubitemId === pushPreview.subitemId} className="rounded-md bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-50">{pushingSubitemId === pushPreview.subitemId ? "Pushing..." : "Confirm & push"}</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {activitySubitem ? (
                 <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/30 p-4">
