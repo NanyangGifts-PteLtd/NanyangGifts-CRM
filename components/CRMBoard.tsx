@@ -2623,6 +2623,7 @@ export function CRMBoard({ clients,
                   handleGroupDrop(group.id, groupDragOverEdge ?? 'top');
                 }}
                 onDragEnd={handleGroupDragEnd}
+                onContextMenu={(event) => { event.preventDefault(); setOpenGroupMenu(group.id); }}
                 className={`group relative flex cursor-grab items-center gap-2.5 px-2 py-1 text-sm border-y border-gray-100 bg-gray-50 active:cursor-grabbing ${groupDragOverId === group.id ? 'ring-1 ring-[#0f8da8]/40' : ''}`}
               >
                 <button

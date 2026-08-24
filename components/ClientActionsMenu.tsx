@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Copy, MoreHorizontal, MoveRight, Search, Trash2 } from "lucide-react";
 
-export function ClientActionsMenu({ clientName, groups, canEdit, onDuplicate, onMove, onDelete, className = "", triggerClassName = "", align = "right" }: {
+export function ClientActionsMenu({ clientId, clientName, groups, canEdit, onDuplicate, onMove, onDelete, className = "", triggerClassName = "", align = "right" }: {
+    clientId: string;
     clientName: string;
     groups: Array<{ id: string; name: string }>;
     canEdit: boolean;
@@ -19,6 +20,7 @@ export function ClientActionsMenu({ clientName, groups, canEdit, onDuplicate, on
     const [search, setSearch] = useState("");
     const [processing, setProcessing] = useState<"duplicate" | "move" | null>(null);
     const run = async (kind: "duplicate" | "move", action: () => void | Promise<void>) => { setProcessing(kind); try { await action(); } finally { setProcessing(null); setMoving(false); setOpen(false); } };
+    useEffect(() => { const handler = (event: Event) => { if ((event as CustomEvent<string>).detail === clientId) setOpen(true); }; window.addEventListener("crm:client-actions", handler); return () => window.removeEventListener("crm:client-actions", handler); }, [clientId]);
     return <div data-client-action-menu className={`relative ${className} ${open ? "z-[200]" : ""}`}>
         <button type="button" onClick={(event) => { event.stopPropagation(); setOpen((value) => !value); }} className={`rounded bg-white/90 p-1 text-slate-400 shadow-sm hover:text-slate-700 ${triggerClassName}`} title={`Client actions for ${clientName}`}><MoreHorizontal size={15} /></button>
         {open && <div className={`absolute top-full z-[120] mt-1 w-44 rounded-md border border-slate-200 bg-white p-1 text-left shadow-xl ${align === "left" ? "left-0" : "right-0"}`}>

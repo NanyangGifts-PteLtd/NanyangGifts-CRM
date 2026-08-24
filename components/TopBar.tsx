@@ -148,7 +148,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
         onFocus={onFocus}
         onBlur={onBlur}
         placeholder={placeholder}
-        className="w-full text-gray-900 text-xs font-semibold pl-8 pr-3 py-1.5 rounded-md border focus:outline-none focus:border-[#7BCBD5] placeholder-gray-500 bg-[#e7fdff] animated-background bg-gradient-to-r from-[#e7fdff] to-[#a3dfff]"
+        className="w-full rounded-md border bg-white py-1.5 pl-8 pr-3 text-xs font-semibold text-gray-900 placeholder-gray-500 focus:border-[#7BCBD5] focus:outline-none"
       />
       {value && onClear && (
         <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={onClear} className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 text-gray-500 hover:bg-white/70 hover:text-gray-900" title="Clear search">

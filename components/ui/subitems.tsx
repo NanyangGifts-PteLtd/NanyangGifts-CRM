@@ -1687,7 +1687,7 @@ export function SubitemsTable({
                     <tbody>
                         {subitems.map((sub) => (
                             <React.Fragment key={sub.id}>
-                                <tr data-subitem-id={sub.id} onMouseMove={(event) => { event.currentTarget.title = !canEditSubitem(sub.id) && !(event.target as HTMLElement).closest('[data-subitem-assignment-editor]') ? 'You can only edit items that are assigned to you' : ''; }} onClickCapture={(event) => {
+                                <tr data-subitem-id={sub.id} onContextMenu={(event) => { event.preventDefault(); window.dispatchEvent(new CustomEvent("crm:subitem-actions", { detail: sub.id })); }} onMouseMove={(event) => { event.currentTarget.title = !canEditSubitem(sub.id) && !(event.target as HTMLElement).closest('[data-subitem-assignment-editor]') ? 'You can only edit items that are assigned to you' : ''; }} onClickCapture={(event) => {
                                     if (canEditSubitem(sub.id)) return;
                                     const target = event.target as HTMLElement;
                                     const isEditControl = !!target.closest('button, input, textarea, select, [data-editable-cell]');
@@ -1698,7 +1698,7 @@ export function SubitemsTable({
                                     }
                                 }} className="relative group border-b border-r border-[#D0D4E4] hover:bg-blue-50/30">
                                     <td className="group relative overflow-visible border-r border-[#D0D4E4] px-2 py-1 text-center">
-                                        <SubitemActionsMenu subitemName={sub.name} targetGroups={moveTargetGroups} canEdit={canEditSubitem(sub.id)} onDuplicate={() => onDuplicateSubitemAction(sub.id)} onMove={(targetClientId) => onMoveSubitemAction(sub.id, targetClientId)} onDelete={() => onDeleteSubitem(sub.id)} />
+                                        <SubitemActionsMenu subitemId={sub.id} subitemName={sub.name} targetGroups={moveTargetGroups} canEdit={canEditSubitem(sub.id)} onDuplicate={() => onDuplicateSubitemAction(sub.id)} onMove={(targetClientId) => onMoveSubitemAction(sub.id, targetClientId)} onDelete={() => onDeleteSubitem(sub.id)} />
                                         <input
                                             data-selection-control
                                             type="checkbox"

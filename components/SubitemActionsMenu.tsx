@@ -1,14 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Copy, MoreHorizontal, MoveRight, Search, Trash2 } from "lucide-react";
 
-export function SubitemActionsMenu({ subitemName, targetGroups, canEdit, onDuplicate, onMove, onDelete }: {
-    subitemName: string; targetGroups: Array<{ name: string; clients: Array<{ id: string; name: string }> }>; canEdit: boolean;
+export function SubitemActionsMenu({ subitemId, subitemName, targetGroups, canEdit, onDuplicate, onMove, onDelete }: {
+    subitemId: string; subitemName: string; targetGroups: Array<{ name: string; clients: Array<{ id: string; name: string }> }>; canEdit: boolean;
     onDuplicate: () => void | Promise<void>; onMove: (clientId: string) => void | Promise<void>; onDelete: () => void;
 }) {
     const [open, setOpen] = useState(false); const [moving, setMoving] = useState(false); const [search, setSearch] = useState(""); const [processing, setProcessing] = useState<"duplicate" | "move" | null>(null);
     const run = async (kind: "duplicate" | "move", action: () => void | Promise<void>) => { setProcessing(kind); try { await action(); } finally { setProcessing(null); setMoving(false); setOpen(false); } };
+    useEffect(() => { const handler = (event: Event) => { if ((event as CustomEvent<string>).detail === subitemId) setOpen(true); }; window.addEventListener("crm:subitem-actions", handler); return () => window.removeEventListener("crm:subitem-actions", handler); }, [subitemId]);
     return <div data-subitem-action-menu className={`absolute -left-7 top-1/2 -translate-y-1/2 ${open ? "z-[200]" : "z-30"}`}>
         <button type="button" onClick={(event) => { event.stopPropagation(); setOpen((value) => !value); }} className="rounded bg-white/90 p-1 text-slate-400 opacity-0 shadow-sm transition-opacity hover:text-slate-700 group-hover:opacity-100" title={`Subitem actions for ${subitemName}`}><MoreHorizontal size={14} /></button>
         {open && <div className="absolute left-0 top-full z-[120] mt-1 w-44 rounded-md border border-slate-200 bg-white p-1 text-left shadow-xl">
