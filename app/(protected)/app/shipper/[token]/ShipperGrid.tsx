@@ -65,6 +65,13 @@ function formulaValue(row: ShipperRow, key: string) {
     return row[key as keyof ShipperRow];
 }
 
+function rowWithCellValue(row: ShipperRow, field: string, value: string): ShipperRow {
+    const next = { ...row, [field]: field === "cell_fills" ? JSON.parse(value) : value } as ShipperRow;
+    if (field === "qty" || field === "up") next.value = numberValue(next.qty) * numberValue(next.up);
+    if (field === "freight_cost" || field === "gst" || field === "other_fees") next.total_cost = numberValue(next.freight_cost) + numberValue(next.gst) + numberValue(next.other_fees);
+    return next;
+}
+
 function formatDmy(value: string | null | undefined) {
     if (!value) return "";
     const match = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
@@ -234,6 +241,7 @@ function RemarksCell({
 }
 
 export default function ShipperGrid({ rows, mode, token }: ShipperGridProps) {
+    const [gridRows, setGridRows] = useState(rows);
     const [selection, setSelection] = useState<{ startRow: number; startCol: number; endRow: number; endCol: number } | null>(null);
     const [dragSelecting, setDragSelecting] = useState(false);
     const [cellFills, setCellFills] = useState<Record<string, string>>({});
@@ -281,6 +289,8 @@ export default function ShipperGrid({ rows, mode, token }: ShipperGridProps) {
     async function saveCell(row: ShipperRow, field: string, value: string) {
         if (!token && !row.shipper_id) return;
 
+        setGridRows((previous) => previous.map((item) => item.id === row.id ? rowWithCellValue(item, field, value) : item));
+
         const res = await fetch("/api/shipper/save", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -306,8 +316,12 @@ export default function ShipperGrid({ rows, mode, token }: ShipperGridProps) {
     }, []);
 
     useEffect(() => {
-        setCellFills(Object.fromEntries(rows.flatMap((row) => Object.entries(row.cell_fills ?? {}).map(([column, color]) => [`${row.id}:${column}`, color]))));
+        setGridRows(rows);
     }, [rows]);
+
+    useEffect(() => {
+        setCellFills(Object.fromEntries(gridRows.flatMap((row) => Object.entries(row.cell_fills ?? {}).map(([column, color]) => [`${row.id}:${column}`, color]))));
+    }, [gridRows]);
 
     const selectionBounds = selection && {
         firstRow: Math.min(selection.startRow, selection.endRow), lastRow: Math.max(selection.startRow, selection.endRow),
@@ -326,7 +340,7 @@ export default function ShipperGrid({ rows, mode, token }: ShipperGridProps) {
             const affectedRows = new Set<string>();
             for (let rowIndex = selectionBounds.firstRow; rowIndex <= selectionBounds.lastRow; rowIndex += 1) {
                 for (let colIndex = selectionBounds.firstCol; colIndex <= selectionBounds.lastCol; colIndex += 1) {
-                    const row = rows[rowIndex];
+                    const row = gridRows[rowIndex];
                     const col = columns[colIndex];
                     if (!row || !col) continue;
                     affectedRows.add(row.id);
@@ -336,7 +350,7 @@ export default function ShipperGrid({ rows, mode, token }: ShipperGridProps) {
                 }
             }
             affectedRows.forEach((rowId) => {
-                const row = rows.find((item) => item.id === rowId);
+                const row = gridRows.find((item) => item.id === rowId);
                 if (!row) return;
                 const rowFills = Object.fromEntries(Object.entries(next).filter(([key]) => key.startsWith(`${rowId}:`)).map(([key, fill]) => [key.slice(rowId.length + 1), fill]));
                 void saveCell(row, "cell_fills", JSON.stringify(rowFills)).catch((error) => console.error("Failed to save cell fill", error));
@@ -347,7 +361,7 @@ export default function ShipperGrid({ rows, mode, token }: ShipperGridProps) {
 
     return (
         <div className="w-full overflow-auto">
-            <div className="sticky left-0 z-40 mb-1 flex min-h-10 w-fit items-center gap-1 rounded-md border border-slate-300 bg-white p-1.5 shadow-md">{selectionBounds ? <><span className="px-1 text-xs font-medium text-slate-500">Fill</span><div className="grid grid-cols-12 gap-1">{fillColors.map((color) => <button key={color} type="button" onClick={() => fillSelectedCells(color)} className="h-5 w-5 rounded border border-slate-300 transition hover:scale-110" style={{ backgroundColor: color }} title="Fill selected cells" />)}</div><button type="button" onClick={() => fillSelectedCells("")} className="ml-1 rounded border border-slate-300 px-2 py-1 text-[10px] text-slate-600 hover:bg-slate-50">Clear</button></> : <button type="button" disabled={rows.length === 0} onClick={() => setSelection({ startRow: 0, startCol: 0, endRow: 0, endCol: 0 })} className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-40" title="Select the top-left cell and choose a fill colour"><PaintBucket size={15} /> Fill colour</button>}</div>
+            <div className="sticky left-0 z-40 mb-1 flex min-h-10 w-fit items-center gap-1 rounded-md border border-slate-300 bg-white p-1.5 shadow-md">{selectionBounds ? <><span className="px-1 text-xs font-medium text-slate-500">Fill</span><div className="grid grid-cols-12 gap-1">{fillColors.map((color) => <button key={color} type="button" onClick={() => fillSelectedCells(color)} className="h-5 w-5 rounded border border-slate-300 transition hover:scale-110" style={{ backgroundColor: color }} title="Fill selected cells" />)}</div><button type="button" onClick={() => fillSelectedCells("")} className="ml-1 rounded border border-slate-300 px-2 py-1 text-[10px] text-slate-600 hover:bg-slate-50">Clear</button></> : <button type="button" disabled={gridRows.length === 0} onClick={() => setSelection({ startRow: 0, startCol: 0, endRow: 0, endCol: 0 })} className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-40" title="Select the top-left cell and choose a fill colour"><PaintBucket size={15} /> Fill colour</button>}</div>
             <div className="rounded-md border border-slate-300 bg-white shadow-sm">
                 <table className="min-w-[2400px] border-separate border-spacing-0 text-[13px] text-black">
                     <thead>
@@ -367,7 +381,7 @@ export default function ShipperGrid({ rows, mode, token }: ShipperGridProps) {
                     </thead>
 
                     <tbody>
-                        {rows.length === 0 ? (
+                        {gridRows.length === 0 ? (
                             <tr>
                                 <td
                                     colSpan={columns.length + 1}
@@ -377,7 +391,7 @@ export default function ShipperGrid({ rows, mode, token }: ShipperGridProps) {
                                 </td>
                             </tr>
                         ) : (
-                            rows.map((row, index) => (
+                            gridRows.map((row, index) => (
                                 <tr key={row.id} className="bg-white text-black align-top">
                                     <td className="sticky left-0 z-10 min-w-12 border-b border-r-2 border-slate-300 bg-slate-50 px-2 text-center text-xs text-slate-500 shadow-[2px_0_4px_rgba(15,23,42,0.10)]">{index + 1}</td>
                                     {columns.map((col, colIndex) => {
