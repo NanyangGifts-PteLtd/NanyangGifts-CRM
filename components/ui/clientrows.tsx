@@ -22,6 +22,9 @@ type AttachmentItem = {
     name: string;
     url: string;
     mimeType?: string;
+    actorName?: string;
+    createdAt?: string;
+    createdThrough?: string;
 };
 
 export type ClientRowProps = {
@@ -233,7 +236,11 @@ export function ClientRow({
     const [attachmentLinkDialog, setAttachmentLinkDialog] = useState<string | null>(null);
     const [attachmentPreview, setAttachmentPreview] = useState<string | null>(null);
     const [showEstimateDialog, setShowEstimateDialog] = useState(false);
+    const [estimateMode, setEstimateMode] = useState<"choice" | "quickbooks" | "sample">("choice");
     const [estimateResult, setEstimateResult] = useState<{ estimateId?: string | null; docNumber?: string | null } | null>(null);
+    const [sampleEstimate, setSampleEstimate] = useState<{ filename: string; url: string } | null>(null);
+    const [isGeneratingSample, setIsGeneratingSample] = useState(false);
+    const [sampleEstimateError, setSampleEstimateError] = useState<string | null>(null);
     const { handleGenerateEstimate, isGeneratingEstimate, estimateError, resetEstimateState } = useGenerateEstimate();
     const estimateEligibleSubitems = client.subitems.filter((subitem) => ["Quoted", "Shortlisted", "Awarded"].includes(subitem.status?.trim()));
     const generateEstimate = async () => {
@@ -243,6 +250,20 @@ export function ClientRow({
         } catch {
             // The hook already retains the error for the result state in this dialog.
         }
+    };
+    const generateSampleEstimate = async () => {
+        setIsGeneratingSample(true); setSampleEstimateError(null);
+        try {
+            const response = await fetch("/api/estimates/sample", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ clientId: client.id }) });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result?.error || "Could not generate sample estimate");
+            const attachment: AttachmentItem = { id: crypto.randomUUID(), kind: "file", name: result.filename, url: result.url, mimeType: "application/pdf", actorName: result.createdBy, createdAt: result.createdAt, createdThrough: "Created through CRM app" };
+            let current: AttachmentItem[] = [];
+            try { const parsed = JSON.parse(client.customFields?.filesMiscellaneous ?? "[]"); if (Array.isArray(parsed)) current = parsed; } catch {}
+            await updateClientCustomField(client.id, "filesMiscellaneous", JSON.stringify([...current, attachment]));
+            setSampleEstimate({ filename: result.filename, url: result.url });
+        } catch (error: any) { setSampleEstimateError(error?.message || "Could not generate sample estimate"); }
+        finally { setIsGeneratingSample(false); }
     };
 
     useEffect(() => {
@@ -501,17 +522,17 @@ export function ClientRow({
         >
             <style>{Array.from(hiddenColumnKeys).filter((key) => key.startsWith('client:')).map((key) => `[data-client-column="${key.slice(7)}"]{display:none!important}`).join('')}</style>
             {permissionNotice && <div role="alert" className="fixed z-[10000] rounded-md bg-slate-800 px-3 py-2 text-xs font-medium text-white shadow-xl" style={permissionNotice}>You can only edit items that are assigned to you</div>}
-            <AlertDialog open={showEstimateDialog} onOpenChange={(open) => { setShowEstimateDialog(open); if (!open) { setEstimateResult(null); resetEstimateState(); } }}>
+            <AlertDialog open={showEstimateDialog} onOpenChange={(open) => { setShowEstimateDialog(open); if (!open) { setEstimateResult(null); setSampleEstimate(null); setSampleEstimateError(null); setEstimateMode("choice"); resetEstimateState(); } }}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
-                        <AlertDialogTitle>{estimateResult ? "QuickBooks estimate created" : estimateError ? "Could not create QuickBooks estimate" : "Generate QuickBooks estimate?"}</AlertDialogTitle>
+                        <AlertDialogTitle>{estimateMode === "choice" ? "Generate estimate" : estimateMode === "sample" ? sampleEstimate ? "Sample estimate created" : sampleEstimateError ? "Could not create sample estimate" : "Generate sample estimate?" : estimateResult ? "QuickBooks estimate created" : estimateError ? "Could not create QuickBooks estimate" : "Generate QuickBooks estimate?"}</AlertDialogTitle>
                         <AlertDialogDescription>
-                            {estimateResult ? <>An estimate has been created for <strong>{client.company || client.name}</strong>{estimateResult.docNumber ? <> with document number <strong>{estimateResult.docNumber}</strong></> : ""}.</> : estimateError ? estimateError : <>This will find or create the QuickBooks customer for <strong>{client.company || "this client"}</strong> and create an estimate using the {estimateEligibleSubitems.length} eligible subitem{estimateEligibleSubitems.length === 1 ? "" : "s"}.</>}
+                            {estimateMode === "choice" ? "Choose whether to create a PDF preview or send an estimate to QuickBooks." : estimateMode === "sample" ? sampleEstimate ? <>The PDF sample estimate was saved under this client’s Miscellaneous files.</> : sampleEstimateError ? sampleEstimateError : <>This preview uses the same eligible subitems but does not create or change anything in QuickBooks.</> : estimateResult ? <>An estimate has been created for <strong>{client.company || client.name}</strong>{estimateResult.docNumber ? <> with document number <strong>{estimateResult.docNumber}</strong></> : ""}.</> : estimateError ? estimateError : <>This will find or create the QuickBooks customer for <strong>{client.company || "this client"}</strong> and create an estimate using the {estimateEligibleSubitems.length} eligible subitem{estimateEligibleSubitems.length === 1 ? "" : "s"}.</>}
                         </AlertDialogDescription>
                     </AlertDialogHeader>
-                    {!estimateResult && !estimateError && <div className="rounded-md bg-slate-50 p-3 text-xs text-slate-600"><p className="font-medium text-slate-700">Included subitems</p><ul className="mt-1 list-disc pl-4">{estimateEligibleSubitems.map((subitem) => <li key={subitem.id}>{subitem.name || "Unnamed subitem"} — {subitem.status}</li>)}</ul>{!client.company.trim() && <p className="mt-2 text-red-600">A Company name is required before generating an estimate.</p>}{!estimateEligibleSubitems.length && <p className="mt-2 text-red-600">At least one subitem must be Quoted, Shortlisted, or Awarded.</p>}</div>}
+                    {estimateMode === "choice" ? <div className="grid gap-3 sm:grid-cols-2"><button type="button" onClick={() => setEstimateMode("sample")} className="rounded-xl border-2 border-sky-200 bg-sky-50 p-5 text-left hover:border-sky-400"><strong className="block text-base text-sky-800">Generate sample estimate</strong><span className="mt-1 block text-xs text-slate-600">Create and save a PDF preview. Nothing is sent to QuickBooks.</span></button><button type="button" onClick={() => setEstimateMode("quickbooks")} className="rounded-xl border-2 border-emerald-200 bg-emerald-50 p-5 text-left hover:border-emerald-400"><strong className="block text-base text-emerald-800">Generate QuickBooks estimate</strong><span className="mt-1 block text-xs text-slate-600">Create the customer/items if needed, then send the estimate to QuickBooks.</span></button></div> : !estimateResult && !estimateError && !sampleEstimate && !sampleEstimateError && <div className="rounded-md bg-slate-50 p-3 text-xs text-slate-600"><p className="font-medium text-slate-700">Included subitems</p><ul className="mt-1 list-disc pl-4">{estimateEligibleSubitems.map((subitem) => <li key={subitem.id}>{subitem.name || "Unnamed subitem"} — {subitem.status}</li>)}</ul>{!client.company.trim() && <p className="mt-2 text-red-600">A Company name is required before generating an estimate.</p>}{!estimateEligibleSubitems.length && <p className="mt-2 text-red-600">At least one subitem must be Quoted, Shortlisted, or Awarded.</p>}</div>}
                     <AlertDialogFooter>
-                        {estimateResult || estimateError ? <AlertDialogAction onClick={() => setShowEstimateDialog(false)}>Close</AlertDialogAction> : <><AlertDialogCancel disabled={isGeneratingEstimate}>Cancel</AlertDialogCancel><AlertDialogAction disabled={isGeneratingEstimate || !client.company.trim() || !estimateEligibleSubitems.length} onClick={(event) => { event.preventDefault(); void generateEstimate(); }}>{isGeneratingEstimate ? "Generating…" : "Generate estimate"}</AlertDialogAction></>}
+                        {estimateMode === "choice" ? <AlertDialogCancel>Cancel</AlertDialogCancel> : estimateMode === "sample" ? sampleEstimate || sampleEstimateError ? <><AlertDialogAction onClick={() => setShowEstimateDialog(false)}>Close</AlertDialogAction>{sampleEstimate && <a href={sampleEstimate.url} target="_blank" rel="noreferrer" className="inline-flex items-center justify-center rounded-md bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-700">Open PDF</a>}</> : <><AlertDialogCancel disabled={isGeneratingSample}>Cancel</AlertDialogCancel><AlertDialogAction disabled={isGeneratingSample || !client.company.trim() || !estimateEligibleSubitems.length} onClick={(event) => { event.preventDefault(); void generateSampleEstimate(); }}>{isGeneratingSample ? "Generating…" : "Generate sample PDF"}</AlertDialogAction></> : estimateResult || estimateError ? <AlertDialogAction onClick={() => setShowEstimateDialog(false)}>Close</AlertDialogAction> : <><AlertDialogCancel disabled={isGeneratingEstimate}>Cancel</AlertDialogCancel><AlertDialogAction disabled={isGeneratingEstimate || !client.company.trim() || !estimateEligibleSubitems.length} onClick={(event) => { event.preventDefault(); void generateEstimate(); }}>{isGeneratingEstimate ? "Generating…" : "Generate estimate"}</AlertDialogAction></>}
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
@@ -724,15 +745,15 @@ export function ClientRow({
                                 <Tooltip.Trigger asChild>
                                     <button
                                         type="button"
-                                        onClick={() => { setEstimateResult(null); resetEstimateState(); setShowEstimateDialog(true); }}
+                                        onClick={() => { setEstimateResult(null); setSampleEstimate(null); setSampleEstimateError(null); setEstimateMode("choice"); resetEstimateState(); setShowEstimateDialog(true); }}
                                         className="px-2 py-2 text-[10px] font-medium text-teal-500"
-                                        aria-label="Generate QuickBooks estimate"
+                                        aria-label="Generate sample estimate or QuickBooks estimate"
                                     >
                                         <ReceiptText size={15} color="#7BCBD5" className="transition transform active:scale-150 duration-200" />
                                     </button>
                                 </Tooltip.Trigger>
                                 <Tooltip.Portal>
-                                    <Tooltip.Content className="TooltipContent">Generate estimate<Tooltip.Arrow className="TooltipArrow" /></Tooltip.Content>
+                                    <Tooltip.Content className="TooltipContent">Generate sample / QuickBooks estimate<Tooltip.Arrow className="TooltipArrow" /></Tooltip.Content>
 
                                 </Tooltip.Portal>
                             </Tooltip.Root>

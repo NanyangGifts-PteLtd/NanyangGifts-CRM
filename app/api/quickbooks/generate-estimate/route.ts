@@ -8,6 +8,11 @@ function esc(value: string) {
     return value.replace(/'/g, "\\'");
 }
 
+function numberValue(value: unknown) {
+    const parsed = Number(String(value ?? "").replace(/,/g, "").trim());
+    return Number.isFinite(parsed) ? parsed : 0;
+}
+
 async function getOrCreateCustomer(client: any) {
     const name = (client.company ?? '').trim();
     if (!name) throw new Error('Client name missing');
@@ -102,9 +107,10 @@ export async function POST(req: NextRequest) {
             const subitem = subitems[i];
             const item = await getOrCreateItem(subitem);
 
-            const qty = Number(subitem.qty || 1);
-            const unitPrice = Number(subitem.price || subitem.up || 0);
-            const amount = (Number.isFinite(qty) ? qty : 1) * (Number.isFinite(unitPrice) ? unitPrice : 0);
+            // `price` on the CRM board is the line total (Qty × U.P.), not the unit price.
+            const qty = numberValue(subitem.qty) || 1;
+            const unitPrice = numberValue(subitem.up) || (qty > 0 ? numberValue(subitem.price) / qty : 0);
+            const amount = qty * unitPrice;
             const localOverseas = (subitem.local_overseas ?? '').trim().toLowerCase();
             const taxCodeValue =
                 localOverseas === 'overseas'
@@ -121,8 +127,8 @@ export async function POST(req: NextRequest) {
                         value: item.Id,
                         name: item.Name,
                     },
-                    Qty: Number.isFinite(qty) ? qty : 1,
-                    UnitPrice: Number.isFinite(unitPrice) ? unitPrice : 0,
+                    Qty: qty,
+                    UnitPrice: unitPrice,
                     TaxCodeRef: {
                         value: taxCodeValue,
                     }
