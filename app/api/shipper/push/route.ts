@@ -58,6 +58,8 @@ function getSeaOrAir(shipperLabel: string | null | undefined) {
     const label = shipperLabel?.toUpperCase() ?? "";
     if (label.includes("SEA")) return "海运";
     if (label.includes("AIR")) return "空运";
+    // A5 汇荣 is generally AIR, so for now we hardcode it to AIR
+    if (label.includes("A5 汇荣")) return "空运";
     return null;
 }
 
