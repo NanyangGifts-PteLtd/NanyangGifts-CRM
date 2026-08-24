@@ -195,7 +195,7 @@ export default function Page() {
       case 'roundrobin':
         return (
           <div className="flex h-full items-center justify-center text-sm text-gray-500">
-            <RoundRobinAdminPanel />
+            <RoundRobinAdminPanel profiles={profiles} currentUserRole={currentUserRole} />
           </div>
         );
 

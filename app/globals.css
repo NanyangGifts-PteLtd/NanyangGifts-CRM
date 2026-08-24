@@ -261,3 +261,16 @@
 	margin-left: 0 !important;
 	margin-right: 0.25rem !important;
 }
+
+/* Round Robin cards retain a clear, usable drop target after their final user. */
+section.min-h-\[420px\]::after {
+	content: "Drop here to place at the end";
+	display: block;
+	margin-top: 0.75rem;
+	border-top: 2px dashed #cbd5e1;
+	padding-top: 0.5rem;
+	color: #94a3b8;
+	font-size: 0.75rem;
+	text-align: center;
+	pointer-events: none;
+}

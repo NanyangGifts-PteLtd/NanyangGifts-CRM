@@ -36,14 +36,25 @@ export type RoundRobinQueueRow = {
     position: number;
     is_active: boolean;
     is_current: boolean;
+    list_name?: 'sales' | 'whatsapp' | 'out';
+}
+
+export async function saveSalesRoundRobinLayout(rows: Array<{ user_id: string; list_name: 'sales' | 'whatsapp' | 'out'; position: number }>) {
+    const { error } = await supabase.rpc('save_sales_round_robin_layout', { layout: rows });
+    if (error) throw error;
 }
 
 export async function getSalesRoundRobinQueue() {
     const supabase = createClient();
-    const { data, error } = await supabase.rpc('get_sales_round_robin_queue');
+    const [{ data: queue, error }, { data: layout, error: layoutError }] = await Promise.all([
+        supabase.rpc('get_sales_round_robin_queue'),
+        supabase.from('sales_round_robin_pool').select('user_id, position, is_active, list_name').order('position'),
+    ]);
 
     if (error) throw error;
-    return (data ?? []) as RoundRobinQueueRow[];
+    if (layoutError) throw layoutError;
+    const queueById = new Map((queue ?? []).map((row: any) => [row.user_id, row]));
+    return (layout ?? []).map((row: any) => ({ ...row, ...(queueById.get(row.user_id) ?? {}), list_name: row.list_name })) as RoundRobinQueueRow[];
 }
 
 export async function getNextSalesAssignee() {

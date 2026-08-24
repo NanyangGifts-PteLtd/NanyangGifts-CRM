@@ -1,117 +1,21 @@
 'use client';
-
-import { useEffect, useState } from 'react';
-import {
-    getSalesRoundRobinQueue,
-    setSalesRoundRobinActive,
-    swapSalesRoundRobinFunctions,
-    type RoundRobinQueueRow,
-} from '@/lib/crm';
-
-export function RoundRobinAdminPanel() {
-    const [rows, setRows] = useState<RoundRobinQueueRow[]>([]);
-    const [loading, setLoading] = useState(true);
-
-    async function load() {
-        setLoading(true);
-        try {
-            const data = await getSalesRoundRobinQueue();
-            setRows(data);
-        } finally {
-            setLoading(false);
-        }
-    }
-
-    useEffect(() => {
-        void load();
-    }, []);
-
-    async function moveUp(index: number) {
-        if (index <= 0) return;
-        const current = rows[index];
-        const previous = rows[index - 1];
-        await swapSalesRoundRobinFunctions(current.user_id, previous.user_id);
-        await load();
-    }
-
-    async function moveDown(index: number) {
-        if (index >= rows.length - 1) return;
-        const current = rows[index];
-        const next = rows[index + 1];
-        await swapSalesRoundRobinFunctions(current.user_id, next.user_id);
-        await load();
-    }
-
-    async function toggleActive(row: RoundRobinQueueRow) {
-        await setSalesRoundRobinActive(row.user_id, !row.is_active);
-        await load();
-    }
-
-    if (loading) {
-        return <div className="text-m text-gray-500">Loading round robin queue...</div>;
-    }
-
-    return (
-        <div className="rounded-xl border border-gray-200 bg-white p-4">
-            <div className="mb-4">
-                <h2 className="text-sm font-semibold text-gray-900">Sales round robin</h2>
-                <p className="text-xs text-gray-500">
-                    Current order and assignment pool:
-                </p>
-            </div>
-
-            <div className="space-y-2">
-                {rows.map((row, index) => (
-                    <div
-                        key={row.user_id}
-                        className="flex items-center justify-between rounded-lg border border-gray-100 px-3 py-2"
-                    >
-                        <div>
-                            <div className="flex items-center gap-2">
-                                <span className="text-sm font-medium text-gray-800">
-                                    {row.full_name || row.email || 'Unknown user'}
-                                </span>
-                                {row.is_current && (
-                                    <span className="rounded-full bg-cyan-100 px-2 py-0.5 text-[10px] font-semibold text-cyan-700">
-                                        Current pointer
-                                    </span>
-                                )}
-                                {!row.is_active && (
-                                    <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold text-gray-500">
-                                        Inactive
-                                    </span>
-                                )}
-                            </div>
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                            <button
-                                type="button"
-                                onClick={() => void moveUp(index)}
-                                className="rounded-md border px-2 py-1 text-xs hover:bg-gray-50"
-                            >
-                                Up
-                            </button>
-
-                            <button
-                                type="button"
-                                onClick={() => void moveDown(index)}
-                                className="rounded-md border px-2 py-1 text-xs hover:bg-gray-50"
-                            >
-                                Down
-                            </button>
-
-                            <button
-                                type="button"
-                                onClick={() => void toggleActive(row)}
-                                className="rounded-md border px-2 py-1 text-xs hover:bg-gray-50"
-                            >
-                                {row.is_active ? 'Remove from pool' : 'Add back'}
-                            </button>
-                        </div>
-                    </div>
-                ))}
-            </div>
-        </div>
-    );
+import { useEffect, useMemo, useState } from 'react';
+import { ChevronDown, ChevronRight, ChevronUp, GripVertical } from 'lucide-react';
+import { toast } from 'sonner';
+import type { Profile } from '@/app/types';
+import { getSalesRoundRobinQueue, saveSalesRoundRobinLayout, type RoundRobinQueueRow } from '@/lib/crm';
+type ListName = 'sales' | 'whatsapp' | 'out';
+const lists: Array<{ id: ListName; title: string; help: string }> = [{ id: 'sales', title: 'Sales round robin', help: 'Used for automatic lead assignment.' }, { id: 'whatsapp', title: 'Whatsapp', help: 'Available for WhatsApp allocation.' }, { id: 'out', title: 'Out of Rotation', help: 'Not assigned by the sales round robin.' }];
+export function RoundRobinAdminPanel({ profiles, currentUserRole }: { profiles: Profile[]; currentUserRole?: string | null }) {
+ const [rows,setRows]=useState<RoundRobinQueueRow[]>([]),[loading,setLoading]=useState(true),[dragged,setDragged]=useState<string|null>(null),[over,setOver]=useState<{list:ListName;id?:string}|null>(null),[pointer,setPointer]=useState(0);
+ const editable=['director','admin','dev'].includes((currentUserRole??'').toLowerCase());
+ const users=useMemo(()=>profiles.filter(p=>p.role?.toLowerCase()==='sales').map((p,i)=>({user_id:p.id,full_name:p.full_name,email:p.email,position:i+10000,is_active:false,is_current:false,list_name:'out' as ListName,...rows.find(r=>r.user_id===p.id)})).sort((a,b)=>a.position-b.position),[profiles,rows]);
+ const load=async()=>{setLoading(true);try{const next=await getSalesRoundRobinQueue();setRows(next);const current=next.filter(r=>r.list_name==='sales').findIndex(r=>r.is_current);if(current>=0)setPointer(current);}finally{setLoading(false)}};
+ useEffect(()=>{void load()},[]);
+ const save=(next:RoundRobinQueueRow[])=>{const ordered=next.map((r,position)=>({...r,position}));setRows(ordered);void saveSalesRoundRobinLayout(ordered.map(r=>({user_id:r.user_id,list_name:(r.list_name??'out') as ListName,position:r.position}))).catch(()=>void load())};
+ const place=(list:ListName,before?:string)=>{if(!dragged)return;const moved=users.find(u=>u.user_id===dragged);if(!moved)return;const sales=users.filter(u=>u.list_name==='sales');if(moved.list_name==='sales'&&list!=='sales'&&sales.length===1){toast.warning('Sales round robin needs a participant',{description:'Keep at least one user in Sales round robin.'});return}const next=users.filter(u=>u.user_id!==dragged);const targetList=next.filter(u=>u.list_name===list);const isStaleEndTarget=moved.list_name===list&&before===targetList.at(-1)?.user_id;const at=isStaleEndTarget?next.length:(before?next.findIndex(u=>u.user_id===before):next.length);next.splice(at<0?next.length:at,0,{...moved,list_name:list});setPointer(p=>Math.max(0,Math.min(p,next.filter(u=>u.list_name==='sales').length-1)));save(next);setDragged(null);setOver(null)};
+ const nudge=(row:RoundRobinQueueRow,d:-1|1)=>{const same=users.filter(u=>u.list_name===row.list_name),i=same.findIndex(u=>u.user_id===row.user_id),target=same[i+d];if(!target)return;const next=[...users],a=next.findIndex(u=>u.user_id===row.user_id),b=next.findIndex(u=>u.user_id===target.user_id);[next[a],next[b]]=[next[b],next[a]];save(next)};
+ if(!editable)return <div className="rounded-xl border border-gray-200 bg-white p-6 text-sm text-gray-500">Only directors, admins, and developers can edit the Round Robin.</div>;
+ if(loading)return <div className="text-sm text-gray-500">Loading round robin lists...</div>;
+ return <div className="grid gap-5 lg:grid-cols-3">{lists.map(list=>{const entries=users.filter(u=>u.list_name===list.id);return <section key={list.id} onDragOver={e=>e.preventDefault()} onDrop={()=>place(list.id, over?.list===list.id ? over.id : undefined)} className="min-h-[420px] rounded-2xl border border-gray-200 bg-white p-5 shadow-sm"><h2 className="text-base font-semibold text-gray-900">{list.title}</h2><p className="mb-5 text-sm text-gray-500">{list.help}</p><div className="space-y-2">{entries.map((row,index)=><div key={row.user_id} className="relative" onDragOver={e=>{e.preventDefault();setOver({list:list.id,id:row.user_id})}} onDrop={e=>{e.stopPropagation();place(list.id,row.user_id)}}>{over?.list===list.id&&over.id===row.user_id&&<div className="absolute -top-1 left-0 right-0 h-0.5 bg-sky-500"/>}{list.id==='sales'&&index===pointer&&<div className="absolute -left-8 top-1/2 -translate-y-1/2 text-sky-600" title="Next sales assignment"><ChevronRight size={26} fill="currentColor"/></div>}<div draggable onDragStart={()=>setDragged(row.user_id)} className="flex cursor-grab items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-3 text-sm text-gray-800 shadow-sm"><GripVertical size={16} className="text-gray-400"/><span className="min-w-0 flex-1">{row.full_name||row.email||'Unknown user'}</span><div className="flex gap-1"><button disabled={index===0} onClick={()=>nudge(row,-1)} className="rounded border p-1 disabled:opacity-30"><ChevronUp size={14}/></button><button disabled={index===entries.length-1} onClick={()=>nudge(row,1)} className="rounded border p-1 disabled:opacity-30"><ChevronDown size={14}/></button></div></div></div>)}{!entries.length&&<div onDragOver={e=>{e.preventDefault();setOver({list:list.id})}} className="rounded-lg border-2 border-dashed border-gray-200 p-8 text-center text-sm text-gray-400">Drop sales users here</div>}</div></section>})}</div>;
 }
