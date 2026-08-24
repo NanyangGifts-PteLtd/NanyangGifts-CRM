@@ -6,6 +6,7 @@ import type { ActivityEntry, Client, Profile } from "@/app/types";
 import { AssigneeMultiSelect, gradientForId } from "./ui/assignee-multiselect";
 import { StatusBadge, type BadgeOption } from "./ui/statusbadge";
 import { EditableCell } from "./ui/editablecell";
+import { ClientActionsMenu } from "./ClientActionsMenu";
 
 type Attachment = { id: string; name: string; url: string; kind?: string; actorName?: string; createdAt?: string; createdThrough?: string };
 type Tab = "overview" | "files" | "activity" | "updates";
@@ -31,9 +32,10 @@ function dateInputValue(value: string | undefined) {
   return Number.isNaN(parsed.getTime()) ? value : parsed.toISOString().slice(0, 10);
 }
 
-export function ClientDetailView({ client, clients, profiles, assigneeIds, pmIds, canEdit, currentUserId, currentUserRole, onClose, onNavigate, onUpdate, onChangeAssignees, onUndo, statusOptions, replyStatusOptions, channelOptions, importanceOptions, groupNamesById }: {
+export function ClientDetailView({ client, clients, profiles, assigneeIds, pmIds, canEdit, currentUserId, currentUserRole, groups, onDuplicate, onMove, onDelete, onClose, onNavigate, onUpdate, onChangeAssignees, onUndo, statusOptions, replyStatusOptions, channelOptions, importanceOptions, groupNamesById }: {
   client: Client; clients: Client[]; profiles: Profile[]; assigneeIds: string[]; pmIds: string[]; canEdit: boolean;
   currentUserId?: string | null; currentUserRole?: string | null;
+  groups: Array<{ id: string; name: string }>; onDuplicate: () => void | Promise<void>; onMove: (groupId: string) => void | Promise<void>; onDelete: () => void;
   onClose: () => void; onNavigate: (client: Client) => void; onUpdate: (updates: Partial<Client>) => void; onChangeAssignees: (ids: string[]) => void;
   onUndo: (entry: ActivityEntry) => void | Promise<void>;
   statusOptions: BadgeOption[]; replyStatusOptions: BadgeOption[]; channelOptions: BadgeOption[]; importanceOptions: BadgeOption[];
@@ -115,7 +117,7 @@ export function ClientDetailView({ client, clients, profiles, assigneeIds, pmIds
         <div className="flex -space-x-2">{people.map((profile) => <span key={profile.id} title={profile.full_name || profile.email || "User"} className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-white text-[10px] font-bold text-white" style={{ background: gradientForId(profile.id) }}>{(profile.full_name || profile.email || "U").slice(0, 2).toUpperCase()}</span>)}</div>
         <button onClick={() => index > 0 && onNavigate(clients[index - 1])} disabled={index <= 0} className="rounded border p-2 disabled:opacity-30" title="Previous client"><ChevronLeft size={17} /></button>
         <button onClick={() => index < clients.length - 1 && onNavigate(clients[index + 1])} disabled={index >= clients.length - 1} className="rounded border p-2 disabled:opacity-30" title="Next client"><ChevronRight size={17} /></button>
-        <button className="rounded border p-2" title="More actions"><MoreHorizontal size={17} /></button><button onClick={onClose} className="rounded border p-2" title="Close"><X size={17} /></button>
+        <ClientActionsMenu clientName={client.name} groups={groups} canEdit={canEdit} onDuplicate={onDuplicate} onMove={onMove} onDelete={onDelete} className="shrink-0" /><button onClick={onClose} className="rounded border p-2" title="Close"><X size={17} /></button>
       </header>
       <nav className="flex gap-6 border-b border-slate-200 px-6">{([['overview', 'Overview'], ['updates', 'Updates'], ['files', 'Files'], ['activity', 'Activity Log']] as const).map(([key, label]) => <button key={key} onClick={() => setTab(key)} className={`border-b-2 py-3 text-sm ${tab === key ? "border-sky-500 text-sky-600" : "border-transparent text-slate-500"}`}>{label}</button>)}</nav>
       {tab === "overview" && <main className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-auto bg-slate-50 p-4 lg:grid-cols-[1fr_720px]"><div className="flex min-h-80 items-center justify-center rounded-xl border border-slate-200 bg-white text-center text-slate-400"><div><h2 className="mb-2 text-lg font-medium text-slate-600">Emails &amp; Activities</h2><p>Activity timeline placeholder</p></div></div><aside className="rounded-xl border border-slate-200 bg-white p-7"><h2 className="mb-6 text-lg font-semibold text-slate-800">Client details</h2><div className="grid grid-cols-2 gap-x-4 gap-y-5">

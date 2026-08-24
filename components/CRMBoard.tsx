@@ -2039,6 +2039,22 @@ export function CRMBoard({ clients,
     }
   }, [canEditClientRecord, reloadClients, selectedIds, setClientAssignees, setSubitemAssignees, showAssignmentPermissionError]);
 
+  const duplicateClientAction = useCallback(async (clientId: string) => {
+    if (!canEditClientRecord(clientId)) { showAssignmentPermissionError(); return; }
+    try {
+      await duplicateClientRow(clientId);
+      await reloadClients();
+      const [nextClientAssignees, nextSubitemAssignees] = await Promise.all([fetchClientAssigneeMap(), fetchAllSubitemAssignees()]);
+      setClientAssignees(nextClientAssignees); setSubitemAssignees(nextSubitemAssignees);
+      toast.success("Client duplicated");
+    } catch (error: any) { toast.error("Client could not be duplicated", { description: error?.message || "Please try again." }); }
+  }, [canEditClientRecord, reloadClients, setClientAssignees, setSubitemAssignees, showAssignmentPermissionError]);
+
+  const moveClientAction = useCallback(async (clientId: string, targetGroupId: string) => {
+    if (!canEditClientRecord(clientId)) { showAssignmentPermissionError(); return; }
+    await updateClient(clientId, { groupId: targetGroupId });
+  }, [canEditClientRecord, showAssignmentPermissionError, updateClient]);
+
   const moveSelectedClients = useCallback(async (targetGroupId: string) => {
     if ([...selectedIds].some((clientId) => !canEditClientRecord(clientId))) { showAssignmentPermissionError(); return; }
     setIsMovingClients(true);
@@ -2139,12 +2155,12 @@ export function CRMBoard({ clients,
       {detailClientId && (() => {
         const detailClient = clients.find((client) => client.id === detailClientId);
         if (!detailClient) return null;
-        return <ClientDetailView key={detailClient.id} client={detailClient} clients={groupedClients.flatMap(({ clients: groupClients }) => groupClients)} profiles={profiles} assigneeIds={clientAssignees[detailClient.id] ?? []} pmIds={clientPmAssigneeIds(detailClient)} canEdit={canEditClientRecord(detailClient.id)} currentUserId={currentUserId} currentUserRole={currentUserRole} onClose={() => setDetailClientId(null)} onNavigate={(client) => setDetailClientId(client.id)} onUpdate={(updates) => updateClient(detailClient.id, updates)} onChangeAssignees={(ids) => handleClientAssigneesChange(detailClient.id, ids)} onUndo={undoActivity} statusOptions={clientStatusEntries} replyStatusOptions={replyStatusEntries} channelOptions={channelEntries} importanceOptions={importanceEntries} groupNamesById={Object.fromEntries(groups.map((group) => [group.id, group.name]))} />;
+        return <ClientDetailView key={detailClient.id} client={detailClient} clients={groupedClients.flatMap(({ clients: groupClients }) => groupClients)} profiles={profiles} assigneeIds={clientAssignees[detailClient.id] ?? []} pmIds={clientPmAssigneeIds(detailClient)} canEdit={canEditClientRecord(detailClient.id)} currentUserId={currentUserId} currentUserRole={currentUserRole} groups={groups} onDuplicate={() => duplicateClientAction(detailClient.id)} onMove={(groupId) => moveClientAction(detailClient.id, groupId)} onDelete={() => { setDetailClientId(null); setPendingDeleteClientId(detailClient.id); }} onClose={() => setDetailClientId(null)} onNavigate={(client) => setDetailClientId(client.id)} onUpdate={(updates) => updateClient(detailClient.id, updates)} onChangeAssignees={(ids) => handleClientAssigneesChange(detailClient.id, ids)} onUndo={undoActivity} statusOptions={clientStatusEntries} replyStatusOptions={replyStatusEntries} channelOptions={channelEntries} importanceOptions={importanceEntries} groupNamesById={Object.fromEntries(groups.map((group) => [group.id, group.name]))} />;
       })()}
       {selectedIds.size > 0 && (
         <div className="fixed bottom-8 left-1/2 z-[100] flex min-h-16 w-[min(900px,calc(100vw-2rem))] -translate-x-1/2 items-center gap-5 rounded-2xl border border-slate-200 bg-white px-6 py-4 shadow-2xl">
           <div className="whitespace-nowrap text-base font-medium text-slate-800">{selectedIds.size} Client{selectedIds.size === 1 ? '' : 's'} selected</div>
-          <button type="button" disabled={isDuplicatingClients} onClick={() => void duplicateSelectedClients()} className="flex items-center gap-1.5 rounded px-3 py-2 text-sm text-slate-500 hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60"><Copy size={17} /> {isDuplicatingClients ? 'Duplicating...' : 'Duplicate'}</button>
+          <button type="button" disabled={isDuplicatingClients || !canEditSelectedClients} title={!canEditSelectedClients ? 'You can only edit items that are assigned to you' : 'Duplicate selected clients'} onClick={() => void duplicateSelectedClients()} className="flex items-center gap-1.5 rounded px-3 py-2 text-sm text-slate-500 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"><Copy size={17} /> {isDuplicatingClients ? 'Duplicating...' : 'Duplicate'}</button>
           <div className="relative">
             <button type="button" disabled={isMovingClients || !canEditSelectedClients} onClick={() => setShowClientMoveMenu((open) => !open)} title={!canEditSelectedClients ? 'You can only edit items that are assigned to you' : 'Move selected clients'} className="flex items-center gap-1.5 rounded px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"><MoveRight size={17} /> {isMovingClients ? 'Moving...' : 'Move'}</button>
             {showClientMoveMenu && !isMovingClients && <div className="absolute bottom-full left-0 mb-2 max-h-96 w-72 overflow-y-auto rounded-xl border border-slate-200 bg-white p-3 shadow-2xl">
@@ -2154,7 +2170,7 @@ export function CRMBoard({ clients,
               {groups.filter((group) => group.name.toLowerCase().includes(clientMoveSearch.toLowerCase())).length === 0 && <div className="px-2 py-5 text-center text-sm text-slate-400">No groups found.</div>}
             </div>}
           </div>
-          <button type="button" disabled={!canEditSelectedClients} onClick={() => setPendingDeleteSelected(true)} title={!canEditSelectedClients ? 'You can only delete items that are assigned to you' : 'Delete selected clients'} className="flex items-center gap-1.5 rounded px-3 py-2 text-sm text-red-500 hover:bg-red-50 disabled:cursor-not-allowed disabled:text-slate-300"><Trash2 size={17} /> Delete</button>
+          <button type="button" disabled={!canEditSelectedClients} onClick={() => setPendingDeleteSelected(true)} title={!canEditSelectedClients ? 'You can only delete items that are assigned to you' : 'Delete selected clients'} className="flex items-center gap-1.5 rounded px-3 py-2 text-sm text-red-500 hover:bg-red-50 disabled:cursor-not-allowed disabled:text-slate-300 disabled:hover:bg-transparent"><Trash2 size={17} /> Delete</button>
           <div className="ml-auto whitespace-nowrap text-center text-sm text-slate-600"><div>Total Price</div><div className="font-medium text-slate-900">{selectedClientTotals.totalPrice.toFixed(2)}</div></div>
           <div className="whitespace-nowrap text-center text-sm text-slate-600"><div>Total Markup</div><div className={`font-medium ${selectedClientTotals.totalMarkup >= 0 ? 'text-green-600' : 'text-red-500'}`}>{selectedClientTotals.totalMarkup.toFixed(2)}</div></div>
           <button type="button" onClick={() => setSelectedIds(new Set())} className="rounded p-1 text-slate-400 hover:bg-slate-50 hover:text-slate-700" title="Clear selection"><X size={21} /></button>
@@ -2822,6 +2838,9 @@ export function CRMBoard({ clients,
                   currentUserId={currentUserId}
                   onUndoActivity={undoActivity}
                   groupNamesById={Object.fromEntries(groups.map((group) => [group.id, group.name]))}
+                  groups={groups}
+                  onDuplicateClient={() => duplicateClientAction(client.id)}
+                  onMoveClient={(groupId) => moveClientAction(client.id, groupId)}
                 />
               ))}
 

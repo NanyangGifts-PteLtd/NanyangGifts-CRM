@@ -14,6 +14,7 @@ import { Tooltip } from "radix-ui";
 import type { CustomColumn } from '@/lib/custom-columns';
 import { calculateSubitemFinancials } from '@/lib/subitem-calculations';
 import { useGenerateEstimate } from '@/components/hooks/use-generate-estimate-button';
+import { ClientActionsMenu } from '@/components/ClientActionsMenu';
 
 type OptionEntry = { value: string; color: string };
 type AttachmentItem = {
@@ -116,6 +117,9 @@ export type ClientRowProps = {
     onPushToShipperView?: (subitemId: string) => void | Promise<void>;
     onUndoActivity?: (entry: ActivityEntry) => void | Promise<void>;
     groupNamesById: Record<string, string>;
+    groups: Array<{ id: string; name: string }>;
+    onDuplicateClient: () => void | Promise<void>;
+    onMoveClient: (groupId: string) => void | Promise<void>;
 
 
 };
@@ -204,7 +208,7 @@ export function ClientRow({
     currentUserId,
     onPushToShipperView
     , onUndoActivity
-    , groupNamesById
+    , groupNamesById, groups, onDuplicateClient, onMoveClient
 
 
 }: ClientRowProps) {
@@ -560,9 +564,10 @@ export function ClientRow({
             >
                 <div
                     data-client-column="selectCheckbox"
-                    className="box-border flex items-center min-w-0 px-3 flex-shrink-0 overflow-hidden"
+                    className="group/client-actions box-border relative flex min-w-0 self-stretch items-center px-3 flex-shrink-0 overflow-visible"
                     style={{ minWidth: colWidth.selectCheckbox, width: colWidth.selectCheckbox, order: columnOrderMap.selectCheckbox ?? 0 }}
                 >
+                    <ClientActionsMenu clientName={client.name} groups={groups} canEdit={canDelete} onDuplicate={onDuplicateClient} onMove={onMoveClient} onDelete={onDelete} align="left" className="absolute -left-7 top-1/2 z-30 -translate-y-1/2" triggerClassName="opacity-0 transition-opacity group-hover/client-actions:opacity-100" />
                     <input
                         data-selection-control
                         type="checkbox"
@@ -591,7 +596,7 @@ export function ClientRow({
                     onDragStart={(event) => onDragStart(event)}
                     onDragEnd={onDragEnd}
                     onClick={(event) => { if (!(event.target as HTMLElement).closest('button, input, [data-editable-cell], [data-activity-log]')) onOpenDetail(); }}
-                    className={`box-border flex items-center min-w-0 px-1 border-r border-[#D0D4E4] overflow-hidden ${isDragging ? "opacity-40" : ""} ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+                    className={`group/client box-border relative flex items-center min-w-0 px-1 border-r border-[#D0D4E4] overflow-visible ${isDragging ? "opacity-40" : ""} ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
                     style={{ height: 30, minWidth: colWidth.client, width: colWidth.client, order: columnOrderMap.client ?? 1 }}
                 >
 
