@@ -123,6 +123,7 @@ export type ClientRowProps = {
     subitemMoveTargetGroups: Array<{ name: string; clients: Array<{ id: string; name: string }> }>;
     onDuplicateSubitemAction: (subitemId: string) => void | Promise<void>;
     onMoveSubitemAction: (subitemId: string, targetClientId: string) => void | Promise<void>;
+    onOpenSubitemDetail?: (subitemId: string) => void;
 
 
 };
@@ -211,7 +212,7 @@ export function ClientRow({
     currentUserId,
     onPushToShipperView
     , onUndoActivity
-    , groupNamesById, groups, onDuplicateClient, onMoveClient, subitemMoveTargetGroups, onDuplicateSubitemAction, onMoveSubitemAction
+    , groupNamesById, groups, onDuplicateClient, onMoveClient, subitemMoveTargetGroups, onDuplicateSubitemAction, onMoveSubitemAction, onOpenSubitemDetail
 
 
 }: ClientRowProps) {
@@ -571,7 +572,7 @@ export function ClientRow({
                     className="group/client-actions box-border relative flex min-w-0 self-stretch items-center px-3 flex-shrink-0 overflow-visible"
                     style={{ minWidth: colWidth.selectCheckbox, width: colWidth.selectCheckbox, order: columnOrderMap.selectCheckbox ?? 0 }}
                 >
-                    <ClientActionsMenu clientId={client.id} clientName={client.name} groups={groups} canEdit={canDelete} onDuplicate={onDuplicateClient} onMove={onMoveClient} onDelete={onDelete} align="left" className="absolute -left-7 top-1/2 z-30 -translate-y-1/2" triggerClassName="opacity-0 transition-opacity group-hover/client-actions:opacity-100" />
+                    <ClientActionsMenu clientId={client.id} clientName={client.name} groups={groups} canEdit={canDelete} onOpen={onOpenDetail} onDuplicate={onDuplicateClient} onMove={onMoveClient} onDelete={onDelete} align="left" className="absolute -left-7 top-1/2 z-30 -translate-y-1/2" triggerClassName="opacity-0 transition-opacity group-hover/client-actions:opacity-100" />
                     <input
                         data-selection-control
                         type="checkbox"
@@ -1169,6 +1170,7 @@ export function ClientRow({
                     moveTargetGroups={subitemMoveTargetGroups}
                     onDuplicateSubitemAction={onDuplicateSubitemAction}
                     onMoveSubitemAction={onMoveSubitemAction}
+                    onOpenSubitemDetail={onOpenSubitemDetail}
 
 
                 />

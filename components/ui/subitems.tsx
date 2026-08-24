@@ -178,6 +178,7 @@ type SubitemProps = {
     moveTargetGroups: Array<{ name: string; clients: Array<{ id: string; name: string }> }>;
     onDuplicateSubitemAction: (subitemId: string) => void | Promise<void>;
     onMoveSubitemAction: (subitemId: string, targetClientId: string) => void | Promise<void>;
+    onOpenSubitemDetail?: (subitemId: string) => void;
 };
 
 function parseNumber(v: string | number | undefined | null) {
@@ -278,6 +279,7 @@ export function SubitemsTable({
     moveTargetGroups,
     onDuplicateSubitemAction,
     onMoveSubitemAction,
+    onOpenSubitemDetail,
 }: SubitemProps) {
     const [permissionNotice, setPermissionNotice] = useState<{ left: number; top: number } | null>(null);
     const showPermissionNotice = (target: HTMLElement) => {
@@ -942,6 +944,10 @@ export function SubitemsTable({
             draggable={Boolean(onSubitemDragStart)}
             onDragStart={(event) => onSubitemDragStart?.(sub.id, event)}
             onDragEnd={onSubitemDragEnd}
+            onClick={(event) => {
+                if ((event.target as HTMLElement).closest('input, button, textarea, select')) return;
+                onOpenSubitemDetail?.(sub.id);
+            }}
             className="flex h-[30px] cursor-grab items-center gap-1 active:cursor-grabbing"
         >
             <FileText size={11} className="text-gray-400 shrink-0" />
@@ -1698,7 +1704,7 @@ export function SubitemsTable({
                                     }
                                 }} className="relative group border-b border-r border-[#D0D4E4] hover:bg-blue-50/30">
                                     <td className="group relative overflow-visible border-r border-[#D0D4E4] px-2 py-1 text-center">
-                                        <SubitemActionsMenu subitemId={sub.id} subitemName={sub.name} targetGroups={moveTargetGroups} canEdit={canEditSubitem(sub.id)} onDuplicate={() => onDuplicateSubitemAction(sub.id)} onMove={(targetClientId) => onMoveSubitemAction(sub.id, targetClientId)} onDelete={() => onDeleteSubitem(sub.id)} />
+                                        <SubitemActionsMenu subitemId={sub.id} subitemName={sub.name} targetGroups={moveTargetGroups} canEdit={canEditSubitem(sub.id)} onOpen={() => onOpenSubitemDetail?.(sub.id)} onDuplicate={() => onDuplicateSubitemAction(sub.id)} onMove={(targetClientId) => onMoveSubitemAction(sub.id, targetClientId)} onDelete={() => onDeleteSubitem(sub.id)} />
                                         <input
                                             data-selection-control
                                             type="checkbox"

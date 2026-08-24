@@ -28,6 +28,7 @@ import { toast } from 'sonner';
 import type { SearchResult } from '../app/types';
 import { calculateSubitemFinancials } from '@/lib/subitem-calculations';
 import { ClientDetailView } from './ClientDetailView';
+import { SubitemDetailView } from './SubitemDetailView';
 
 type OptionEntry = { value: string; color: string };
 type HeaderCol = {
@@ -168,6 +169,7 @@ export function CRMBoard({ clients,
   const [isMovingClients, setIsMovingClients] = useState(false);
   const [isDuplicatingClients, setIsDuplicatingClients] = useState(false);
   const [detailClientId, setDetailClientId] = useState<string | null>(null);
+  const [detailSubitem, setDetailSubitem] = useState<{ clientId: string; subitemId: string } | null>(null);
 
   const clientPmAssigneeIds = useCallback((client: Client) => {
     try {
@@ -2165,6 +2167,12 @@ export function CRMBoard({ clients,
 
   return (
     <div className="crm-board flex flex-col h-full bg-white">
+      {detailSubitem && (() => {
+        const owner = clients.find((client) => client.id === detailSubitem.clientId);
+        const subitem = owner?.subitems.find((item) => item.id === detailSubitem.subitemId);
+        if (!owner || !subitem) return null;
+        return <SubitemDetailView key={subitem.id} subitem={subitem} clientName={owner.name} siblings={owner.subitems} profiles={profiles} assigneeIds={subitemAssignees[subitem.id] ?? []} canEdit={canEditSubitemRecord(owner.id, subitem.id)} onClose={() => setDetailSubitem(null)} onNavigate={(next) => setDetailSubitem({ clientId: owner.id, subitemId: next.id })} onUpdate={(updates) => updateSubitem(owner.id, subitem.id, updates)} onAssigneesChange={(ids) => handleSubitemAssigneesChange(subitem.id, ids)} activityLog={owner.activityLog ?? []} onUndo={undoActivity} options={{ status: subitemStatusEntries, localOverseas: localOverseasEntries, shipper: shipperEntries, currency: currencyEntries, payment: paymentEntries, paymentStatus: paymentStatusEntries, modeOfPayment: modeOfPaymentEntries, subProgress: subitemSubprogressEntries }} moveTargetGroups={groupedClients.map(({ group, clients: groupClients }) => ({ name: group.name, clients: groupClients.map((target) => ({ id: target.id, name: target.name })) }))} onDuplicate={() => duplicateSubitemAction(subitem.id)} onMove={(targetClientId) => moveSubitemAction(subitem.id, targetClientId)} onDelete={() => { setDetailSubitem(null); setPendingDeleteSubitem({ clientId: owner.id, subitemId: subitem.id }); }} />;
+      })()}
       {detailClientId && (() => {
         const detailClient = clients.find((client) => client.id === detailClientId);
         if (!detailClient) return null;
@@ -2858,6 +2866,7 @@ export function CRMBoard({ clients,
                   subitemMoveTargetGroups={groupedClients.map(({ group, clients: groupClients }) => ({ name: group.name, clients: groupClients.map((target) => ({ id: target.id, name: target.name })) }))}
                   onDuplicateSubitemAction={duplicateSubitemAction}
                   onMoveSubitemAction={moveSubitemAction}
+                  onOpenSubitemDetail={(subitemId) => setDetailSubitem({ clientId: client.id, subitemId })}
                 />
               ))}
 
