@@ -9,7 +9,7 @@ import { getSalesRoundRobinPointer, getSalesRoundRobinQueue, saveSalesRoundRobin
 type ListName = 'sales' | 'whatsapp' | 'out';
 const lists: Array<{ id: ListName; title: string; help: string }> = [
   { id: 'sales', title: 'Sales round robin', help: `Used for automatic lead assignment. (Drag pointer to manually reposition)` },
-  { id: 'whatsapp', title: 'Whatsapp', help: 'Available for WhatsApp allocation.' },
+  { id: 'whatsapp', title: 'Whatsapp', help: 'Whatsapp lead duty.' },
   { id: 'out', title: 'Out of Rotation', help: 'Not assigned by the sales round robin.' },
 ];
 
