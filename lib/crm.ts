@@ -44,6 +44,17 @@ export async function saveSalesRoundRobinLayout(rows: Array<{ user_id: string; l
     if (error) throw error;
 }
 
+export async function getSalesRoundRobinPointer() {
+    const { data, error } = await supabase.rpc('get_sales_round_robin_pointer');
+    if (error) throw error;
+    return Number(data ?? 0);
+}
+
+export async function setSalesRoundRobinPointer(position: number) {
+    const { error } = await supabase.rpc('set_sales_round_robin_pointer', { new_position: position });
+    if (error) throw error;
+}
+
 export async function getSalesRoundRobinQueue() {
     const supabase = createClient();
     const [{ data: queue, error }, { data: layout, error: layoutError }] = await Promise.all([
