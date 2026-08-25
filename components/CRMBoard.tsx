@@ -29,6 +29,7 @@ import type { SearchResult } from '../app/types';
 import { calculateSubitemFinancials } from '@/lib/subitem-calculations';
 import { ClientDetailView } from './ClientDetailView';
 import { SubitemDetailView } from './SubitemDetailView';
+import { AdvancedFilters, type AdvancedFilterColumn, type AdvancedFilterRule } from './AdvancedFilters';
 
 type OptionEntry = { value: string; color: string };
 type HeaderCol = {
@@ -107,6 +108,9 @@ export function CRMBoard({ clients,
 
   const [filterStatus, setFilterStatus] = useState<string | 'All'>('All');
   const [showFilter, setShowFilter] = useState(false);
+  const [filterMode, setFilterMode] = useState<'quick' | 'advanced'>('advanced');
+  const [advancedRules, setAdvancedRules] = useState<AdvancedFilterRule[]>([{ id: 'initial', column: '', condition: '', value: '' }]);
+  const [advancedJoin, setAdvancedJoin] = useState<'and' | 'or'>('and');
   const [filterSubprogress, setFilterSubprogress] = useState<string>('All');
   const [filterSubitemStatus, setFilterSubitemStatus] = useState('All');
   const [filterPayment, setFilterPayment] = useState('All');
@@ -1620,6 +1624,54 @@ export function CRMBoard({ clients,
     }
   }, [draggedClientId, clients, groups, clientStatuses, setClients]);
 
+  const advancedColumns = useMemo<AdvancedFilterColumn[]>(() => {
+    const unique = (values: unknown[]) => [...new Set(values.flatMap((value) => Array.isArray(value) ? value : [value]).map((value) => String(value ?? '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+    const profileName = (id: string) => peopleProfilesById[id]?.full_name || peopleProfilesById[id]?.email || id;
+    const clientValue = (client: Client, key: string): unknown => {
+      if (key === 'client') return client.name;
+      if (key === 'people') return (clientAssignees[client.id] ?? []).map(profileName);
+      if (key === 'pm') return clientPmAssigneeIds(client).map(profileName);
+      if (key.startsWith('custom:')) return client.customFields?.[key.slice(7)] ?? '';
+      return (client as unknown as Record<string, unknown>)[key] ?? '';
+    };
+    const subitemValue = (subitem: Subitem, key: string): unknown => {
+      if (key === 'people') return (subitemAssignees[subitem.id] ?? []).map(profileName);
+      if (key === 'markup' || key === 'percentMarkup') return calculateSubitemFinancials(subitem)[key];
+      if (key === 'idealMarkup' || key === 'priceToSet') return subitem.customFields?.[key] ?? '';
+      if (key.startsWith('custom:')) return subitem.customFields?.[key.slice(7)] ?? '';
+      return (subitem as unknown as Record<string, unknown>)[key] ?? '';
+    };
+    const clientColumns = mergedHeaderCols.filter((column) => !['selectCheckbox', 'addClientCol', 'empty'].includes(column.key)).map((column) => ({ key: `client:${column.key}`, label: column.label || column.key, category: 'Client' as const, values: unique(clients.map((client) => clientValue(client, column.key))) }));
+    const allSubitemColumns = [...SUBITEM_COLS, ...subitemCustomCols.map((column) => ({ key: `custom:${column.id}`, label: column.name, width: 120, minWidth: 80 }))];
+    const subitemColumns = allSubitemColumns.map((column) => ({ key: `subitem:${column.key}`, label: column.label, category: 'Subitem' as const, values: unique(clients.flatMap((client) => client.subitems.map((subitem) => subitemValue(subitem, column.key)))) }));
+    const paymentColumns = PAYMENT_COLS.map((column) => ({ key: `payment:${column.key}`, label: column.label, category: 'Payment' as const, values: unique(clients.flatMap((client) => client.subitems.map((subitem) => subitemValue(subitem, column.key)))) }));
+    return [...clientColumns, ...subitemColumns, ...paymentColumns];
+  }, [clientAssignees, clientPmAssigneeIds, clients, mergedHeaderCols, peopleProfilesById, subitemAssignees, subitemCustomCols]);
+
+  const matchesAdvancedRule = useCallback((client: Client, rule: AdvancedFilterRule) => {
+    if (!rule.column || !rule.condition) return true;
+    const [category, ...keyParts] = rule.column.split(':');
+    const key = keyParts.join(':');
+    const profileName = (id: string) => peopleProfilesById[id]?.full_name || peopleProfilesById[id]?.email || id;
+    let values: unknown[];
+    if (category === 'client') {
+      const value = key === 'client' ? client.name : key === 'people' ? (clientAssignees[client.id] ?? []).map(profileName) : key === 'pm' ? clientPmAssigneeIds(client).map(profileName) : key.startsWith('custom:') ? client.customFields?.[key.slice(7)] : (client as unknown as Record<string, unknown>)[key];
+      values = Array.isArray(value) ? value : [value];
+    } else {
+      values = client.subitems.flatMap((subitem) => {
+        const value = key === 'people' ? (subitemAssignees[subitem.id] ?? []).map(profileName) : key === 'markup' || key === 'percentMarkup' ? calculateSubitemFinancials(subitem)[key] : key.startsWith('custom:') ? subitem.customFields?.[key.slice(7)] : (subitem as unknown as Record<string, unknown>)[key];
+        return Array.isArray(value) ? value : [value];
+      });
+    }
+    const query = rule.value.trim().toLowerCase();
+    const tests = values.map((value) => String(value ?? '').toLowerCase());
+    if (rule.condition === 'is' || rule.condition === 'text is') return tests.some((value) => value === query);
+    if (rule.condition === 'is not' || rule.condition === 'text is not') return tests.every((value) => value !== query);
+    if (rule.condition === 'contains') return tests.some((value) => value.includes(query));
+    if (rule.condition === 'does not contain') return tests.every((value) => !value.includes(query));
+    return tests.some((value) => value.startsWith(query));
+  }, [clientAssignees, clientPmAssigneeIds, peopleProfilesById, subitemAssignees]);
+
   // --- Filtering ---
   const displayedClients = clients.filter((client) => {
     const matchesStatus = filterStatus === 'All' || client.status === filterStatus;
@@ -1642,7 +1694,9 @@ export function CRMBoard({ clients,
         )
       );
 
-    return matchesStatus && matchesSubitemStatus && matchesPayment && matchesPaymentStatus && matchesPeople && matchesImportance && matchesReplyStatus && matchesChannel && matchesSubprogress;
+    const populatedRules = advancedRules.filter((rule) => rule.column && rule.condition && rule.value.trim());
+    const matchesAdvanced = !populatedRules.length || (advancedJoin === 'and' ? populatedRules.every((rule) => matchesAdvancedRule(client, rule)) : populatedRules.some((rule) => matchesAdvancedRule(client, rule)));
+    return matchesStatus && matchesSubitemStatus && matchesPayment && matchesPaymentStatus && matchesPeople && matchesImportance && matchesReplyStatus && matchesChannel && matchesSubprogress && matchesAdvanced;
   });
 
   const groupedClients = groups.map((group) => ({
@@ -1696,7 +1750,7 @@ export function CRMBoard({ clients,
     filterImportance,
     filterReplyStatus,
     filterChannel,
-  ].filter((value) => value !== 'All').length;
+  ].filter((value) => value !== 'All').length + advancedRules.filter((rule) => rule.column && rule.condition && rule.value.trim()).length;
 
   const renderFilterColumn = ({
     label,
@@ -2247,8 +2301,9 @@ export function CRMBoard({ clients,
             <ChevronDown size={11} />
           </button>
           {showFilter && (
-            <div className="absolute top-full left-0 mt-1 w-[min(680px,calc(100vw-1rem))] bg-white border border-gray-200 rounded-lg shadow-xl z-50 p-3">
-              <div className="mb-3 flex items-center justify-between border-b border-gray-100 pb-2">
+            <div className={`absolute top-full left-0 z-50 mt-1 rounded-lg ${filterMode === 'quick' ? 'w-[min(680px,calc(100vw-1rem))] border border-gray-200 bg-white p-3 shadow-xl' : ''}`}>
+              {filterMode === 'advanced' && <AdvancedFilters columns={advancedColumns} rules={advancedRules} join={advancedJoin} onRulesChange={setAdvancedRules} onJoinChange={setAdvancedJoin} onClear={() => setAdvancedRules([{ id: crypto.randomUUID(), column: '', condition: '', value: '' }])} />}
+              <div className={`${filterMode === 'advanced' ? 'hidden' : ''} mb-3 flex items-center justify-between border-b border-gray-100 pb-2`}>
                 <div className="flex items-center gap-2">
                   {focusedFilterColumn && <button onClick={() => setFocusedFilterColumn(null)} className="text-xs text-gray-500 hover:text-gray-800">←</button>}
                   <span className="text-xs font-semibold text-gray-800">Quick filters{focusedFilterColumn ? ` · ${focusedFilterColumn}` : ''}</span>
@@ -2272,7 +2327,7 @@ export function CRMBoard({ clients,
                 </button>
               </div>
 
-              <div className="flex gap-3 overflow-x-auto pb-1">
+              <div className={`${filterMode === 'advanced' ? 'hidden' : ''} flex gap-3 overflow-x-auto pb-1`}>
                 {renderFilterColumn({ label: 'Status', value: filterStatus, options: clientStatuses, onChange: setFilterStatus, countFor: (value) => clients.filter((client) => client.status === value).length, colors: statusColors })}
                 {renderFilterColumn({ label: 'Subitem Subprogress', value: filterSubprogress, options: subprogressOptions, onChange: setFilterSubprogress, countFor: (value) => clients.filter((client) => client.subitems.some((subitem) => (subitem.timelineRows ?? []).some((row) => (row.subProgress ?? '') === value))).length, colors: subProgressColors })}
                 {renderFilterColumn({ label: 'Subitem Status', value: filterSubitemStatus, options: subitemStatusOptionsForFilter, onChange: setFilterSubitemStatus, countFor: (value) => clients.filter((client) => client.subitems.some((subitem) => subitem.status === value)).length, colors: subitemStatusColors })}
@@ -2299,6 +2354,7 @@ export function CRMBoard({ clients,
                 {renderFilterColumn({ label: 'Reply Status', value: filterReplyStatus, options: replyStatuses, onChange: setFilterReplyStatus, countFor: (value) => clients.filter((client) => client.replyStatus === value).length, colors: replyStatusColors })}
                 {renderFilterColumn({ label: 'Channel', value: filterChannel, options: channelOptions, onChange: setFilterChannel, countFor: (value) => clients.filter((client) => client.channel === value).length, colors: channelColors })}
               </div>
+              <div className={`${filterMode === 'advanced' ? 'absolute bottom-4 right-5' : 'mt-3 border-t border-gray-100 pt-2 text-right'}`}><button type="button" onClick={() => setFilterMode((mode) => mode === 'advanced' ? 'quick' : 'advanced')} className="text-xs text-slate-500 hover:text-sky-700">Switch to {filterMode === 'advanced' ? 'quick filters' : 'advanced filters'}</button></div>
             </div>
           )}
         </div>
