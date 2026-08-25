@@ -1,12 +1,14 @@
 import { getShipperSubitems } from "@/lib/shipper/get-shipper-subitems";
 import { getShippers } from "@/lib/shipper/get-shipper-by-token";
 import { ShipperMasterSheets } from "./ShipperMasterSheets";
+import { getShipperStagingRows } from "@/lib/shipper/get-shipper-staging-rows";
 
 export default async function ShipperMasterPage() {
     try {
-        const [rows, shippers] = await Promise.all([
+        const [rows, shippers, stagingRows] = await Promise.all([
             getShipperSubitems(),
             getShippers(),
+            getShipperStagingRows(),
         ]);
         const requestedShipperOrder = ["Tiger", "小李", "A5 汇荣"];
         const orderedShippers = requestedShipperOrder
@@ -16,7 +18,7 @@ export default async function ShipperMasterPage() {
         return (
             <main className="p-4">
                 <h1 className="mb-4 text-lg font-semibold">PM Master View</h1>
-                <ShipperMasterSheets shippers={orderedShippers} rows={rows} />
+                <ShipperMasterSheets shippers={orderedShippers} rows={rows} stagingRows={stagingRows} />
             </main>
         );
     } catch (e) {

@@ -1,19 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { supabaseAdmin } from "@/lib/supabase/admin";
 
 type PushShipperViewBody = {
     subitemIds: string[];
     overwrite?: boolean;
     preview?: boolean;
+    targetShipperId?: string;
+    targetShipperLabel?: string;
     values?: Array<Record<string, unknown> & { subitemId: string }>;
 };
 
 const PREVIEW_FIELDS = [
     "cn_tracking_no", "ic", "info_provided_date", "cartons", "qty", "up",
     "tax_refund", "delivery_info", "sea_or_air", "shipper_remarks",
-    "samples_by_air", "samples_by_sea",
+    "samples_by_air", "samples_by_sea", "item_name", "air_received", "sea_received",
 ] as const;
-const REQUIRED_PREVIEW_FIELDS = PREVIEW_FIELDS.filter((field) => field !== "cartons" && field !== "shipper_remarks");
+const REQUIRED_PREVIEW_FIELDS = PREVIEW_FIELDS.filter((field) => !["cartons", "shipper_remarks", "item_name", "air_received", "sea_received"].includes(field));
 
 const ALLOWED_ROLES = ["pm", "director", "dev"];
 
@@ -61,6 +64,14 @@ function getSeaOrAir(shipperLabel: string | null | undefined) {
     // A5 汇荣 is generally AIR, so for now we hardcode it to AIR
     if (label.includes("A5 汇荣")) return "空运";
     return null;
+}
+
+function validLabelsForShipper(shipperName: string | null | undefined) {
+    const name = shipperName?.trim() ?? "";
+    if (/^tiger$/i.test(name)) return [`${name} - SEA`, `${name} - AIR`];
+    if (name === "小李") return [`${name} - SEA`, `${name} - AIR`];
+    if (name === "A5 汇荣") return [name];
+    return name ? [name] : [];
 }
 
 export async function POST(req: NextRequest) {
@@ -135,19 +146,37 @@ export async function POST(req: NextRequest) {
         cn_tracking,
         shipper,
         shipper_id
-      `)
-            .in("id", subitemIds)
-            .not("shipper_id", "is", null);
+            `)
+            .in("id", subitemIds);
 
         if (subitemsError) {
             return NextResponse.json({ error: subitemsError.message }, { status: 500 });
         }
 
+        const clientIds = [...new Set((rawSubitems ?? []).map((item) => item.client_id).filter(Boolean))] as string[];
+        const [{ data: assignedSubitems }, { data: assignedClients }, { data: permissionClients }] = await Promise.all([
+            supabaseAdmin.from("subitem_assignees").select("subitem_id").eq("user_id", user.id).in("subitem_id", subitemIds),
+            clientIds.length ? supabaseAdmin.from("client_assignees").select("client_id").eq("user_id", user.id).in("client_id", clientIds) : Promise.resolve({ data: [] }),
+            clientIds.length ? supabaseAdmin.from("clients").select("id, custom_fields").in("id", clientIds) : Promise.resolve({ data: [] }),
+        ]);
+        const assignedSubitemIds = new Set((assignedSubitems ?? []).map((row) => row.subitem_id));
+        const assignedClientIds = new Set((assignedClients ?? []).map((row) => row.client_id));
+        const pmClientIds = new Set((permissionClients ?? []).filter((client) => { try { const ids = JSON.parse(client.custom_fields?.pmAssigneeIds ?? "[]"); return Array.isArray(ids) && ids.includes(user.id); } catch { return false; } }).map((client) => client.id));
+        const forbiddenSubitems = (rawSubitems ?? []).filter((item) => !assignedSubitemIds.has(item.id) && (!item.client_id || (!assignedClientIds.has(item.client_id) && !pmClientIds.has(item.client_id))));
+        if (forbiddenSubitems.length) return NextResponse.json({ error: "You can only edit items that are assigned to you" }, { status: 403 });
+
+        const targetShipper = body.targetShipperId ? (allShippers ?? []).find((shipper) => shipper.id === body.targetShipperId) : null;
+        if (body.targetShipperId && !targetShipper) return NextResponse.json({ error: "The selected shipper view is invalid" }, { status: 400 });
+        const targetLabels = validLabelsForShipper(targetShipper?.name);
+        if (body.targetShipperLabel && !targetLabels.includes(body.targetShipperLabel)) return NextResponse.json({ error: "The selected shipper option is not valid for this shipper view" }, { status: 400 });
+
         const subitems = (rawSubitems ?? []).map((item) => ({
             ...item,
-            shipper_id: item.shipper_id && shipperIds.has(item.shipper_id)
+            configured_shipper_id: item.shipper_id && shipperIds.has(item.shipper_id)
                 ? item.shipper_id
                 : resolveShipperId(item.shipper),
+            shipper_id: body.targetShipperId ?? (item.shipper_id && shipperIds.has(item.shipper_id) ? item.shipper_id : resolveShipperId(item.shipper)),
+            shipper: body.targetShipperLabel ?? item.shipper,
         }));
         const unresolvedItems = subitems.filter((item) => !item.shipper_id);
 
@@ -161,10 +190,10 @@ export async function POST(req: NextRequest) {
 
         for (const item of subitems) {
             const rawItem = rawSubitems?.find((raw) => raw.id === item.id);
-            if (rawItem?.shipper_id !== item.shipper_id && item.shipper_id) {
+            if (!body.preview && item.shipper_id && (rawItem?.shipper_id !== item.shipper_id || (body.targetShipperLabel && rawItem?.shipper !== body.targetShipperLabel))) {
                 const { error: repairError } = await supabase
                     .from("subitems")
-                    .update({ shipper_id: item.shipper_id })
+                    .update({ shipper_id: item.shipper_id, ...(body.targetShipperLabel ? { shipper: body.targetShipperLabel } : {}) })
                     .eq("id", item.id);
                 if (repairError) {
                     return NextResponse.json({ error: repairError.message }, { status: 500 });
@@ -259,12 +288,16 @@ export async function POST(req: NextRequest) {
             for (const field of PREVIEW_FIELDS) {
                 if (merged[field] === null || merged[field] === undefined) merged[field] = defaultsRow[field];
             }
-            return { ...merged, value: Number(merged.qty ?? 0) * Number(merged.up ?? 0) };
+            return { ...merged, shipper_id: defaultsRow.shipper_id, value: Number(merged.qty ?? 0) * Number(merged.up ?? 0) };
         });
 
         if (body.preview) return NextResponse.json({
             ok: true,
-            rows: previews.map((row) => ({ ...row, shipper_name: shipperNameById.get(row.shipper_id) ?? "Selected shipper" })),
+            rows: previews.map((row) => {
+                const source = subitems.find((item) => item.id === row.subitem_id);
+                const configuredLabelIsValid = !targetShipper || targetLabels.includes(rawSubitems?.find((item) => item.id === row.subitem_id)?.shipper ?? "");
+                return { ...row, already_pushed: existingBySubitemId.has(row.subitem_id), shipper_name: shipperNameById.get(row.shipper_id) ?? "Selected shipper", shipper_mismatch: !!targetShipper && (source?.configured_shipper_id !== targetShipper.id || !configuredLabelIsValid), configured_shipper: rawSubitems?.find((item) => item.id === row.subitem_id)?.shipper || "Not set", valid_shipper_labels: targetLabels };
+            }),
         });
 
         const suppliedBySubitemId = new Map((body.values ?? []).map((value) => [value.subitemId, value]));
