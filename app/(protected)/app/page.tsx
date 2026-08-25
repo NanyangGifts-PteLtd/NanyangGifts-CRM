@@ -15,6 +15,7 @@ import { fetchClientAssigneeMap } from '@/lib/assignments';
 import { fetchAllSubitemAssignees } from '@/components/CRMBoard';
 import { TeamPanel } from '@/components/TeamPanel';
 import { UserAdminPanel } from '@/components/UserAdminPanel';
+import { CustomerProfilesPanel } from '@/components/CustomerProfilesPanel';
 
 export default function Page() {
   const [clients, setClients] = useState<Client[]>([]);
@@ -201,6 +202,9 @@ export default function Page() {
 
       case 'team':
         return <TeamPanel profiles={profiles} />;
+
+      case 'customerprofiles':
+        return <CustomerProfilesPanel />;
 
       case 'useradmin':
         return currentUserRole === 'director' || currentUserRole === 'dev'

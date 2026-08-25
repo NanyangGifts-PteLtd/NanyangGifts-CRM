@@ -3,7 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutGrid, Mail, BarChart2, SquareChartGantt, BotMessageSquare, PackageSearch, Users, UserRoundCog } from 'lucide-react';
+import { LayoutGrid, Mail, BarChart2, SquareChartGantt, BotMessageSquare, PackageSearch, Users, UserRoundCog, ContactRound } from 'lucide-react';
 import logo from "./logo.png";
 import Image from 'next/image';
 
@@ -14,6 +14,7 @@ export type SidePanel =
   | 'ganttchart'
   | 'roundrobin'
   | 'team'
+  | 'customerprofiles'
   | 'useradmin'
   | 'shipper';
 
@@ -33,6 +34,7 @@ const navItems: { id: SidePanel; icon: React.ReactNode; label: string; href?: st
   { id: 'ganttchart', icon: <SquareChartGantt size={17.5} />, label: 'Gantt Chart' },
   { id: 'roundrobin', icon: <BotMessageSquare size={17.5} />, label: 'Round Robin' },
   { id: 'team', icon: <Users size={17.5} />, label: 'Team' },
+  { id: 'customerprofiles', icon: <ContactRound size={17.5} />, label: 'Customer Profiles' },
   { id: 'useradmin', icon: <UserRoundCog size={17.5} />, label: 'User Admin' },
   { id: 'shipper', icon: <PackageSearch size={17.5} />, label: 'Shipper', href: '/app/shipper', external: true },
 ];
