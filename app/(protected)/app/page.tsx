@@ -30,6 +30,7 @@ export default function Page() {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [searchTarget, setSearchTarget] = useState<SearchResult | null>(null);
+  const [profileLeadClientId, setProfileLeadClientId] = useState<string | null>(null);
 
   const selectSearchResult = useCallback((result: SearchResult) => {
     // currently setting to CRM panel since only CRM panel has search results, change in the future when other panels have search results
@@ -167,6 +168,8 @@ export default function Page() {
             subitemAssignees={subitemAssignees}
             setSubitemAssignees={setSubitemAssignees}
             searchTarget={searchTarget}
+            openClientId={profileLeadClientId}
+            onOpenClientHandled={() => setProfileLeadClientId(null)}
           />
         );
 
@@ -204,7 +207,7 @@ export default function Page() {
         return <TeamPanel profiles={profiles} />;
 
       case 'customerprofiles':
-        return <CustomerProfilesPanel />;
+        return <CustomerProfilesPanel currentUserRole={currentUserRole} boardClients={clients} onOpenLead={(clientId) => { setProfileLeadClientId(clientId); setActivePanel('crm'); }} />;
 
       case 'useradmin':
         return currentUserRole === 'director' || currentUserRole === 'dev'

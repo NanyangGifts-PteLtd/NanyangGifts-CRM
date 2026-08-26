@@ -32,6 +32,7 @@ import { SubitemDetailView } from './SubitemDetailView';
 import { AdvancedFilters, type AdvancedFilterColumn, type AdvancedFilterRule } from './AdvancedFilters';
 
 type OptionEntry = { value: string; color: string };
+const normalizeBlacklistPhone = (value: string) => value.replace(/\D/g, '');
 type HeaderCol = {
   key: string;
   label: string;
@@ -81,6 +82,8 @@ interface CRMBoardProps {
   subitemAssignees: SubitemAssigneeMap;
   setSubitemAssignees: React.Dispatch<React.SetStateAction<SubitemAssigneeMap>>;
   searchTarget?: SearchResult | null;
+  openClientId?: string | null;
+  onOpenClientHandled?: () => void;
 }
 
 export async function fetchAllSubitemAssignees(): Promise<SubitemAssigneeMap> {
@@ -104,6 +107,8 @@ export function CRMBoard({ clients,
   subitemAssignees,
   setSubitemAssignees,
   searchTarget,
+  openClientId,
+  onOpenClientHandled,
 }: CRMBoardProps) {
 
   const [filterStatus, setFilterStatus] = useState<string | 'All'>('All');
@@ -153,6 +158,7 @@ export function CRMBoard({ clients,
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [blacklistedPhones, setBlacklistedPhones] = useState<Set<string>>(new Set());
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const [openGroupMenu, setOpenGroupMenu] = useState<string | null>(null);
@@ -174,6 +180,24 @@ export function CRMBoard({ clients,
   const [isDuplicatingClients, setIsDuplicatingClients] = useState(false);
   const [detailClientId, setDetailClientId] = useState<string | null>(null);
   const [detailSubitem, setDetailSubitem] = useState<{ clientId: string; subitemId: string } | null>(null);
+  const onOpenClientHandledRef = useRef(onOpenClientHandled);
+  onOpenClientHandledRef.current = onOpenClientHandled;
+
+  useEffect(() => {
+    if (!openClientId || !clients.some((client) => client.id === openClientId)) return;
+    setDetailSubitem(null);
+    setDetailClientId(openClientId);
+    onOpenClientHandledRef.current?.();
+  }, [clients, openClientId]);
+
+  useEffect(() => {
+    let active = true;
+    void fetch('/api/customer-profiles')
+      .then(async (response) => { const result = await response.json(); if (!response.ok) throw new Error(result.error || 'Unable to load blacklist.'); return result; })
+      .then((result) => { if (active) setBlacklistedPhones(new Set((result.clients ?? []).filter((profile: { is_blacklisted?: boolean }) => profile.is_blacklisted).map((profile: { phone_number?: string }) => normalizeBlacklistPhone(profile.phone_number ?? '')).filter(Boolean))); })
+      .catch((error) => console.error('Failed to load client blacklist', error));
+    return () => { active = false; };
+  }, []);
 
   const clientPmAssigneeIds = useCallback((client: Client) => {
     try {
@@ -2868,6 +2892,7 @@ export function CRMBoard({ clients,
                 <ClientRow
                   key={client.id}
                   client={client}
+                  isBlacklisted={blacklistedPhones.has(normalizeBlacklistPhone(client.phone ?? '')) && Boolean(normalizeBlacklistPhone(client.phone ?? ''))}
                   isExpanded={expandedIdSet.has(client.id)}
                   onToggleExpand={() => setExpandedIds((prev) => prev.includes(client.id) ? prev.filter((id) => id !== client.id) : [...prev, client.id])}
                   onOpenOcfModal={handleOpenOcfModal}

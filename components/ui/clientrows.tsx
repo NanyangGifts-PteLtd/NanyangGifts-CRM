@@ -30,6 +30,7 @@ type AttachmentItem = {
 
 export type ClientRowProps = {
     client: Client;
+    isBlacklisted: boolean;
     isSelected: boolean;
     isExpanded: boolean;
     onToggleExpand: () => void;
@@ -130,6 +131,7 @@ export type ClientRowProps = {
 
 export function ClientRow({
     client,
+    isBlacklisted,
     isSelected,
     isExpanded,
     onToggleExpand,
@@ -217,6 +219,7 @@ export function ClientRow({
 
 }: ClientRowProps) {
     const [permissionNotice, setPermissionNotice] = useState<{ left: number; top: number } | null>(null);
+    const [blacklistNotice, setBlacklistNotice] = useState<{ left: number; top: number } | null>(null);
     const showPermissionNotice = (target: HTMLElement) => {
         const rect = target.getBoundingClientRect();
         setPermissionNotice({ left: Math.min(rect.left, window.innerWidth - 300), top: Math.min(rect.bottom + 8, window.innerHeight - 48) });
@@ -530,6 +533,7 @@ export function ClientRow({
         >
             <style>{Array.from(hiddenColumnKeys).filter((key) => key.startsWith('client:')).map((key) => `[data-client-column="${key.slice(7)}"]{display:none!important}`).join('')}</style>
             {permissionNotice && <div role="alert" className="fixed z-[10000] rounded-md bg-slate-800 px-3 py-2 text-xs font-medium text-white shadow-xl" style={permissionNotice}>You can only edit items that are assigned to you</div>}
+            {blacklistNotice && <div role="alert" className="pointer-events-none fixed z-[10010] rounded-md border border-red-700 bg-red-600 px-3 py-2 text-xs font-semibold text-white shadow-xl" style={blacklistNotice}>This client is in the blacklist</div>}
             <AlertDialog open={showEstimateDialog} onOpenChange={(open) => { setShowEstimateDialog(open); if (!open) { setEstimateResult(null); setSampleEstimate(null); setSampleEstimateError(null); setEstimateMode("choice"); resetEstimateState(); } }}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
@@ -550,18 +554,32 @@ export function ClientRow({
                 onContextMenu={(event) => { event.preventDefault(); window.dispatchEvent(new CustomEvent("crm:client-actions", { detail: client.id })); }}
                 onMouseMove={(event) => {
                     const column = (event.target as HTMLElement).closest<HTMLElement>('[data-client-column]')?.dataset.clientColumn;
+                    const blacklistField = isBlacklisted && (column === 'client' || column === 'phone');
+                    if (blacklistField) {
+                        setPermissionNotice(null);
+                        setBlacklistNotice({ left: Math.min(event.clientX + 12, window.innerWidth - 230), top: Math.min(event.clientY + 16, window.innerHeight - 48) });
+                        event.currentTarget.title = '';
+                        return;
+                    }
+                    setBlacklistNotice(null);
                     event.currentTarget.title = !canEditClient && column && !['people', 'pm', 'selectCheckbox'].includes(column) ? 'You can only edit items that are assigned to you' : '';
                 }}
+                onMouseLeave={() => setBlacklistNotice(null)}
                 onClickCapture={(event) => {
-                    if (canEditClient) return;
                     const target = event.target as HTMLElement;
                     const column = target.closest<HTMLElement>('[data-client-column]')?.dataset.clientColumn;
+                    if (isBlacklisted && (column === 'client' || column === 'phone')) {
+                        const rect = target.getBoundingClientRect();
+                        setPermissionNotice(null);
+                        setBlacklistNotice({ left: Math.min(rect.left, window.innerWidth - 230), top: Math.min(rect.bottom + 8, window.innerHeight - 48) });
+                    }
+                    if (canEditClient) return;
                     const isAssignmentColumn = column === 'people' || column === 'pm' || column === 'selectCheckbox';
                     const isEditControl = !!target.closest('button, input, textarea, select, [data-editable-cell]');
                     if (!isAssignmentColumn && column && isEditControl && !target.closest('[data-view-action], [data-activity-log]')) {
                         event.preventDefault();
                         event.stopPropagation();
-                        showPermissionNotice(target);
+                        if (!(isBlacklisted && (column === 'client' || column === 'phone'))) showPermissionNotice(target);
                     }
                 }}
                 style={{ width: boardWidth, minWidth: boardWidth }}
@@ -610,7 +628,7 @@ export function ClientRow({
                             value={client.name}
                             onChange={(v) => onUpdate({ name: v })}
                             placeholder="Client name"
-                            className="font-semibold text-gray-800"
+                            className={`font-semibold ${isBlacklisted ? "bg-red-100 !text-red-700 ring-1 ring-inset ring-red-300" : "text-gray-800"}`}
                         />
                     </div>
                     <div className="ml-auto flex items-center justify-start gap-1 flex-shrink-0">
@@ -1002,8 +1020,8 @@ export function ClientRow({
                     <EditableCell className="!justify-start px-1 text-blue-600" value={client.email} onChange={(v) => onUpdate({ email: v })} placeholder="" />
                 </div>
 
-                <div data-client-column="phone" className="flex-1 min-w-0 py-1 items-center border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis text-blue-600" style={{ height: 30, minWidth: colWidth.phone, width: colWidth.phone, order: columnOrderMap.phone ?? 10 }}>
-                    <EditableCell className="text-blue-600" value={client.phone} onChange={(v) => onUpdate({ phone: v })} placeholder="" />
+                <div data-client-column="phone" className={`flex-1 min-w-0 py-1 items-center border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis ${isBlacklisted ? "bg-red-100 text-red-700" : "text-blue-600"}`} style={{ height: 30, minWidth: colWidth.phone, width: colWidth.phone, order: columnOrderMap.phone ?? 10 }}>
+                    <EditableCell className={isBlacklisted ? "bg-red-100 !text-red-700 ring-1 ring-inset ring-red-300" : "text-blue-600"} value={client.phone} onChange={(v) => onUpdate({ phone: v })} placeholder="" />
                 </div>
 
                 <div data-client-column="requirements" className="flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height: 30, minWidth: colWidth.requirements, width: colWidth.requirements, order: columnOrderMap.requirements ?? 11 }}>
