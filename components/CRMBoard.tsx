@@ -194,7 +194,15 @@ export function CRMBoard({ clients,
     let active = true;
     void fetch('/api/customer-profiles')
       .then(async (response) => { const result = await response.json(); if (!response.ok) throw new Error(result.error || 'Unable to load blacklist.'); return result; })
-      .then((result) => { if (active) setBlacklistedPhones(new Set((result.clients ?? []).filter((profile: { is_blacklisted?: boolean }) => profile.is_blacklisted).map((profile: { phone_number?: string }) => normalizeBlacklistPhone(profile.phone_number ?? '')).filter(Boolean))); })
+      .then((result) => {
+        if (!active) return;
+        const numbers = (result.clients ?? [])
+          .filter((profile: { is_blacklisted?: boolean }) => profile.is_blacklisted)
+          .flatMap((profile: { phone_number?: string; phone_numbers?: Array<{ phone_number?: string }> }) => profile.phone_numbers?.length ? profile.phone_numbers.map((phone) => phone.phone_number ?? '') : [profile.phone_number ?? ''])
+          .map(normalizeBlacklistPhone)
+          .filter(Boolean);
+        setBlacklistedPhones(new Set(numbers));
+      })
       .catch((error) => console.error('Failed to load client blacklist', error));
     return () => { active = false; };
   }, []);

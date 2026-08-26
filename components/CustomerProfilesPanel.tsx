@@ -5,7 +5,8 @@ import { AlertTriangle, ArrowLeft, Building2, Check, ChevronDown, ChevronRight, 
 import { toast } from "sonner";
 import type { Client } from "@/app/types";
 
-type ClientProfile = { id: string; phone_number: string; name: string; remarks: string | null; is_blacklisted: boolean; blacklisted_at: string | null };
+type ClientPhoneNumber = { id: string; phone_number: string; is_primary: boolean };
+type ClientProfile = { id: string; phone_number: string; phone_numbers: ClientPhoneNumber[]; name: string; remarks: string | null; is_blacklisted: boolean; blacklisted_at: string | null };
 type IndustryOption = { id: string; code: string; name: string; section_code: string; section_name: string };
 type IndustrySelection = { option: IndustryOption | null; customText: string };
 type CompanyProfile = { id: string; name: string; payment_term: string | null; industry: string | null; industry_option_id: string | null; industry_custom_text: string | null; industry_source: string | null; industry_option: IndustryOption | null; organization_type: string | null; remarks: string | null };
@@ -15,6 +16,67 @@ const paymentTerms = ["Net 30", "Net 60", "Net 90", "Due on Receipt", "End of Mo
 
 function ProfileEditField({ label, icon, children }: { label: string; icon: React.ReactNode; children: React.ReactNode }) {
   return <div className="rounded-xl border border-slate-200 bg-white p-4"><span className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-400">{icon}{label}</span><div className="mt-2">{children}</div></div>;
+}
+
+function clientPhoneNumbers(client: ClientProfile): ClientPhoneNumber[] {
+  if (client.phone_numbers?.length) return [...client.phone_numbers].sort((a, b) => Number(b.is_primary) - Number(a.is_primary));
+  return [{ id: `legacy-${client.id}`, phone_number: client.phone_number, is_primary: true }];
+}
+
+function clientProfileValidationError(client: ClientProfile, allClients: ClientProfile[] = []) {
+  if (!client.name.trim()) return "Client name is required.";
+  const phones = clientPhoneNumbers(client);
+  const normalized = phones.map((phone) => normalizeProfilePhone(phone.phone_number));
+  if (!phones.length) return "At least one phone number is required.";
+  if (normalized.some((phone) => !phone)) return "Phone numbers cannot be blank.";
+  if (new Set(normalized).size !== normalized.length) return "The same phone number cannot be added more than once.";
+  if (phones.filter((phone) => phone.is_primary).length !== 1) return "Choose exactly one main phone number.";
+  const conflictingProfile = allClients.find((other) => other.id !== client.id && clientPhoneNumbers(other).some((phone) => normalized.includes(normalizeProfilePhone(phone.phone_number))));
+  if (conflictingProfile) return `One of these phone numbers already belongs to ${conflictingProfile.name}.`;
+  return null;
+}
+
+function clientProfileFingerprint(client: ClientProfile) {
+  const phones = clientPhoneNumbers(client)
+    .map((phone) => ({ phoneNumber: phone.phone_number.trim(), isPrimary: phone.is_primary }))
+    .sort((a, b) => normalizeProfilePhone(a.phoneNumber).localeCompare(normalizeProfilePhone(b.phoneNumber)));
+  return JSON.stringify({ name: client.name.trim(), phones });
+}
+
+function companyProfileFingerprint(company: CompanyProfile) {
+  return JSON.stringify({
+    name: company.name.trim(),
+    paymentTerm: company.payment_term ?? "",
+    industryOptionId: company.industry_option_id ?? "",
+    industryCustomText: (company.industry_custom_text ?? (company.industry_option_id ? "" : company.industry ?? "")).trim(),
+    organizationType: company.organization_type ?? "",
+  });
+}
+
+function ClientPhoneNumbersEditor({ client, onChange }: { client: ClientProfile; onChange: (next: ClientProfile) => void }) {
+  const phones = clientPhoneNumbers(client);
+  const apply = (nextPhones: ClientPhoneNumber[]) => {
+    const primary = nextPhones.find((phone) => phone.is_primary) ?? nextPhones[0];
+    const normalized = nextPhones.map((phone) => ({ ...phone, is_primary: phone.id === primary.id }));
+    onChange({ ...client, phone_number: primary.phone_number, phone_numbers: normalized });
+  };
+  const remove = (id: string) => {
+    if (phones.length === 1) return;
+    const removed = phones.find((phone) => phone.id === id);
+    const remaining = phones.filter((phone) => phone.id !== id);
+    if (removed?.is_primary) remaining[0] = { ...remaining[0], is_primary: true };
+    apply(remaining);
+  };
+
+  return <div className="space-y-2">
+    {phones.map((phone, index) => <div key={phone.id} className="flex items-center gap-2">
+      <input type="tel" value={phone.phone_number} placeholder={`Phone number ${index + 1}`} onChange={(event) => apply(phones.map((item) => item.id === phone.id ? { ...item, phone_number: event.target.value } : item))} className={inputClass} />
+      <button type="button" onClick={() => apply(phones.map((item) => ({ ...item, is_primary: item.id === phone.id })))} className={`h-10 shrink-0 rounded-md border px-3 text-xs font-semibold ${phone.is_primary ? "border-cyan-200 bg-cyan-50 text-[#168da7]" : "border-slate-200 text-slate-500 hover:bg-slate-50"}`} title={phone.is_primary ? "Main phone number" : "Set as main phone number"}>{phone.is_primary ? "Main" : "Make main"}</button>
+      <button type="button" disabled={phones.length === 1} onClick={() => remove(phone.id)} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-slate-200 text-slate-400 hover:border-red-200 hover:bg-red-50 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-slate-200 disabled:hover:bg-transparent disabled:hover:text-slate-400" aria-label="Remove phone number"><Trash2 size={15} /></button>
+    </div>)}
+    <button type="button" disabled={phones.length >= 20} onClick={() => apply([...phones, { id: `new-${Date.now()}`, phone_number: "", is_primary: false }])} className="inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-semibold text-[#168da7] hover:bg-cyan-50 disabled:opacity-40"><Plus size={14} /> Add another phone number</button>
+    <p className="text-[11px] text-slate-400">The main number is shown in the profile list. Leads and blacklist matching use every number.</p>
+  </div>;
 }
 
 function IndustryCombobox({ value, onChange }: { value: IndustrySelection; onChange: (next: IndustrySelection) => void }) {
@@ -130,12 +192,13 @@ function normalizeCompanyName(value: string) {
   return value.trim().replace(/\s+/g, " ").toLocaleLowerCase();
 }
 
-function ProfileLeads({ type, matchValue, boardClients, onOpenLead }: { type: "client" | "company"; matchValue: string; boardClients: Client[]; onOpenLead: (clientId: string) => void }) {
+function ProfileLeads({ type, matchValue, boardClients, onOpenLead }: { type: "client" | "company"; matchValue: string | string[]; boardClients: Client[]; onOpenLead: (clientId: string) => void }) {
   const matchingLeads = useMemo(() => {
-    const normalizedMatch = type === "client" ? normalizeProfilePhone(matchValue) : normalizeCompanyName(matchValue);
-    if (!normalizedMatch) return [];
+    const matchValues = Array.isArray(matchValue) ? matchValue : [matchValue];
+    const normalizedMatches = new Set(matchValues.map((value) => type === "client" ? normalizeProfilePhone(value) : normalizeCompanyName(value)).filter(Boolean));
+    if (!normalizedMatches.size) return [];
     return boardClients
-      .filter((client) => type === "client" ? normalizeProfilePhone(client.phone ?? "") === normalizedMatch : normalizeCompanyName(client.company ?? "") === normalizedMatch)
+      .filter((client) => normalizedMatches.has(type === "client" ? normalizeProfilePhone(client.phone ?? "") : normalizeCompanyName(client.company ?? "")))
       .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
   }, [boardClients, matchValue, type]);
 
@@ -160,7 +223,7 @@ export function CustomerProfilesPanel({ currentUserRole, boardClients, onOpenLea
   const [savingProfileEdits, setSavingProfileEdits] = useState(false);
   const canDeleteProfiles = ["admin", "director", "dev"].includes(currentUserRole?.toLowerCase() ?? "");
   const canManageBlacklist = ["director", "dev"].includes(currentUserRole?.toLowerCase() ?? "");
-  const filteredClients = useMemo(() => { const query = clientSearch.trim().toLowerCase(); return query ? clients.filter((client) => `${client.name} ${client.phone_number}`.toLowerCase().includes(query)) : clients; }, [clientSearch, clients]);
+  const filteredClients = useMemo(() => { const query = clientSearch.trim().toLowerCase(); return query ? clients.filter((client) => `${client.name} ${clientPhoneNumbers(client).map((phone) => phone.phone_number).join(" ")}`.toLowerCase().includes(query)) : clients; }, [clientSearch, clients]);
   const filteredCompanies = useMemo(() => { const query = companySearch.trim().toLowerCase(); return query ? companies.filter((company) => company.name.toLowerCase().includes(query)) : companies; }, [companies, companySearch]);
 
   const load = useCallback(async () => {
@@ -169,7 +232,7 @@ export function CustomerProfilesPanel({ currentUserRole, boardClients, onOpenLea
       const response = await fetch("/api/customer-profiles");
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Unable to load customer profiles.");
-      setClients(result.clients ?? []);
+      setClients((result.clients ?? []).map((client: ClientProfile) => ({ ...client, phone_numbers: clientPhoneNumbers(client) })));
       setCompanies(result.companies ?? []);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Unable to load customer profiles.");
@@ -256,10 +319,17 @@ export function CustomerProfilesPanel({ currentUserRole, boardClients, onOpenLea
 
   const saveProfileEdits = async () => {
     if (!selectedProfile) return;
+    if (selectedProfile.type === "client") {
+      const original = clients.find((item) => item.id === selectedProfile.profile.id);
+      if (clientProfileValidationError(selectedProfile.profile, clients) || !original || clientProfileFingerprint(selectedProfile.profile) === clientProfileFingerprint(original)) return;
+    } else {
+      const original = companies.find((item) => item.id === selectedProfile.profile.id);
+      if (!selectedProfile.profile.name.trim() || !original || companyProfileFingerprint(selectedProfile.profile) === companyProfileFingerprint(original)) return;
+    }
     setSavingProfileEdits(true);
     try {
       const body = selectedProfile.type === "client"
-        ? { type: "client", id: selectedProfile.profile.id, name: selectedProfile.profile.name, phoneNumber: selectedProfile.profile.phone_number }
+        ? { type: "client", id: selectedProfile.profile.id, name: selectedProfile.profile.name, phoneNumbers: clientPhoneNumbers(selectedProfile.profile).map((phone) => ({ phoneNumber: phone.phone_number, isPrimary: phone.is_primary })) }
         : { type: "company", id: selectedProfile.profile.id, name: selectedProfile.profile.name, paymentTerm: selectedProfile.profile.payment_term ?? "", industryOptionId: selectedProfile.profile.industry_option_id, industryCustomText: selectedProfile.profile.industry_custom_text ?? (selectedProfile.profile.industry_option_id ? "" : selectedProfile.profile.industry ?? ""), organizationType: selectedProfile.profile.organization_type ?? "" };
       const response = await fetch("/api/customer-profiles", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const result = await response.json();
@@ -281,12 +351,20 @@ export function CustomerProfilesPanel({ currentUserRole, boardClients, onOpenLea
 
   if (selectedProfile?.type === "client") {
     const client = selectedProfile.profile;
-    return <div className="min-h-full bg-[#f8fafc] p-5"><div className="mx-auto max-w-5xl"><button type="button" onClick={() => setSelectedProfile(null)} className="mb-4 inline-flex items-center gap-2 rounded-md px-2 py-2 text-sm font-medium text-slate-600 hover:bg-white hover:text-[#16a5c4]"><ArrowLeft size={17} /> Back to Customer Profiles</button><section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"><header className="flex items-center gap-4 border-b border-slate-200 px-6 py-5"><span className="flex h-12 w-12 items-center justify-center rounded-xl bg-cyan-50 text-[#16a5c4]"><UserRound size={23} /></span><div><p className="text-xs font-semibold uppercase tracking-wide text-[#16a5c4]">Client Profile</p><h1 className="mt-1 text-2xl font-semibold text-slate-900">{client.name}</h1></div>{client.is_blacklisted && <span className="rounded-full border border-red-200 bg-red-50 px-3 py-1 text-xs font-bold uppercase tracking-wide text-red-700">Blacklisted</span>}{canDeleteProfiles && <button type="button" onClick={() => setConfirmingDelete(true)} className="ml-auto inline-flex items-center gap-2 rounded-md border border-red-200 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50"><Trash2 size={16} /> Delete</button>}{canManageBlacklist && <button type="button" onClick={() => setConfirmingBlacklist(true)} className={`inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium ${client.is_blacklisted ? "border-emerald-200 text-emerald-700 hover:bg-emerald-50" : "border-red-200 text-red-600 hover:bg-red-50"}`}><AlertTriangle size={16} /> {client.is_blacklisted ? "Un-blacklist" : "Blacklist"}</button>}<button type="button" disabled={savingProfileEdits || !client.name.trim() || !client.phone_number.trim()} onClick={() => void saveProfileEdits()} className="inline-flex items-center gap-2 rounded-md bg-[#16a5c4] px-3 py-2 text-sm font-semibold text-white hover:bg-[#0f8da8] disabled:opacity-50">{savingProfileEdits ? <LoaderCircle size={15} className="animate-spin" /> : null}{savingProfileEdits ? "Saving..." : "Save changes"}</button></header><div className="grid gap-4 bg-slate-50/60 p-6 md:grid-cols-2"><ProfileEditField label="Name" icon={<UserRound size={15} />}><input value={client.name} onChange={(event) => setSelectedProfile({ type: "client", profile: { ...client, name: event.target.value } })} className={inputClass} /></ProfileEditField><ProfileEditField label="Phone Number" icon={<Phone size={15} />}><input type="tel" value={client.phone_number} onChange={(event) => setSelectedProfile({ type: "client", profile: { ...client, phone_number: event.target.value } })} className={inputClass} /></ProfileEditField></div></section><ProfileRemarks type="client" profileId={client.id} /><ProfileLeads type="client" matchValue={client.phone_number} boardClients={boardClients} onOpenLead={onOpenLead} /></div>{confirmingDelete && <DeleteProfileDialog name={client.name} type="client" deleting={deleting} onCancel={() => setConfirmingDelete(false)} onConfirm={() => void deleteSelectedProfile()} />}{confirmingBlacklist && <BlacklistDialog name={client.name} blacklisted={client.is_blacklisted} saving={savingBlacklist} onCancel={() => setConfirmingBlacklist(false)} onConfirm={() => void changeBlacklistStatus()} />}</div>;
+    const originalClient = clients.find((item) => item.id === client.id);
+    const validationError = clientProfileValidationError(client, clients);
+    const hasChanges = Boolean(originalClient && clientProfileFingerprint(client) !== clientProfileFingerprint(originalClient));
+    const saveDisabledReason = savingProfileEdits ? "Saving changes..." : validationError ?? (!hasChanges ? "No changes to save." : null);
+    return <div className="min-h-full bg-[#f8fafc] p-5"><div className="mx-auto max-w-5xl"><button type="button" onClick={() => setSelectedProfile(null)} className="mb-4 inline-flex items-center gap-2 rounded-md px-2 py-2 text-sm font-medium text-slate-600 hover:bg-white hover:text-[#16a5c4]"><ArrowLeft size={17} /> Back to Customer Profiles</button><section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"><header className="flex items-center gap-4 border-b border-slate-200 px-6 py-5"><span className="flex h-12 w-12 items-center justify-center rounded-xl bg-cyan-50 text-[#16a5c4]"><UserRound size={23} /></span><div><p className="text-xs font-semibold uppercase tracking-wide text-[#16a5c4]">Client Profile</p><h1 className="mt-1 text-2xl font-semibold text-slate-900">{client.name}</h1></div>{client.is_blacklisted && <span className="rounded-full border border-red-200 bg-red-50 px-3 py-1 text-xs font-bold uppercase tracking-wide text-red-700">Blacklisted</span>}{canDeleteProfiles && <button type="button" onClick={() => setConfirmingDelete(true)} className="ml-auto inline-flex items-center gap-2 rounded-md border border-red-200 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50"><Trash2 size={16} /> Delete</button>}{canManageBlacklist && <button type="button" onClick={() => setConfirmingBlacklist(true)} className={`inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium ${client.is_blacklisted ? "border-emerald-200 text-emerald-700 hover:bg-emerald-50" : "border-red-200 text-red-600 hover:bg-red-50"}`}><AlertTriangle size={16} /> {client.is_blacklisted ? "Un-blacklist" : "Blacklist"}</button>}<button type="button" disabled={Boolean(saveDisabledReason)} title={saveDisabledReason ?? "Save changes"} onClick={() => void saveProfileEdits()} className="inline-flex items-center gap-2 rounded-md bg-[#16a5c4] px-3 py-2 text-sm font-semibold text-white hover:bg-[#0f8da8] disabled:opacity-50">{savingProfileEdits ? <LoaderCircle size={15} className="animate-spin" /> : null}{savingProfileEdits ? "Saving..." : "Save changes"}</button></header><div className="grid gap-4 bg-slate-50/60 p-6 md:grid-cols-2">{validationError && <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800 md:col-span-2"><AlertTriangle size={16} className="shrink-0" />{validationError}</div>}<ProfileEditField label="Name" icon={<UserRound size={15} /> }><input value={client.name} onChange={(event) => setSelectedProfile({ type: "client", profile: { ...client, name: event.target.value } })} className={inputClass} /></ProfileEditField><ProfileEditField label="Phone Numbers" icon={<Phone size={15} />}><ClientPhoneNumbersEditor client={client} onChange={(next) => setSelectedProfile({ type: "client", profile: next })} /></ProfileEditField></div></section><ProfileRemarks type="client" profileId={client.id} /><ProfileLeads type="client" matchValue={clientPhoneNumbers(client).map((phone) => phone.phone_number)} boardClients={boardClients} onOpenLead={onOpenLead} /></div>{confirmingDelete && <DeleteProfileDialog name={client.name} type="client" deleting={deleting} onCancel={() => setConfirmingDelete(false)} onConfirm={() => void deleteSelectedProfile()} />}{confirmingBlacklist && <BlacklistDialog name={client.name} blacklisted={client.is_blacklisted} saving={savingBlacklist} onCancel={() => setConfirmingBlacklist(false)} onConfirm={() => void changeBlacklistStatus()} />}</div>;
   }
 
   if (selectedProfile?.type === "company") {
     const company = selectedProfile.profile;
-    return <div className="min-h-full bg-[#f8fafc] p-5"><div className="mx-auto max-w-5xl"><button type="button" onClick={() => setSelectedProfile(null)} className="mb-4 inline-flex items-center gap-2 rounded-md px-2 py-2 text-sm font-medium text-slate-600 hover:bg-white hover:text-violet-600"><ArrowLeft size={17} /> Back to Customer Profiles</button><section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"><header className="flex items-center gap-4 border-b border-slate-200 px-6 py-5"><span className="flex h-12 w-12 items-center justify-center rounded-xl bg-violet-50 text-violet-600"><Building2 size={23} /></span><div><p className="text-xs font-semibold uppercase tracking-wide text-violet-600">Company Profile</p><h1 className="mt-1 text-2xl font-semibold text-slate-900">{company.name}</h1></div>{canDeleteProfiles && <button type="button" onClick={() => setConfirmingDelete(true)} className="ml-auto inline-flex items-center gap-2 rounded-md border border-red-200 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50"><Trash2 size={16} /> Delete</button>}<button type="button" disabled={savingProfileEdits || !company.name.trim()} onClick={() => void saveProfileEdits()} className="inline-flex items-center gap-2 rounded-md bg-violet-600 px-3 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50">{savingProfileEdits ? <LoaderCircle size={15} className="animate-spin" /> : null}{savingProfileEdits ? "Saving..." : "Save changes"}</button></header><div className="grid gap-4 bg-slate-50/60 p-6 md:grid-cols-2"><ProfileEditField label="Name" icon={<Building2 size={15} />}><input value={company.name} onChange={(event) => setSelectedProfile({ type: "company", profile: { ...company, name: event.target.value } })} className={inputClass} /></ProfileEditField><ProfileEditField label="Payment Term" icon={<CreditCard size={15} />}><select value={company.payment_term ?? ""} onChange={(event) => setSelectedProfile({ type: "company", profile: { ...company, payment_term: event.target.value || null } })} className={inputClass}><option value="">Select payment term</option>{paymentTerms.map((term) => <option key={term} value={term}>{term}</option>)}</select></ProfileEditField><ProfileEditField label="Industry" icon={<Factory size={15} />}><IndustryCombobox value={{ option: company.industry_option, customText: company.industry_custom_text ?? (company.industry_option_id ? "" : company.industry ?? "") }} onChange={(next) => setSelectedProfile({ type: "company", profile: { ...company, industry: (next.option?.name ?? next.customText) || null, industry_option_id: next.option?.id ?? null, industry_custom_text: next.option ? null : next.customText || null, industry_option: next.option, industry_source: next.option ? "manual_ssic" : next.customText ? "manual_custom" : null } })} /></ProfileEditField><ProfileEditField label="Government / Semi / Private" icon={<Landmark size={15} />}><select value={company.organization_type ?? ""} onChange={(event) => setSelectedProfile({ type: "company", profile: { ...company, organization_type: event.target.value || null } })} className={inputClass}><option value="">Select type</option><option>Government</option><option>Semi</option><option>Private</option></select></ProfileEditField></div></section><ProfileRemarks type="company" profileId={company.id} /><ProfileLeads type="company" matchValue={company.name} boardClients={boardClients} onOpenLead={onOpenLead} /></div>{confirmingDelete && <DeleteProfileDialog name={company.name} type="company" deleting={deleting} onCancel={() => setConfirmingDelete(false)} onConfirm={() => void deleteSelectedProfile()} />}</div>;
+    const originalCompany = companies.find((item) => item.id === company.id);
+    const validationError = !company.name.trim() ? "Company name is required." : null;
+    const hasChanges = Boolean(originalCompany && companyProfileFingerprint(company) !== companyProfileFingerprint(originalCompany));
+    const saveDisabledReason = savingProfileEdits ? "Saving changes..." : validationError ?? (!hasChanges ? "No changes to save." : null);
+    return <div className="min-h-full bg-[#f8fafc] p-5"><div className="mx-auto max-w-5xl"><button type="button" onClick={() => setSelectedProfile(null)} className="mb-4 inline-flex items-center gap-2 rounded-md px-2 py-2 text-sm font-medium text-slate-600 hover:bg-white hover:text-violet-600"><ArrowLeft size={17} /> Back to Customer Profiles</button><section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"><header className="flex items-center gap-4 border-b border-slate-200 px-6 py-5"><span className="flex h-12 w-12 items-center justify-center rounded-xl bg-violet-50 text-violet-600"><Building2 size={23} /></span><div><p className="text-xs font-semibold uppercase tracking-wide text-violet-600">Company Profile</p><h1 className="mt-1 text-2xl font-semibold text-slate-900">{company.name}</h1></div>{canDeleteProfiles && <button type="button" onClick={() => setConfirmingDelete(true)} className="ml-auto inline-flex items-center gap-2 rounded-md border border-red-200 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50"><Trash2 size={16} /> Delete</button>}<button type="button" disabled={Boolean(saveDisabledReason)} title={saveDisabledReason ?? "Save changes"} onClick={() => void saveProfileEdits()} className="inline-flex items-center gap-2 rounded-md bg-violet-600 px-3 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50">{savingProfileEdits ? <LoaderCircle size={15} className="animate-spin" /> : null}{savingProfileEdits ? "Saving..." : "Save changes"}</button></header><div className="grid gap-4 bg-slate-50/60 p-6 md:grid-cols-2">{validationError && <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800 md:col-span-2"><AlertTriangle size={16} className="shrink-0" />{validationError}</div>}<ProfileEditField label="Name" icon={<Building2 size={15} /> }><input value={company.name} onChange={(event) => setSelectedProfile({ type: "company", profile: { ...company, name: event.target.value } })} className={inputClass} /></ProfileEditField><ProfileEditField label="Payment Term" icon={<CreditCard size={15} />}><select value={company.payment_term ?? ""} onChange={(event) => setSelectedProfile({ type: "company", profile: { ...company, payment_term: event.target.value || null } })} className={inputClass}><option value="">Select payment term</option>{paymentTerms.map((term) => <option key={term} value={term}>{term}</option>)}</select></ProfileEditField><ProfileEditField label="Industry" icon={<Factory size={15} />}><IndustryCombobox value={{ option: company.industry_option, customText: company.industry_custom_text ?? (company.industry_option_id ? "" : company.industry ?? "") }} onChange={(next) => setSelectedProfile({ type: "company", profile: { ...company, industry: (next.option?.name ?? next.customText) || null, industry_option_id: next.option?.id ?? null, industry_custom_text: next.option ? null : next.customText || null, industry_option: next.option, industry_source: next.option ? "manual_ssic" : next.customText ? "manual_custom" : null } })} /></ProfileEditField><ProfileEditField label="Government / Semi / Private" icon={<Landmark size={15} />}><select value={company.organization_type ?? ""} onChange={(event) => setSelectedProfile({ type: "company", profile: { ...company, organization_type: event.target.value || null } })} className={inputClass}><option value="">Select type</option><option>Government</option><option>Semi</option><option>Private</option></select></ProfileEditField></div></section><ProfileRemarks type="company" profileId={company.id} /><ProfileLeads type="company" matchValue={company.name} boardClients={boardClients} onOpenLead={onOpenLead} /></div>{confirmingDelete && <DeleteProfileDialog name={company.name} type="company" deleting={deleting} onCancel={() => setConfirmingDelete(false)} onConfirm={() => void deleteSelectedProfile()} />}</div>;
   }
 
   return <div className="min-h-full bg-[#f8fafc] p-5">
