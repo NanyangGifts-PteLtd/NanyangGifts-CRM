@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
 const PAYMENT_TERMS = ["Net 30", "Net 60", "Net 90", "Due on Receipt", "End of Month (EOM)", "Cash on Delivery (COD)", "Payment in Advance (PIA)"];
+const COMPANY_SELECT = "id, name, payment_term, industry, industry_option_id, industry_custom_text, industry_source, organization_type, remarks, created_at, industry_option:industry_options!customer_company_profiles_industry_option_id_fkey(id, code, name, section_code, section_name)";
 
 async function authenticatedUser() {
   const supabase = await createClient();
@@ -14,13 +15,49 @@ function normalizePhone(value: string) {
   return value.trim().replace(/[\s()-]/g, "");
 }
 
+async function resolveIndustry(body: Record<string, unknown>) {
+  const industryOptionId = String(body.industryOptionId ?? "").trim();
+  const customText = String(body.industryCustomText ?? body.industry ?? "").trim().slice(0, 300);
+
+  if (!industryOptionId) {
+    return {
+      values: {
+        industry: customText || null,
+        industry_option_id: null,
+        industry_custom_text: customText || null,
+        industry_source: customText ? "manual_custom" : null,
+      },
+    };
+  }
+
+  const { data: option, error } = await supabaseAdmin
+    .from("industry_options")
+    .select("id, name")
+    .eq("id", industryOptionId)
+    .eq("classification", "SSIC")
+    .eq("classification_year", 2025)
+    .eq("is_active", true)
+    .maybeSingle();
+
+  if (error) return { error: error.message };
+  if (!option) return { error: "The selected SSIC industry is no longer available." };
+  return {
+    values: {
+      industry: option.name,
+      industry_option_id: option.id,
+      industry_custom_text: null,
+      industry_source: "manual_ssic",
+    },
+  };
+}
+
 export async function GET() {
   const user = await authenticatedUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const [clientsResult, companiesResult] = await Promise.all([
     supabaseAdmin.from("customer_client_profiles").select("id, phone_number, name, remarks, is_blacklisted, blacklisted_at, created_at").order("name"),
-    supabaseAdmin.from("customer_company_profiles").select("id, name, payment_term, industry, organization_type, remarks, created_at").order("name"),
+    supabaseAdmin.from("customer_company_profiles").select(COMPANY_SELECT).order("name"),
   ]);
   if (clientsResult.error) return NextResponse.json({ error: clientsResult.error.message }, { status: 500 });
   if (companiesResult.error) return NextResponse.json({ error: companiesResult.error.message }, { status: 500 });
@@ -50,7 +87,9 @@ export async function POST(request: NextRequest) {
     if (!name) return NextResponse.json({ error: "Company name is required." }, { status: 400 });
     if (organizationType && !["Government", "Semi", "Private"].includes(organizationType)) return NextResponse.json({ error: "Invalid organization type." }, { status: 400 });
     if (paymentTerm && !PAYMENT_TERMS.includes(paymentTerm)) return NextResponse.json({ error: "Invalid payment term." }, { status: 400 });
-    const { data, error } = await supabaseAdmin.from("customer_company_profiles").insert({ name, payment_term: paymentTerm || null, industry: String(body.industry ?? "").trim() || null, organization_type: organizationType || null, created_by: user.id }).select("id, name, payment_term, industry, organization_type, remarks, created_at").single();
+    const industry = await resolveIndustry(body);
+    if (industry.error) return NextResponse.json({ error: industry.error }, { status: 400 });
+    const { data, error } = await supabaseAdmin.from("customer_company_profiles").insert({ name, payment_term: paymentTerm || null, ...industry.values, organization_type: organizationType || null, created_by: user.id }).select(COMPANY_SELECT).single();
     if (error?.code === "23505") return NextResponse.json({ error: "A company profile with this name already exists." }, { status: 409 });
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ company: data }, { status: 201 });
@@ -91,7 +130,9 @@ export async function PATCH(request: NextRequest) {
   if (!name) return NextResponse.json({ error: "Company name is required." }, { status: 400 });
   if (paymentTerm && !PAYMENT_TERMS.includes(paymentTerm)) return NextResponse.json({ error: "Invalid payment term." }, { status: 400 });
   if (organizationType && !["Government", "Semi", "Private"].includes(organizationType)) return NextResponse.json({ error: "Invalid organization type." }, { status: 400 });
-  const { data, error } = await supabaseAdmin.from("customer_company_profiles").update({ name, payment_term: paymentTerm || null, industry: String(body.industry ?? "").trim() || null, organization_type: organizationType || null }).eq("id", id).select("id, name, payment_term, industry, organization_type, remarks, created_at").single();
+  const industry = await resolveIndustry(body);
+  if (industry.error) return NextResponse.json({ error: industry.error }, { status: 400 });
+  const { data, error } = await supabaseAdmin.from("customer_company_profiles").update({ name, payment_term: paymentTerm || null, ...industry.values, organization_type: organizationType || null }).eq("id", id).select(COMPANY_SELECT).single();
   if (error?.code === "23505") return NextResponse.json({ error: "A company profile with this name already exists." }, { status: 409 });
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ company: data });
