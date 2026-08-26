@@ -258,6 +258,8 @@ export function CRMBoard({ clients,
   const [groupDragOverEdge, setGroupDragOverEdge] = useState<'top' | 'bottom' | null>(null);
 
   const [headerCols, setHeaderCols] = useState<HeaderCol[]>(CLIENT_HEADER_COLS);
+  const [clientMergedOrderKeys, setClientMergedOrderKeys] = useState<string[]>([]);
+  const [customClientWidths, setCustomClientWidths] = useState<Record<string, number>>({});
   const [draggedHeaderKey, setDraggedHeaderKey] = useState<string | null>(null);
   const [dragOverHeaderKey, setDragOverHeaderKey] = useState<string | null>(null);
   const [dragOverHeaderEdge, setDragOverHeaderEdge] = useState<'left' | 'right' | null>(null);
@@ -339,37 +341,6 @@ export function CRMBoard({ clients,
       .catch((error) => console.warn('Failed to save hidden columns', error));
   }, [hiddenColumnKeys, currentUserId]);
 
-  const reorderClientColumns = useCallback((draggedKey: string, targetKey: string) => {
-    const baseCols = headerCols.filter((c) => !['selectCheckbox', 'client', 'addClientCol', 'empty'].includes(c.key));
-    const from = baseCols.findIndex((c) => c.key === draggedKey);
-    const to = baseCols.findIndex((c) => c.key === targetKey);
-    if (from === -1 || to === -1) return;
-
-    const reordered = [...baseCols];
-    const [moved] = reordered.splice(from, 1);
-    reordered.splice(to, 0, moved);
-
-    const fixedFront = headerCols.filter((c) => ['selectCheckbox', 'client'].includes(c.key));
-    const fixedEnd = headerCols.filter((c) => ['addClientCol', 'empty'].includes(c.key));
-    const next = [...fixedFront, ...reordered, ...fixedEnd];
-    setHeaderCols(next);
-
-    try {
-      const order = next.map((c) => c.key);
-      localStorage.setItem('colOrder:clients:local', JSON.stringify(order));
-      localStorage.setItem('colOrder:clients:local_owner', String(currentUserId ?? 'anon'));
-      if (currentUserId) localStorage.setItem(`colOrder:clients:${currentUserId}`, JSON.stringify(order));
-      window.dispatchEvent(new CustomEvent('clientColsReordered', { detail: order }));
-    } catch {}
-
-    if (currentUserId) {
-      void import('@/lib/user-settings')
-        .then(({ saveUserSetting }) => saveUserSetting('colOrder:clients', next.map((c) => c.key)))
-        .catch((error) => console.warn('Failed to save client column arrangement', error));
-    }
-    notifyChange('Column arrangement saved', 'The client column order was saved to your account.');
-  }, [headerCols, currentUserId, notifyChange]);
-
   const setDragPreview = (event: React.DragEvent, source: HTMLElement, includeColumnCells = false) => {
     if (!event.dataTransfer) return;
     const bounds = source.getBoundingClientRect();
@@ -431,6 +402,7 @@ export function CRMBoard({ clients,
       const def = CLIENT_HEADER_COLS.find((d) => d.key === c.key);
       return { ...c, width: def?.width ?? c.width };
     }));
+    setCustomClientWidths({});
 
     // prepare maps
     const clientMap = Object.fromEntries(CLIENT_HEADER_COLS.map((c) => [c.key, c.width]));
@@ -480,6 +452,7 @@ export function CRMBoard({ clients,
     const paymentOrder = PAYMENT_COLS.map((col) => col.key);
 
     setHeaderCols(CLIENT_HEADER_COLS.map((col) => ({ ...col })));
+    setClientMergedOrderKeys([]);
 
     try {
       localStorage.setItem('colOrder:clients:local', JSON.stringify(clientOrder));
@@ -519,19 +492,17 @@ export function CRMBoard({ clients,
   const [newColName, setNewColName] = useState('');
   const [newColType, setNewColType] = useState<'text' | 'number' | 'date'>('text');
   const [isAddingCol, setIsAddingCol] = useState(false);
+  const [pendingDeleteCustomColumn, setPendingDeleteCustomColumn] = useState<CustomColumn | null>(null);
+  const [isDeletingCustomColumn, setIsDeletingCustomColumn] = useState(false);
 
   const clientCustomCols = customColumns.filter((c) => c.target === 'client');
   const subitemCustomCols = customColumns.filter((c) => c.target === 'subitem');
-
-  const clientColumnOrderMap = React.useMemo<Record<string, number>>(() => {
-    return Object.fromEntries(headerCols.map((col, index) => [col.key, index]));
-  }, [headerCols]);
 
   const mergedHeaderCols = React.useMemo<HeaderCol[]>(() => {
     const customClientHeaderCols: HeaderCol[] = clientCustomCols.map((col) => ({
       key: `custom:${col.id}`,
       label: col.name,
-      width: 120,
+      width: customClientWidths[`custom:${col.id}`] ?? 120,
       minWidth: 80,
       customColumnId: col.id,
       isCustom: true,
@@ -541,18 +512,62 @@ export function CRMBoard({ clients,
     const addClientColHeader = headerCols.find((c) => c.key === 'addClientCol');
     const emptyHeader = headerCols.find((c) => c.key === 'empty');
 
-    return [
-      ...headerCols.filter((c) => c.key !== 'addClientCol' && c.key !== 'empty'),
+    const fixedFront = headerCols.filter((c) => ['selectCheckbox', 'client'].includes(c.key));
+    const middle = [
+      ...headerCols.filter((c) => !['selectCheckbox', 'client', 'addClientCol', 'empty'].includes(c.key)),
       ...customClientHeaderCols,
-      ...(addClientColHeader ? [addClientColHeader] : []),
-      ...(emptyHeader ? [emptyHeader] : []),
     ];
-  }, [headerCols, clientCustomCols]);
+    const ordered = clientMergedOrderKeys.map((key) => middle.find((col) => col.key === key)).filter(Boolean) as HeaderCol[];
+    const remaining = middle.filter((col) => !clientMergedOrderKeys.includes(col.key));
+
+    return [...fixedFront, ...ordered, ...remaining, ...(addClientColHeader ? [addClientColHeader] : []), ...(emptyHeader ? [emptyHeader] : [])];
+  }, [headerCols, clientCustomCols, clientMergedOrderKeys, customClientWidths]);
+
+  // Headers and row cells must use the exact same merged order. Building this
+  // from only headerCols leaves every custom cell on the same fallback order.
+  const clientColumnOrderMap = React.useMemo<Record<string, number>>(() => {
+    return Object.fromEntries(mergedHeaderCols.map((col, index) => [col.key, index]));
+  }, [mergedHeaderCols]);
 
   const visibleClientHeaderCols = React.useMemo(
     () => mergedHeaderCols.filter((col) => !hiddenColumnKeys.has(`client:${col.key}`) || ['selectCheckbox', 'client', 'addClientCol', 'empty'].includes(col.key)),
     [mergedHeaderCols, hiddenColumnKeys],
   );
+
+  const visibleClientCustomCols = React.useMemo(
+    () => clientCustomCols.filter((col) => !hiddenColumnKeys.has(`client:custom:${col.id}`)),
+    [clientCustomCols, hiddenColumnKeys],
+  );
+
+  const reorderClientColumns = useCallback((draggedKey: string, targetKey: string) => {
+    const baseCols = mergedHeaderCols.filter((col) => !['selectCheckbox', 'client', 'addClientCol', 'empty'].includes(col.key));
+    const from = baseCols.findIndex((col) => col.key === draggedKey);
+    const to = baseCols.findIndex((col) => col.key === targetKey);
+    if (from === -1 || to === -1) return;
+
+    const reordered = [...baseCols];
+    const [moved] = reordered.splice(from, 1);
+    reordered.splice(to, 0, moved);
+    const fixedFront = mergedHeaderCols.filter((col) => ['selectCheckbox', 'client'].includes(col.key));
+    const fixedEnd = mergedHeaderCols.filter((col) => ['addClientCol', 'empty'].includes(col.key));
+    const next = [...fixedFront, ...reordered, ...fixedEnd];
+
+    setClientMergedOrderKeys(reordered.map((col) => col.key));
+    setHeaderCols((current) => {
+      const byKey = new Map(current.map((col) => [col.key, col]));
+      return next.map((col) => byKey.get(col.key)).filter(Boolean) as HeaderCol[];
+    });
+
+    const order = next.map((col) => col.key);
+    try {
+      localStorage.setItem('colOrder:clients:local', JSON.stringify(order));
+      localStorage.setItem('colOrder:clients:local_owner', String(currentUserId ?? 'anon'));
+      if (currentUserId) localStorage.setItem(`colOrder:clients:${currentUserId}`, JSON.stringify(order));
+      window.dispatchEvent(new CustomEvent('clientColsReordered', { detail: order }));
+    } catch {}
+    if (currentUserId) void import('@/lib/user-settings').then(({ saveUserSetting }) => saveUserSetting('colOrder:clients', order)).catch((error) => console.warn('Failed to save client column arrangement', error));
+    notifyChange('Column arrangement saved', 'The client column order was saved to your account.');
+  }, [mergedHeaderCols, currentUserId, notifyChange]);
 
   const hideableColumnGroups = React.useMemo(() => [
     {
@@ -658,6 +673,7 @@ export function CRMBoard({ clients,
       if (currentUserId && owner && owner !== currentUserId) return;
       const order = JSON.parse(raw) as string[];
       if (!Array.isArray(order) || order.length === 0) return;
+      setClientMergedOrderKeys(order.filter((key) => !['selectCheckbox', 'client', 'addClientCol', 'empty'].includes(key)));
 
       setHeaderCols((prev) => {
         const fixedFront = prev.filter((c) => ['selectCheckbox', 'client'].includes(c.key));
@@ -682,6 +698,7 @@ export function CRMBoard({ clients,
         const { loadUserSetting } = await import('@/lib/user-settings');
         const order = await loadUserSetting('colOrder:clients');
         if (!mounted || !Array.isArray(order) || order.length === 0) return;
+        setClientMergedOrderKeys(order.filter((key) => !['selectCheckbox', 'client', 'addClientCol', 'empty'].includes(key)));
 
         setHeaderCols((prev) => {
           const fixedFront = prev.filter((col) => ['selectCheckbox', 'client'].includes(col.key));
@@ -712,6 +729,7 @@ export function CRMBoard({ clients,
         }
       }
       const map = JSON.parse(raw) as Record<string, number>;
+      setCustomClientWidths(Object.fromEntries(Object.entries(map).filter(([key, value]) => key.startsWith('custom:') && typeof value === 'number')));
       setHeaderCols((prev) => prev.map((c) => ({ ...c, width: c.key === 'empty' ? 44 : map[c.key] ?? c.width })));
     } catch (e) {
       // ignore
@@ -726,6 +744,7 @@ export function CRMBoard({ clients,
         const value = await loadUserSetting('colWidths:clients');
         if (!mounted) return;
         if (value && typeof value === 'object') {
+          setCustomClientWidths(Object.fromEntries(Object.entries(value as Record<string, unknown>).filter(([key, width]) => key.startsWith('custom:') && typeof width === 'number')) as Record<string, number>);
           setHeaderCols((prev) => prev.map((c) => ({ ...c, width: c.key === 'empty' ? 44 : value[c.key] ?? c.width })));
           return;
         }
@@ -735,6 +754,7 @@ export function CRMBoard({ clients,
           const raw = localStorage.getItem(`colWidths:clients:${currentUserId}`);
           if (raw) {
             const map = JSON.parse(raw) as Record<string, number>;
+            setCustomClientWidths(Object.fromEntries(Object.entries(map).filter(([key, value]) => key.startsWith('custom:') && typeof value === 'number')));
             setHeaderCols((prev) => prev.map((c) => ({ ...c, width: c.key === 'empty' ? 44 : map[c.key] ?? c.width })));
           }
         } catch (e) {
@@ -1400,14 +1420,21 @@ export function CRMBoard({ clients,
     }
   }, [newColName, newColType, showAddColModal, customColumns]);
 
-  const handleDeleteCustomColumn = useCallback(async (id: string) => {
+  const handleDeleteCustomColumn = useCallback((id: string) => {
+    const column = customColumns.find((item) => item.id === id);
+    if (column) setPendingDeleteCustomColumn(column);
+  }, [customColumns]);
+
+  const confirmDeleteCustomColumn = useCallback(async () => {
+    if (!pendingDeleteCustomColumn) return;
     try {
-      await deleteCustomColumn(id);
-      setCustomColumns((prev) => prev.filter((c) => c.id !== id));
+      setIsDeletingCustomColumn(true);
+      await deleteCustomColumn(pendingDeleteCustomColumn.id);
+      setCustomColumns((prev) => prev.filter((c) => c.id !== pendingDeleteCustomColumn.id));
 
       const updatedClients = clients.map((client) => {
         const next = { ...(client.customFields ?? {}) };
-        delete next[id];
+        delete next[pendingDeleteCustomColumn.id];
         return { ...client, customFields: next };
       });
 
@@ -1418,10 +1445,14 @@ export function CRMBoard({ clients,
           updateClientRow(client.id, { customFields: client.customFields ?? {} })
         )
       );
+      setPendingDeleteCustomColumn(null);
     } catch (e) {
       console.error('Failed to delete column', e);
+      toast.error('Column could not be deleted', { description: e instanceof Error ? e.message : 'The custom column was not deleted.' });
+    } finally {
+      setIsDeletingCustomColumn(false);
     }
-  }, [clients, setClients]);
+  }, [clients, pendingDeleteCustomColumn, setClients]);
 
   // --- Resize ---
   const startResize = (key: string, startX: number) => {
@@ -1430,9 +1461,12 @@ export function CRMBoard({ clients,
     const startWidth = startCol.width;
     const onMouseMove = (e: MouseEvent) => {
       const delta = e.clientX - startX;
-      setHeaderCols((prev) => prev.map((col) =>
-        col.key === key ? { ...col, width: Math.max(col.minWidth ?? 60, startWidth + delta) } : col
-      ));
+      const nextWidth = Math.max(startCol.minWidth ?? 60, startWidth + delta);
+      if (key.startsWith('custom:')) {
+        setCustomClientWidths((current) => ({ ...current, [key]: nextWidth }));
+      } else {
+        setHeaderCols((prev) => prev.map((col) => col.key === key ? { ...col, width: nextWidth } : col));
+      }
     };
     const onMouseUp = () => {
       document.removeEventListener('mousemove', onMouseMove);
@@ -2561,7 +2595,7 @@ export function CRMBoard({ clients,
           <div className="hidden" style={{ minWidth: totalMinWidth }}>
             {visibleClientHeaderCols.map((col) => {
               const fixedKeys = new Set(['selectCheckbox', 'client', 'addClientCol', 'empty']);
-              const isDraggable = !col.isCustom && !fixedKeys.has(col.key);
+              const isDraggable = !fixedKeys.has(col.key);
               const isDragging = draggedHeaderKey === col.key;
               const isDragOver = dragOverHeaderKey === col.key;
 
@@ -2728,7 +2762,7 @@ export function CRMBoard({ clients,
                   <div className="relative flex text-[12.6px] items-center justify-center min-w-0 flex-shrink-0 border border-[#D0D4E4] overflow-visible bg-white" style={{ minWidth: totalMinWidth, width: totalMinWidth }}>
                     {visibleClientHeaderCols.map((col) => {
                       const fixedKeys = new Set(['selectCheckbox', 'client', 'addClientCol', 'empty']);
-                      const isDraggable = !col.isCustom && !fixedKeys.has(col.key);
+                      const isDraggable = !fixedKeys.has(col.key);
                       const isDragging = draggedHeaderKey === col.key;
                       const isDragOver = dragOverHeaderKey === col.key;
 
@@ -2901,7 +2935,7 @@ export function CRMBoard({ clients,
                   onDeletePaymentStatus={handleDeletePaymentStatus}
                   onAddModeOfPayment={handleAddModeOfPayment}
                   onDeleteModeOfPayment={handleDeleteModeOfPayment}
-                  clientCustomCols={clientCustomCols}
+                  clientCustomCols={visibleClientCustomCols}
                   updateClientCustomField={updateClientCustomField}
                   subitemCustomCols={subitemCustomCols}
                   onDeleteCustomColumn={handleDeleteCustomColumn}
@@ -3043,6 +3077,22 @@ export function CRMBoard({ clients,
               >
                 {isAddingCol ? 'Adding...' : 'Add Column'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {pendingDeleteCustomColumn && (
+        <div className="fixed inset-0 z-[210] flex items-center justify-center bg-black/30 px-4 backdrop-blur-[2px]">
+          <div className="w-full max-w-md rounded-2xl border border-gray-200 bg-white shadow-2xl">
+            <div className="border-b border-gray-100 px-5 py-4">
+              <h2 className="text-sm font-semibold text-gray-900">Delete custom column?</h2>
+              <p className="mt-2 text-xs leading-5 text-gray-500">
+                <span className="font-semibold text-gray-700">{pendingDeleteCustomColumn.name}</span> is a shared {pendingDeleteCustomColumn.target} column. Deleting it will remove the column from the CRM Board for every user.
+              </p>
+            </div>
+            <div className="flex items-center justify-end gap-2 px-5 py-4">
+              <button type="button" disabled={isDeletingCustomColumn} onClick={() => setPendingDeleteCustomColumn(null)} className="rounded-xl border border-gray-200 px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50">Cancel</button>
+              <button type="button" disabled={isDeletingCustomColumn} onClick={() => void confirmDeleteCustomColumn()} className="rounded-xl bg-red-500 px-3 py-2 text-sm font-medium text-white hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-50">{isDeletingCustomColumn ? 'Deleting...' : 'Delete column'}</button>
             </div>
           </div>
         </div>
