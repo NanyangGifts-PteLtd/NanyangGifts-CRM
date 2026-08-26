@@ -68,6 +68,46 @@
 - Tracking for field updates, subitem creation, subitem deletion, and nested item changes.
 - Internal audit trail design to show who changed what and when across client records.
 
+### Inbound lead ingestion
+
+- `POST /api/inbound/wpforms-order` accepts mapped WPForms leads.
+- `POST /api/inbound/woocommerce-order` accepts WooCommerce orders and optional subitems.
+- Both endpoints require `Authorization: Bearer <ZAPIER_INBOUND_SECRET>` and a stable `externalId` from the source system.
+- Each source/external-ID pair is processed once. Failed attempts retain checkpoints and can be safely retried.
+- New leads enter the `New Lead` group with Reply Status `Waiting...`, use the Sales Round Robin, create a current-format activity entry, and notify the selected salesperson.
+- Follow-up dates are calculated as three weekdays in the `Asia/Singapore` timezone. External IDs are stored as ingestion metadata and are never placed in NBD.
+
+Example WPForms body:
+
+```json
+{
+  "externalId": "wpforms-entry-123",
+  "customerName": "Example Customer",
+  "email": "customer@example.com",
+  "companyName": "Example Company",
+  "phone": "+65 6123 4567",
+  "notes": "Requested 500 pieces",
+  "qty": 500,
+  "nbd": "2026-09-30"
+}
+```
+
+Example WooCommerce body:
+
+```json
+{
+  "externalId": "woocommerce-order-456",
+  "orderNumber": "456",
+  "customerName": "Example Customer",
+  "email": "customer@example.com",
+  "companyName": "Example Company",
+  "phone": "+65 6123 4567",
+  "currency": "SGD",
+  "orderTotal": 1200,
+  "subitems": [{ "name": "Printed tote bag", "qty": 500 }]
+}
+```
+
 ### Auto-generate estimate in Quickbooks
 
 - Generate Estimate workflow integrated with QuickBooks-oriented logic and external accounting considerations. Change 'Local/Overseas?' status to Oversas to apply Out of Scope tax, change to Local to apply SR 9% GST for the specific subitem.
