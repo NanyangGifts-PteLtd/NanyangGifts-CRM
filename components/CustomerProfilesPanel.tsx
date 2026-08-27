@@ -10,6 +10,10 @@ type ClientProfile = { id: string; phone_number: string; phone_numbers: ClientPh
 type IndustryOption = { id: string; code: string; name: string; section_code: string; section_name: string };
 type IndustrySelection = { option: IndustryOption | null; customText: string };
 type CompanyProfile = { id: string; name: string; payment_term: string | null; industry: string | null; industry_option_id: string | null; industry_custom_text: string | null; industry_source: string | null; industry_option: IndustryOption | null; organization_type: string | null; remarks: string | null };
+type ProfileLeadLink = { client_id: string; client_profile_id: string | null; company_profile_id: string | null };
+let profileLeadLinksSnapshot: ProfileLeadLink[] = [];
+let clientProfileIdByPhoneSnapshot = new Map<string, string>();
+let companyProfileIdByNameSnapshot = new Map<string, string>();
 
 const inputClass = "h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-800 outline-none focus:border-[#16a5c4] focus:ring-2 focus:ring-[#16a5c4]/15";
 const paymentTerms = ["Net 30", "Net 60", "Net 90", "Due on Receipt", "End of Month (EOM)", "Cash on Delivery (COD)", "Payment in Advance (PIA)"];
@@ -197,8 +201,10 @@ function ProfileLeads({ type, matchValue, boardClients, onOpenLead }: { type: "c
     const matchValues = Array.isArray(matchValue) ? matchValue : [matchValue];
     const normalizedMatches = new Set(matchValues.map((value) => type === "client" ? normalizeProfilePhone(value) : normalizeCompanyName(value)).filter(Boolean));
     if (!normalizedMatches.size) return [];
+    const profileId = matchValues.map((value) => type === "client" ? clientProfileIdByPhoneSnapshot.get(normalizeProfilePhone(value)) : companyProfileIdByNameSnapshot.get(normalizeCompanyName(value))).find(Boolean);
+    const explicitlyLinked = new Set(profileLeadLinksSnapshot.filter((link) => profileId && (type === "client" ? link.client_profile_id : link.company_profile_id) === profileId).map((link) => link.client_id));
     return boardClients
-      .filter((client) => normalizedMatches.has(type === "client" ? normalizeProfilePhone(client.phone ?? "") : normalizeCompanyName(client.company ?? "")))
+      .filter((client) => explicitlyLinked.has(client.id) || normalizedMatches.has(type === "client" ? normalizeProfilePhone(client.phone ?? "") : normalizeCompanyName(client.company ?? "")))
       .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
   }, [boardClients, matchValue, type]);
 
@@ -208,6 +214,7 @@ function ProfileLeads({ type, matchValue, boardClients, onOpenLead }: { type: "c
 export function CustomerProfilesPanel({ currentUserRole, boardClients, onOpenLead }: { currentUserRole?: string | null; boardClients: Client[]; onOpenLead: (clientId: string) => void }) {
   const [clients, setClients] = useState<ClientProfile[]>([]);
   const [companies, setCompanies] = useState<CompanyProfile[]>([]);
+  const [links, setLinks] = useState<ProfileLeadLink[]>([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState<"client" | "company" | null>(null);
   const [saving, setSaving] = useState(false);
@@ -225,6 +232,9 @@ export function CustomerProfilesPanel({ currentUserRole, boardClients, onOpenLea
   const canManageBlacklist = ["director", "dev"].includes(currentUserRole?.toLowerCase() ?? "");
   const filteredClients = useMemo(() => { const query = clientSearch.trim().toLowerCase(); return query ? clients.filter((client) => `${client.name} ${clientPhoneNumbers(client).map((phone) => phone.phone_number).join(" ")}`.toLowerCase().includes(query)) : clients; }, [clientSearch, clients]);
   const filteredCompanies = useMemo(() => { const query = companySearch.trim().toLowerCase(); return query ? companies.filter((company) => company.name.toLowerCase().includes(query)) : companies; }, [companies, companySearch]);
+  profileLeadLinksSnapshot = links;
+  clientProfileIdByPhoneSnapshot = new Map(clients.flatMap((profile) => clientPhoneNumbers(profile).map((phone) => [normalizeProfilePhone(phone.phone_number), profile.id] as const)));
+  companyProfileIdByNameSnapshot = new Map(companies.map((profile) => [normalizeCompanyName(profile.name), profile.id] as const));
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -234,6 +244,7 @@ export function CustomerProfilesPanel({ currentUserRole, boardClients, onOpenLea
       if (!response.ok) throw new Error(result.error || "Unable to load customer profiles.");
       setClients((result.clients ?? []).map((client: ClientProfile) => ({ ...client, phone_numbers: clientPhoneNumbers(client) })));
       setCompanies(result.companies ?? []);
+      setLinks(result.links ?? []);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Unable to load customer profiles.");
     } finally {

@@ -1,6 +1,7 @@
 import "server-only";
 
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { ensureCustomerProfilesForLead } from "@/lib/customer-profile-links";
 
 export type InboundSubitem = { name: string; qty: string };
 
@@ -236,6 +237,8 @@ export async function ingestLead(lead: NormalizedInboundLead): Promise<InboundRe
     const clientId = ingestion.client_id;
     const assignedUserId = ingestion.assigned_user_id;
     if (!clientId || !assignedUserId) throw new InboundLeadError("Inbound processing did not retain its client or assignee");
+
+    await ensureCustomerProfilesForLead({ clientId, clientName: lead.customerName || lead.companyName, phone: lead.phone, company: lead.companyName, createdBy: assignedUserId });
 
     const { data: assignment, error: assignmentReadError } = await supabaseAdmin.from("client_assignees").select("client_id").eq("client_id", clientId).eq("user_id", assignedUserId).maybeSingle();
     if (assignmentReadError) throw new InboundLeadError(assignmentReadError.message);

@@ -33,6 +33,16 @@ import { AdvancedFilters, type AdvancedFilterColumn, type AdvancedFilterRule } f
 
 type OptionEntry = { value: string; color: string };
 const normalizeBlacklistPhone = (value: string) => value.replace(/\D/g, '');
+type CustomerMatchPending = {
+  clientId: string;
+  clientName: string;
+  field: 'phone' | 'company';
+  oldValue: string;
+  value: string;
+  linkedProfileId: string | null;
+  exactProfile: { id: string; name: string } | null;
+  suggestions: Array<{ id: string; name: string; similarity: number }>;
+};
 type HeaderCol = {
   key: string;
   label: string;
@@ -159,6 +169,8 @@ export function CRMBoard({ clients,
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [blacklistedPhones, setBlacklistedPhones] = useState<Set<string>>(new Set());
+  const [customerMatchPending, setCustomerMatchPending] = useState<CustomerMatchPending | null>(null);
+  const [savingCustomerMatch, setSavingCustomerMatch] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const [openGroupMenu, setOpenGroupMenu] = useState<string | null>(null);
@@ -2002,11 +2014,64 @@ export function CRMBoard({ clients,
     'Shortlisted': 'Shortlisted',
   };
 
+  const commitCustomerMatch = useCallback(async (pending: CustomerMatchPending, action: 'link' | 'different' | 'same_add' | 'same_correct', profileId?: string) => {
+    setSavingCustomerMatch(true);
+    try {
+      const response = await fetch('/api/customer-profiles/match', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ operation: 'apply', ...pending, action, profileId }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Unable to match this customer profile.');
+      const update = { [pending.field]: pending.value } as Partial<Client>;
+      setClients((current) => current.map((client) => client.id === pending.clientId ? { ...client, ...update } : client));
+      await updateClientRow(pending.clientId, update, { customerProfileAction: action });
+      setCustomerMatchPending(null);
+      toast.success(action === 'different' ? 'Customer profile linked' : action === 'link' ? 'Existing profile linked' : 'Customer profile updated');
+    } catch (error) {
+      toast.error('Customer information was not changed', { description: error instanceof Error ? error.message : 'The customer profile could not be updated.' });
+    } finally {
+      setSavingCustomerMatch(false);
+    }
+  }, [setClients]);
+
   const updateClient = useCallback(async (clientId: string, updates: Partial<Client>) => {
     const existingClient = clients.find((client) => client.id === clientId);
     const pmAssignmentOnly = Object.keys(updates).length === 1 && updates.customFields !== undefined && updates.customFields.pmAssigneeIds !== undefined && Object.entries(updates.customFields).every(([key, value]) => key === 'pmAssigneeIds' || existingClient?.customFields?.[key] === value);
     if (!pmAssignmentOnly && !canEditClientRecord(clientId)) {
       showAssignmentPermissionError();
+      return;
+    }
+    const customerField = updates.phone !== undefined && updates.phone !== existingClient?.phone
+      ? 'phone'
+      : updates.company !== undefined && updates.company !== existingClient?.company
+        ? 'company'
+        : null;
+    if (existingClient && customerField) {
+      const value = String(updates[customerField] ?? '').trim();
+      const oldValue = String(existingClient[customerField] ?? '').trim();
+      if (!value) {
+        toast.error(`${customerField === 'phone' ? 'Phone number' : 'Company name'} cannot be blank`, { description: 'A customer profile can only be matched using a filled value.' });
+        return;
+      }
+      try {
+        const response = await fetch('/api/customer-profiles/match', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ operation: 'preview', clientId, clientName: existingClient.name, field: customerField, oldValue, value }),
+        });
+        const preview = await response.json();
+        if (!response.ok) throw new Error(preview.error || 'Unable to check customer profiles.');
+        const pending: CustomerMatchPending = { clientId, clientName: existingClient.name, field: customerField, oldValue, value, linkedProfileId: preview.linkedProfileId ?? null, exactProfile: preview.exactProfile ?? null, suggestions: preview.suggestions ?? [] };
+        if (oldValue || pending.suggestions.length) {
+          setCustomerMatchPending(pending);
+          return;
+        }
+        await commitCustomerMatch(pending, preview.exactProfileId ? 'link' : 'different', preview.exactProfileId ?? undefined);
+      } catch (error) {
+        toast.error('Customer matching failed', { description: error instanceof Error ? error.message : 'The field was not changed.' });
+      }
       return;
     }
     let nextUpdates = { ...updates };
@@ -2050,7 +2115,7 @@ export function CRMBoard({ clients,
       console.error('Failed to update client', error);
       toast.error('Client update failed', { description: error?.message || 'The client change could not be saved.' });
     }
-  }, [canEditClientRecord, clients, groups, setClients, showAssignmentPermissionError]);
+  }, [canEditClientRecord, clients, commitCustomerMatch, groups, setClients, showAssignmentPermissionError]);
 
   const updateSubitem = useCallback(async (clientId: string, subitemId: string, updates: Partial<Subitem>) => {
     if (!canEditSubitemRecord(clientId, subitemId)) {
@@ -2514,6 +2579,44 @@ export function CRMBoard({ clients,
 
         <div className="flex-1" />
       </div>
+
+      <AlertDialog open={!!customerMatchPending} onOpenChange={(open) => { if (!open && !savingCustomerMatch) setCustomerMatchPending(null); }}>
+        <AlertDialogContent className="max-w-xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>{customerMatchPending?.oldValue ? 'Is this the same customer?' : 'Match this customer profile'}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {customerMatchPending?.oldValue
+                ? <>You changed {customerMatchPending.field === 'phone' ? 'the phone number' : 'the company name'} from <span className="font-semibold text-slate-700">{customerMatchPending.oldValue}</span> to <span className="font-semibold text-slate-700">{customerMatchPending.value}</span>. Choose how this should affect Customer Profiles.</>
+                : <>Choose an existing profile for <span className="font-semibold text-slate-700">{customerMatchPending?.value}</span>, or create a new one.</>}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {customerMatchPending && <div className="space-y-3 py-1">
+            {customerMatchPending.exactProfile && customerMatchPending.exactProfile.id !== customerMatchPending.linkedProfileId && <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+              <p className="font-semibold">This value already belongs to another profile</p>
+              <p className="mt-1 text-xs">The edited {customerMatchPending.field === 'phone' ? 'phone number' : 'company name'} is already used by <span className="font-semibold">{customerMatchPending.exactProfile.name}</span>. Choosing “different customer” will detach this lead from its original profile and link it to that existing profile. It will not create a duplicate.</p>
+            </div>}
+            {customerMatchPending.exactProfile && customerMatchPending.exactProfile.id === customerMatchPending.linkedProfileId && <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">This value already belongs to the customer profile currently linked to this lead.</div>}
+            {customerMatchPending.field === 'company' && customerMatchPending.suggestions.length > 0 && <div className="rounded-lg border border-violet-200 bg-violet-50/50 p-3">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-violet-700">Similar company profiles</p>
+              <div className="space-y-1.5">{customerMatchPending.suggestions.map((suggestion) => <button key={suggestion.id} type="button" disabled={savingCustomerMatch} onClick={() => void commitCustomerMatch(customerMatchPending, 'link', suggestion.id)} className="flex w-full items-center justify-between rounded-md border border-violet-200 bg-white px-3 py-2 text-left text-sm font-medium text-slate-700 hover:border-violet-400 hover:bg-violet-50 disabled:opacity-50"><span>{suggestion.name}</span><span className="text-[11px] font-normal text-violet-600">Use this company</span></button>)}</div>
+            </div>}
+            {customerMatchPending.oldValue && <div className="rounded-lg border border-sky-200 bg-sky-50/50 p-3">
+              <p className="text-sm font-semibold text-sky-900">This is the same customer</p>
+              <p className="mt-0.5 text-xs text-sky-700">{customerMatchPending.exactProfile && customerMatchPending.exactProfile.id !== customerMatchPending.linkedProfileId ? 'Unavailable because this value is already owned by another profile. Cancel and reconcile those profiles first if they represent the same customer.' : 'Update the profile rather than detaching this lead.'}</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {customerMatchPending.field === 'phone' && <button type="button" disabled={savingCustomerMatch || Boolean(customerMatchPending.exactProfile && customerMatchPending.exactProfile.id !== customerMatchPending.linkedProfileId)} onClick={() => void commitCustomerMatch(customerMatchPending, 'same_add')} className="rounded-md border border-sky-300 bg-white px-3 py-2 text-xs font-semibold text-sky-800 hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-50">Add as another phone number</button>}
+                <button type="button" disabled={savingCustomerMatch || Boolean(customerMatchPending.exactProfile && customerMatchPending.exactProfile.id !== customerMatchPending.linkedProfileId)} onClick={() => void commitCustomerMatch(customerMatchPending, 'same_correct')} className="rounded-md border border-sky-300 bg-white px-3 py-2 text-xs font-semibold text-sky-800 hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-50">Correct the existing {customerMatchPending.field === 'phone' ? 'number' : 'company name'}</button>
+              </div>
+            </div>}
+            <div className="rounded-lg border border-slate-200 p-3">
+              <p className="text-sm font-semibold text-slate-800">{customerMatchPending.oldValue ? 'This is a different customer' : 'Create a new profile'}</p>
+              <p className="mt-0.5 text-xs text-slate-500">{customerMatchPending.exactProfile ? `The original profile remains unchanged. This lead will be linked to the existing profile for ${customerMatchPending.exactProfile.name}.` : customerMatchPending.oldValue ? 'The original profile remains unchanged and is detached from this lead.' : 'No listed profile represents this customer.'}</p>
+              <button type="button" disabled={savingCustomerMatch} onClick={() => void commitCustomerMatch(customerMatchPending, 'different')} className="mt-2 rounded-md bg-slate-800 px-3 py-2 text-xs font-semibold text-white hover:bg-slate-700 disabled:opacity-50">{savingCustomerMatch ? 'Saving...' : customerMatchPending.exactProfile ? `Link to ${customerMatchPending.exactProfile.name}` : customerMatchPending.oldValue ? 'Use as a different customer' : 'Create new profile'}</button>
+            </div>
+          </div>}
+          <AlertDialogFooter><AlertDialogCancel disabled={savingCustomerMatch}>Cancel edit</AlertDialogCancel></AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={pendingDeleteSelected} onOpenChange={setPendingDeleteSelected}>
         <AlertDialogContent>
