@@ -333,6 +333,7 @@ export function SubitemsTable({
     const [pendingPushSubitemId, setPendingPushSubitemId] = useState<string | null>(null);
     const [pushPreview, setPushPreview] = useState<ShipperPushValues | null>(null);
     const [pushPreviewShipperName, setPushPreviewShipperName] = useState("");
+    const [pushPreviewHistory, setPushPreviewHistory] = useState<{ alreadyPushed: boolean; differentShipper: boolean; previousShipperName: string } | null>(null);
     const [isLoadingPushPreview, setIsLoadingPushPreview] = useState(false);
     const [activitySubitem, setActivitySubitem] = useState<Subitem | null>(null);
     const [undoneActivityIds, setUndoneActivityIds] = useState<Set<string>>(new Set());
@@ -907,6 +908,7 @@ export function SubitemsTable({
                 ...Object.fromEntries(SHIPPER_PUSH_FIELDS.map(({ key }) => [key, row[key] == null ? "" : String(row[key])])),
             } as ShipperPushValues);
             setPushPreviewShipperName(String(row.shipper_name || "Selected shipper"));
+            setPushPreviewHistory({ alreadyPushed: Boolean(row.already_pushed), differentShipper: Boolean(row.pushed_to_different_shipper), previousShipperName: String(row.previous_shipper_name || "another shipper") });
         } catch (error: any) {
             toast.error("Could not open shipper preview", { description: error?.message || "Please try again." });
         } finally {
@@ -931,6 +933,7 @@ export function SubitemsTable({
             onUpdateSubitem(pushPreview.subitemId, { cnTracking: pushPreview.cn_tracking_no });
             setPushPreview(null);
             setPushPreviewShipperName("");
+            setPushPreviewHistory(null);
             toast.success("Pushed to shipper view", { description: "The reviewed shipping record was saved successfully." });
         } catch (error: any) {
             toast.error("Push to shipper view failed", { description: error?.message || "Please check the values and try again." });
@@ -1410,8 +1413,12 @@ export function SubitemsTable({
                                 <h2 id="shipper-push-title" className="text-base font-semibold text-slate-900">Pushing to {pushPreviewShipperName || "selected shipper"}</h2>
                                 <p className="mt-1 text-sm text-slate-500">Confirm the shipping details. Fields marked <span className="text-red-500">*</span> are required.</p>
                             </div>
-                            <button type="button" onClick={() => { setPushPreview(null); setPushPreviewShipperName(""); }} disabled={pushingSubitemId === pushPreview.subitemId} className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-50" title="Close"><X size={18} /></button>
+                            <button type="button" onClick={() => { setPushPreview(null); setPushPreviewShipperName(""); setPushPreviewHistory(null); }} disabled={pushingSubitemId === pushPreview.subitemId} className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-50" title="Close"><X size={18} /></button>
                         </div>
+                        {pushPreviewHistory?.alreadyPushed && <div className={`mx-5 mt-4 rounded-lg border p-4 ${pushPreviewHistory.differentShipper ? "border-orange-300 bg-orange-50" : "border-amber-300 bg-amber-50"}`}>
+                            <p className={`font-semibold ${pushPreviewHistory.differentShipper ? "text-orange-900" : "text-amber-900"}`}>{pushPreviewHistory.differentShipper ? "This subitem was previously pushed to a different shipper" : "This subitem has already been pushed"}</p>
+                            <p className={`mt-1 text-sm ${pushPreviewHistory.differentShipper ? "text-orange-800" : "text-amber-700"}`}>{pushPreviewHistory.differentShipper ? <>It was previously pushed to <strong>{pushPreviewHistory.previousShipperName}</strong>. Confirming this push will move its linked shipper row to <strong>{pushPreviewShipperName || "the selected shipper"}</strong>, so it will no longer appear under the previous shipper.</> : <>Confirming will overwrite its existing information in <strong>{pushPreviewShipperName || "the selected shipper"}</strong>.</>}</p>
+                        </div>}
                         <div className="grid flex-1 grid-cols-1 gap-4 overflow-y-auto p-5 md:grid-cols-2">
                             {SHIPPER_PUSH_FIELDS.slice(0, 6).map((field) => {
                                 const value = pushPreview[field.key] ?? "";
@@ -1434,7 +1441,7 @@ export function SubitemsTable({
                         <div className="flex items-center justify-between border-t border-slate-200 px-5 py-4">
                             <p className="text-xs text-slate-500">CN Tracking # will also update the CRM Board.</p>
                             <div className="flex gap-2">
-                                <button type="button" onClick={() => { setPushPreview(null); setPushPreviewShipperName(""); }} disabled={pushingSubitemId === pushPreview.subitemId} className="rounded-md border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50">Cancel</button>
+                                <button type="button" onClick={() => { setPushPreview(null); setPushPreviewShipperName(""); setPushPreviewHistory(null); }} disabled={pushingSubitemId === pushPreview.subitemId} className="rounded-md border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50">Cancel</button>
                                 <button type="button" onClick={() => void confirmPushPreview()} disabled={!pushPreviewComplete || pushingSubitemId === pushPreview.subitemId} className="rounded-md bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-50">{pushingSubitemId === pushPreview.subitemId ? "Pushing..." : "Confirm & push"}</button>
                             </div>
                         </div>

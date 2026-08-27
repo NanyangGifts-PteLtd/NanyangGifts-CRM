@@ -295,8 +295,9 @@ export async function POST(req: NextRequest) {
             ok: true,
             rows: previews.map((row) => {
                 const source = subitems.find((item) => item.id === row.subitem_id);
+                const existing = existingBySubitemId.get(row.subitem_id);
                 const configuredLabelIsValid = !targetShipper || targetLabels.includes(rawSubitems?.find((item) => item.id === row.subitem_id)?.shipper ?? "");
-                return { ...row, already_pushed: existingBySubitemId.has(row.subitem_id), shipper_name: shipperNameById.get(row.shipper_id) ?? "Selected shipper", shipper_mismatch: !!targetShipper && (source?.configured_shipper_id !== targetShipper.id || !configuredLabelIsValid), configured_shipper: rawSubitems?.find((item) => item.id === row.subitem_id)?.shipper || "Not set", valid_shipper_labels: targetLabels };
+                return { ...row, already_pushed: !!existing, previous_shipper_id: existing?.shipper_id ?? null, previous_shipper_name: existing?.shipper_id ? shipperNameById.get(existing.shipper_id) ?? "Unknown shipper" : null, pushed_to_different_shipper: !!existing?.shipper_id && existing.shipper_id !== row.shipper_id, shipper_name: shipperNameById.get(row.shipper_id) ?? "Selected shipper", shipper_mismatch: !!targetShipper && (source?.configured_shipper_id !== targetShipper.id || !configuredLabelIsValid), configured_shipper: rawSubitems?.find((item) => item.id === row.subitem_id)?.shipper || "Not set", valid_shipper_labels: targetLabels };
             }),
         });
 
