@@ -101,6 +101,7 @@ export type ClientRowProps = {
     onUpdateOptionColor?: (code: string, name: string, color: string) => void | Promise<void>;
     onRenameOption?: (code: string, oldName: string, newName: string) => void | Promise<void>;
     onFilterColumn?: (column: string) => void;
+    onSortColumn?: (category: 'subitem' | 'payment', column: string, direction: 'asc' | 'desc') => void;
     clientCustomCols: CustomColumn[];
     subitemCustomCols: CustomColumn[];
     onDeleteCustomColumn: (id: string) => void;
@@ -202,6 +203,7 @@ export function ClientRow({
     onUpdateOptionColor,
     onRenameOption,
     onFilterColumn,
+    onSortColumn,
     clientCustomCols,
     subitemCustomCols,
     onDeleteCustomColumn,
@@ -1179,6 +1181,7 @@ export function ClientRow({
                     onUpdateOptionColor={onUpdateOptionColor}
                     onRenameOption={onRenameOption}
                     onFilterColumn={onFilterColumn}
+                    onSortColumn={onSortColumn}
                     hiddenColumnKeys={hiddenColumnKeys}
                     onHideColumn={onHideColumn}
                     onSetColumnVisibility={onSetColumnVisibility}

@@ -2,7 +2,7 @@
 
 import React, { useMemo, useState } from "react";
 import type { ActivityEntry, Profile, Subitem, TimelineRow } from "../../app/types";
-import { Calendar, CreditCard, FileText, Package, Plus, Trash2, MoreHorizontal, EyeOff, Filter, Activity, X, Info } from "lucide-react";
+import { Calendar, CreditCard, FileText, Package, Plus, Trash2, MoreHorizontal, EyeOff, Filter, Activity, X, Info, ArrowUp, ArrowDown } from "lucide-react";
 import { StatusBadge } from "./statusbadge";
 import { EditableCell } from "./editablecell";
 import { SamplesSection } from "./sample";
@@ -164,6 +164,7 @@ type SubitemProps = {
     onUpdateOptionColor?: (code: string, name: string, color: string) => void | Promise<void>;
     onRenameOption?: (code: string, oldName: string, newName: string) => void | Promise<void>;
     onFilterColumn?: (column: string) => void;
+    onSortColumn?: (category: 'subitem' | 'payment', column: string, direction: 'asc' | 'desc') => void;
     subitemCustomCols: CustomColumn[];
     onDeleteSubitemCustomCol: (id: string) => void;
     onRequestAddSubitemCol: () => void;
@@ -265,6 +266,7 @@ export function SubitemsTable({
     onUpdateOptionColor,
     onRenameOption,
     onFilterColumn,
+    onSortColumn,
     subitemCustomCols,
     onDeleteSubitemCustomCol,
     onRequestAddSubitemCol,
@@ -1548,7 +1550,6 @@ export function SubitemsTable({
                                     <th
                                         key={col.key}
                                         onContextMenu={(e) => {
-                                            if (col.key === 'name') return;
                                             e.preventDefault();
                                             setOpenColumnMenu(`${tablePrefix}:${col.key}`);
                                         }}
@@ -1631,7 +1632,7 @@ export function SubitemsTable({
                                                 <p className="break-words text-sm leading-5 text-gray-700">{SUBITEM_COLUMN_DESCRIPTIONS[col.key]}</p>
                                             </div>
                                         )}
-                                        {isDragTarget && (
+                                        {(
                                             <button type="button" data-subitem-menu-trigger onClick={(e) => { e.stopPropagation(); setOpenColumnMenu(openColumnMenu === `${tablePrefix}:${col.key}` ? null : `${tablePrefix}:${col.key}`); }} onMouseDown={(e) => e.stopPropagation()} className="absolute right-0.5 top-0.5 z-30 hidden rounded bg-white/90 p-0.5 text-gray-400 shadow-sm hover:text-gray-700 group-hover:block" title={`Column options for ${col.label}`}>
                                                 <MoreHorizontal size={12} />
                                             </button>
@@ -1639,6 +1640,8 @@ export function SubitemsTable({
                                         {openColumnMenu === `${tablePrefix}:${col.key}` && (
                                             <div data-subitem-menu className="absolute left-0 top-full z-[80] mt-1 w-36 rounded-md border border-gray-200 bg-white p-1 text-left shadow-xl">
                                                 {((tablePrefix === 'subitem' && ['people', 'status'].includes(col.key)) || (tablePrefix === 'payment' && ['payment', 'paymentStatus'].includes(col.key))) && <button type="button" onClick={() => { onFilterColumn?.(col.key === 'people' ? 'people' : `${tablePrefix}:${col.key}`); setOpenColumnMenu(null); }} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-[10px] font-medium text-gray-700 hover:bg-gray-50"><Filter size={12} /> Filter</button>}
+                                                <button type="button" onClick={() => { onSortColumn?.(tablePrefix, col.key, 'asc'); setOpenColumnMenu(null); }} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-[10px] font-medium text-gray-700 hover:bg-gray-50"><ArrowUp size={12} /> Sort ascending</button>
+                                                <button type="button" onClick={() => { onSortColumn?.(tablePrefix, col.key, 'desc'); setOpenColumnMenu(null); }} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-[10px] font-medium text-gray-700 hover:bg-gray-50"><ArrowDown size={12} /> Sort descending</button>
                                                 <button type="button" onClick={() => onHideColumn(`${tablePrefix}:${col.key}`)} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-[10px] font-medium text-gray-700 hover:bg-gray-50">
                                                     <EyeOff size={12} /> Hide column
                                                 </button>
@@ -1681,7 +1684,7 @@ export function SubitemsTable({
                                         </button>
                                     </div>
                                     <button type="button" data-subitem-menu-trigger onClick={() => setOpenColumnMenu(`${tablePrefix}:custom:${col.id}`)} className="absolute right-0.5 top-0.5 z-30 hidden rounded bg-white/90 p-0.5 text-gray-400 shadow-sm hover:text-gray-700 group-hover:block" title={`Column options for ${col.name}`}><MoreHorizontal size={12} /></button>
-                                    {openColumnMenu === `${tablePrefix}:custom:${col.id}` && <div data-subitem-menu className="absolute left-0 top-full z-[80] mt-1 w-36 rounded-md border border-gray-200 bg-white p-1 text-left shadow-xl"><button type="button" onClick={() => onHideColumn(`${tablePrefix}:custom:${col.id}`)} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-[10px] font-medium text-gray-700 hover:bg-gray-50"><EyeOff size={12} /> Hide column</button></div>}
+                                    {openColumnMenu === `${tablePrefix}:custom:${col.id}` && <div data-subitem-menu className="absolute left-0 top-full z-[80] mt-1 w-40 rounded-md border border-gray-200 bg-white p-1 text-left shadow-xl"><button type="button" onClick={() => { onSortColumn?.(tablePrefix, `custom:${col.id}`, 'asc'); setOpenColumnMenu(null); }} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-[10px] font-medium text-gray-700 hover:bg-gray-50"><ArrowUp size={12} /> Sort ascending</button><button type="button" onClick={() => { onSortColumn?.(tablePrefix, `custom:${col.id}`, 'desc'); setOpenColumnMenu(null); }} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-[10px] font-medium text-gray-700 hover:bg-gray-50"><ArrowDown size={12} /> Sort descending</button><button type="button" onClick={() => onHideColumn(`${tablePrefix}:custom:${col.id}`)} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-[10px] font-medium text-gray-700 hover:bg-gray-50"><EyeOff size={12} /> Hide column</button></div>}
                                 </th>
                             ))}
 

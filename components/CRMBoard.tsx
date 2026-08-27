@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { ChevronDown, Plus, Trash2, Filter, ChevronsDown, ChevronsUp, X, MoreHorizontal, EyeOff, Copy, MoveRight, Search, Columns3, ListRestart } from 'lucide-react';
+import { ChevronDown, Plus, Trash2, Filter, ChevronsDown, ChevronsUp, X, MoreHorizontal, EyeOff, Copy, MoveRight, Search, Columns3, ListRestart, ArrowDownUp, RotateCcw, ArrowUp, ArrowDown } from 'lucide-react';
 import { Client, Subitem, ClientStatus, Profile, ClientAssigneeMap, SubitemAssigneeMap, CRMGroup } from '../app/types';
 import { createClient as createSupabaseClient } from '@/lib/supabase/client';
 import { ClientRow } from './ui/clientrows';
@@ -43,6 +43,9 @@ type CustomerMatchPending = {
   exactProfile: { id: string; name: string } | null;
   suggestions: Array<{ id: string; name: string; similarity: number }>;
 };
+type ColumnScope = 'client' | 'subitem' | 'all';
+type BoardSortSetting = { category: 'client' | 'subitem' | 'payment'; column: string; direction: 'asc' | 'desc' };
+const DEFAULT_BOARD_SORT: BoardSortSetting = { category: 'client', column: 'dateCreated', direction: 'desc' };
 type HeaderCol = {
   key: string;
   label: string;
@@ -333,10 +336,14 @@ export function CRMBoard({ clients,
   const [dragOverHeaderEdge, setDragOverHeaderEdge] = useState<'left' | 'right' | null>(null);
   const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
   const [showRestoreArrangementConfirm, setShowRestoreArrangementConfirm] = useState(false);
+  const [showRestoreSortingConfirm, setShowRestoreSortingConfirm] = useState(false);
   const [hiddenColumnKeys, setHiddenColumnKeys] = useState<Set<string>>(new Set());
   const [openColumnMenu, setOpenColumnMenu] = useState<string | null>(null);
   const [showHideColumns, setShowHideColumns] = useState(false);
   const [showBoardMoreMenu, setShowBoardMoreMenu] = useState(false);
+  const [showSortMenu, setShowSortMenu] = useState(false);
+  const [boardSort, setBoardSort] = useState<BoardSortSetting>(DEFAULT_BOARD_SORT);
+  const sortSettingsLoadedFor = useRef<string | null>(null);
 
   const notifyChange = useCallback((title: string, description: string) => {
     toast.success(title, {
@@ -409,6 +416,34 @@ export function CRMBoard({ clients,
       .catch((error) => console.warn('Failed to save hidden columns', error));
   }, [hiddenColumnKeys, currentUserId]);
 
+  useEffect(() => {
+    if (!currentUserId) {
+      sortSettingsLoadedFor.current = null;
+      setBoardSort(DEFAULT_BOARD_SORT);
+      return;
+    }
+    let mounted = true;
+    sortSettingsLoadedFor.current = null;
+    void import('@/lib/user-settings').then(async ({ loadUserSetting }) => {
+      const value = await loadUserSetting('clientSort');
+      if (!mounted) return;
+      const column = value && typeof value.column === 'string' ? value.column : DEFAULT_BOARD_SORT.column;
+      const direction = value?.direction === 'asc' || value?.direction === 'desc' ? value.direction : DEFAULT_BOARD_SORT.direction;
+      const category = value?.category === 'subitem' || value?.category === 'payment' ? value.category : 'client';
+      setBoardSort({ category, column, direction });
+      sortSettingsLoadedFor.current = currentUserId;
+    }).catch((error) => {
+      console.warn('Failed to load client sorting', error);
+      if (mounted) sortSettingsLoadedFor.current = currentUserId;
+    });
+    return () => { mounted = false; };
+  }, [currentUserId]);
+
+  useEffect(() => {
+    if (!currentUserId || sortSettingsLoadedFor.current !== currentUserId) return;
+    void import('@/lib/user-settings').then(({ saveUserSetting }) => saveUserSetting('clientSort', boardSort)).catch((error) => console.warn('Failed to save board sorting', error));
+  }, [boardSort, currentUserId]);
+
   const setDragPreview = (event: React.DragEvent, source: HTMLElement, includeColumnCells = false) => {
     if (!event.dataTransfer) return;
     const bounds = source.getBoundingClientRect();
@@ -464,13 +499,15 @@ export function CRMBoard({ clients,
     window.setTimeout(() => preview.remove(), 0);
   };
 
-  const handleRestoreDefaults = useCallback(async () => {
+  const handleRestoreDefaults = useCallback(async (scope: ColumnScope) => {
     // restore client header widths to defaults
-    setHeaderCols((prev) => prev.map((c) => {
-      const def = CLIENT_HEADER_COLS.find((d) => d.key === c.key);
-      return { ...c, width: def?.width ?? c.width };
-    }));
-    setCustomClientWidths({});
+    if (scope === 'client' || scope === 'all') {
+      setHeaderCols((prev) => prev.map((c) => {
+        const def = CLIENT_HEADER_COLS.find((d) => d.key === c.key);
+        return { ...c, width: def?.width ?? c.width };
+      }));
+      setCustomClientWidths({});
+    }
 
     // prepare maps
     const clientMap = Object.fromEntries(CLIENT_HEADER_COLS.map((c) => [c.key, c.width]));
@@ -478,22 +515,19 @@ export function CRMBoard({ clients,
     const paymentMap = Object.fromEntries(PAYMENT_COLS.map((c) => [c.key, c.width]));
 
     // write local caches
-    try { localStorage.setItem('colWidths:clients:local', JSON.stringify(clientMap)); } catch {}
-    try { localStorage.setItem('colWidths:subitems:local', JSON.stringify(subitemMap)); } catch {}
-    try { localStorage.setItem('colWidths:payments:local', JSON.stringify(paymentMap)); } catch {}
-    try { localStorage.setItem('colWidths:clients:local_owner', String(currentUserId ?? 'anon')); } catch {}
-    try { localStorage.setItem('colWidths:subitems:local_owner', String(currentUserId ?? 'anon')); } catch {}
-    try { localStorage.setItem('colWidths:payments:local_owner', String(currentUserId ?? 'anon')); } catch {}
+    if (scope === 'client' || scope === 'all') try { localStorage.setItem('colWidths:clients:local', JSON.stringify(clientMap)); localStorage.setItem('colWidths:clients:local_owner', String(currentUserId ?? 'anon')); } catch {}
+    if (scope === 'subitem' || scope === 'all') try { localStorage.setItem('colWidths:subitems:local', JSON.stringify(subitemMap)); localStorage.setItem('colWidths:payments:local', JSON.stringify(paymentMap)); localStorage.setItem('colWidths:subitems:local_owner', String(currentUserId ?? 'anon')); localStorage.setItem('colWidths:payments:local_owner', String(currentUserId ?? 'anon')); } catch {}
     if (currentUserId) {
-      try { localStorage.setItem(`colWidths:clients:${currentUserId}`, JSON.stringify(clientMap)); } catch {}
-      try { localStorage.setItem(`colWidths:subitems:${currentUserId}`, JSON.stringify(subitemMap)); } catch {}
-      try { localStorage.setItem(`colWidths:payments:${currentUserId}`, JSON.stringify(paymentMap)); } catch {}
+      if (scope === 'client' || scope === 'all') try { localStorage.setItem(`colWidths:clients:${currentUserId}`, JSON.stringify(clientMap)); } catch {}
+      if (scope === 'subitem' || scope === 'all') try { localStorage.setItem(`colWidths:subitems:${currentUserId}`, JSON.stringify(subitemMap)); localStorage.setItem(`colWidths:payments:${currentUserId}`, JSON.stringify(paymentMap)); } catch {}
     }
 
     // notify subitems/payment instances to reset
     try {
-      window.dispatchEvent(new CustomEvent('subitemColsChanged', { detail: subitemMap }));
-      window.dispatchEvent(new CustomEvent('paymentColsChanged', { detail: paymentMap }));
+      if (scope === 'subitem' || scope === 'all') {
+        window.dispatchEvent(new CustomEvent('subitemColsChanged', { detail: subitemMap }));
+        window.dispatchEvent(new CustomEvent('paymentColsChanged', { detail: paymentMap }));
+      }
     } catch (e) {
       // ignore
     }
@@ -502,56 +536,50 @@ export function CRMBoard({ clients,
     if (currentUserId) {
       try {
         const { saveUserSetting } = await import('@/lib/user-settings');
-        await Promise.all([
-          saveUserSetting('colWidths:clients', clientMap),
-          saveUserSetting('colWidths:subitems', subitemMap),
-          saveUserSetting('colWidths:payments', paymentMap),
-        ]);
+        const saves = [];
+        if (scope === 'client' || scope === 'all') saves.push(saveUserSetting('colWidths:clients', clientMap));
+        if (scope === 'subitem' || scope === 'all') saves.push(saveUserSetting('colWidths:subitems', subitemMap), saveUserSetting('colWidths:payments', paymentMap));
+        await Promise.all(saves);
       } catch (e) {
         console.warn('Failed to persist restored default column widths', e);
       }
     }
-    notifyChange('Column widths restored', 'Client, subitem, and payment widths were reset to their defaults.');
+    notifyChange('Column widths restored', scope === 'client' ? 'Client column widths were reset.' : scope === 'subitem' ? 'Subitem and payment column widths were reset.' : 'All column widths were reset.');
   }, [currentUserId, notifyChange]);
 
-  const handleRestoreDefaultArrangement = useCallback(async () => {
+  const handleRestoreDefaultArrangement = useCallback(async (scope: ColumnScope) => {
     const clientOrder = CLIENT_HEADER_COLS.map((col) => col.key);
     const subitemOrder = SUBITEM_COLS.map((col) => col.key);
     const paymentOrder = PAYMENT_COLS.map((col) => col.key);
 
-    setHeaderCols(CLIENT_HEADER_COLS.map((col) => ({ ...col })));
-    setClientMergedOrderKeys([]);
+    if (scope === 'client' || scope === 'all') {
+      setHeaderCols(CLIENT_HEADER_COLS.map((col) => ({ ...col })));
+      setClientMergedOrderKeys([]);
+    }
 
     try {
-      localStorage.setItem('colOrder:clients:local', JSON.stringify(clientOrder));
-      localStorage.setItem('colOrder:subitems:local', JSON.stringify(subitemOrder));
-      localStorage.setItem('colOrder:payments:local', JSON.stringify(paymentOrder));
-      localStorage.setItem('colOrder:clients:local_owner', String(currentUserId ?? 'anon'));
-      localStorage.setItem('colOrder:subitems:local_owner', String(currentUserId ?? 'anon'));
-      localStorage.setItem('colOrder:payments:local_owner', String(currentUserId ?? 'anon'));
+      if (scope === 'client' || scope === 'all') { localStorage.setItem('colOrder:clients:local', JSON.stringify(clientOrder)); localStorage.setItem('colOrder:clients:local_owner', String(currentUserId ?? 'anon')); }
+      if (scope === 'subitem' || scope === 'all') { localStorage.setItem('colOrder:subitems:local', JSON.stringify(subitemOrder)); localStorage.setItem('colOrder:payments:local', JSON.stringify(paymentOrder)); localStorage.setItem('colOrder:subitems:local_owner', String(currentUserId ?? 'anon')); localStorage.setItem('colOrder:payments:local_owner', String(currentUserId ?? 'anon')); }
       if (currentUserId) {
-        localStorage.setItem(`colOrder:clients:${currentUserId}`, JSON.stringify(clientOrder));
-        localStorage.setItem(`colOrder:subitems:${currentUserId}`, JSON.stringify(subitemOrder));
-        localStorage.setItem(`colOrder:payments:${currentUserId}`, JSON.stringify(paymentOrder));
+        if (scope === 'client' || scope === 'all') localStorage.setItem(`colOrder:clients:${currentUserId}`, JSON.stringify(clientOrder));
+        if (scope === 'subitem' || scope === 'all') { localStorage.setItem(`colOrder:subitems:${currentUserId}`, JSON.stringify(subitemOrder)); localStorage.setItem(`colOrder:payments:${currentUserId}`, JSON.stringify(paymentOrder)); }
       }
-      window.dispatchEvent(new CustomEvent('subitemColsReordered', { detail: subitemOrder }));
-      window.dispatchEvent(new CustomEvent('paymentColsReordered', { detail: paymentOrder }));
-      window.dispatchEvent(new CustomEvent('clientColsReordered', { detail: clientOrder }));
+      if (scope === 'subitem' || scope === 'all') { window.dispatchEvent(new CustomEvent('subitemColsReordered', { detail: subitemOrder })); window.dispatchEvent(new CustomEvent('paymentColsReordered', { detail: paymentOrder })); }
+      if (scope === 'client' || scope === 'all') window.dispatchEvent(new CustomEvent('clientColsReordered', { detail: clientOrder }));
     } catch {}
 
     if (currentUserId) {
       try {
         const { saveUserSetting } = await import('@/lib/user-settings');
-        await Promise.all([
-          saveUserSetting('colOrder:clients', clientOrder),
-          saveUserSetting('colOrder:subitems', subitemOrder),
-          saveUserSetting('colOrder:payments', paymentOrder),
-        ]);
+        const saves = [];
+        if (scope === 'client' || scope === 'all') saves.push(saveUserSetting('colOrder:clients', clientOrder));
+        if (scope === 'subitem' || scope === 'all') saves.push(saveUserSetting('colOrder:subitems', subitemOrder), saveUserSetting('colOrder:payments', paymentOrder));
+        await Promise.all(saves);
       } catch (error) {
         console.warn('Failed to persist restored default column arrangement', error);
       }
     }
-    notifyChange('Column arrangement restored', 'Client, subitem, and payment columns were reset to their defaults.');
+    notifyChange('Column arrangement restored', scope === 'client' ? 'Client columns were reset.' : scope === 'subitem' ? 'Subitem and payment columns were reset.' : 'All columns were reset.');
   }, [currentUserId, notifyChange]);
 
   // User custom columns
@@ -1015,7 +1043,7 @@ export function CRMBoard({ clients,
   }, [showFilter]);
 
   useEffect(() => {
-    if (!openGroupMenu && !openColumnMenu && !showHideColumns && !showBoardMoreMenu) return;
+    if (!openGroupMenu && !openColumnMenu && !showHideColumns && !showBoardMoreMenu && !showSortMenu) return;
     const handler = (event: MouseEvent) => {
       const target = event.target as HTMLElement;
       if (target.closest('[data-crm-menu-trigger], [data-crm-menu]')) return;
@@ -1023,11 +1051,12 @@ export function CRMBoard({ clients,
       setOpenColumnMenu(null);
       setShowHideColumns(false);
       setShowBoardMoreMenu(false);
+      setShowSortMenu(false);
     };
 
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
-  }, [openGroupMenu, openColumnMenu, showHideColumns, showBoardMoreMenu]);
+  }, [openGroupMenu, openColumnMenu, showHideColumns, showBoardMoreMenu, showSortMenu]);
 
 
   // --- Option handlers ---
@@ -1804,9 +1833,89 @@ export function CRMBoard({ clients,
     return matchesStatus && matchesSubitemStatus && matchesPayment && matchesPaymentStatus && matchesPeople && matchesImportance && matchesReplyStatus && matchesChannel && matchesSubprogress && matchesAdvanced;
   });
 
+  const clientSortColumns = mergedHeaderCols.filter((column) => !['selectCheckbox', 'addClientCol', 'empty'].includes(column.key));
+  const subitemSortColumns = [...SUBITEM_COLS, ...subitemCustomCols.map((column) => ({ key: `custom:${column.id}`, label: column.name, width: 120, minWidth: 80, field_type: column.field_type }))];
+  const paymentSortColumns = PAYMENT_COLS;
+  const selectedSortColumns = boardSort.category === 'client' ? clientSortColumns : boardSort.category === 'subitem' ? subitemSortColumns : paymentSortColumns;
+  const activeBoardSort = selectedSortColumns.some((column) => column.key === boardSort.column) ? boardSort : DEFAULT_BOARD_SORT;
+  const clientSortValue = (client: Client, column: string): string | number => {
+    if (column === 'client') return client.name ?? '';
+    if (column === 'people') return (clientAssignees[client.id] ?? []).map((id) => peopleProfilesById[id]?.full_name || peopleProfilesById[id]?.email || '').filter(Boolean).join(', ');
+    if (column === 'pm') return clientPmAssigneeIds(client).map((id) => peopleProfilesById[id]?.full_name || peopleProfilesById[id]?.email || '').filter(Boolean).join(', ');
+    if (column === 'dateCreated') return client.createdAt ?? '';
+    if (column === 'totalMarkup') return client.subitems.reduce((total, subitem) => total + calculateSubitemFinancials(subitem).markup, 0);
+    if (column.startsWith('custom:')) return client.customFields?.[column.slice(7)] ?? '';
+    return String((client as unknown as Record<string, unknown>)[column] ?? '');
+  };
+  const compareClients = (first: Client, second: Client) => {
+    if (activeBoardSort.category !== 'client') return new Date(second.createdAt || 0).getTime() - new Date(first.createdAt || 0).getTime();
+    const column = activeBoardSort.column;
+    const firstValue = clientSortValue(first, column);
+    const secondValue = clientSortValue(second, column);
+    const firstBlank = firstValue === '' || firstValue === null || firstValue === undefined;
+    const secondBlank = secondValue === '' || secondValue === null || secondValue === undefined;
+    if (firstBlank !== secondBlank) return firstBlank ? 1 : -1;
+
+    const columnDefinition = clientSortColumns.find((item) => item.key === column);
+    const isDate = ['followUp', 'nbd', 'dateCreated'].includes(column) || columnDefinition?.field_type === 'date';
+    const isNumber = ['totalPrice', 'totalMarkup'].includes(column) || columnDefinition?.field_type === 'number';
+    let comparison = 0;
+    if (isDate) {
+      const firstTime = new Date(String(firstValue)).getTime();
+      const secondTime = new Date(String(secondValue)).getTime();
+      comparison = (Number.isFinite(firstTime) ? firstTime : 0) - (Number.isFinite(secondTime) ? secondTime : 0);
+    } else if (isNumber) {
+      const firstNumber = Number(String(firstValue).replace(/[^0-9.-]/g, '')) || 0;
+      const secondNumber = Number(String(secondValue).replace(/[^0-9.-]/g, '')) || 0;
+      comparison = firstNumber - secondNumber;
+    } else comparison = String(firstValue).localeCompare(String(secondValue), undefined, { numeric: true, sensitivity: 'base' });
+    if (comparison !== 0) return activeBoardSort.direction === 'asc' ? comparison : -comparison;
+    return new Date(second.createdAt || 0).getTime() - new Date(first.createdAt || 0).getTime();
+  };
+
+  const subitemSortValue = (subitem: Subitem, column: string): string | number => {
+    const financials = calculateSubitemFinancials(subitem);
+    if (column === 'people') return (subitemAssignees[subitem.id] ?? []).map((id) => peopleProfilesById[id]?.full_name || peopleProfilesById[id]?.email || '').filter(Boolean).join(', ');
+    if (column.startsWith('custom:')) return subitem.customFields?.[column.slice(7)] ?? '';
+    if (column === 'cSgd' || column === 'tcSgd' || column === 'tc' || column === 'price' || column === 'markup' || column === 'percentMarkup') return financials[column] ?? '';
+    if (column === 'priceToSet') {
+      const idealMarkup = Number(subitem.customFields?.idealMarkup || 0);
+      return financials.quantity > 0 ? (idealMarkup + financials.tc) / financials.quantity : '';
+    }
+    if (column === 'idealMarkup') return subitem.customFields?.idealMarkup ?? '';
+    if (column === 'totalUc') return Number(subitem.cost || 0) * Number(subitem.qty || 0);
+    if (column === 'totalC') {
+      const rate = subitem.currency === 'MYR' ? 3 : subitem.currency === 'RMB' ? 5 : 1;
+      return Number(subitem.cost || 0) * Number(subitem.qty || 0) + Number(subitem.manpower || 0) * rate + Number(subitem.ls || 0) * rate;
+    }
+    return (subitem as unknown as Record<string, string | number | null | undefined>)[column] ?? '';
+  };
+  const compareSubitems = (first: Subitem, second: Subitem) => {
+    if (activeBoardSort.category === 'client') return 0;
+    const firstValue = subitemSortValue(first, activeBoardSort.column);
+    const secondValue = subitemSortValue(second, activeBoardSort.column);
+    const firstBlank = firstValue === '' || firstValue === null || firstValue === undefined;
+    const secondBlank = secondValue === '' || secondValue === null || secondValue === undefined;
+    if (firstBlank !== secondBlank) return firstBlank ? 1 : -1;
+    const definition = selectedSortColumns.find((column) => column.key === activeBoardSort.column);
+    const fieldType = definition && 'field_type' in definition ? definition.field_type : undefined;
+    const numericKeys = new Set(['qty', 'cost', 'cSgd', 'tcSgd', 'manpower', 'ls', 'os', 'tc', 'uc', 'pl', 'sl', 'price', 'up', 'markup', 'percentMarkup', 'idealMarkup', 'priceToSet', 'totalUc', 'totalC', 'quantityProduced', 'qtyFor', 'paymentAmount', 'difference']);
+    const isDate = activeBoardSort.column === 'createdAt' || fieldType === 'date';
+    const isNumber = numericKeys.has(activeBoardSort.column) || fieldType === 'number';
+    let comparison = 0;
+    if (isDate) comparison = new Date(String(firstValue)).getTime() - new Date(String(secondValue)).getTime();
+    else if (isNumber) comparison = (Number(String(firstValue).replace(/[^0-9.-]/g, '')) || 0) - (Number(String(secondValue).replace(/[^0-9.-]/g, '')) || 0);
+    else comparison = String(firstValue).localeCompare(String(secondValue), undefined, { numeric: true, sensitivity: 'base' });
+    if (comparison !== 0) return activeBoardSort.direction === 'asc' ? comparison : -comparison;
+    return new Date(second.createdAt || 0).getTime() - new Date(first.createdAt || 0).getTime();
+  };
+
   const groupedClients = groups.map((group) => ({
     group,
-    clients: displayedClients.filter((c) => c.groupId === group.id),
+    clients: displayedClients
+      .filter((c) => c.groupId === group.id)
+      .sort(compareClients)
+      .map((client) => activeBoardSort.category === 'client' ? client : ({ ...client, subitems: [...client.subitems].sort(compareSubitems) })),
   }));
 
   const parentClientOptions = useMemo(
@@ -2452,7 +2561,7 @@ export function CRMBoard({ clients,
         </button>
 
         <div ref={filterRef} className="relative">
-          <button onClick={() => { setFocusedFilterColumn(null); setShowFilter(!showFilter); }} className="flex items-center gap-1 px-2 py-1 bg-[#43adc4] hover:bg-[#0f8da8] text-white rounded-md text-[10px] font-medium transition-colors transition transform active:scale-95 duration-150">
+          <button onClick={() => { setFocusedFilterColumn(null); setShowFilter(!showFilter); setShowSortMenu(false); }} className="flex items-center gap-1 px-2 py-1 bg-[#43adc4] hover:bg-[#0f8da8] text-white rounded-md text-[10px] font-medium transition-colors transition transform active:scale-95 duration-150">
             <Filter size={12} />
             Filter
             {activeFilterCount > 0 && <span className="rounded-full bg-white/25 px-1.5">{activeFilterCount}</span>}
@@ -2518,7 +2627,24 @@ export function CRMBoard({ clients,
         </div>
 
         <div className="relative" data-crm-menu-trigger>
-          <button onClick={() => setShowHideColumns((open) => !open)} className="flex items-center gap-1 px-2 py-1 bg-[#43adc4] hover:bg-[#0f8da8] text-white rounded-md text-[10px] font-medium transition-colors transform active:scale-95 duration-150">
+          <button type="button" onClick={() => { setShowSortMenu((open) => !open); setShowHideColumns(false); setShowBoardMoreMenu(false); }} className={`flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium text-white transition active:scale-95 ${showSortMenu || activeBoardSort.category !== DEFAULT_BOARD_SORT.category || activeBoardSort.column !== DEFAULT_BOARD_SORT.column || activeBoardSort.direction !== DEFAULT_BOARD_SORT.direction ? 'bg-[#0f8da8]' : 'bg-[#43adc4] hover:bg-[#0f8da8]'}`}>
+            <ArrowDownUp size={12} /> Sort <ChevronDown size={11} />
+          </button>
+          {showSortMenu && <div data-crm-menu className="absolute left-0 top-full z-50 mt-1 w-[430px] max-w-[calc(100vw-1rem)] rounded-xl border border-slate-200 bg-white p-4 shadow-xl">
+            <div className="mb-3"><h3 className="text-sm font-semibold text-slate-800">Sort board items</h3><p className="mt-0.5 text-xs text-slate-500">Client sorting applies within groups; subitem and payment sorting applies within each client.</p></div>
+            <div className="grid gap-2 sm:grid-cols-[1fr_150px]">
+              <label className="grid gap-1 text-[11px] font-medium text-slate-500">Column<select value={`${activeBoardSort.category}:${activeBoardSort.column}`} onChange={(event) => { const [category, ...columnParts] = event.target.value.split(':'); setBoardSort((current) => ({ ...current, category: category as BoardSortSetting['category'], column: columnParts.join(':') })); }} className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-700 outline-none focus:border-sky-400">
+                <optgroup label="Client columns">{clientSortColumns.map((column) => <option key={`client:${column.key}`} value={`client:${column.key}`}>{column.label || column.key}</option>)}</optgroup>
+                <optgroup label="Subitem columns">{subitemSortColumns.map((column) => <option key={`subitem:${column.key}`} value={`subitem:${column.key}`}>{column.label || column.key}</option>)}</optgroup>
+                <optgroup label="Payment columns">{paymentSortColumns.map((column) => <option key={`payment:${column.key}`} value={`payment:${column.key}`}>{column.label || column.key}</option>)}</optgroup>
+              </select></label>
+              <label className="grid gap-1 text-[11px] font-medium text-slate-500">Direction<select value={activeBoardSort.direction} onChange={(event) => setBoardSort((current) => ({ ...current, direction: event.target.value as 'asc' | 'desc' }))} className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-700 outline-none focus:border-sky-400"><option value="asc">Ascending</option><option value="desc">Descending</option></select></label>
+            </div>
+          </div>}
+        </div>
+
+        <div className="relative" data-crm-menu-trigger>
+          <button onClick={() => { setShowHideColumns((open) => !open); setShowSortMenu(false); setShowBoardMoreMenu(false); }} className="flex items-center gap-1 px-2 py-1 bg-[#43adc4] hover:bg-[#0f8da8] text-white rounded-md text-[10px] font-medium transition-colors transform active:scale-95 duration-150">
             <EyeOff size={12} /> Hide
             {hiddenColumnKeys.size > 0 && <span className="rounded-full bg-white/25 px-1.5">{hiddenColumnKeys.size}</span>}
             <ChevronDown size={11} />
@@ -2561,7 +2687,7 @@ export function CRMBoard({ clients,
             );
           })}
           <div className="relative ml-1" data-crm-menu-trigger>
-            <button type="button" onClick={() => setShowBoardMoreMenu((open) => !open)} className="flex h-6 w-6 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 hover:text-gray-800" title="More board actions">
+            <button type="button" onClick={() => { setShowBoardMoreMenu((open) => !open); setShowSortMenu(false); setShowHideColumns(false); }} className="flex h-6 w-6 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 hover:text-gray-800" title="More board actions">
               <MoreHorizontal size={16} />
             </button>
             {showBoardMoreMenu && (
@@ -2571,6 +2697,9 @@ export function CRMBoard({ clients,
                 </button>
                 <button type="button" onClick={() => { setShowBoardMoreMenu(false); setShowRestoreArrangementConfirm(true); }} className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs font-medium text-gray-700 hover:bg-gray-50">
                   <ListRestart size={15} className="text-[#43adc4]" /> Restore default column arrangement
+                </button>
+                <button type="button" onClick={() => { setShowBoardMoreMenu(false); setShowRestoreSortingConfirm(true); }} className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs font-medium text-gray-700 hover:bg-gray-50">
+                  <RotateCcw size={15} className="text-[#43adc4]" /> Restore default column sorting
                 </button>
               </div>
             )}
@@ -2723,14 +2852,14 @@ export function CRMBoard({ clients,
           <AlertDialogHeader>
             <AlertDialogTitle>Restore default column widths?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will reset client, subitem, and payment column widths to their default values. This action cannot be undone.
+              Choose which section&apos;s widths to restore. Subitem also includes payment columns.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={async () => { setShowRestoreConfirm(false); await handleRestoreDefaults(); }}>
-              Restore
-            </AlertDialogAction>
+            <AlertDialogAction onClick={async () => { setShowRestoreConfirm(false); await handleRestoreDefaults('client'); }}>Client only</AlertDialogAction>
+            <AlertDialogAction onClick={async () => { setShowRestoreConfirm(false); await handleRestoreDefaults('subitem'); }}>Subitem only</AlertDialogAction>
+            <AlertDialogAction onClick={async () => { setShowRestoreConfirm(false); await handleRestoreDefaults('all'); }}>Restore all</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -2740,14 +2869,31 @@ export function CRMBoard({ clients,
           <AlertDialogHeader>
             <AlertDialogTitle>Restore default column arrangement?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will reset the client, subitem, and payment columns to their default order. This action cannot be undone.
+              Choose which section&apos;s arrangement to restore. Subitem also includes payment columns.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={async () => { setShowRestoreArrangementConfirm(false); await handleRestoreDefaultArrangement(); }}>
-              Restore
-            </AlertDialogAction>
+            <AlertDialogAction onClick={async () => { setShowRestoreArrangementConfirm(false); await handleRestoreDefaultArrangement('client'); }}>Client only</AlertDialogAction>
+            <AlertDialogAction onClick={async () => { setShowRestoreArrangementConfirm(false); await handleRestoreDefaultArrangement('subitem'); }}>Subitem only</AlertDialogAction>
+            <AlertDialogAction onClick={async () => { setShowRestoreArrangementConfirm(false); await handleRestoreDefaultArrangement('all'); }}>Restore all</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={showRestoreSortingConfirm} onOpenChange={setShowRestoreSortingConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Restore default column sorting?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Choose the section to restore. The board default is clients by Date Created, newest first; subitem and payment rows return to their original order.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => { setShowRestoreSortingConfirm(false); if (boardSort.category === 'client') setBoardSort(DEFAULT_BOARD_SORT); notifyChange('Client sorting restored', boardSort.category === 'client' ? 'Clients are sorted by Date Created with the newest at the top.' : 'The active subitem/payment sort was left unchanged.'); }}>Client only</AlertDialogAction>
+            <AlertDialogAction onClick={() => { setShowRestoreSortingConfirm(false); if (boardSort.category !== 'client') setBoardSort(DEFAULT_BOARD_SORT); notifyChange('Subitem sorting restored', boardSort.category !== 'client' ? 'Subitem and payment rows use their original order.' : 'The active client sort was left unchanged.'); }}>Subitem only</AlertDialogAction>
+            <AlertDialogAction onClick={() => { setShowRestoreSortingConfirm(false); setBoardSort(DEFAULT_BOARD_SORT); notifyChange('Column sorting restored', 'All sorting was restored to the board defaults.'); }}>Restore all</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -2933,7 +3079,7 @@ export function CRMBoard({ clients,
                           key={col.key}
                           draggable={isDraggable}
                           onContextMenu={(event) => {
-                            if (['selectCheckbox', 'client', 'addClientCol', 'empty'].includes(col.key)) return;
+                            if (['selectCheckbox', 'addClientCol', 'empty'].includes(col.key)) return;
                             event.preventDefault();
                             setOpenColumnMenu(`client:${group.id}:${col.key}`);
                           }}
@@ -2985,7 +3131,7 @@ export function CRMBoard({ clients,
                           ) : (
                             <div className="flex items-center gap-1 min-w-0 max-w-full px-1"><span className="truncate">{col.label}</span>{col.isCustom && col.customColumnId ? <button type="button" onClick={() => handleDeleteCustomColumn(col.customColumnId!)} className="text-gray-400 hover:text-red-500 flex-shrink-0" title="Delete column"><X size={12} /></button> : null}</div>
                           )}
-                          {!['selectCheckbox', 'client', 'addClientCol', 'empty'].includes(col.key) && (
+                          {!['selectCheckbox', 'addClientCol', 'empty'].includes(col.key) && (
                             <button
                               type="button"
                               data-crm-menu-trigger
@@ -2998,8 +3144,10 @@ export function CRMBoard({ clients,
                             </button>
                           )}
                           {openColumnMenu === `client:${group.id}:${col.key}` && (
-                            <div data-crm-menu className="absolute left-0 top-full z-[80] mt-1 w-36 rounded-md border border-gray-200 bg-white p-1 text-left shadow-xl">
+                            <div data-crm-menu className="absolute left-0 top-full z-[80] mt-1 w-40 rounded-md border border-gray-200 bg-white p-1 text-left shadow-xl">
                               {['people', 'status', 'replyStatus', 'importance', 'channel'].includes(col.key) && <button type="button" onClick={() => { openColumnFilter(col.key === 'people' ? 'people' : `client:${col.key}`); setOpenColumnMenu(null); }} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-[10px] font-medium text-gray-700 hover:bg-gray-50"><Filter size={12} /> Filter</button>}
+                              <button type="button" onClick={() => { setBoardSort({ category: 'client', column: col.key, direction: 'asc' }); setOpenColumnMenu(null); }} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-[10px] font-medium text-gray-700 hover:bg-gray-50"><ArrowUp size={12} /> Sort ascending</button>
+                              <button type="button" onClick={() => { setBoardSort({ category: 'client', column: col.key, direction: 'desc' }); setOpenColumnMenu(null); }} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-[10px] font-medium text-gray-700 hover:bg-gray-50"><ArrowDown size={12} /> Sort descending</button>
                               <button type="button" onClick={() => hideColumn(`client:${col.key}`)} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-[10px] font-medium text-gray-700 hover:bg-gray-50">
                                 <EyeOff size={12} /> Hide column
                               </button>
@@ -3106,6 +3254,7 @@ export function CRMBoard({ clients,
                   onUpdateOptionColor={updateOptionColor}
                   onRenameOption={renameOptionValue}
                   onFilterColumn={openColumnFilter}
+                  onSortColumn={(category, column, direction) => setBoardSort({ category, column, direction })}
                   hiddenColumnKeys={hiddenColumnKeys}
                   onHideColumn={hideColumn}
                   onSetColumnVisibility={setColumnVisibility}
