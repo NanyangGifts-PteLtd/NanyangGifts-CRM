@@ -260,6 +260,7 @@ export default function TopBar({
   const [showSearchResults, setShowSearchResults] = useState(false);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const searchRef = useRef<HTMLDivElement>(null);
+  const searchOverlayInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     try {
@@ -267,6 +268,16 @@ export default function TopBar({
       if (Array.isArray(saved)) setRecentSearches(saved.filter((item): item is string => typeof item === 'string').slice(0, 8));
     } catch {}
   }, []);
+
+  useEffect(() => {
+    if (!showSearchResults) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    window.requestAnimationFrame(() => searchOverlayInputRef.current?.focus());
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') setShowSearchResults(false); };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => { document.body.style.overflow = previousOverflow; window.removeEventListener('keydown', closeOnEscape); };
+  }, [showSearchResults]);
 
   const rememberSearch = (query: string) => {
     const trimmed = query.trim();
@@ -339,31 +350,31 @@ export default function TopBar({
           onClear={() => { onChange(''); setShowSearchResults(true); }}
           placeholder={placeholder}
         />
-        {showSearchResults && !value.trim() && recentSearches.length > 0 && (
-          <div className="absolute left-0 top-full z-[70] mt-1 w-[min(520px,calc(100vw-2rem))] overflow-hidden rounded-lg border border-gray-200 bg-white shadow-xl">
-            <div className="flex items-center justify-between border-b border-gray-100 px-3 py-2 text-[11px] font-semibold text-gray-500">
-              <span>Recent searches</span>
-              <button type="button" onClick={() => { setRecentSearches([]); localStorage.removeItem('crm:recent-searches'); }} className="text-gray-400 hover:text-gray-700">Clear all</button>
-            </div>
-            {recentSearches.map((query) => (
-              <div key={query} className="flex items-center border-b border-gray-100 hover:bg-slate-50">
-                <button type="button" onClick={() => { onChange(query); setShowSearchResults(true); }} className="flex-1 px-3 py-2 text-left text-xs text-slate-700">{query}</button>
-                <button type="button" onClick={() => removeRecentSearch(query)} className="mr-2 rounded p-1 text-gray-400 hover:bg-gray-200 hover:text-gray-700" title="Remove recent search"><X size={13} /></button>
-              </div>
-            ))}
-          </div>
-        )}
-        {showSearchResults && value.trim().length >= 1 && (
-          <div className="absolute left-0 top-full z-[70] mt-1 max-h-96 w-[min(520px,calc(100vw-2rem))] overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-xl">
-            {results.length === 0 ? <div className="p-4 text-xs text-gray-400">No matching clients, subitems, payments, or timeline values.</div> : results.map((result) => {
-              const matchIndex = result.value.toLowerCase().indexOf(result.query.trim().toLowerCase());
-              const before = result.value.slice(0, Math.max(0, matchIndex));
-              const match = result.value.slice(Math.max(0, matchIndex), Math.max(0, matchIndex) + result.query.trim().length);
-              const after = result.value.slice(Math.max(0, matchIndex) + result.query.trim().length);
-              return <button key={result.id} type="button" onClick={() => { rememberSearch(result.query); onSelectSearchResult?.(result); setShowSearchResults(false); }} className="flex w-full items-start gap-3 border-b border-gray-100 px-3 py-2 text-left hover:bg-slate-50"><span className="mt-0.5 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-500">{result.kind}</span><span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold text-slate-800">{result.label}</span><span className="block truncate text-[11px] text-slate-500">{result.context}: {before}<mark className="bg-yellow-200 text-slate-800">{match}</mark>{after}</span></span></button>;
-            })}
-          </div>
-        )}
+        {showSearchResults && <div className="fixed inset-0 z-[500] bg-slate-950/45 p-2 sm:p-5" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowSearchResults(false); }}>
+          <section className="mx-auto flex h-full max-w-[1500px] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl">
+            <header className="flex items-center gap-3 border-b border-slate-200 px-5 py-4 sm:px-8">
+              <Search size={24} className="shrink-0 text-slate-400" />
+              <input ref={searchOverlayInputRef} value={value} onChange={(event) => onChange(event.target.value)} onBlur={() => { if (value.trim()) rememberSearch(value); }} placeholder="Search clients, subitems, payments, timelines, and people..." className="h-12 min-w-0 flex-1 border-0 border-b-2 border-slate-300 bg-transparent text-xl font-medium text-slate-800 outline-none placeholder:text-slate-400 focus:border-sky-500 sm:text-2xl" />
+              {value && <button type="button" onClick={() => { onChange(''); searchOverlayInputRef.current?.focus(); }} className="rounded-md p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700" title="Clear search"><X size={19} /></button>}
+              <button type="button" onClick={() => setShowSearchResults(false)} className="rounded-md p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-800" title="Close search"><X size={22} /></button>
+            </header>
+            <main className="min-h-0 flex-1 overflow-y-auto px-5 py-6 sm:px-8">
+              {!value.trim() ? <div className="mx-auto max-w-4xl">
+                <div className="mb-4 flex items-center justify-between"><div><h2 className="text-base font-semibold text-slate-800">Recent searches</h2><p className="mt-1 text-sm text-slate-500">Select a previous search to run it again.</p></div>{recentSearches.length > 0 && <button type="button" onClick={() => { setRecentSearches([]); localStorage.removeItem('crm:recent-searches'); }} className="rounded-md px-3 py-2 text-xs font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-800">Clear all</button>}</div>
+                <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">{recentSearches.map((query) => <div key={query} className="flex items-center border-b border-slate-100 last:border-b-0 hover:bg-slate-50"><button type="button" onClick={() => { onChange(query); searchOverlayInputRef.current?.focus(); }} className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-left text-sm text-slate-700"><Search size={15} className="shrink-0 text-slate-400" /><span className="truncate">{query}</span></button><button type="button" onClick={() => removeRecentSearch(query)} className="mr-3 rounded p-1.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700" title="Remove recent search"><X size={14} /></button></div>)}{recentSearches.length === 0 && <div className="px-5 py-12 text-center text-sm text-slate-400">Your recent searches will appear here.</div>}</div>
+              </div> : <div className="mx-auto max-w-5xl">
+                <div className="mb-4 flex items-end justify-between"><div><h2 className="text-base font-semibold text-slate-800">Search results</h2><p className="mt-1 text-sm text-slate-500">Clients, subitems, payments, timelines, and assigned people matching “{value.trim()}”.</p></div><span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">{results.length}</span></div>
+                <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">{results.length === 0 ? <div className="px-5 py-14 text-center text-sm text-slate-400">No matching clients, subitems, payments, timeline values, or people.</div> : results.map((result) => {
+                  const matchIndex = result.value.toLowerCase().indexOf(result.query.trim().toLowerCase());
+                  const before = result.value.slice(0, Math.max(0, matchIndex));
+                  const match = result.value.slice(Math.max(0, matchIndex), Math.max(0, matchIndex) + result.query.trim().length);
+                  const after = result.value.slice(Math.max(0, matchIndex) + result.query.trim().length);
+                  return <button key={result.id} type="button" onClick={() => { rememberSearch(result.query); onSelectSearchResult?.(result); setShowSearchResults(false); }} className="flex w-full items-start gap-4 border-b border-slate-100 px-4 py-3 text-left transition last:border-b-0 hover:bg-sky-50/60"><span className="mt-0.5 rounded-md bg-slate-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500">{result.kind}</span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold text-slate-800">{result.label}</span><span className="mt-0.5 block truncate text-xs text-slate-500">{result.context}: {before}<mark className="rounded bg-yellow-200 px-0.5 text-slate-800">{match}</mark>{after}</span></span><ChevronDown size={16} className="mt-1 -rotate-90 text-slate-300" /></button>;
+                })}</div>
+              </div>}
+            </main>
+          </section>
+        </div>}
       </div>
 
       <div ref={notifsRef} className="relative">
