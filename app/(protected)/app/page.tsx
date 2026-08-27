@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from 'react';
-import type { Client, ClientAssigneeMap, SubitemAssigneeMap, Profile, Notification, SearchResult } from '../../types';
+import type { Client, ClientAssigneeMap, SubitemAssigneeMap, Profile, Notification, SearchResult, CRMGroup } from '../../types';
 import { fetchClientsWithSubitems } from '@/lib/crm';
 import { CRMBoard } from '@/components/CRMBoard';
 import Sidebar, { type SidePanel } from '../../../components/Sidebar';
@@ -28,6 +28,7 @@ export default function Page() {
   const [clientAssignees, setClientAssignees] = useState<ClientAssigneeMap>({});
   const [subitemAssignees, setSubitemAssignees] = useState<SubitemAssigneeMap>({});
   const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [groups, setGroups] = useState<CRMGroup[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [searchTarget, setSearchTarget] = useState<SearchResult | null>(null);
   const [profileLeadClientId, setProfileLeadClientId] = useState<string | null>(null);
@@ -41,6 +42,26 @@ export default function Page() {
     }
     setSearchTarget(result);
   }, [clients, expandedClientIds]);
+
+  const openGanttClientTimeline = useCallback((clientId: string, subitemId?: string) => {
+    setActivePanel('crm');
+    setExpandedClientIds((current) => current.includes(clientId) ? current : [...current, clientId]);
+    setClients((current) => current.map((client) => client.id !== clientId ? client : {
+      ...client,
+      subitems: client.subitems.map((subitem) => subitemId && subitem.id !== subitemId ? subitem : { ...subitem, showTimeline: true, showPayments: false, showSample: false }),
+    }));
+    setSearchTarget({
+      id: `gantt-timeline-${clientId}-${subitemId ?? 'all'}-${Date.now()}`,
+      clientId,
+      subitemId,
+      kind: 'timeline',
+      label: 'Timeline',
+      context: 'Opened from Gantt Chart',
+      field: 'Timeline',
+      value: '',
+      query: '',
+    });
+  }, []);
 
   const reloadClients = useCallback(async () => {
     try {
@@ -151,6 +172,25 @@ export default function Page() {
     void loadProfiles();
   }, []);
 
+  useEffect(() => {
+    const loadGroups = async () => {
+      const supabase = createSupabaseClient();
+      const { data, error } = await supabase
+        .from('crm_groups')
+        .select('id, name, color, sort_order')
+        .order('sort_order', { ascending: true });
+
+      if (error) {
+        console.error('Failed to load CRM groups for the Gantt chart', error);
+        return;
+      }
+
+      setGroups((data ?? []) as CRMGroup[]);
+    };
+
+    void loadGroups();
+  }, []);
+
   const renderPanel = () => {
     switch (activePanel) {
       case 'crm':
@@ -175,10 +215,8 @@ export default function Page() {
 
       case 'ganttchart':
         return (
-          <div className="flex h-full items-center justify-center text-sm text-gray-500">
-            <div className="flex-1 min-h-[700px] w-[400px] overflow-auto">
-              <GanttChart clients={clients} />
-            </div>
+          <div className="h-full min-h-0 w-full text-sm text-gray-500">
+            <GanttChart clients={clients} groups={groups} profiles={profiles} clientAssignees={clientAssignees} subitemAssignees={subitemAssignees} onOpenClientTimeline={openGanttClientTimeline} />
           </div>
         );
 

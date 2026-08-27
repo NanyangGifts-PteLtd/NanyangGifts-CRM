@@ -162,6 +162,30 @@ export function CRMBoard({ clients,
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const [openGroupMenu, setOpenGroupMenu] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!searchTarget) return;
+
+    const targetGroupId = clients.find((client) => client.id === searchTarget.clientId)?.groupId;
+    setExpandedIds((current) => current.includes(searchTarget.clientId) ? current : [...current, searchTarget.clientId]);
+
+    if (targetGroupId) {
+      setCollapsedGroups((current) => current[targetGroupId] ? { ...current, [targetGroupId]: false } : current);
+    }
+
+    if (searchTarget.kind === 'timeline') {
+      setClients((current) => current.map((client) => client.id !== searchTarget.clientId ? client : {
+        ...client,
+        subitems: client.subitems.map((subitem) => searchTarget.subitemId && subitem.id !== searchTarget.subitemId ? subitem : {
+          ...subitem,
+          showTimeline: true,
+          showPayments: false,
+          showSample: false,
+        }),
+      }));
+    }
+  }, [searchTarget, setClients, setExpandedIds]);
+
   const filterRef = useRef<HTMLDivElement>(null);
   const [ocfClient, setOcfClient] = useState<Client | null>(null);
   const [isOcfModalOpen, setIsOcfModalOpen] = useState(false);
@@ -943,7 +967,10 @@ export function CRMBoard({ clients,
         setProfiles(profilesData);
         setCurrentUserId(user?.id ?? null);
         setGroups(groupsData);
-        setCollapsedGroups(Object.fromEntries(groupsData.map((group) => [group.id, true])));
+        const navigationGroupId = searchTarget
+          ? clients.find((client) => client.id === searchTarget.clientId)?.groupId
+          : null;
+        setCollapsedGroups(Object.fromEntries(groupsData.map((group) => [group.id, group.id !== navigationGroupId])));
         setReplyStatusEntries(replyOpts);
         setClientStatusEntries(statusOpts);
         setChannelEntries(channelOpts);
