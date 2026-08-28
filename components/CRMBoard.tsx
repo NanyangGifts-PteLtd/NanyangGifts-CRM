@@ -3135,21 +3135,34 @@ export function CRMBoard({ clients,
               <div
                 draggable
                 onDragStart={(event) => handleGroupDragStart(group.id, event)}
-                onDragOver={(event) => handleGroupDragOver(event, group.id, 'top')}
-                onDragEnter={(event) => handleGroupDragEnter(event, group.id, 'top')}
-                onDragLeave={() => {
+                onDragOver={(event) => {
+                  if (Array.from(event.dataTransfer.types).includes('application/x-crm-client-row')) handleDragOver(event, group.id, 'top');
+                  else handleGroupDragOver(event, group.id, 'top');
+                }}
+                onDragEnter={(event) => {
+                  if (Array.from(event.dataTransfer.types).includes('application/x-crm-client-row')) handleDragOver(event, group.id, 'top');
+                  else handleGroupDragEnter(event, group.id, 'top');
+                }}
+                onDragLeave={(event) => {
+                  if (event.currentTarget.contains(event.relatedTarget as Node)) return;
                   if (groupDragOverId === group.id && groupDragOverEdge === 'top') {
                     setGroupDragOverId(null);
                     setGroupDragOverEdge(null);
                   }
+                  if (dragOverGroupId === group.id) {
+                    setDragOverGroupId(null);
+                    setDragOverGroupEdge(null);
+                  }
                 }}
                 onDrop={(event) => {
                   event.preventDefault();
-                  handleGroupDrop(group.id, groupDragOverEdge ?? 'top');
+                  event.stopPropagation();
+                  if (Array.from(event.dataTransfer.types).includes('application/x-crm-client-row')) void handleDrop(group.id);
+                  else void handleGroupDrop(group.id, groupDragOverEdge ?? 'top');
                 }}
                 onDragEnd={handleGroupDragEnd}
                 onContextMenu={(event) => { event.preventDefault(); setOpenGroupMenu(group.id); }}
-                className={`group relative flex cursor-grab items-center gap-2.5 px-2 py-1 text-sm border-y border-gray-100 bg-gray-50 active:cursor-grabbing ${groupDragOverId === group.id ? 'ring-1 ring-[#0f8da8]/40' : ''}`}
+                className={`group relative flex min-h-[58px] cursor-grab items-center gap-3 px-3 py-2 text-sm border-y border-gray-100 bg-gray-50 active:cursor-grabbing ${groupDragOverId === group.id || dragOverGroupId === group.id ? 'ring-2 ring-inset ring-[#0f8da8]/50 bg-sky-50' : ''}`}
               >
                 <button
                   type="button"
@@ -3174,13 +3187,15 @@ export function CRMBoard({ clients,
                     </button>
                   </div>
                 )}
-                <button onClick={() => toggleGroup(group.id)} className="text-sm text-gray-500">
+                <button onClick={() => toggleGroup(group.id)} className="text-base text-gray-500">
                   {collapsedGroups[group.id] ? '▷' : '▼'}
                 </button>
-                <div className="h-5 w-1 rounded bg-[#7BCBD5]" />
+                <div className="h-8 w-1.5 rounded bg-[#7BCBD5]" />
                 <div>
-                  <div className="crm-group-name text-slate-700">{group.name}</div>
-                  <div className="text-xs italic font-normal text-slate-500">{groupClients.length} {groupClients.length === 1 ? 'Client' : 'Clients'}</div>
+                  <div className="crm-group-name text-lg leading-6 text-slate-700">{group.name}</div>
+                  <div className="text-[13px] italic font-normal text-slate-500">
+                    {groupClients.length} {groupClients.length === 1 ? 'Client' : 'Clients'} / {groupClients.reduce((total, client) => total + client.subitems.length, 0)} {groupClients.reduce((total, client) => total + client.subitems.length, 0) === 1 ? 'Subitem' : 'Subitems'}
+                  </div>
                 </div>
               </div>
 
