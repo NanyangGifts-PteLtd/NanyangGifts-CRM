@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ImagePlus, PaintBucket, Trash2 } from "lucide-react";
+import { ImagePlus, PaintBucket, Trash2, X } from "lucide-react";
 
 export type ShipperRow = {
     id: string;
@@ -245,6 +245,7 @@ export default function ShipperGrid({ rows, mode, token }: ShipperGridProps) {
     const [selection, setSelection] = useState<{ startRow: number; startCol: number; endRow: number; endCol: number } | null>(null);
     const [dragSelecting, setDragSelecting] = useState(false);
     const [cellFills, setCellFills] = useState<Record<string, string>>({});
+    const [isFillPaletteOpen, setIsFillPaletteOpen] = useState(true);
     const fillColors = [
         "#ffffff", "#f3f4f6", "#d1d5db", "#9ca3af", "#6b7280", "#374151",
         "#fff200", "#fde68a", "#fed7aa", "#fdba74", "#fb923c", "#f97316",
@@ -331,6 +332,7 @@ export default function ShipperGrid({ rows, mode, token }: ShipperGridProps) {
     const selectCell = (event: React.MouseEvent, rowIndex: number, colIndex: number) => {
         if (event.shiftKey && selection) setSelection((previous) => previous ? { ...previous, endRow: rowIndex, endCol: colIndex } : previous);
         else setSelection({ startRow: rowIndex, startCol: colIndex, endRow: rowIndex, endCol: colIndex });
+        setIsFillPaletteOpen(true);
         setDragSelecting(true);
     };
     const fillSelectedCells = (color: string) => {
@@ -361,7 +363,7 @@ export default function ShipperGrid({ rows, mode, token }: ShipperGridProps) {
 
     return (
         <div className="w-full overflow-auto">
-            <div className="sticky left-0 z-40 mb-1 flex min-h-10 w-fit items-center gap-1 rounded-md border border-slate-300 bg-white p-1.5 shadow-md">{selectionBounds ? <><span className="px-1 text-xs font-medium text-slate-500">Fill</span><div className="grid grid-cols-12 gap-1">{fillColors.map((color) => <button key={color} type="button" onClick={() => fillSelectedCells(color)} className="h-5 w-5 rounded border border-slate-300 transition hover:scale-110" style={{ backgroundColor: color }} title="Fill selected cells" />)}</div><button type="button" onClick={() => fillSelectedCells("")} className="ml-1 rounded border border-slate-300 px-2 py-1 text-[10px] text-slate-600 hover:bg-slate-50">Clear</button></> : <button type="button" disabled={gridRows.length === 0} onClick={() => setSelection({ startRow: 0, startCol: 0, endRow: 0, endCol: 0 })} className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-40" title="Select the top-left cell and choose a fill colour"><PaintBucket size={15} /> Fill colour</button>}</div>
+            <div className="sticky left-0 z-40 mb-1 flex h-10 max-w-[calc(100vw-1rem)] items-center gap-1 rounded-md border border-slate-300 bg-white p-1.5 shadow-md">{selectionBounds && isFillPaletteOpen ? <><span className="shrink-0 px-1 text-xs font-medium text-slate-500">Fill</span><div className="flex min-w-0 flex-1 gap-1 overflow-x-auto py-0.5">{fillColors.map((color) => <button key={color} type="button" onClick={() => fillSelectedCells(color)} className="h-5 w-5 shrink-0 rounded border border-slate-300 transition hover:scale-110" style={{ backgroundColor: color }} title="Fill selected cells" />)}</div><button type="button" onClick={() => fillSelectedCells("")} className="ml-1 shrink-0 rounded border border-slate-300 px-2 py-1 text-[10px] text-slate-600 hover:bg-slate-50">Clear</button><button type="button" onClick={() => setIsFillPaletteOpen(false)} className="ml-1 shrink-0 rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" title="Close fill palette" aria-label="Close fill palette"><X size={14} /></button></> : <button type="button" disabled={gridRows.length === 0} onClick={() => { if (!selectionBounds) setSelection({ startRow: 0, startCol: 0, endRow: 0, endCol: 0 }); setIsFillPaletteOpen(true); }} className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-40" title={selectionBounds ? "Open fill palette" : "Select the top-left cell and choose a fill colour"}><PaintBucket size={15} /> Fill colour</button>}</div>
             <div className="rounded-md border border-slate-300 bg-white shadow-sm">
                 <table className="min-w-[2400px] border-separate border-spacing-0 text-[13px] text-black">
                     <thead>
