@@ -2666,12 +2666,14 @@ export function CRMBoard({ clients,
         </button>
 
         <div ref={filterRef} className="relative">
-          <button onClick={() => { setFocusedFilterColumn(null); setShowFilter(!showFilter); setShowSortMenu(false); }} className="flex items-center gap-1 px-2 py-1 bg-[#43adc4] hover:bg-[#0f8da8] text-white rounded-md text-[10px] font-medium transition-colors transition transform active:scale-95 duration-150">
-            <Filter size={12} />
-            Filter
-            {activeFilterCount > 0 && <span className="rounded-full bg-white/25 px-1.5">{activeFilterCount}</span>}
-            <ChevronDown size={11} />
-          </button>
+          <div className="inline-flex overflow-hidden rounded-md text-[10px] font-medium text-white shadow-sm">
+            <button onClick={() => { setFocusedFilterColumn(null); setFilterMode('quick'); setShowFilter(!showFilter || filterMode !== 'quick'); setShowSortMenu(false); }} className="flex items-center gap-1 bg-[#43adc4] px-2 py-1 transition-colors hover:bg-[#0f8da8] active:scale-95">
+              <Filter size={12} />
+              Filter
+              {activeFilterCount > 0 && <span className="rounded-full bg-white/25 px-1.5">{activeFilterCount}</span>}
+            </button>
+            <button type="button" onClick={() => { setFocusedFilterColumn(null); setFilterMode('advanced'); setShowFilter(true); setShowSortMenu(false); }} className="border-l border-white/35 bg-[#43adc4] px-1.5 transition-colors hover:bg-[#0f8da8] active:scale-95" title="Open advanced filters" aria-label="Open advanced filters"><ChevronDown size={11} /></button>
+          </div>
           {showFilter && (
             <div className={`absolute top-full left-0 z-50 mt-1 rounded-lg ${filterMode === 'quick' ? 'w-[min(680px,calc(100vw-1rem))] border border-gray-200 bg-white p-3 shadow-xl' : ''}`}>
               {filterMode === 'advanced' && <AdvancedFilters columns={advancedColumns} rules={advancedRules} join={advancedJoin} onRulesChange={setAdvancedRules} onJoinChange={setAdvancedJoin} onClear={() => setAdvancedRules([{ id: crypto.randomUUID(), column: '', condition: '', value: '' }])} />}
