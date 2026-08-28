@@ -452,13 +452,15 @@ export function CRMBoard({ clients,
     if (!event.dataTransfer) return;
     const bounds = source.getBoundingClientRect();
     const preview = includeColumnCells ? document.createElement('div') : source.cloneNode(true) as HTMLElement;
+    // The clone is appended to document.body, so preserve the CRM Board typography context.
+    preview.classList.add('crm-board');
     preview.style.position = 'fixed';
     preview.style.left = '-10000px';
     preview.style.top = '-10000px';
     preview.style.width = `${bounds.width}px`;
     preview.style.maxWidth = `${bounds.width}px`;
     preview.style.height = includeColumnCells ? `${bounds.height + 56}px` : `${bounds.height}px`;
-    preview.style.opacity = '1';
+    preview.style.setProperty('opacity', '1', 'important');
     preview.style.filter = 'none';
     preview.style.pointerEvents = 'none';
     preview.style.boxShadow = '0 8px 20px rgba(15, 23, 42, 0.22)';
@@ -1677,6 +1679,7 @@ export function CRMBoard({ clients,
     event.dataTransfer?.setData('text/plain', groupId);
     event.dataTransfer?.setData('application/x-crm-group-row', groupId);
     if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
+    setDragPreview(event, event.currentTarget as HTMLElement);
     setDraggedGroupId(groupId);
     setGroupDragOverId(null);
     setGroupDragOverEdge(null);
