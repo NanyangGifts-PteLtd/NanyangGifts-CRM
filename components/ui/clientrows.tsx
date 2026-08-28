@@ -866,15 +866,6 @@ export function ClientRow({
                         value={client.status}
                         onChange={(v) => {
                             const nextStatus = v as ClientStatus;
-
-                            if (nextStatus === "Closed") {
-                                setPendingStatus(nextStatus);
-                                setCloseFiles([]);
-                                setCloseConfirmed(false);
-                                setShowCloseDialog(true);
-                                return;
-                            }
-
                             onUpdate({ status: nextStatus });
                         }}
                         options={statusOptions}

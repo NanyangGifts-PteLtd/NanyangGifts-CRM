@@ -64,7 +64,7 @@ export function ClientDetailView({ client, clients, profiles, assigneeIds, pmIds
   const pmProfiles = profiles.filter((profile) => profile.role?.toLowerCase() === "pm");
   const textFields: Array<[string, keyof Client]> = [["Company", "company"], ["Email", "email"], ["Phone", "phone"], ["Requirements", "requirements"], ["Company address", "companyAddress"], ["Billing address", "billingAddress"]];
   const dateFields: Array<[string, "followUp" | "nbd"]> = [["Follow up", "followUp"], ["NBD", "nbd"]];
-  const fileGroups = [["Logo / requirements", "logoRequirementsFile"], ["Miscellaneous files", "filesMiscellaneous"]] as const;
+  const fileGroups = [["Closed lead files", "closedLeadFiles"], ["Logo / requirements", "logoRequirementsFile"], ["Miscellaneous files", "filesMiscellaneous"]] as const;
   const saveFiles = (field: string, next: Attachment[]) => onUpdate({ customFields: { ...(client.customFields ?? {}), [field]: JSON.stringify(next) } });
   const ocfItems: Attachment[] = (client.activityLog ?? []).filter((entry) => entry.action === "ocf_created" && entry.link).map((entry) => ({ id: entry.id, name: entry.title || "Order confirmation", url: entry.link!, actorName: entry.actorName, createdAt: entry.createdAt }));
   const displayValue = (field: string | undefined, value: unknown) => field === "groupId" && typeof value === "string" ? groupNamesById[value] ?? "Ungrouped" : String(value ?? "empty");

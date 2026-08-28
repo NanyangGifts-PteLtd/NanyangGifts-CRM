@@ -327,6 +327,10 @@ export function CRMBoard({ clients,
   const [dragOverGroupEdge, setDragOverGroupEdge] = useState<'top' | 'bottom' | null>(null);
   const [groupDragOverId, setGroupDragOverId] = useState<string | null>(null);
   const [groupDragOverEdge, setGroupDragOverEdge] = useState<'top' | 'bottom' | null>(null);
+  const [pendingCloseLead, setPendingCloseLead] = useState<{ clientId: string; updates: Partial<Client> } | null>(null);
+  const [closeLeadFiles, setCloseLeadFiles] = useState<{ purchaseOrder: File | null; signedQuotation: File | null; proofOfPayment: File | null }>({ purchaseOrder: null, signedQuotation: null, proofOfPayment: null });
+  const [closeLeadOcfSigned, setCloseLeadOcfSigned] = useState(false);
+  const [savingCloseLead, setSavingCloseLead] = useState(false);
 
   const [headerCols, setHeaderCols] = useState<HeaderCol[]>(CLIENT_HEADER_COLS);
   const [clientMergedOrderKeys, setClientMergedOrderKeys] = useState<string[]>([]);
@@ -1748,7 +1752,14 @@ export function CRMBoard({ clients,
       (s) => s.toLowerCase() === targetGroup.name.toLowerCase()
     ) as ClientStatus | undefined;
     const updates: Partial<Client> = { groupId };
-    if (matchingStatus) updates.status = matchingStatus;
+    if (targetGroup.name.trim().toLowerCase().startsWith('closed leads')) updates.status = 'Closed';
+    else if (matchingStatus) updates.status = matchingStatus;
+    if (updates.status === 'Closed' && draggedClient.status !== 'Closed') {
+      setCloseLeadFiles({ purchaseOrder: null, signedQuotation: null, proofOfPayment: null });
+      setCloseLeadOcfSigned(false);
+      setPendingCloseLead({ clientId: localDraggedId, updates });
+      return;
+    }
     setClients((prev) => prev.map((c) => c.id === localDraggedId ? { ...c, ...updates } : c));
     try {
       await updateClientRow(localDraggedId, updates);
@@ -2123,6 +2134,26 @@ export function CRMBoard({ clients,
     'Shortlisted': 'Shortlisted',
   };
 
+  const currentClosedLeadsGroupName = () => `Closed Leads - ${new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric', timeZone: 'Asia/Singapore' }).format(new Date())}`;
+
+  const ensureCurrentClosedLeadsGroup = useCallback(async () => {
+    const name = currentClosedLeadsGroupName();
+    const existing = groups.find((group) => group.name.trim().toLowerCase() === name.toLowerCase());
+    if (existing) return existing;
+
+    const supabase = createSupabaseClient();
+    const nextSort = groups.length ? Math.max(...groups.map((group) => group.sort_order ?? 0)) + 1 : 0;
+    const { data, error } = await supabase
+      .from('crm_groups')
+      .insert({ name, color: '#7BCBD5', sort_order: nextSort, created_by: currentUserId })
+      .select('id, name, color, sort_order')
+      .single();
+    if (error) throw error;
+    setGroups((previous) => previous.some((group) => group.id === data.id) ? previous : [...previous, data]);
+    setCollapsedGroups((previous) => ({ ...previous, [data.id]: false }));
+    return data;
+  }, [currentUserId, groups]);
+
   const commitCustomerMatch = useCallback(async (pending: CustomerMatchPending, action: 'link' | 'different' | 'same_add' | 'same_correct', profileId?: string) => {
     setSavingCustomerMatch(true);
     try {
@@ -2145,7 +2176,7 @@ export function CRMBoard({ clients,
     }
   }, [setClients]);
 
-  const updateClient = useCallback(async (clientId: string, updates: Partial<Client>) => {
+  const updateClient = useCallback(async (clientId: string, updates: Partial<Client>, closeRequirementsApproved = false) => {
     const existingClient = clients.find((client) => client.id === clientId);
     const pmAssignmentOnly = Object.keys(updates).length === 1 && updates.customFields !== undefined && updates.customFields.pmAssigneeIds !== undefined && Object.entries(updates.customFields).every(([key, value]) => key === 'pmAssigneeIds' || existingClient?.customFields?.[key] === value);
     if (!pmAssignmentOnly && !canEditClientRecord(clientId)) {
@@ -2185,7 +2216,29 @@ export function CRMBoard({ clients,
     }
     let nextUpdates = { ...updates };
     let movedToGroupName: string | null = null;
-    if (updates.status) {
+    const selectedGroup = updates.groupId ? groups.find((group) => group.id === updates.groupId) : null;
+    const isMovingToClosedLeads = !!selectedGroup?.name.trim().toLowerCase().startsWith('closed leads');
+    const isBecomingClosed = updates.status === 'Closed' || isMovingToClosedLeads;
+    if (isBecomingClosed && existingClient?.status !== 'Closed' && !closeRequirementsApproved) {
+      setCloseLeadFiles({ purchaseOrder: null, signedQuotation: null, proofOfPayment: null });
+      setCloseLeadOcfSigned(false);
+      setPendingCloseLead({ clientId, updates });
+      return;
+    }
+    if (isMovingToClosedLeads) {
+      nextUpdates.status = 'Closed';
+      movedToGroupName = selectedGroup?.name ?? null;
+    }
+    if (updates.status === 'Closed') {
+      try {
+        const closedLeadsGroup = await ensureCurrentClosedLeadsGroup();
+        nextUpdates.groupId = closedLeadsGroup.id;
+        movedToGroupName = closedLeadsGroup.name;
+      } catch (error) {
+        toast.error('Closed Leads group could not be prepared', { description: error instanceof Error ? error.message : 'The lead was not closed.' });
+        return;
+      }
+    } else if (updates.status) {
       const targetGroupName = STATUS_TO_GROUP_NAME[updates.status];
       if (targetGroupName) {
         const matchingGroup = groups.find((g) => g.name.toLowerCase() === targetGroupName.toLowerCase());
@@ -2198,11 +2251,11 @@ export function CRMBoard({ clients,
     setClients((prev) => prev.map((c) => c.id === clientId ? { ...c, ...nextUpdates } : c));
     try {
       await updateClientRow(clientId, nextUpdates, movedToGroupName ? { automated: true, reason: 'status_group_automation' } : undefined);
-      if (movedToGroupName && updates.status) {
+      if (movedToGroupName && nextUpdates.status) {
         const previousClient = clients.find((client) => client.id === clientId);
         const clientName = previousClient?.name || 'Client';
         const statusToastId = toast.success(`${clientName} moved to ${movedToGroupName}`, {
-          description: `Status changed to ${updates.status}.`,
+          description: `Status changed to ${nextUpdates.status}.`,
           action: {
             label: 'Undo',
             onClick: () => {
@@ -2224,7 +2277,45 @@ export function CRMBoard({ clients,
       console.error('Failed to update client', error);
       toast.error('Client update failed', { description: error?.message || 'The client change could not be saved.' });
     }
-  }, [canEditClientRecord, clients, commitCustomerMatch, groups, setClients, showAssignmentPermissionError]);
+  }, [canEditClientRecord, clients, commitCustomerMatch, ensureCurrentClosedLeadsGroup, groups, setClients, showAssignmentPermissionError]);
+
+  const confirmCloseLead = useCallback(async () => {
+    if (!pendingCloseLead || !closeLeadFiles.purchaseOrder || !closeLeadFiles.signedQuotation || !closeLeadFiles.proofOfPayment || !closeLeadOcfSigned) return;
+    const client = clients.find((item) => item.id === pendingCloseLead.clientId);
+    if (!client) return;
+    setSavingCloseLead(true);
+    try {
+      const toAttachment = (file: File, category: string) => new Promise<Record<string, string>>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = () => reject(new Error(`Could not read ${file.name}`));
+        reader.onload = () => resolve({ id: crypto.randomUUID(), name: file.name, url: String(reader.result), kind: 'file', category, actorName: currentUserId ?? 'Unknown user', createdAt: new Date().toISOString() });
+        reader.readAsDataURL(file);
+      });
+      const files = await Promise.all([
+        toAttachment(closeLeadFiles.purchaseOrder, 'Purchase order'),
+        toAttachment(closeLeadFiles.signedQuotation, 'Signed quotation'),
+        toAttachment(closeLeadFiles.proofOfPayment, 'Proof of payment'),
+      ]);
+      let existingFiles: Record<string, string>[] = [];
+      try { const parsed = JSON.parse(client.customFields?.closedLeadFiles ?? '[]'); if (Array.isArray(parsed)) existingFiles = parsed; } catch {}
+      await updateClient(pendingCloseLead.clientId, {
+        ...pendingCloseLead.updates,
+        customFields: {
+          ...(client.customFields ?? {}),
+          ...(pendingCloseLead.updates.customFields ?? {}),
+          closedLeadFiles: JSON.stringify([...existingFiles, ...files]),
+          closedLeadOcfSignedAt: new Date().toISOString(),
+        },
+      }, true);
+      setPendingCloseLead(null);
+      setCloseLeadFiles({ purchaseOrder: null, signedQuotation: null, proofOfPayment: null });
+      setCloseLeadOcfSigned(false);
+    } catch (error) {
+      toast.error('Client could not be closed', { description: error instanceof Error ? error.message : 'Please try again.' });
+    } finally {
+      setSavingCloseLead(false);
+    }
+  }, [clients, closeLeadFiles, closeLeadOcfSigned, currentUserId, pendingCloseLead, updateClient]);
 
   const updateSubitem = useCallback(async (clientId: string, subitemId: string, updates: Partial<Subitem>) => {
     if (!canEditSubitemRecord(clientId, subitemId)) {
@@ -2383,7 +2474,18 @@ export function CRMBoard({ clients,
     if ([...selectedIds].some((clientId) => !canEditClientRecord(clientId))) { showAssignmentPermissionError(); return; }
     setIsMovingClients(true);
     try {
-      await Promise.all([...selectedIds].map((clientId) => updateClientRow(clientId, { groupId: targetGroupId })));
+      const targetGroup = groups.find((group) => group.id === targetGroupId);
+      const updates: Partial<Client> = { groupId: targetGroupId };
+      if (targetGroup?.name.trim().toLowerCase().startsWith('closed leads')) updates.status = 'Closed';
+      if (updates.status === 'Closed') {
+        if (selectedIds.size !== 1) {
+          toast.error('Close leads one at a time', { description: 'Each lead requires its own purchase order, signed quotation, proof of payment, and OCF confirmation.' });
+          return;
+        }
+        await updateClient([...selectedIds][0], updates);
+        return;
+      }
+      await Promise.all([...selectedIds].map((clientId) => updateClientRow(clientId, updates)));
       await reloadClients();
       toast.success('Clients moved', { description: `${selectedIds.size} selected client${selectedIds.size === 1 ? '' : 's'} were moved to the chosen group.` });
       setSelectedIds(new Set());
@@ -2395,7 +2497,7 @@ export function CRMBoard({ clients,
       setShowClientMoveMenu(false);
       setClientMoveSearch('');
     }
-  }, [canEditClientRecord, reloadClients, selectedIds, showAssignmentPermissionError]);
+  }, [canEditClientRecord, groups, reloadClients, selectedIds, showAssignmentPermissionError, updateClient]);
 
   const addSubitem = useCallback(async (clientId: string, name: string) => {
       const trimmedName = name.trim();
@@ -2898,6 +3000,23 @@ export function CRMBoard({ clients,
         </AlertDialogContent>
       </AlertDialog>
 
+      <AlertDialog open={!!pendingCloseLead} onOpenChange={(open) => { if (!open && !savingCloseLead) { setPendingCloseLead(null); setCloseLeadFiles({ purchaseOrder: null, signedQuotation: null, proofOfPayment: null }); setCloseLeadOcfSigned(false); } }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Close this lead?</AlertDialogTitle>
+            <AlertDialogDescription>Upload the required closing documents and confirm that the OCF has been signed before this lead can be closed.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="grid gap-4 py-2">
+            {([['purchaseOrder', 'Purchase order'], ['signedQuotation', 'Signed quotation'], ['proofOfPayment', 'Proof of payment']] as const).map(([key, label]) => <label key={key} className="grid gap-1.5 text-sm font-medium text-slate-700">{label}<input type="file" disabled={savingCloseLead} onChange={(event) => setCloseLeadFiles((current) => ({ ...current, [key]: event.target.files?.[0] ?? null }))} className="block w-full text-xs file:mr-3 file:rounded-md file:border-0 file:bg-sky-100 file:px-3 file:py-2 file:text-xs file:font-semibold file:text-sky-700 hover:file:bg-sky-200 disabled:opacity-50" />{closeLeadFiles[key] && <span className="text-xs font-normal text-emerald-700">{closeLeadFiles[key]?.name}</span>}</label>)}
+            <label className="flex items-center gap-2 text-sm font-medium text-slate-700"><input type="checkbox" checked={closeLeadOcfSigned} disabled={savingCloseLead} onChange={(event) => setCloseLeadOcfSigned(event.target.checked)} className="h-4 w-4 rounded accent-sky-600" />I confirm that the OCF has been signed.</label>
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={savingCloseLead}>Cancel</AlertDialogCancel>
+            <AlertDialogAction disabled={savingCloseLead || !closeLeadFiles.purchaseOrder || !closeLeadFiles.signedQuotation || !closeLeadFiles.proofOfPayment || !closeLeadOcfSigned} onClick={(event) => { event.preventDefault(); void confirmCloseLead(); }}>{savingCloseLead ? 'Closing…' : 'Confirm close'}</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <div className="flex min-w-0 text-gray-500 font-semibold">
         <div style={{ minWidth: totalMinWidth }}>
           <div className="hidden" style={{ minWidth: totalMinWidth }}>
@@ -3174,7 +3293,20 @@ export function CRMBoard({ clients,
                 </div>
               )}
 
-              {!collapsedGroups[group.id] && groupClients.map((client) => (
+              {!collapsedGroups[group.id] && (
+                <div
+                  data-client-group-drop-zone={group.id}
+                  onDragOver={(event) => handleDragOver(event, group.id, 'top')}
+                  onDrop={(event) => { event.preventDefault(); void handleDrop(group.id); }}
+                  onDragLeave={(event) => {
+                    if (event.currentTarget.contains(event.relatedTarget as Node)) return;
+                    setDragOverGroupId(null);
+                    setDragOverGroupEdge(null);
+                  }}
+                  className="relative"
+                  style={{ minWidth: totalMinWidth }}
+                >
+                {groupClients.map((client) => (
                 <ClientRow
                   key={client.id}
                   client={client}
@@ -3270,7 +3402,9 @@ export function CRMBoard({ clients,
                   onMoveSubitemAction={moveSubitemAction}
                   onOpenSubitemDetail={(subitemId) => setDetailSubitem({ clientId: client.id, subitemId })}
                 />
-              ))}
+                ))}
+                </div>
+              )}
 
               {groupToDelete && (
                 <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/20 backdrop-blur-[2px] px-4">
