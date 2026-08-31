@@ -26,7 +26,7 @@ import { fetchCustomColumns, addCustomColumn, deleteCustomColumn, type CustomCol
 import ClientsLiveRefresh from './RealtimeRefresh';
 import { toast } from 'sonner';
 import type { SearchResult } from '../app/types';
-import { calculateSubitemFinancials } from '@/lib/subitem-calculations';
+import { calculateSubitemFinancials, parseSubitemNumber } from '@/lib/subitem-calculations';
 import { ClientDetailView } from './ClientDetailView';
 import { SubitemDetailView } from './SubitemDetailView';
 import { AdvancedFilters, type AdvancedFilterColumn, type AdvancedFilterRule } from './AdvancedFilters';
@@ -347,7 +347,6 @@ export function CRMBoard({ clients,
   const [showBoardMoreMenu, setShowBoardMoreMenu] = useState(false);
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [boardSort, setBoardSort] = useState<BoardSortSetting>(DEFAULT_BOARD_SORT);
-  const sortSettingsLoadedFor = useRef<string | null>(null);
 
   const notifyChange = useCallback((title: string, description: string) => {
     toast.success(title, {
@@ -419,34 +418,6 @@ export function CRMBoard({ clients,
       .then(({ saveUserSetting }) => saveUserSetting('colHidden', keys))
       .catch((error) => console.warn('Failed to save hidden columns', error));
   }, [hiddenColumnKeys, currentUserId]);
-
-  useEffect(() => {
-    if (!currentUserId) {
-      sortSettingsLoadedFor.current = null;
-      setBoardSort(DEFAULT_BOARD_SORT);
-      return;
-    }
-    let mounted = true;
-    sortSettingsLoadedFor.current = null;
-    void import('@/lib/user-settings').then(async ({ loadUserSetting }) => {
-      const value = await loadUserSetting('clientSort');
-      if (!mounted) return;
-      const column = value && typeof value.column === 'string' ? value.column : DEFAULT_BOARD_SORT.column;
-      const direction = value?.direction === 'asc' || value?.direction === 'desc' ? value.direction : DEFAULT_BOARD_SORT.direction;
-      const category = value?.category === 'subitem' || value?.category === 'payment' ? value.category : 'client';
-      setBoardSort({ category, column, direction });
-      sortSettingsLoadedFor.current = currentUserId;
-    }).catch((error) => {
-      console.warn('Failed to load client sorting', error);
-      if (mounted) sortSettingsLoadedFor.current = currentUserId;
-    });
-    return () => { mounted = false; };
-  }, [currentUserId]);
-
-  useEffect(() => {
-    if (!currentUserId || sortSettingsLoadedFor.current !== currentUserId) return;
-    void import('@/lib/user-settings').then(({ saveUserSetting }) => saveUserSetting('clientSort', boardSort)).catch((error) => console.warn('Failed to save board sorting', error));
-  }, [boardSort, currentUserId]);
 
   const setDragPreview = (event: React.DragEvent, source: HTMLElement, includeColumnCells = false) => {
     if (!event.dataTransfer) return;
@@ -1945,18 +1916,35 @@ export function CRMBoard({ clients,
   const selectedSubitemTotals = useMemo(
     () => selectedSubitems.reduce((totals, subitem) => {
       const financials = calculateSubitemFinancials(subitem);
-      return { totalPrice: totals.totalPrice + financials.price, totalMarkup: totals.totalMarkup + financials.markup };
-    }, { totalPrice: 0, totalMarkup: 0 }),
+      const unitCost = subitem.currency?.trim() && financials.quantity > 0 ? financials.tc / financials.quantity : 0;
+      return {
+        totalPrice: totals.totalPrice + financials.price,
+        totalMarkup: totals.totalMarkup + financials.markup,
+        totalUp: totals.totalUp + parseSubitemNumber(subitem.up),
+        totalUc: totals.totalUc + unitCost,
+      };
+    }, { totalPrice: 0, totalMarkup: 0, totalUp: 0, totalUc: 0 }),
     [selectedSubitems],
   );
 
   const selectedClientTotals = useMemo(() => clients.filter((client) => selectedIds.has(client.id)).reduce((totals, client) => {
     const clientTotals = client.subitems.reduce((subitemTotals, subitem) => {
       const financials = calculateSubitemFinancials(subitem);
-      return { totalPrice: subitemTotals.totalPrice + financials.price, totalMarkup: subitemTotals.totalMarkup + financials.markup };
-    }, { totalPrice: 0, totalMarkup: 0 });
-    return { totalPrice: totals.totalPrice + clientTotals.totalPrice, totalMarkup: totals.totalMarkup + clientTotals.totalMarkup };
-  }, { totalPrice: 0, totalMarkup: 0 }), [clients, selectedIds]);
+      const unitCost = subitem.currency?.trim() && financials.quantity > 0 ? financials.tc / financials.quantity : 0;
+      return {
+        totalPrice: subitemTotals.totalPrice + financials.price,
+        totalMarkup: subitemTotals.totalMarkup + financials.markup,
+        totalUp: subitemTotals.totalUp + parseSubitemNumber(subitem.up),
+        totalUc: subitemTotals.totalUc + unitCost,
+      };
+    }, { totalPrice: 0, totalMarkup: 0, totalUp: 0, totalUc: 0 });
+    return {
+      totalPrice: totals.totalPrice + clientTotals.totalPrice,
+      totalMarkup: totals.totalMarkup + clientTotals.totalMarkup,
+      totalUp: totals.totalUp + clientTotals.totalUp,
+      totalUc: totals.totalUc + clientTotals.totalUc,
+    };
+  }, { totalPrice: 0, totalMarkup: 0, totalUp: 0, totalUc: 0 }), [clients, selectedIds]);
   const orderedMoveGroups = useMemo(() => {
     const orderedGroups = groups.map((group) => ({
     name: group.name,
@@ -2621,6 +2609,8 @@ export function CRMBoard({ clients,
           <button type="button" disabled={!canEditSelectedClients} onClick={() => setPendingDeleteSelected(true)} title={!canEditSelectedClients ? 'You can only delete items that are assigned to you' : 'Delete selected clients'} className="flex items-center gap-1.5 rounded px-3 py-2 text-sm text-red-500 hover:bg-red-50 disabled:cursor-not-allowed disabled:text-slate-300 disabled:hover:bg-transparent"><Trash2 size={17} /> Delete</button>
           <div className="ml-auto whitespace-nowrap text-center text-sm text-slate-600"><div>Total Price</div><div className="font-medium text-slate-900">{selectedClientTotals.totalPrice.toFixed(2)}</div></div>
           <div className="whitespace-nowrap text-center text-sm text-slate-600"><div>Total Markup</div><div className={`font-medium ${selectedClientTotals.totalMarkup >= 0 ? 'text-green-600' : 'text-red-500'}`}>{selectedClientTotals.totalMarkup.toFixed(2)}</div></div>
+          <div className="whitespace-nowrap text-center text-sm text-slate-600"><div>Total U.P</div><div className="font-medium text-slate-900">{selectedClientTotals.totalUp.toFixed(2)}</div></div>
+          <div className="whitespace-nowrap text-center text-sm text-slate-600"><div>Total U.C</div><div className="font-medium text-slate-900">{selectedClientTotals.totalUc.toFixed(2)}</div></div>
           <button type="button" onClick={() => setSelectedIds(new Set())} className="rounded p-1 text-slate-400 hover:bg-slate-50 hover:text-slate-700" title="Clear selection"><X size={21} /></button>
         </div>
       )}
@@ -2644,6 +2634,8 @@ export function CRMBoard({ clients,
           <button type="button" disabled={!canEditSelectedSubitems} onClick={() => setPendingDeleteSelectedSubitems(selectedSubitemIds)} title={!canEditSelectedSubitems ? 'You can only delete items that are assigned to you' : 'Delete selected subitems'} className="flex items-center gap-1.5 rounded px-3 py-2 text-sm text-red-500 hover:bg-red-50 disabled:cursor-not-allowed disabled:text-slate-300 disabled:hover:bg-transparent"><Trash2 size={17} /> Delete</button>
           <div className="ml-auto whitespace-nowrap text-center text-sm text-slate-600"><div>Total Price</div><div className="font-medium text-slate-900">{selectedSubitemTotals.totalPrice.toFixed(2)}</div></div>
           <div className="whitespace-nowrap text-center text-sm text-slate-600"><div>Total Markup</div><div className={`font-medium ${selectedSubitemTotals.totalMarkup >= 0 ? 'text-green-600' : 'text-red-500'}`}>{selectedSubitemTotals.totalMarkup.toFixed(2)}</div></div>
+          <div className="whitespace-nowrap text-center text-sm text-slate-600"><div>Total U.P</div><div className="font-medium text-slate-900">{selectedSubitemTotals.totalUp.toFixed(2)}</div></div>
+          <div className="whitespace-nowrap text-center text-sm text-slate-600"><div>Total U.C</div><div className="font-medium text-slate-900">{selectedSubitemTotals.totalUc.toFixed(2)}</div></div>
           <button type="button" onClick={clearSubitemSelection} className="rounded p-1 text-slate-400 hover:bg-slate-50 hover:text-slate-700" title="Clear selection"><X size={21} /></button>
         </div>
       )}
