@@ -36,6 +36,18 @@ const SUBITEM_COLUMN_DESCRIPTIONS: Record<string, string> = {
     sl: "Shipping Lead Time",
 };
 
+const AWARDED_OR_LATER_SUBITEM_STATUSES = new Set([
+    "awarded",
+    "to verify at a later date",
+    "verified",
+    "[variation] cost difference",
+]);
+
+function hasReachedAwardedPhase(status: string | null | undefined) {
+    const normalized = status?.trim().toLowerCase() ?? "";
+    return AWARDED_OR_LATER_SUBITEM_STATUSES.has(normalized) || /cost difference$/i.test(normalized);
+}
+
 type ColumnDef = {
     key: string;
     label: string;
@@ -77,7 +89,7 @@ export const SUBITEM_COLS: ColumnDef[] = [
 export const PAYMENT_COLS: ColumnDef[] = [
     { key: "name", label: "Subitem", width: 290, minWidth: 170 },
     { key: "payment", label: "Payment", width: 82, minWidth: 7 },
-    { key: "paymentStatus", label: "Payment Status", width: 100, minWidth: 7 },
+    { key: "paymentStatus", label: "PM Status", width: 100, minWidth: 7 },
     { key: "shipper", label: "Shipper", width: 80, minWidth: 7 },
     { key: "supplier", label: "Supplier", width: 80, minWidth: 7 },
     { key: "description", label: "Description", width: 80, minWidth: 7 },
@@ -483,6 +495,9 @@ export function SubitemsTable({
     const tablePrefix = tableMode === "payment" ? "payment" : "subitem";
     const visibleCols = cols.filter((col) => col.key === "name" || !hiddenColumnKeys.has(`${tablePrefix}:${col.key}`));
     const visibleCustomCols = subitemCustomCols.filter((col) => !hiddenColumnKeys.has(`subitem:custom:${col.id}`));
+    const displayedSubitems = tableMode === "payment"
+        ? subitems.filter((subitem) => hasReachedAwardedPhase(subitem.status))
+        : subitems;
 
     React.useEffect(() => {
         try {
@@ -1015,12 +1030,18 @@ export function SubitemsTable({
             <div className="ml-auto flex items-center gap-1 shrink-0">
                 <button
                     onClick={() => {
+                        if (!sub.showTimeline && !hasReachedAwardedPhase(sub.status)) {
+                            toast.warning("This subitem has not been awarded yet", {
+                                description: "Timeline and payment details are available once the subitem has reached the Awarded phase.",
+                            });
+                            return;
+                        }
                         onUpdateSubitem(sub.id, {
                             showTimeline: !sub.showTimeline,
                             showPayments: false,
                             showSample: false,
                         });
-                        setTableMode(sub.showTimeline ? null : "timeline");
+                        if (!sub.showTimeline) setTableMode("payment");
                     }}
                     className={`flex items-center justify-center rounded-sm border p-1 transition active:scale-95 ${sub.showTimeline
                             ? "border-[#7BCBD5] bg-[#7BCBD5] text-white"
@@ -1591,8 +1612,8 @@ export function SubitemsTable({
                             <th className="w-11 px-2 py-1 text-center">
                                 <input
                                     type="checkbox"
-                                    checked={subitems.length > 0 && subitems.every((subitem) => selectedSubitemIds.includes(subitem.id))}
-                                    onChange={() => onToggleAllSubitems(subitems.map((subitem) => subitem.id))}
+                                    checked={displayedSubitems.length > 0 && displayedSubitems.every((subitem) => selectedSubitemIds.includes(subitem.id))}
+                                    onChange={() => onToggleAllSubitems(displayedSubitems.map((subitem) => subitem.id))}
                                     disabled={clientIsSelected}
                                     title={clientIsSelected ? "Clients and subitems cannot be selected together" : "Select all subitems in this client"}
                                     className={`h-3 w-3 rounded accent-[#7BCBD5] ${clientIsSelected ? 'cursor-not-allowed opacity-40' : 'cursor-pointer'}`}
@@ -1758,7 +1779,7 @@ export function SubitemsTable({
                     </thead>
 
                     <tbody>
-                        {subitems.map((sub) => (
+                        {displayedSubitems.map((sub) => (
                             <React.Fragment key={sub.id}>
                                 <tr data-subitem-id={sub.id} onDragOver={(event) => onSubitemRowDragOver?.(event, sub.id)} onDrop={(event) => onSubitemRowDrop?.(event, sub.id)} onContextMenu={(event) => { event.preventDefault(); window.dispatchEvent(new CustomEvent("crm:subitem-actions", { detail: sub.id })); }} onMouseMove={(event) => { event.currentTarget.title = !canEditSubitem(sub.id) && !(event.target as HTMLElement).closest('[data-subitem-assignment-editor]') ? 'You can only edit items that are assigned to you' : ''; }} onClickCapture={(event) => {
                                     if (canEditSubitem(sub.id)) return;
@@ -1848,7 +1869,7 @@ export function SubitemsTable({
                                     </td>
                                 </tr>
 
-                                {sub.showTimeline && (
+                                {sub.showTimeline && hasReachedAwardedPhase(sub.status) && (
                                     <ExpandedRow colSpan={totalColSpan} tone="blue">
                                         <TimelineSection
                                             rows={sub.timelineRows?.length ? sub.timelineRows : DEFAULT_TIMELINE_ROWS}
