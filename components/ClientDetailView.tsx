@@ -62,7 +62,7 @@ export function ClientDetailView({ client, clients, profiles, assigneeIds, pmIds
   const index = clients.findIndex((item) => item.id === client.id);
   const people = useMemo(() => [...new Set([...assigneeIds, ...pmIds])].map((id) => profiles.find((profile) => profile.id === id)).filter(Boolean) as Profile[], [assigneeIds, pmIds, profiles]);
   const pmProfiles = profiles.filter((profile) => profile.role?.toLowerCase() === "pm");
-  const textFields: Array<[string, keyof Client]> = [["Company", "company"], ["Email", "email"], ["Phone", "phone"], ["Requirements", "requirements"], ["Company address", "companyAddress"], ["Billing address", "billingAddress"]];
+  const textFields: Array<[string, keyof Client]> = [["Company", "company"], ["Email", "email"], ["Phone", "phone"], ["Requirements", "requirements"], ["Billing address", "billingAddress"]];
   const dateFields: Array<[string, "followUp" | "nbd"]> = [["Follow up", "followUp"], ["NBD", "nbd"]];
   const fileGroups = [["Closed lead files", "closedLeadFiles"], ["Logo / requirements", "logoRequirementsFile"], ["Miscellaneous files", "filesMiscellaneous"]] as const;
   const saveFiles = (field: string, next: Attachment[]) => onUpdate({ customFields: { ...(client.customFields ?? {}), [field]: JSON.stringify(next) } });

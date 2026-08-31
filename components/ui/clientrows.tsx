@@ -242,7 +242,6 @@ export function ClientRow({
         pmAssignedIds = [];
     }
     const canEditClient = !!currentUserId && (clientAssignedIds.includes(currentUserId) || pmAssignedIds.includes(currentUserId));
-    const subitemCount = client.subitems.length;
     const [showCloseDialog, setShowCloseDialog] = useState(false);
     const [pendingStatus, setPendingStatus] = useState<ClientStatus | null>(null);
     const [closeFiles, setCloseFiles] = useState<File[]>([]);
@@ -640,11 +639,6 @@ export function ClientRow({
                         />
                     </div>
                     <div className="ml-auto flex items-center justify-start gap-1 flex-shrink-0">
-                        {subitemCount > 0 && (
-                            <span className="text-[12.6px] text-[#7BCBD5] items-left justify-left bg-[#e7fdff] rounded-full px-1.5 py-0.5 flex-shrink-0">
-                                {subitemCount}
-                            </span>
-                        )}
                         <Tooltip.Provider>
                             <Tooltip.Root>
                                 <Tooltip.Trigger asChild>
@@ -1015,6 +1009,14 @@ export function ClientRow({
                     <EditableCell className="!justify-start px-1" value={client.company} onChange={(v) => onUpdate({ company: v })} placeholder="" />
                 </div>
 
+                <div data-client-column="billingAddress" className="flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height: 30, minWidth: colWidth.billingAddress, width: colWidth.billingAddress, order: columnOrderMap.billingAddress ?? 9 }}>
+                    <EditableCell
+                        value={client.billingAddress}
+                        onChange={(v) => onUpdate({ billingAddress: v })}
+                        className="!justify-start px-1"
+                    />
+                </div>
+
                 <div data-client-column="email" className="flex-1 min-w-0 items-center py-1 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis text-blue-600" style={{ height: 30, minWidth: colWidth.email, width: colWidth.email, order: columnOrderMap.email ?? 9 }}>
                     <EditableCell className="!justify-start px-1 text-blue-600" value={client.email} onChange={(v) => onUpdate({ email: v })} placeholder="" />
                 </div>
@@ -1048,22 +1050,6 @@ export function ClientRow({
                 <div data-client-column="totalMarkup" className="flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height: 30, minWidth: colWidth.totalMarkup, width: colWidth.totalMarkup, order: columnOrderMap.totalMarkup ?? 16 }}>
                     <span className="block px-2 text-center text-[12.6px] text-gray-800">{aggregateSubitemValues.totalMarkup.toFixed(2)}</span>
                 </div>
-                <div data-client-column="companyAddress" className="flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height: 30, minWidth: colWidth.companyAddress, width: colWidth.companyAddress, order: columnOrderMap.companyAddress ?? 17 }}>
-                    <EditableCell
-                        value={client.companyAddress}
-                        onChange={(v) => onUpdate({ companyAddress: v })}
-                        className="!justify-start px-1"
-                    />
-                </div>
-
-                <div data-client-column="billingAddress" className="flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height: 30, minWidth: colWidth.billingAddress, width: colWidth.billingAddress, order: columnOrderMap.billingAddress ?? 18 }}>
-                    <EditableCell
-                        value={client.billingAddress}
-                        onChange={(v) => onUpdate({ billingAddress: v })}
-                        className="!justify-start px-1"
-                    />
-                </div>
-
                 <div data-client-column="dateCreated" className="flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height: 30, minWidth: colWidth.dateCreated, width: colWidth.dateCreated, order: columnOrderMap.dateCreated ?? 19 }}>
                     <span title={clientCreatedTooltip} className="block px-1 text-[12.6px] text-gray-700">
                         {client.createdAt ? new Date(client.createdAt).toLocaleDateString("en-SG") : "-"}

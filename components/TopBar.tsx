@@ -78,7 +78,7 @@ function searchResults(
       ['Client', client.name], ['People', client.people], ['Reply Status', client.replyStatus], ['Follow Up', client.followUp],
       ['Status', client.status], ['Channel', client.channel], ['Importance', client.importance], ['Company', client.company],
       ['Email', client.email], ['Phone', client.phone], ['Requirements', client.requirements], ['NBD', client.nbd],
-      ['Total Price', client.totalPrice], ['Company Address', client.companyAddress], ['Billing Address', client.billingAddress],
+      ['Total Price', client.totalPrice], ['Billing Address', client.billingAddress],
       ['Date Created', client.createdAt],
     ];
     for (const [field, value] of clientFields) add({ clientId: client.id, kind: 'client', label: client.name || 'Unnamed client', context: field, field, value: String(value ?? '') });

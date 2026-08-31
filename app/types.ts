@@ -158,7 +158,6 @@ export interface Client {
   requirements: string;
   nbd: string;
   totalPrice: string;
-  companyAddress: string;
   createdAt: string;
   waitingStartedAt?: string | null;
   billingAddress: string;

@@ -67,6 +67,7 @@ const CLIENT_HEADER_COLS: HeaderCol[] = [
   { key: 'channel', label: 'Channel', width: 80, minWidth: 7 },
   { key: 'importance', label: 'Importance', width: 80, minWidth: 7 },
   { key: 'company', label: 'Company', width: 80, minWidth: 7 },
+  { key: 'billingAddress', label: 'Billing Address', width: 115, minWidth: 7 },
   { key: 'email', label: 'Email', width: 90, minWidth: 7 },
   { key: 'phone', label: 'Phone', width: 80, minWidth: 7 },
   { key: 'requirements', label: 'Requirements', width: 90, minWidth: 7 },
@@ -75,8 +76,6 @@ const CLIENT_HEADER_COLS: HeaderCol[] = [
   { key: 'filesMiscellaneous', label: 'Files (Miscellaneous)', width: 170, minWidth: 7 },
   { key: 'totalPrice', label: 'Total Price', width: 80, minWidth: 7 },
   { key: 'totalMarkup', label: 'Total Markup', width: 90, minWidth: 7 },
-  { key: 'companyAddress', label: 'Company Address', width: 115, minWidth: 7 },
-  { key: 'billingAddress', label: 'Billing Address', width: 115, minWidth: 7 },
   { key: 'dateCreated', label: 'Date Created', width: 90, minWidth: 7 },
   { key: 'addClientCol', label: '', width: 44, minWidth: 44 },
   { key: 'empty', label: '', width: 44, minWidth: 44 },
@@ -2248,7 +2247,10 @@ export function CRMBoard({ clients,
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Unable to match this customer profile.');
-      const update = { [pending.field]: pending.value } as Partial<Client>;
+      const matchedCompanyName = pending.field === 'company' && action === 'link' && typeof result.companyName === 'string'
+        ? result.companyName
+        : pending.value;
+      const update = { [pending.field]: matchedCompanyName } as Partial<Client>;
       setClients((current) => current.map((client) => client.id === pending.clientId ? { ...client, ...update } : client));
       await updateClientRow(pending.clientId, update, { customerProfileAction: action });
       setCustomerMatchPending(null);
@@ -2427,7 +2429,7 @@ export function CRMBoard({ clients,
         replyStatus: 'replyStatus', followUp: 'followUp', status: 'status', channel: 'channel',
         importance: 'importance', name: 'name', people: 'people', company: 'company', email: 'email',
         phone: 'phone', requirements: 'requirements', nbd: 'nbd', totalPrice: 'totalPrice',
-        companyAddress: 'companyAddress', billingAddress: 'billingAddress',
+        billingAddress: 'billingAddress',
       };
       const field = entry.fieldName ? fieldMap[entry.fieldName] : undefined;
       if (!field || !entry.clientId) return;
@@ -2483,7 +2485,7 @@ export function CRMBoard({ clients,
         email: createdClient.email ?? '', phone: createdClient.phone ?? '',
         requirements: createdClient.requirements ?? '', nbd: createdClient.nbd ?? '',
         groupId: createdClient.group_id ?? defaultGroupId, totalPrice: createdClient.total_price ?? '',
-        companyAddress: createdClient.company_address ?? '', billingAddress: createdClient.billing_address ?? '',
+        billingAddress: createdClient.billing_address ?? '',
         createdAt: createdClient.created_at ?? '', expanded: createdClient.expanded ?? true,
         color: createdClient.color ?? '#7BCBD5', subitems: [], activityLog: [], customFields: {}
       };

@@ -114,7 +114,19 @@ export async function POST(request: NextRequest) {
     if ((action === "same_add" || action === "same_correct") && exactProfileId && exactProfileId !== linkedProfileId) {
       return NextResponse.json({ error: "This value already belongs to another customer profile. It cannot be added to the currently linked profile." }, { status: 409 });
     }
-    if (action === "link" && chosenProfileId) await link(clientId, field, chosenProfileId, user.id);
+    let linkedCompanyName: string | null = null;
+    if (action === "link" && chosenProfileId) {
+      await link(clientId, field, chosenProfileId, user.id);
+      if (field === "company") {
+        const { data: profile, error } = await supabaseAdmin
+          .from("customer_company_profiles")
+          .select("name")
+          .eq("id", chosenProfileId)
+          .maybeSingle();
+        if (error) throw error;
+        linkedCompanyName = profile?.name?.trim() || null;
+      }
+    }
     else if (action === "different") {
       if (exactProfileId) await link(clientId, field, exactProfileId, user.id);
       else await createAndLink(clientId, field, value, String(body.clientName ?? ""), user.id);
@@ -136,7 +148,7 @@ export async function POST(request: NextRequest) {
       if (error) throw error;
       await link(clientId, field, linkedProfileId, user.id);
     } else return NextResponse.json({ error: "Invalid matching action." }, { status: 400 });
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, companyName: linkedCompanyName });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to update the customer profile link.";
     return NextResponse.json({ error: message.includes("unique") ? "That phone number or company is already assigned to another profile." : message }, { status: 409 });

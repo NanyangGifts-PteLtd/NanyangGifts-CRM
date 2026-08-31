@@ -11,7 +11,6 @@ type IncomingPayload = {
   companyName?: string;
   phone?: string;
   notes?: string;
-  companyAddress?: string;
   billingAddress?: string;
   currency?: string;
   orderTotal?: string | number | null;
@@ -49,7 +48,6 @@ export async function POST(request: NextRequest) {
       orderNumber: asText(body.orderNumber),
       currency: asText(body.currency, "SGD").toUpperCase(),
       orderTotal: asNumberString(body.orderTotal),
-      companyAddress: asText(body.companyAddress),
       billingAddress: asText(body.billingAddress),
       qty: "",
       subitems: normalizeSubitems(body.subitems),

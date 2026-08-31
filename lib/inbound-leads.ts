@@ -19,7 +19,6 @@ export type NormalizedInboundLead = {
   orderNumber: string;
   currency: string;
   orderTotal: string;
-  companyAddress: string;
   billingAddress: string;
   qty: string;
   subitems: InboundSubitem[];
@@ -131,7 +130,6 @@ function safePayload(lead: NormalizedInboundLead) {
     orderNumber: lead.orderNumber,
     currency: lead.currency,
     orderTotal: lead.orderTotal,
-    companyAddress: lead.companyAddress,
     billingAddress: lead.billingAddress,
     qty: lead.qty,
     subitems: lead.subitems,
@@ -224,7 +222,6 @@ export async function ingestLead(lead: NormalizedInboundLead): Promise<InboundRe
         requirements: lead.notes,
         nbd: lead.nbd,
         total_price: lead.orderTotal,
-        company_address: lead.companyAddress,
         billing_address: lead.billingAddress,
         created_at: createdAt,
         waiting_started_at: createdAt,

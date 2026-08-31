@@ -169,7 +169,6 @@ type Clients = {
     qty: string | null;
     nbd: string | null;
     total_price: string | null;
-    company_address: string | null;
     billing_address: string | null;
     created_at: string | null;
     waiting_started_at: string | null;
@@ -372,7 +371,6 @@ function mapClients(row: Clients): Client {
         requirements: row.requirements ?? '',
         nbd: row.nbd ?? '',
         totalPrice: row.total_price ?? '',
-        companyAddress: row.company_address ?? '',
         billingAddress: row.billing_address ?? '',
         createdAt: row.created_at ?? '',
         waitingStartedAt: row.waiting_started_at ?? null,
@@ -517,7 +515,6 @@ export async function createClientRow(currentUserId?: string | null, groupId?: s
             requirements: '',
             nbd: '',
             total_price: '',
-            company_address: '',
             billing_address: '',
             group_id: groupId ?? null,
             expanded: true,
@@ -583,7 +580,6 @@ export async function updateClientRow(
         ...(updates.requirements !== undefined ? { requirements: updates.requirements } : {}),
         ...(updates.nbd !== undefined ? { nbd: updates.nbd } : {}),
         ...(updates.totalPrice !== undefined ? { total_price: updates.totalPrice } : {}),
-        ...(updates.companyAddress !== undefined ? { company_address: updates.companyAddress } : {}),
         ...(updates.billingAddress !== undefined ? { billing_address: updates.billingAddress } : {}),
         ...(updates.groupId !== undefined ? { group_id: updates.groupId } : {}),
         ...(updates.expanded !== undefined ? { expanded: updates.expanded } : {}),
@@ -609,11 +605,10 @@ export async function updateClientRow(
             key === 'replyStatus' ? 'reply_status' :
                 key === 'followUp' ? 'follow_up' :
                     key === 'totalPrice' ? 'total_price' :
-                        key === 'companyAddress' ? 'company_address' :
-                            key === 'billingAddress' ? 'billing_address' :
-                                key === 'createdAt' ? 'created_at' :
-                                    key === 'groupId' ? 'group_id' :
-                                        key
+                        key === 'billingAddress' ? 'billing_address' :
+                            key === 'createdAt' ? 'created_at' :
+                                key === 'groupId' ? 'group_id' :
+                                    key
             ];
 
         if (isEqualForLog(oldValue, value)) continue;

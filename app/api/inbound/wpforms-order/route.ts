@@ -45,7 +45,6 @@ export async function POST(request: NextRequest) {
       orderNumber: "",
       currency: "SGD",
       orderTotal: "",
-      companyAddress: "",
       billingAddress: "",
       qty: asNumberString(body.qty),
       subitems: [],
