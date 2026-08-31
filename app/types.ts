@@ -128,7 +128,7 @@ export interface Subitem {
 export type ActivityEntry = {
   id: string,
   clientId?: string;
-  action: "field_changed" | "client_added" | "subitem_added" | "subitem_deleted" | "subitem_field_changed" | "ocf_created";
+  action: "field_changed" | "client_added" | "subitem_added" | "subitem_deleted" | "subitem_field_changed" | "ocf_created" | "ocf_signed" | "ocf_updated";
   fieldName?: string;
   oldValue?: unknown;
   newValue?: unknown;

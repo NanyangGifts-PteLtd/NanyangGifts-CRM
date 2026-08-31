@@ -47,6 +47,9 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
     const router = useRouter();
 
     const [deliveryNotes, setDeliveryNotes] = useState(ocf.estimated_delivery_notes ?? "");
+    const [clientNameSnapshot, setClientNameSnapshot] = useState(ocf.client_name_snapshot ?? "");
+    const [companySnapshot, setCompanySnapshot] = useState(ocf.company_snapshot ?? "");
+    const [sameAddressForAllItems, setSameAddressForAllItems] = useState(ocf.same_address_for_all_items ?? true);
     const [items, setItems] = useState(
         ocf.order_confirmation_items.map((item) => ({
             ...item,
@@ -114,6 +117,24 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
         );
     }
 
+    function updateItemDeliveryField(itemId: string, field: "delivery_name" | "delivery_address" | "delivery_contact_number" | "delivery_remarks", value: string) {
+        setItems((prev) => {
+            const updated = prev.map((item) => item.id === itemId ? { ...item, [field]: value } : item);
+            if (!sameAddressForAllItems) return updated;
+            const source = updated.find((item) => item.id === itemId);
+            return source ? updated.map((item) => item.id === source.id ? item : { ...item, delivery_name: source.delivery_name, delivery_address: source.delivery_address, delivery_contact_number: source.delivery_contact_number, delivery_remarks: source.delivery_remarks }) : updated;
+        });
+    }
+
+    function handleSameAddressToggle(enabled: boolean) {
+        setSameAddressForAllItems(enabled);
+        if (!enabled) return;
+        setItems((prev) => {
+            const source = prev[0];
+            return source ? prev.map((item, index) => index === 0 ? item : { ...item, delivery_name: source.delivery_name, delivery_address: source.delivery_address, delivery_contact_number: source.delivery_contact_number, delivery_remarks: source.delivery_remarks }) : prev;
+        });
+    }
+
     function openExpandedImage(src: string, alt: string) {
         setExpandedImage({ src, alt });
     }
@@ -131,10 +152,17 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
                 },
                 body: JSON.stringify({
                     ocfId: ocf.id,
+                    clientNameSnapshot,
+                    companySnapshot,
+                    sameAddressForAllItems,
                     estimatedDeliveryNotes: deliveryNotes,
                     items: items.map((item) => ({
                         id: item.id,
                         remarks: item.remarks ?? "",
+                        delivery_name: item.delivery_name ?? "",
+                        delivery_address: item.delivery_address ?? "",
+                        delivery_contact_number: item.delivery_contact_number ?? "",
+                        delivery_remarks: item.delivery_remarks ?? "",
                     })),
                 }),
             });
@@ -177,13 +205,13 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
                         <tbody>
                             <tr>
                                 <td className="w-[18%] py-1 font-semibold text-black">Project Name:</td>
-                                <td className="w-[42%] py-1 text-black">{ocf.client_name_snapshot || "-"}</td>
+                                <td className="w-[42%] py-1 text-black"><input value={clientNameSnapshot} onChange={(event) => setClientNameSnapshot(event.target.value)} className="w-full rounded border border-gray-300 px-2 py-1" aria-label="Project name" /></td>
                                 <td className="w-[18%] py-1 font-semibold text-black">Account Manager:</td>
                                 <td className="w-[22%] py-1 text-left text-black">{ocf.salesperson_name || "-"}</td>
                             </tr>
                             <tr>
                                 <td className="py-1 font-semibold text-black">Client&apos;s Company Name:</td>
-                                <td className="py-1 text-black">{ocf.company_snapshot || "-"}</td>
+                                <td className="py-1 text-black"><input value={companySnapshot} onChange={(event) => setCompanySnapshot(event.target.value)} className="w-full rounded border border-gray-300 px-2 py-1" aria-label="Client company name" /></td>
                                 <td className="py-1 font-semibold text-black">Contact Number:</td>
                                 <td className="py-1 text-left text-black">{ocf.salesperson_contact_number || "-"}</td>
                             </tr>
@@ -211,12 +239,11 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
                                         <span>Same address for all items?</span>
                                         <input
                                             type="checkbox"
-                                            checked={ocf.same_address_for_all_items ?? true}
-                                            readOnly
-                                            disabled
+                                            checked={sameAddressForAllItems}
+                                            onChange={(event) => handleSameAddressToggle(event.target.checked)}
                                             className="h-4 w-4 accent-[#7BCBD5]"
                                         />
-                                        <span>{(ocf.same_address_for_all_items ?? true) ? "Yes" : "No"}</span>
+                                        <span>{sameAddressForAllItems ? "Yes" : "No"}</span>
                                     </label>
                                 </div>
                                 
@@ -261,19 +288,10 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
                                     </td>
                                     <td className="border border-black px-2 py-3">
                                         <div className="space-y-2 text-[11px] text-gray-800">
-                                            <div>
-                                                <span className="font-semibold">Name:</span> {item.delivery_name || "-"}
-                                            </div>
-                                            <div className="whitespace-pre-wrap break-words">
-                                                <span className="font-semibold">Address:</span> {item.delivery_address || "-"}
-                                            </div>
-                                            <div>
-                                                <span className="font-semibold">Contact Number:</span>{" "}
-                                                {item.delivery_contact_number || "-"}
-                                            </div>
-                                            <div className="whitespace-pre-wrap break-words">
-                                                <span className="font-semibold">Remarks:</span> {item.delivery_remarks || "-"}
-                                            </div>
+                                            <label className="block font-semibold">Name<input value={item.delivery_name ?? ""} onChange={(event) => updateItemDeliveryField(item.id, "delivery_name", event.target.value)} className="mt-1 w-full rounded border border-gray-300 px-2 py-1 font-normal" /></label>
+                                            <label className="block font-semibold">Address<textarea value={item.delivery_address ?? ""} onChange={(event) => updateItemDeliveryField(item.id, "delivery_address", event.target.value)} rows={2} className="mt-1 w-full rounded border border-gray-300 px-2 py-1 font-normal" /></label>
+                                            <label className="block font-semibold">Contact Number<input value={item.delivery_contact_number ?? ""} onChange={(event) => updateItemDeliveryField(item.id, "delivery_contact_number", event.target.value)} className="mt-1 w-full rounded border border-gray-300 px-2 py-1 font-normal" /></label>
+                                            <label className="block font-semibold">Remarks<textarea value={item.delivery_remarks ?? ""} onChange={(event) => updateItemDeliveryField(item.id, "delivery_remarks", event.target.value)} rows={2} className="mt-1 w-full rounded border border-gray-300 px-2 py-1 font-normal" /></label>
                                         </div>
                                     </td>
                                 </tr>

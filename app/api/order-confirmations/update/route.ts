@@ -7,6 +7,9 @@ export async function POST(req: Request) {
 
         const ocfId = body?.ocfId;
         const estimatedDeliveryNotes = body?.estimatedDeliveryNotes ?? "";
+        const clientNameSnapshot = body?.clientNameSnapshot;
+        const companySnapshot = body?.companySnapshot;
+        const sameAddressForAllItems = body?.sameAddressForAllItems;
         const items = Array.isArray(body?.items) ? body.items : [];
 
         if (!ocfId) {
@@ -15,11 +18,22 @@ export async function POST(req: Request) {
 
         const supabase = await createClient();
 
+        const { data: ocf, error: ocfLookupError } = await supabase
+            .from("order_confirmations")
+            .select("client_id")
+            .eq("id", ocfId)
+            .single();
+        if (ocfLookupError || !ocf) {
+            return NextResponse.json({ error: "Order confirmation not found" }, { status: 404 });
+        }
+
         const { error: ocfError } = await supabase
             .from("order_confirmations")
             .update({
                 estimated_delivery_notes: estimatedDeliveryNotes,
-                client_submitted_at: new Date().toISOString(),
+                ...(typeof clientNameSnapshot === "string" ? { client_name_snapshot: clientNameSnapshot } : {}),
+                ...(typeof companySnapshot === "string" ? { company_snapshot: companySnapshot } : {}),
+                ...(typeof sameAddressForAllItems === "boolean" ? { same_address_for_all_items: sameAddressForAllItems } : {}),
             })
             .eq("id", ocfId);
 
@@ -32,8 +46,10 @@ export async function POST(req: Request) {
                 .from("order_confirmation_items")
                 .update({
                     remarks: item.remarks ?? "",
+                    delivery_name: item.delivery_name ?? null,
                     delivery_address: item.delivery_address ?? null,
                     delivery_contact_number: item.delivery_contact_number ?? null,
+                    delivery_remarks: item.delivery_remarks ?? null,
 
                 })
                 .eq("id", item.id)
@@ -58,6 +74,21 @@ for (const item of items) {
         console.error("Failed to update shipper view row:", shipperUpdateError);
     }
 }
+
+        await supabase.from("activity_log").insert({
+            client_id: ocf.client_id,
+            subitem_id: null,
+            actor_name: "CRM user",
+            action: "ocf_updated",
+            field_name: null,
+            old_value: null,
+            new_value: null,
+            title: "Order Confirmation Form updated",
+            description: "Internal OCF details were updated.",
+            link: `/app/order-confirmations/${ocfId}`,
+            meta: { ocfId },
+            created_at: new Date().toISOString(),
+        });
 
         return NextResponse.json({ success: true });
     } catch (error: any) {

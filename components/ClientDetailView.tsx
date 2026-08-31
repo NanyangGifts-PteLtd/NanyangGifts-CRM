@@ -8,7 +8,8 @@ import { StatusBadge, type BadgeOption } from "./ui/statusbadge";
 import { EditableCell } from "./ui/editablecell";
 import { ClientActionsMenu } from "./ClientActionsMenu";
 
-type Attachment = { id: string; name: string; url: string; kind?: string; actorName?: string; createdAt?: string; createdThrough?: string };
+type Attachment = { id: string; name: string; url: string; kind?: string; actorName?: string; createdAt?: string; createdThrough?: string; signed?: boolean };
+type OcfFile = Pick<Attachment, "id" | "name" | "url" | "createdAt" | "signed">;
 type Tab = "overview" | "files" | "activity" | "updates" | "related";
 type ClientUpdate = { id: string; client_id: string; author_id: string; content: string; mentions: string[]; created_at: string; author: Profile | null };
 type RelatedProfileData = {
@@ -40,7 +41,7 @@ function dateInputValue(value: string | undefined) {
   return Number.isNaN(parsed.getTime()) ? value : parsed.toISOString().slice(0, 10);
 }
 
-export function ClientDetailView({ client, clients, profiles, assigneeIds, pmIds, canEdit, currentUserId, currentUserRole, groups, onDuplicate, onMove, onDelete, onClose, onNavigate, onUpdate, onChangeAssignees, onUndo, statusOptions, replyStatusOptions, channelOptions, importanceOptions, groupNamesById }: {
+export function ClientDetailView({ client, clients, profiles, assigneeIds, pmIds, canEdit, currentUserId, currentUserRole, groups, onDuplicate, onMove, onDelete, onClose, onNavigate, onUpdate, onChangeAssignees, onUndo, statusOptions, replyStatusOptions, channelOptions, importanceOptions, groupNamesById, initialTab }: {
   client: Client; clients: Client[]; profiles: Profile[]; assigneeIds: string[]; pmIds: string[]; canEdit: boolean;
   currentUserId?: string | null; currentUserRole?: string | null;
   groups: Array<{ id: string; name: string }>; onDuplicate: () => void | Promise<void>; onMove: (groupId: string) => void | Promise<void>; onDelete: () => void;
@@ -48,8 +49,9 @@ export function ClientDetailView({ client, clients, profiles, assigneeIds, pmIds
   onUndo: (entry: ActivityEntry) => void | Promise<void>;
   statusOptions: BadgeOption[]; replyStatusOptions: BadgeOption[]; channelOptions: BadgeOption[]; importanceOptions: BadgeOption[];
   groupNamesById: Record<string, string>;
+  initialTab?: Tab;
 }) {
-  const [tab, setTab] = useState<Tab>("overview");
+  const [tab, setTab] = useState<Tab>(initialTab ?? "overview");
   const [hoverName, setHoverName] = useState(false);
   const [permissionNotice, setPermissionNotice] = useState<{ x: number; y: number } | null>(null);
   const [updates, setUpdates] = useState<ClientUpdate[]>([]);
@@ -59,6 +61,7 @@ export function ClientDetailView({ client, clients, profiles, assigneeIds, pmIds
   const [isPostingUpdate, setIsPostingUpdate] = useState(false);
   const [relatedData, setRelatedData] = useState<RelatedProfileData | null>(null);
   const [relatedLoading, setRelatedLoading] = useState(false);
+  const [ocfFiles, setOcfFiles] = useState<OcfFile[]>([]);
   const index = clients.findIndex((item) => item.id === client.id);
   const people = useMemo(() => [...new Set([...assigneeIds, ...pmIds])].map((id) => profiles.find((profile) => profile.id === id)).filter(Boolean) as Profile[], [assigneeIds, pmIds, profiles]);
   const pmProfiles = profiles.filter((profile) => profile.role?.toLowerCase() === "pm");
@@ -66,7 +69,22 @@ export function ClientDetailView({ client, clients, profiles, assigneeIds, pmIds
   const dateFields: Array<[string, "followUp" | "nbd"]> = [["Follow up", "followUp"], ["NBD", "nbd"]];
   const fileGroups = [["Closed lead files", "closedLeadFiles"], ["Logo / requirements", "logoRequirementsFile"], ["Miscellaneous files", "filesMiscellaneous"]] as const;
   const saveFiles = (field: string, next: Attachment[]) => onUpdate({ customFields: { ...(client.customFields ?? {}), [field]: JSON.stringify(next) } });
-  const ocfItems: Attachment[] = (client.activityLog ?? []).filter((entry) => entry.action === "ocf_created" && entry.link).map((entry) => ({ id: entry.id, name: entry.title || "Order confirmation", url: entry.link!, actorName: entry.actorName, createdAt: entry.createdAt }));
+  const signedOcfIds = new Set((client.activityLog ?? []).filter((entry) => entry.action === "ocf_signed").map((entry) => String(entry.meta?.ocfId ?? "")).filter(Boolean));
+  const activityOcfItems: Attachment[] = (client.activityLog ?? []).filter((entry) => entry.action === "ocf_created" && entry.link).map((entry) => ({ id: entry.id, name: entry.title || "Order confirmation", url: entry.link!, actorName: entry.actorName, createdAt: entry.createdAt, signed: signedOcfIds.has(String(entry.meta?.ocfId ?? "")) }));
+  const ocfItems: Attachment[] = ocfFiles.length ? ocfFiles : activityOcfItems;
+  useEffect(() => { if (initialTab) setTab(initialTab); }, [initialTab]);
+  useEffect(() => {
+    if (tab !== "files") return;
+    let active = true;
+    void fetch(`/api/order-confirmations?clientId=${encodeURIComponent(client.id)}`)
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Unable to load OCF files");
+        return response.json() as Promise<OcfFile[]>;
+      })
+      .then((items) => { if (active) setOcfFiles(items); })
+      .catch(() => { if (active) setOcfFiles([]); });
+    return () => { active = false; };
+  }, [client.id, tab, client.activityLog]);
   const displayValue = (field: string | undefined, value: unknown) => field === "groupId" && typeof value === "string" ? groupNamesById[value] ?? "Ungrouped" : String(value ?? "empty");
   const activityText = (entry: ActivityEntry) => entry.title || (entry.fieldName ? `changed ${entry.fieldName} from ${displayValue(entry.fieldName, entry.oldValue)} to ${displayValue(entry.fieldName, entry.newValue)}` : entry.action.replaceAll("_", " "));
   const clientActivities = (client.activityLog ?? [])
@@ -168,7 +186,7 @@ export function ClientDetailView({ client, clients, profiles, assigneeIds, pmIds
         {textFields.map(([label, key]) => <label key={key} className="text-sm font-medium text-slate-500">{label}<div onClickCapture={blockIfLocked} className="mt-2 min-h-10 rounded border border-slate-200 bg-white"><EditableCell className="min-h-[38px] px-2 text-sm" readOnly={!canEdit} value={String(client[key] ?? "")} onChange={(value) => onUpdate({ [key]: value } as Partial<Client>)} /></div></label>)}
         {dateFields.map(([label, key]) => <label key={key} className="text-sm font-medium text-slate-500">{label}<div onClickCapture={blockIfLocked} className="mt-2 flex min-h-10 items-center rounded border border-slate-200 bg-white px-3">{canEdit ? <input type="date" value={dateInputValue(client[key])} onChange={(event) => onUpdate({ [key]: event.target.value || undefined } as Partial<Client>)} className="w-full bg-transparent text-sm text-slate-700 outline-none" /> : <span className="text-sm text-slate-700">{formatDate(client[key])}</span>}</div></label>)}
       </div></aside></main>}
-      {tab === "files" && <main className="min-h-0 flex-1 overflow-auto bg-slate-50 p-6">{[["OCF files", "ocfFiles", ocfItems] as const, ...fileGroups.map(([label, field]) => [label, field, attachments(client.customFields?.[field], field)] as const)].map(([label, field, items]) => <section key={field} className="mb-5 rounded-xl border border-slate-200 bg-white p-5"><div className="mb-3 flex items-center justify-between"><h2 className="font-semibold text-slate-800">{label}</h2>{canEdit && field !== "ocfFiles" && <label className="cursor-pointer rounded border px-3 py-1.5 text-xs text-sky-700"><Paperclip size={13} className="mr-1 inline" />Add file<input type="file" className="hidden" onChange={(event) => { const file = event.target.files?.[0]; if (!file) return; const reader = new FileReader(); reader.onload = () => saveFiles(field, [...items, { id: crypto.randomUUID(), name: file.name, url: String(reader.result), kind: "file" }]); reader.readAsDataURL(file); }} /></label>}</div>{items.length ? <div className="space-y-2">{items.map((item) => <div key={item.id} className="flex items-center gap-2 rounded border p-2"><FileText size={16} className="text-sky-600" /><div className="min-w-0 flex-1"><a href={item.url} target="_blank" rel="noreferrer" className="block truncate text-sm text-sky-700 hover:underline">{item.name}</a>{item.createdAt && <p className="text-xs text-slate-400">{item.createdThrough ? `${item.createdThrough} · ` : ""}{item.actorName} - {new Date(item.createdAt).toLocaleString()}</p>}</div>{canEdit && field !== "ocfFiles" && <button onClick={() => saveFiles(field, items.filter((entry) => entry.id !== item.id))} className="text-xs text-red-500">Remove</button>}</div>)}</div> : <p className="text-sm text-slate-400">No files attached.</p>}</section>)}</main>}
+      {tab === "files" && <main className="min-h-0 flex-1 overflow-auto bg-slate-50 p-6">{[["OCF files", "ocfFiles", ocfItems] as const, ...fileGroups.map(([label, field]) => [label, field, attachments(client.customFields?.[field], field)] as const)].map(([label, field, items]) => <section key={field} className="mb-5 rounded-xl border border-slate-200 bg-white p-5"><div className="mb-3 flex items-center justify-between"><h2 className="font-semibold text-slate-800">{label}</h2>{canEdit && field !== "ocfFiles" && <label className="cursor-pointer rounded border px-3 py-1.5 text-xs text-sky-700"><Paperclip size={13} className="mr-1 inline" />Add file<input type="file" className="hidden" onChange={(event) => { const file = event.target.files?.[0]; if (!file) return; const reader = new FileReader(); reader.onload = () => saveFiles(field, [...items, { id: crypto.randomUUID(), name: file.name, url: String(reader.result), kind: "file" }]); reader.readAsDataURL(file); }} /></label>}</div>{items.length ? <div className="space-y-2">{items.map((item) => <div key={item.id} className="flex items-center gap-2 rounded border p-2"><FileText size={16} className="text-sky-600" /><div className="min-w-0 flex-1"><a href={item.url} target="_blank" rel="noreferrer" className="block truncate text-sm text-sky-700 hover:underline">{item.name}</a>{item.signed && <span className="mt-1 inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">Signed</span>}{item.createdAt && <p className="text-xs text-slate-400">{item.createdThrough ? `${item.createdThrough} · ` : ""}{item.actorName} - {new Date(item.createdAt).toLocaleString()}</p>}</div>{canEdit && field !== "ocfFiles" && <button onClick={() => saveFiles(field, items.filter((entry) => entry.id !== item.id))} className="text-xs text-red-500">Remove</button>}</div>)}</div> : <p className="text-sm text-slate-400">No files attached.</p>}</section>)}</main>}
       {tab === "updates" && <main className="min-h-0 flex-1 overflow-auto bg-slate-50 p-6"><div className="mx-auto max-w-3xl"><div className="relative rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><textarea value={updateDraft} onChange={(event) => setUpdateDraft(event.target.value)} placeholder="Write an update… Type @ to tag a teammate." rows={3} className="w-full resize-none border-0 text-sm text-slate-800 outline-none" />{mentionCandidates.length > 0 && <div className="absolute left-4 top-full z-10 mt-1 w-72 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-xl">{mentionCandidates.map((profile) => <button type="button" key={profile.id} onClick={() => selectMention(profile)} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-slate-50"><span className="flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-semibold text-white" style={{ background: gradientForId(profile.id) }}>{(profile.full_name || profile.email || "U").slice(0, 2).toUpperCase()}</span>{profile.full_name || profile.email}</button>)}</div>}<div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-3"><span className="text-xs text-slate-400">Tagged users receive a notification.</span><button type="button" onClick={() => void postUpdate()} disabled={!updateDraft.trim() || isPostingUpdate} className="inline-flex items-center gap-1 rounded-md bg-sky-600 px-3 py-2 text-sm font-medium text-white hover:bg-sky-700 disabled:opacity-50"><Send size={14} />{isPostingUpdate ? "Posting…" : "Post update"}</button></div></div><div className="mt-5 space-y-3">{updatesLoading ? <p className="text-center text-sm text-slate-400">Loading updates…</p> : updates.map((update) => { const author = update.author; const canDelete = update.author_id === currentUserId || ["director", "dev"].includes(currentUserRole ?? ""); return <article key={update.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><div className="flex gap-3"><span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold text-white" style={{ background: gradientForId(update.author_id) }}>{(author?.full_name || author?.email || "U").slice(0, 2).toUpperCase()}</span><div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-3"><div><p className="text-sm font-medium text-slate-800">{author?.full_name || author?.email || "Unknown user"}</p><p className="text-xs text-slate-400">{new Date(update.created_at).toLocaleString()}</p></div>{canDelete && <button type="button" onClick={() => void deleteUpdate(update.id)} className="rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-500" title="Delete update"><Trash2 size={15} /></button>}</div><p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-700">{update.content}</p></div></div></article>; })}{!updatesLoading && !updates.length && <p className="py-10 text-center text-sm text-slate-400">No updates yet. Start the conversation.</p>}</div></div></main>}
       {tab === "related" && <main className="min-h-0 flex-1 overflow-auto bg-slate-50 p-6">
         <div className="mx-auto grid max-w-6xl gap-5 lg:grid-cols-2">

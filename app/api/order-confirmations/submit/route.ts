@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
 
         const { data: ocf, error: ocfError } = await supabase
             .from("order_confirmations")
-            .select("id, client_token, status, locked_at")
+            .select("id, client_id, client_token, status, locked_at")
             .eq("id", ocfId)
             .eq("client_token", clientToken)
             .single();
@@ -187,6 +187,21 @@ export async function POST(request: NextRequest) {
                 }
             }
         }
+
+        await supabase.from("activity_log").insert({
+            client_id: ocf.client_id,
+            subitem_id: null,
+            actor_name: "Client",
+            action: "ocf_signed",
+            field_name: null,
+            old_value: null,
+            new_value: null,
+            title: "Order Confirmation Form signed",
+            description: "The client signed this OCF.",
+            link: `/app/order-confirmations/${ocf.id}`,
+            meta: { ocfId: ocf.id, clientIp },
+            created_at: now,
+        });
 
         return NextResponse.json({
             success: true,

@@ -21,6 +21,7 @@ import { fetchProfiles, saveClientAssignees, saveSubitemAssignees } from '@/lib/
 import { createClientRow, updateClientRow, deleteClientRow, createSubitemRow, updateSubitemRow, deleteSubitemRow, moveSubitemRow, reorderSubitemRows, duplicateSubitemRow, duplicateClientRow } from '@/lib/crm';
 import { fetchClientAssigneeMap } from '@/lib/assignments';
 import { GenerateOcfModal } from './Generate-OCF-Modal';
+import { OcfChooserModal } from './OcfChooserModal';
 import { AddGroupModal } from './Add-Group-Modal';
 import { fetchCustomColumns, addCustomColumn, deleteCustomColumn, type CustomColumn } from '@/lib/custom-columns'
 import ClientsLiveRefresh from './RealtimeRefresh';
@@ -202,6 +203,7 @@ export function CRMBoard({ clients,
 
   const filterRef = useRef<HTMLDivElement>(null);
   const [ocfClient, setOcfClient] = useState<Client | null>(null);
+  const [isOcfChooserOpen, setIsOcfChooserOpen] = useState(false);
   const [isOcfModalOpen, setIsOcfModalOpen] = useState(false);
   const [showAddGroupModal, setShowAddGroupModal] = useState(false);
   const [pendingDeleteClientId, setPendingDeleteClientId] = useState<string | null>(null);
@@ -217,6 +219,7 @@ export function CRMBoard({ clients,
   const [isMovingClients, setIsMovingClients] = useState(false);
   const [isDuplicatingClients, setIsDuplicatingClients] = useState(false);
   const [detailClientId, setDetailClientId] = useState<string | null>(null);
+  const [detailClientInitialTab, setDetailClientInitialTab] = useState<"files" | null>(null);
   const [detailSubitem, setDetailSubitem] = useState<{ clientId: string; subitemId: string } | null>(null);
   const onOpenClientHandledRef = useRef(onOpenClientHandled);
   onOpenClientHandledRef.current = onOpenClientHandled;
@@ -1583,7 +1586,7 @@ export function CRMBoard({ clients,
   };
 
   // --- OCF ---
-  function handleOpenOcfModal(client: Client) { setOcfClient(client); setIsOcfModalOpen(true); }
+  function handleOpenOcfModal(client: Client) { setOcfClient(client); setIsOcfChooserOpen(true); }
   function handleCloseOcfModal() { setIsOcfModalOpen(false); setOcfClient(null); }
 
   // --- Drag ---
@@ -2698,7 +2701,7 @@ export function CRMBoard({ clients,
       {detailClientId && (() => {
         const detailClient = clients.find((client) => client.id === detailClientId);
         if (!detailClient) return null;
-        return <ClientDetailView key={detailClient.id} client={detailClient} clients={groupedClients.flatMap(({ clients: groupClients }) => groupClients)} profiles={profiles} assigneeIds={clientAssignees[detailClient.id] ?? []} pmIds={clientPmAssigneeIds(detailClient)} canEdit={canEditClientRecord(detailClient.id)} currentUserId={currentUserId} currentUserRole={currentUserRole} groups={groups} onDuplicate={() => duplicateClientAction(detailClient.id)} onMove={(groupId) => moveClientAction(detailClient.id, groupId)} onDelete={() => { setDetailClientId(null); setPendingDeleteClientId(detailClient.id); }} onClose={() => setDetailClientId(null)} onNavigate={(client) => setDetailClientId(client.id)} onUpdate={(updates) => updateClient(detailClient.id, updates)} onChangeAssignees={(ids) => handleClientAssigneesChange(detailClient.id, ids)} onUndo={undoActivity} statusOptions={clientStatusEntries} replyStatusOptions={replyStatusEntries} channelOptions={channelEntries} importanceOptions={importanceEntries} groupNamesById={Object.fromEntries(groups.map((group) => [group.id, group.name]))} />;
+        return <ClientDetailView key={detailClient.id} client={detailClient} clients={groupedClients.flatMap(({ clients: groupClients }) => groupClients)} profiles={profiles} assigneeIds={clientAssignees[detailClient.id] ?? []} pmIds={clientPmAssigneeIds(detailClient)} canEdit={canEditClientRecord(detailClient.id)} currentUserId={currentUserId} currentUserRole={currentUserRole} groups={groups} initialTab={detailClientInitialTab ?? undefined} onDuplicate={() => duplicateClientAction(detailClient.id)} onMove={(groupId) => moveClientAction(detailClient.id, groupId)} onDelete={() => { setDetailClientId(null); setDetailClientInitialTab(null); setPendingDeleteClientId(detailClient.id); }} onClose={() => { setDetailClientId(null); setDetailClientInitialTab(null); }} onNavigate={(client) => { setDetailClientId(client.id); setDetailClientInitialTab(null); }} onUpdate={(updates) => updateClient(detailClient.id, updates)} onChangeAssignees={(ids) => handleClientAssigneesChange(detailClient.id, ids)} onUndo={undoActivity} statusOptions={clientStatusEntries} replyStatusOptions={replyStatusEntries} channelOptions={channelEntries} importanceOptions={importanceEntries} groupNamesById={Object.fromEntries(groups.map((group) => [group.id, group.name]))} />;
       })()}
       {selectedIds.size > 0 && (
         <div className="fixed bottom-8 left-1/2 z-[100] flex min-h-16 w-[min(900px,calc(100vw-2rem))] -translate-x-1/2 items-center gap-5 rounded-2xl border border-slate-200 bg-white px-6 py-4 shadow-2xl">
@@ -3604,16 +3607,17 @@ export function CRMBoard({ clients,
                 </div>
               )}
 
-              <GenerateOcfModal
-                open={isOcfModalOpen}
-                client={ocfClient}
-                onClose={handleCloseOcfModal}
-                onCreated={({ internalUrl }) => { window.open(internalUrl, "_blank", "noopener,noreferrer"); }}
-              />
             </React.Fragment>
           ))}
         </div>
       </div>
+      <GenerateOcfModal
+        open={isOcfModalOpen}
+        client={ocfClient}
+        onClose={handleCloseOcfModal}
+        onCreated={({ internalUrl }) => { void reloadClients(); window.open(internalUrl, "_blank", "noopener,noreferrer"); }}
+      />
+      <OcfChooserModal open={isOcfChooserOpen} client={ocfClient} onClose={() => { setIsOcfChooserOpen(false); setOcfClient(null); }} onView={() => { if (!ocfClient) return; setIsOcfChooserOpen(false); setDetailClientInitialTab("files"); setDetailClientId(ocfClient.id); setOcfClient(null); }} onGenerate={() => { setIsOcfChooserOpen(false); setIsOcfModalOpen(true); }} />
       {showAddColModal && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/30">
           <div className="w-full max-w-sm rounded-2xl border border-gray-200 bg-white shadow-2xl p-5">

@@ -14,16 +14,14 @@ export default function ClientsLiveRefresh() {
             .channel("clients-debug")
             .on(
                 "postgres_changes",
-                {
-                    event: "INSERT",
-                    schema: "public",
-                    table: "clients",
-                },
+                { event: "*", schema: "public", table: "clients" },
                 (payload) => {
                     console.log("Realtime INSERT received:", payload);
                     router.refresh();
                 }
             )
+            .on("postgres_changes", { event: "*", schema: "public", table: "activity_log" }, () => router.refresh())
+            .on("postgres_changes", { event: "*", schema: "public", table: "order_confirmations" }, () => router.refresh())
             .subscribe((status) => {
                 console.log("Realtime status:", status);
             });

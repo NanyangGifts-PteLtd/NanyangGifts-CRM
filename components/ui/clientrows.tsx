@@ -797,7 +797,7 @@ export function ClientRow({
                                     > <FileBox size={15} color="#7BCBD5" className="transition transform active:scale-150 duration-200" /></button>
                                 </Tooltip.Trigger>
                                 <Tooltip.Portal>
-                                    <Tooltip.Content className="TooltipContent">Generate Order Confirmation Form<Tooltip.Arrow className="TooltipArrow" /></Tooltip.Content>
+                                    <Tooltip.Content className="TooltipContent">Order Confirmation Form<Tooltip.Arrow className="TooltipArrow" /></Tooltip.Content>
                                 </Tooltip.Portal>
                             </Tooltip.Root>
                         </Tooltip.Provider>
