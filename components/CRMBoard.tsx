@@ -330,7 +330,7 @@ export function CRMBoard({ clients,
   const [groupDragOverEdge, setGroupDragOverEdge] = useState<'top' | 'bottom' | null>(null);
   const [pendingCloseLead, setPendingCloseLead] = useState<{ clientId: string; updates: Partial<Client> } | null>(null);
   const [closeLeadFiles, setCloseLeadFiles] = useState<{ purchaseOrder: File | null; signedQuotation: File | null; proofOfPayment: File | null }>({ purchaseOrder: null, signedQuotation: null, proofOfPayment: null });
-  const [closeLeadOcfSigned, setCloseLeadOcfSigned] = useState(false);
+  const [signedOcfCheck, setSignedOcfCheck] = useState<{ loading: boolean; signedAt: string | null; error: boolean }>({ loading: false, signedAt: null, error: false });
   const [savingCloseLead, setSavingCloseLead] = useState(false);
 
   const [headerCols, setHeaderCols] = useState<HeaderCol[]>(CLIENT_HEADER_COLS);
@@ -348,6 +348,29 @@ export function CRMBoard({ clients,
   const [showBoardMoreMenu, setShowBoardMoreMenu] = useState(false);
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [boardSort, setBoardSort] = useState<BoardSortSetting>(DEFAULT_BOARD_SORT);
+
+  useEffect(() => {
+    if (!pendingCloseLead) {
+      setSignedOcfCheck({ loading: false, signedAt: null, error: false });
+      return;
+    }
+    let active = true;
+    setSignedOcfCheck({ loading: true, signedAt: null, error: false });
+    const supabase = createSupabaseClient();
+    void supabase
+      .from('order_confirmations')
+      .select('client_signed_at')
+      .eq('client_id', pendingCloseLead.clientId)
+      .not('client_signed_at', 'is', null)
+      .order('client_signed_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (!active) return;
+        setSignedOcfCheck({ loading: false, signedAt: error ? null : data?.client_signed_at ?? null, error: Boolean(error) });
+      });
+    return () => { active = false; };
+  }, [pendingCloseLead]);
 
   const notifyChange = useCallback((title: string, description: string) => {
     toast.success(title, {
@@ -1780,8 +1803,11 @@ export function CRMBoard({ clients,
     if (targetGroup.name.trim().toLowerCase().startsWith('closed leads')) updates.status = 'Closed';
     else if (matchingStatus) updates.status = matchingStatus;
     if (updates.status === 'Closed' && draggedClient.status !== 'Closed') {
+      if (!draggedClient.email.trim()) {
+        toast.error('An Email address is required to close this lead', { description: 'Fill in the lead’s Email column before closing it.' });
+        return;
+      }
       setCloseLeadFiles({ purchaseOrder: null, signedQuotation: null, proofOfPayment: null });
-      setCloseLeadOcfSigned(false);
       setPendingCloseLead({ clientId: localDraggedId, updates });
       return;
     }
@@ -2278,7 +2304,6 @@ export function CRMBoard({ clients,
     }
     if (isBecomingClosed && existingClient?.status !== 'Closed' && !closeRequirementsApproved) {
       setCloseLeadFiles({ purchaseOrder: null, signedQuotation: null, proofOfPayment: null });
-      setCloseLeadOcfSigned(false);
       setPendingCloseLead({ clientId, updates });
       return;
     }
@@ -2337,7 +2362,8 @@ export function CRMBoard({ clients,
   }, [canEditClientRecord, clients, commitCustomerMatch, ensureCurrentClosedLeadsGroup, groups, setClients, showAssignmentPermissionError]);
 
   const confirmCloseLead = useCallback(async () => {
-    if (!pendingCloseLead || !closeLeadFiles.purchaseOrder || !closeLeadFiles.signedQuotation || !closeLeadFiles.proofOfPayment || !closeLeadOcfSigned) return;
+    const hasClosingEvidence = Boolean(closeLeadFiles.purchaseOrder || closeLeadFiles.signedQuotation || closeLeadFiles.proofOfPayment || signedOcfCheck.signedAt);
+    if (!pendingCloseLead || !hasClosingEvidence) return;
     const client = clients.find((item) => item.id === pendingCloseLead.clientId);
     if (!client) return;
     if (!client.email.trim()) {
@@ -2352,11 +2378,12 @@ export function CRMBoard({ clients,
         reader.onload = () => resolve({ id: crypto.randomUUID(), name: file.name, url: String(reader.result), kind: 'file', category, actorName: currentUserId ?? 'Unknown user', createdAt: new Date().toISOString() });
         reader.readAsDataURL(file);
       });
-      const files = await Promise.all([
-        toAttachment(closeLeadFiles.purchaseOrder, 'Purchase order'),
-        toAttachment(closeLeadFiles.signedQuotation, 'Signed quotation'),
-        toAttachment(closeLeadFiles.proofOfPayment, 'Proof of payment'),
-      ]);
+      const uploads: Array<[File | null, string]> = [
+        [closeLeadFiles.purchaseOrder, 'Purchase order'],
+        [closeLeadFiles.signedQuotation, 'Signed quotation'],
+        [closeLeadFiles.proofOfPayment, 'Proof of payment'],
+      ];
+      const files = await Promise.all(uploads.filter((upload): upload is [File, string] => upload[0] instanceof File).map(([file, category]) => toAttachment(file, category)));
       let existingFiles: Record<string, string>[] = [];
       try { const parsed = JSON.parse(client.customFields?.closedLeadFiles ?? '[]'); if (Array.isArray(parsed)) existingFiles = parsed; } catch {}
       await updateClient(pendingCloseLead.clientId, {
@@ -2365,18 +2392,17 @@ export function CRMBoard({ clients,
           ...(client.customFields ?? {}),
           ...(pendingCloseLead.updates.customFields ?? {}),
           closedLeadFiles: JSON.stringify([...existingFiles, ...files]),
-          closedLeadOcfSignedAt: new Date().toISOString(),
+          ...(signedOcfCheck.signedAt ? { closedLeadOcfSignedAt: signedOcfCheck.signedAt } : {}),
         },
       }, true);
       setPendingCloseLead(null);
       setCloseLeadFiles({ purchaseOrder: null, signedQuotation: null, proofOfPayment: null });
-      setCloseLeadOcfSigned(false);
     } catch (error) {
       toast.error('Client could not be closed', { description: error instanceof Error ? error.message : 'Please try again.' });
     } finally {
       setSavingCloseLead(false);
     }
-  }, [clients, closeLeadFiles, closeLeadOcfSigned, currentUserId, pendingCloseLead, updateClient]);
+  }, [clients, closeLeadFiles, currentUserId, pendingCloseLead, signedOcfCheck.signedAt, updateClient]);
 
   const updateSubitem = useCallback(async (clientId: string, subitemId: string, updates: Partial<Subitem>) => {
     if (!canEditSubitemRecord(clientId, subitemId)) {
@@ -3072,11 +3098,11 @@ export function CRMBoard({ clients,
         </AlertDialogContent>
       </AlertDialog>
 
-      <AlertDialog open={!!pendingCloseLead} onOpenChange={(open) => { if (!open && !savingCloseLead) { setPendingCloseLead(null); setCloseLeadFiles({ purchaseOrder: null, signedQuotation: null, proofOfPayment: null }); setCloseLeadOcfSigned(false); } }}>
+      <AlertDialog open={!!pendingCloseLead} onOpenChange={(open) => { if (!open && !savingCloseLead) { setPendingCloseLead(null); setCloseLeadFiles({ purchaseOrder: null, signedQuotation: null, proofOfPayment: null }); } }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Close this lead?</AlertDialogTitle>
-            <AlertDialogDescription>Upload the required closing documents and confirm that the OCF has been signed before this lead can be closed.</AlertDialogDescription>
+            <AlertDialogDescription>Provide at least one closing document, or use a signed OCF already associated with this client.</AlertDialogDescription>
           </AlertDialogHeader>
           <div className="grid gap-4 py-2">
             {(() => {
@@ -3088,11 +3114,13 @@ export function CRMBoard({ clients,
               </>;
             })()}
             {([['purchaseOrder', 'Purchase order'], ['signedQuotation', 'Signed quotation'], ['proofOfPayment', 'Proof of payment']] as const).map(([key, label]) => <label key={key} className="grid gap-1.5 text-sm font-medium text-slate-700">{label}<input type="file" disabled={savingCloseLead} onChange={(event) => setCloseLeadFiles((current) => ({ ...current, [key]: event.target.files?.[0] ?? null }))} className="block w-full text-xs file:mr-3 file:rounded-md file:border-0 file:bg-sky-100 file:px-3 file:py-2 file:text-xs file:font-semibold file:text-sky-700 hover:file:bg-sky-200 disabled:opacity-50" />{closeLeadFiles[key] && <span className="text-xs font-normal text-emerald-700">{closeLeadFiles[key]?.name}</span>}</label>)}
-            <label className="flex items-center gap-2 text-sm font-medium text-slate-700"><input type="checkbox" checked={closeLeadOcfSigned} disabled={savingCloseLead} onChange={(event) => setCloseLeadOcfSigned(event.target.checked)} className="h-4 w-4 rounded accent-sky-600" />I confirm that the OCF has been signed.</label>
+            <div className={`rounded-lg border px-3 py-2 text-sm font-medium ${signedOcfCheck.loading ? 'border-slate-200 bg-slate-50 text-slate-600' : signedOcfCheck.signedAt ? 'border-emerald-300 bg-emerald-50 text-emerald-800' : signedOcfCheck.error ? 'border-amber-300 bg-amber-50 text-amber-800' : 'border-slate-200 bg-slate-50 text-slate-600'}`}>
+              {signedOcfCheck.loading ? 'Checking for signed OCFs…' : signedOcfCheck.signedAt ? <>An OCF has been signed{` (${new Date(signedOcfCheck.signedAt).toLocaleDateString('en-SG')})`}.</> : signedOcfCheck.error ? 'Could not check for signed OCFs. Upload a closing document to continue.' : 'No signed OCFs found for client'}
+            </div>
           </div>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={savingCloseLead}>Cancel</AlertDialogCancel>
-            <AlertDialogAction disabled={savingCloseLead || !closeLeadFiles.purchaseOrder || !closeLeadFiles.signedQuotation || !closeLeadFiles.proofOfPayment || !closeLeadOcfSigned || !clients.find((client) => client.id === pendingCloseLead?.clientId)?.email.trim()} onClick={(event) => { event.preventDefault(); void confirmCloseLead(); }}>{savingCloseLead ? 'Closing…' : 'Confirm close'}</AlertDialogAction>
+            <AlertDialogAction disabled={savingCloseLead || !(closeLeadFiles.purchaseOrder || closeLeadFiles.signedQuotation || closeLeadFiles.proofOfPayment || signedOcfCheck.signedAt) || !clients.find((client) => client.id === pendingCloseLead?.clientId)?.email.trim()} onClick={(event) => { event.preventDefault(); void confirmCloseLead(); }}>{savingCloseLead ? 'Closing…' : 'Confirm close'}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
