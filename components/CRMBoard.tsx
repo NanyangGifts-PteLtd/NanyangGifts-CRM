@@ -1899,6 +1899,7 @@ export function CRMBoard({ clients,
     if (column === 'idealMarkup') return subitem.customFields?.idealMarkup ?? '';
     if (column === 'totalUc') return Number(subitem.cost || 0) * Number(subitem.qty || 0);
     if (column === 'totalC') {
+      if (!subitem.currency) return '';
       const rate = subitem.currency === 'MYR' ? 3 : subitem.currency === 'RMB' ? 5 : 1;
       return Number(subitem.cost || 0) * Number(subitem.qty || 0) + Number(subitem.manpower || 0) * rate + Number(subitem.ls || 0) * rate;
     }

@@ -40,7 +40,12 @@ export function StatusBadge({
     const [menuStyle, setMenuStyle] = useState<React.CSSProperties>({});
     const btnRef = useRef<HTMLButtonElement>(null);
     const menuRef = useRef<HTMLDivElement>(null);
-    const options = normalizeOptions(rawOptions);
+    const configuredOptions = normalizeOptions(rawOptions);
+    // A synthetic blank option clears the label without adding a mutable option
+    // to the shared label configuration.
+    const options = configuredOptions.some((option) => option.value === "")
+        ? configuredOptions
+        : [{ value: "", color: "#bfc0c2" }, ...configuredOptions];
     const activeBg = options.find((option) => option.value === value)?.color ?? "#e5e7eb";
 
     const resetMenuState = () => {
@@ -99,7 +104,8 @@ export function StatusBadge({
                     const optionColor = option.color ?? "#e5e7eb";
                     const allowDelete = canDeleteOption ? canDeleteOption(option.value) : true;
                     return <div key={option.value || "__empty__"} className="relative min-w-0">
-                        {!editingLabels ? <button type="button" onClick={() => { onChange(option.value); closeMenu(); }} className="flex h-8 w-full items-center justify-center rounded-sm px-2 text-xs font-semibold text-white transition hover:brightness-95" style={{ background: optionColor }}><span className="truncate">{option.value || "–"}</span>{option.value === value && <Check className="ml-1 shrink-0" size={13} />}</button> :
+                        {!editingLabels ? <button type="button" onClick={() => { onChange(option.value); closeMenu(); }} aria-label={option.value || "Clear label"} title={option.value || "Clear label"} className="flex h-8 w-full items-center justify-center rounded-sm px-2 text-xs font-semibold text-white transition hover:brightness-95" style={{ background: optionColor }}><span className="truncate">{option.value}</span>{option.value === value && <Check className="ml-1 shrink-0" size={13} />}</button> :
+                        option.value === "" ? <div className="flex h-9 items-center rounded-md border border-gray-200 bg-gray-50 px-3 text-xs text-gray-500">Blank label</div> :
                         <div className="flex h-9 items-center gap-1 rounded-md border border-gray-200 bg-white p-1">
                             <button type="button" onClick={() => setColorEditor(colorEditor === option.value ? null : option.value)} className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-white" style={{ background: optionColor }} title={`Change ${manageLabel} color`}><PaintBucket size={14} /></button>
                             <input value={draftNames[option.value] ?? option.value} onChange={(event) => setDraftNames((previous) => ({ ...previous, [option.value]: event.target.value }))} onBlur={() => void rename(option.value)} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} className="min-w-0 flex-1 px-1 text-xs text-gray-700 outline-none" />
@@ -114,5 +120,5 @@ export function StatusBadge({
         </div>, document.body
     );
 
-    return <><button ref={btnRef} type="button" onClick={handleOpen} className={`ck h-full w-full whitespace-nowrap font-medium leading-none transition duration-150 active:scale-95 ${small ? "text-[12.6px]" : "text-[12.6px]"}`} style={{ background: activeBg, color: "#ffffff", minWidth: 50 }}>{value || <span className="opacity-50">Set</span>}</button>{menu}</>;
+    return <><button ref={btnRef} type="button" onClick={handleOpen} aria-label={value || "Set label"} className={`ck h-full w-full whitespace-nowrap font-medium leading-none transition duration-150 active:scale-95 ${small ? "text-[12.6px]" : "text-[12.6px]"}`} style={{ background: activeBg, color: "#ffffff", minWidth: 50 }}>{value}</button>{menu}</>;
 }

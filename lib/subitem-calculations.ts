@@ -20,7 +20,8 @@ export function calculateSubitemFinancials(subitem: Subitem) {
     const localShipping = parseNumericValue(subitem.ls);
     const overseasShipping = parseNumericValue(subitem.os);
     const unitPrice = parseNumericValue(subitem.up);
-    const currencyRate = CURRENCY_RATES[subitem.currency ?? "RMB"] ?? 0.2;
+    // A missing currency must never silently be treated as RMB.
+    const currencyRate = CURRENCY_RATES[subitem.currency ?? ""] ?? 0;
     const cSgd = cost * currencyRate;
     const tcSgd = cSgd * quantity;
     const tc = tcSgd + manpower + localShipping + overseasShipping;

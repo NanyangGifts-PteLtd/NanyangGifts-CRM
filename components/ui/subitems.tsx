@@ -51,7 +51,6 @@ export const SUBITEM_COLS: ColumnDef[] = [
     { key: "qty", label: "Qty", width: 80, minWidth: 7 },
     { key: "description", label: "Description", width: 80, minWidth: 7 },
     { key: "remarks", label: "Remarks", width: 80, minWidth: 7 },
-    { key: "shipper", label: "Shipper", width: 90, minWidth: 7 },
     { key: "supplier", label: "Supplier", width: 80, minWidth: 7 },
     { key: "cost", label: "Cost", width: 90, minWidth: 7 },
     { key: "currency", label: "Currency", width: 100, minWidth: 7 },
@@ -1043,6 +1042,7 @@ export function SubitemsTable({
 
     const renderSubitemCell = (sub: Subitem, key: string) => {
         const { quantity: qty, cSgd, tcSgd, tc, price, markup, percentMarkup } = calculateSubitemFinancials(sub);
+        const hasCurrency = Boolean(sub.currency?.trim());
         const uc = qty > 0 ? tc / qty : null;
         const idealMarkup = parseNumber(sub.customFields?.idealMarkup);
         const priceToSet = qty > 0 ? (idealMarkup != 0 ? (idealMarkup + tc) / qty : null) : null;
@@ -1149,25 +1149,25 @@ export function SubitemsTable({
                 return <EditableCell value={sub.os} onChange={(v) => onUpdateSubitem(sub.id, { os: v })} type="number" />;
             
             case "cSgd":
-                return <div className="flex justify-center text-xs text-gray-800">{formatMoney(cSgd)}</div>;
+                return <div className="flex justify-center text-xs text-gray-800">{hasCurrency ? formatMoney(cSgd) : ""}</div>;
             case "tc":
-                return <div className="flex justify-center text-xs text-gray-800">{formatMoney(tc)}</div>;
+                return <div className="flex justify-center text-xs text-gray-800">{hasCurrency ? formatMoney(tc) : ""}</div>;
             case "uc":
-                return <div className="flex justify-center text-xs text-gray-800">{formatMoney(uc)}</div>;
+                return <div className="flex justify-center text-xs text-gray-800">{hasCurrency ? formatMoney(uc) : ""}</div>;
             case "pl":
                 return <EditableCell value={sub.pl ?? ""} onChange={(v) => onUpdateSubitem(sub.id, { pl: v })} type="number" />;
             case "sl":
                 return <EditableCell value={sub.sl ?? ""} onChange={(v) => onUpdateSubitem(sub.id, { sl: v })} type="number" />;
                 case "tcSgd":
-                return <div className="flex justify-center text-xs text-gray-800">{formatMoney(tcSgd)}</div>;
+                return <div className="flex justify-center text-xs text-gray-800">{hasCurrency ? formatMoney(tcSgd) : ""}</div>;
             case "price":
-                return <div className="flex justify-center text-xs text-gray-800">{formatMoney(price)} </div>;
+                return <div className="flex justify-center text-xs text-gray-800">{hasCurrency ? formatMoney(price) : ""} </div>;
             case "up":
                 return <EditableCell value={sub.up} onChange={(v) => onUpdateSubitem(sub.id, { up: v })} type="number" />;
             case "markup":
-                return <div className="flex justify-center text-xs text-gray-800">{formatMoney(markup)}</div>;
+                return <div className="flex justify-center text-xs text-gray-800">{hasCurrency ? formatMoney(markup) : ""}</div>;
             case "percentMarkup":
-                return <div className="flex justify-center text-xs text-gray-800">{percentMarkup === null ? "" : `${formatMoney(percentMarkup)}%`}</div>;
+                return <div className="flex justify-center text-xs text-gray-800">{hasCurrency && percentMarkup !== null ? `${formatMoney(percentMarkup)}%` : ""}</div>;
             case "idealMarkup":
                 return (
                     <EditableCell
@@ -1182,7 +1182,7 @@ export function SubitemsTable({
                     />
                 );
             case "priceToSet":
-                return <div className="flex justify-center text-xs text-gray-800">{priceToSet === null ? "" : formatMoney(priceToSet)}</div>;
+                return <div className="flex justify-center text-xs text-gray-800">{hasCurrency && priceToSet !== null ? formatMoney(priceToSet) : ""}</div>;
             case "cnTracking":
                 return <EditableCell value={sub.cnTracking} onChange={(v) => onUpdateSubitem(sub.id, { cnTracking: v })} />;
             case "sgTracking":
@@ -1193,6 +1193,7 @@ export function SubitemsTable({
     };
 
     const renderPaymentCell = (sub: Subitem, key: string) => {
+        const hasCurrency = Boolean(sub.currency?.trim());
         const qty = parseNumber(sub.qty);
         const cost = parseNumber(sub.cost);
         const totalUc = cost * qty;
@@ -1268,13 +1269,13 @@ export function SubitemsTable({
             case "cost":
                 return <EditableCell value={sub.cost} onChange={(v) => onUpdateSubitem(sub.id, { cost: v })} type="number" />;
             case "totalUc":
-                return <div className="flex justify-center text-xs text-gray-800">{formatMoney(totalUc)}</div>;
+                return <div className="flex justify-center text-xs text-gray-800">{hasCurrency ? formatMoney(totalUc) : ""}</div>;
             case "manpower":
-                return <div className="flex justify-center text-xs text-gray-800">{formatMoney(manpowerInCurrency)}</div>;
+                return <div className="flex justify-center text-xs text-gray-800">{hasCurrency ? formatMoney(manpowerInCurrency) : ""}</div>;
             case "ls":
-                return <div className="flex justify-center text-xs text-gray-800">{formatMoney(lsInCurrency)}</div>;
+                return <div className="flex justify-center text-xs text-gray-800">{hasCurrency ? formatMoney(lsInCurrency) : ""}</div>;
             case "totalC":
-                return <div className="flex justify-center text-xs text-gray-800">{formatMoney(totalC)}</div>;
+                return <div className="flex justify-center text-xs text-gray-800">{hasCurrency ? formatMoney(totalC) : ""}</div>;
             case "modeOfPayment":
                 return (
                     <div className="overflow-hidden whitespace-nowrap text-ellipsis !text-center border-r border-[#D0D4E4] p-0 h-[33.1px] flex-shrink-0 transition transform active:scale-95 duration-150">
@@ -1302,7 +1303,7 @@ export function SubitemsTable({
             case "paymentAmount":
                 return <EditableCell value={sub.paymentAmount ?? ""} onChange={(v) => onUpdateSubitem(sub.id, { paymentAmount: v })} type="number" />;
             case "difference":
-                return <div className="flex justify-center text-xs text-gray-800">{formatMoney(difference)}</div>;
+                return <div className="flex justify-center text-xs text-gray-800">{hasCurrency ? formatMoney(difference) : ""}</div>;
             case "paymentRemarks":
                 return <EditableCell value={sub.paymentRemarks ?? ""} onChange={(v) => onUpdateSubitem(sub.id, { paymentRemarks: v })} multiline />;
             default:
