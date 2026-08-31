@@ -44,6 +44,9 @@ export type ClientRowProps = {
     onToggleAllSubitems: (subitemIds: string[]) => void;
     onSubitemDragStart?: (subitemId: string, event: React.DragEvent<HTMLElement>) => void;
     onSubitemDragEnd?: () => void;
+    onSubitemRowDragOver?: (event: React.DragEvent<HTMLTableRowElement>, subitemId: string) => void;
+    onSubitemRowDrop?: (event: React.DragEvent<HTMLTableRowElement>, subitemId: string) => void;
+    subitemDropMarker?: { subitemId: string; edge: 'top' | 'bottom' } | null;
     onSubitemDragOver?: (event: React.DragEvent<HTMLDivElement>, clientId: string) => void;
     onSubitemDrop?: (event: React.DragEvent<HTMLDivElement>, clientId: string) => void;
     isSubitemDropTarget?: boolean;
@@ -146,6 +149,9 @@ export function ClientRow({
     onToggleAllSubitems,
     onSubitemDragStart,
     onSubitemDragEnd,
+    onSubitemRowDragOver,
+    onSubitemRowDrop,
+    subitemDropMarker,
     onSubitemDragOver,
     onSubitemDrop,
     isSubitemDropTarget,
@@ -1134,6 +1140,9 @@ export function ClientRow({
                     onToggleAllSubitems={onToggleAllSubitems}
                     onSubitemDragStart={onSubitemDragStart}
                     onSubitemDragEnd={onSubitemDragEnd}
+                    onSubitemRowDragOver={onSubitemRowDragOver}
+                    onSubitemRowDrop={onSubitemRowDrop}
+                    subitemDropMarker={subitemDropMarker}
                     profiles={profiles}
                     clientAssignedIds={clientAssignedIds}
                     clientPmAssignedIds={pmAssignedIds}

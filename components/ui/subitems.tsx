@@ -131,6 +131,9 @@ type SubitemProps = {
     onToggleAllSubitems: (subitemIds: string[]) => void;
     onSubitemDragStart?: (subitemId: string, event: React.DragEvent<HTMLElement>) => void;
     onSubitemDragEnd?: () => void;
+    onSubitemRowDragOver?: (event: React.DragEvent<HTMLTableRowElement>, subitemId: string) => void;
+    onSubitemRowDrop?: (event: React.DragEvent<HTMLTableRowElement>, subitemId: string) => void;
+    subitemDropMarker?: { subitemId: string; edge: 'top' | 'bottom' } | null;
     profiles: Profile[];
     clientAssignedIds: string[];
     clientPmAssignedIds: string[];
@@ -233,6 +236,9 @@ export function SubitemsTable({
     onToggleAllSubitems,
     onSubitemDragStart,
     onSubitemDragEnd,
+    onSubitemRowDragOver,
+    onSubitemRowDrop,
+    subitemDropMarker,
     profiles,
     clientAssignedIds,
     clientPmAssignedIds,
@@ -945,8 +951,14 @@ export function SubitemsTable({
 
     const renderNameCell = (sub: Subitem) => (
         <div
-            draggable={Boolean(onSubitemDragStart)}
-            onDragStart={(event) => onSubitemDragStart?.(sub.id, event)}
+            draggable={Boolean(onSubitemDragStart) && canEditSubitem(sub.id)}
+            onDragStart={(event) => {
+                if (!canEditSubitem(sub.id)) {
+                    event.preventDefault();
+                    return;
+                }
+                onSubitemDragStart?.(sub.id, event);
+            }}
             onDragEnd={onSubitemDragEnd}
             onClick={(event) => {
                 // The name cell opens its inline editor on click. Do not let that
@@ -954,7 +966,7 @@ export function SubitemsTable({
                 if ((event.target as HTMLElement).closest('input, button, textarea, select, [data-editable-cell]')) return;
                 onOpenSubitemDetail?.(sub.id);
             }}
-            className="flex h-[30px] cursor-grab items-center gap-1 active:cursor-grabbing"
+            className={`flex h-[30px] items-center gap-1 ${canEditSubitem(sub.id) ? 'cursor-grab active:cursor-grabbing' : ''}`}
         >
             <FileText size={11} className="text-gray-400 shrink-0" />
             <EditableCell
@@ -1706,7 +1718,7 @@ export function SubitemsTable({
                     <tbody>
                         {subitems.map((sub) => (
                             <React.Fragment key={sub.id}>
-                                <tr data-subitem-id={sub.id} onContextMenu={(event) => { event.preventDefault(); window.dispatchEvent(new CustomEvent("crm:subitem-actions", { detail: sub.id })); }} onMouseMove={(event) => { event.currentTarget.title = !canEditSubitem(sub.id) && !(event.target as HTMLElement).closest('[data-subitem-assignment-editor]') ? 'You can only edit items that are assigned to you' : ''; }} onClickCapture={(event) => {
+                                <tr data-subitem-id={sub.id} onDragOver={(event) => onSubitemRowDragOver?.(event, sub.id)} onDrop={(event) => onSubitemRowDrop?.(event, sub.id)} onContextMenu={(event) => { event.preventDefault(); window.dispatchEvent(new CustomEvent("crm:subitem-actions", { detail: sub.id })); }} onMouseMove={(event) => { event.currentTarget.title = !canEditSubitem(sub.id) && !(event.target as HTMLElement).closest('[data-subitem-assignment-editor]') ? 'You can only edit items that are assigned to you' : ''; }} onClickCapture={(event) => {
                                     if (canEditSubitem(sub.id)) return;
                                     const target = event.target as HTMLElement;
                                     const isEditControl = !!target.closest('button, input, textarea, select, [data-editable-cell]');
@@ -1715,7 +1727,7 @@ export function SubitemsTable({
                                         event.stopPropagation();
                                         showPermissionNotice(target);
                                     }
-                                }} className="relative group border-b border-r border-[#D0D4E4] hover:bg-blue-50/30">
+                                }} className={`relative group border-b border-r border-[#D0D4E4] hover:bg-blue-50/30 ${subitemDropMarker?.subitemId === sub.id ? (subitemDropMarker.edge === 'top' ? 'shadow-[inset_0_3px_0_#0f8da8]' : 'shadow-[inset_0_-3px_0_#0f8da8]') : ''}`}>
                                     <td className="group relative overflow-visible border-r border-[#D0D4E4] px-2 py-1 text-center">
                                         <SubitemActionsMenu subitemId={sub.id} subitemName={sub.name} targetGroups={moveTargetGroups} canEdit={canEditSubitem(sub.id)} onOpen={() => onOpenSubitemDetail?.(sub.id)} onDuplicate={() => onDuplicateSubitemAction(sub.id)} onMove={(targetClientId) => onMoveSubitemAction(sub.id, targetClientId)} onDelete={() => onDeleteSubitem(sub.id)} />
                                         <input

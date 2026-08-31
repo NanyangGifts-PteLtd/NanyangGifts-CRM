@@ -38,7 +38,9 @@ export async function POST(req: NextRequest) {
     const { data: client, error } = await supabase.from("clients").select("*, subitems(*)").eq("id", clientId).single();
     if (error || !client) return NextResponse.json({ error: "Client not found" }, { status: 404 });
     if (!client.company?.trim()) return NextResponse.json({ error: "Client company name is required" }, { status: 400 });
-    const subitems = (client.subitems ?? []).filter((item: any) => ELIGIBLE.has((item.status ?? "").trim()));
+    const subitems = (client.subitems ?? [])
+        .filter((item: any) => ELIGIBLE.has((item.status ?? "").trim()))
+        .sort((first: any, second: any) => Number(first.position ?? Number.MAX_SAFE_INTEGER) - Number(second.position ?? Number.MAX_SAFE_INTEGER));
     if (!subitems.length) return NextResponse.json({ error: "No eligible subitems with Quoted, Shortlisted, or Awarded status" }, { status: 400 });
     const { data: profile } = await supabase.from("profiles").select("full_name, email").eq("id", user.id).maybeSingle();
     const rows: Array<{ name: string; description: string; qty: number; unitPrice: number; amount: number }> = subitems.map((item: any) => {

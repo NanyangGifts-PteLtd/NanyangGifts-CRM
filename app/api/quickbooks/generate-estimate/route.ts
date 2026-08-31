@@ -89,9 +89,9 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Client not found' }, { status: 404 });
         }
 
-        const subitems = (client.subitems ?? []).filter((s: any) =>
-            ELIGIBLE.has((s.status ?? '').trim())
-        );
+        const subitems = (client.subitems ?? [])
+            .filter((s: any) => ELIGIBLE.has((s.status ?? '').trim()))
+            .sort((first: any, second: any) => Number(first.position ?? Number.MAX_SAFE_INTEGER) - Number(second.position ?? Number.MAX_SAFE_INTEGER));
 
         if (!subitems.length) {
             return NextResponse.json(

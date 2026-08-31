@@ -65,7 +65,8 @@ export async function POST(req: NextRequest) {
             .from("subitems")
             .select("id, client_id, name, qty, description, status")
             .eq("client_id", clientId)
-            .eq("status", "Awarded");
+            .eq("status", "Awarded")
+            .order("position");
 
         if (subitemsError) {
             return NextResponse.json({ error: subitemsError.message }, { status: 500 });

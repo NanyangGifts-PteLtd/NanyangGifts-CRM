@@ -64,6 +64,8 @@ export interface TimelineRow {
 export interface Subitem {
   id: string;
   createdAt: string | null;
+  /** Persisted order within the owning client. */
+  position: number;
   name: string;
   people: string;
   status: SubitemStatus | string;

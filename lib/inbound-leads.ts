@@ -171,7 +171,11 @@ async function createSubitems(clientId: string, lead: NormalizedInboundLead) {
   const { data: existing, error: existingError } = await supabaseAdmin.from("subitems").select("id").eq("client_id", clientId).contains("custom_fields", { inbound_source: lead.source, inbound_external_id: lead.externalId }).limit(1);
   if (existingError) throw new InboundLeadError(existingError.message);
   if (existing?.length) return 0;
-  const rows = lead.subitems.map((item) => ({
+  const { data: lastSubitem, error: positionError } = await supabaseAdmin.from("subitems").select("position").eq("client_id", clientId).order("position", { ascending: false }).limit(1).maybeSingle();
+  if (positionError) throw new InboundLeadError(positionError.message);
+  const firstPosition = Number(lastSubitem?.position ?? -1) + 1;
+  const rows = lead.subitems.map((item, index) => ({
+    position: firstPosition + index,
     client_id: clientId, name: item.name, people: "", status: "", qty: item.qty, description: "", remarks: "", shipper: "", supplier: "", cost: "", ls: "", os: "", tc: "", uc: "", tc_sgd: "", price: "", up: "", owner: "", payment_status: "", manpower: "", ls_rmb: "", total_c: "", mode_of_payment: "", order_number: lead.orderNumber, quantity_produced: "", sample: "", qty_for: "", payment_amount: "", difference: "", local_overseas: "Local", num_of_cartons: "", payment_remarks: "", cn_tracking: "", sg_tracking: "", sample_order_status: "", sample_status: "", sample_type: "", timeline_rows: [], show_timeline: false, show_payments: false, sample_rows: [], show_sample: false, pl: null, sl: null, currency: lead.currency, c_sgd: null, manpower_rmb: null, total_uc: null, custom_fields: { inbound_source: lead.source, inbound_external_id: lead.externalId },
   }));
   const { error } = await supabaseAdmin.from("subitems").insert(rows);

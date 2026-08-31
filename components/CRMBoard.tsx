@@ -18,7 +18,7 @@ import {
   AlertDialogCancel,
 } from './ui/alert-dialog';
 import { fetchProfiles, saveClientAssignees, saveSubitemAssignees } from '@/lib/assignments';
-import { createClientRow, updateClientRow, deleteClientRow, createSubitemRow, updateSubitemRow, deleteSubitemRow, moveSubitemRow, duplicateSubitemRow, duplicateClientRow } from '@/lib/crm';
+import { createClientRow, updateClientRow, deleteClientRow, createSubitemRow, updateSubitemRow, deleteSubitemRow, moveSubitemRow, reorderSubitemRows, duplicateSubitemRow, duplicateClientRow } from '@/lib/crm';
 import { fetchClientAssigneeMap } from '@/lib/assignments';
 import { GenerateOcfModal } from './Generate-OCF-Modal';
 import { AddGroupModal } from './Add-Group-Modal';
@@ -322,6 +322,7 @@ export function CRMBoard({ clients,
   const [draggedClientId, setDraggedClientId] = useState<string | null>(null);
   const [draggedSubitem, setDraggedSubitem] = useState<{ id: string; sourceClientId: string } | null>(null);
   const [dragOverSubitemClientId, setDragOverSubitemClientId] = useState<string | null>(null);
+  const [subitemDropMarker, setSubitemDropMarker] = useState<{ clientId: string; subitemId: string; edge: 'top' | 'bottom' } | null>(null);
   const [draggedGroupId, setDraggedGroupId] = useState<string | null>(null);
   const [dragOverGroupId, setDragOverGroupId] = useState<string | null>(null);
   const [dragOverGroupEdge, setDragOverGroupEdge] = useState<'top' | 'bottom' | null>(null);
@@ -1600,6 +1601,7 @@ export function CRMBoard({ clients,
     window.setTimeout(() => preview.remove(), 0);
     setDraggedSubitem({ id: subitemId, sourceClientId });
     setDraggedClientId(null);
+    setSubitemDropMarker(null);
   }, []);
 
   const handleSubitemDragOver = useCallback((event: React.DragEvent<HTMLDivElement>, clientId: string) => {
@@ -1612,7 +1614,56 @@ export function CRMBoard({ clients,
   const handleSubitemDragEnd = useCallback(() => {
     setDraggedSubitem(null);
     setDragOverSubitemClientId(null);
+    setSubitemDropMarker(null);
   }, []);
+
+  const handleSubitemRowDragOver = useCallback((event: React.DragEvent<HTMLTableRowElement>, clientId: string, targetSubitemId: string) => {
+    if (!Array.from(event.dataTransfer.types).includes('application/x-crm-subitem')) return;
+    // Cross-client drops retain the existing whole-client drop zone. Row markers
+    // are reserved for reordering within the current client.
+    if (draggedSubitem?.sourceClientId !== clientId) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const edge = event.clientY < bounds.top + bounds.height / 2 ? 'top' : 'bottom';
+    setSubitemDropMarker({ clientId, subitemId: targetSubitemId, edge });
+  }, [draggedSubitem]);
+
+  const handleSubitemRowDrop = useCallback(async (event: React.DragEvent<HTMLTableRowElement>, clientId: string, targetSubitemId: string) => {
+    if (!Array.from(event.dataTransfer.types).includes('application/x-crm-subitem')) return;
+    if (!draggedSubitem || draggedSubitem.sourceClientId !== clientId) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const marker = subitemDropMarker?.clientId === clientId && subitemDropMarker.subitemId === targetSubitemId
+      ? subitemDropMarker
+      : { clientId, subitemId: targetSubitemId, edge: 'bottom' as const };
+    const client = clients.find((item) => item.id === clientId);
+    if (!client || draggedSubitem.id === targetSubitemId) {
+      handleSubitemDragEnd();
+      return;
+    }
+    const moving = client.subitems.find((item) => item.id === draggedSubitem.id);
+    if (!moving) {
+      handleSubitemDragEnd();
+      return;
+    }
+    const remaining = client.subitems.filter((item) => item.id !== moving.id);
+    let targetIndex = remaining.findIndex((item) => item.id === marker.subitemId);
+    if (targetIndex < 0) targetIndex = remaining.length;
+    if (marker.edge === 'bottom') targetIndex += 1;
+    const reordered = [...remaining];
+    reordered.splice(targetIndex, 0, moving);
+    const positioned = reordered.map((item, position) => ({ ...item, position }));
+    handleSubitemDragEnd();
+    setClients((previous) => previous.map((item) => item.id === clientId ? { ...item, subitems: positioned } : item));
+    try {
+      await reorderSubitemRows(clientId, positioned.map((item) => item.id));
+    } catch (error) {
+      console.error('Failed to reorder subitems', error);
+      toast.error('Subitems could not be reordered', { description: error instanceof Error ? error.message : 'Please try again.' });
+      await reloadClients();
+    }
+  }, [clients, draggedSubitem, handleSubitemDragEnd, reloadClients, setClients, subitemDropMarker]);
 
   const handleSubitemDrop = useCallback(async (event: React.DragEvent<HTMLDivElement>, targetClientId: string) => {
     if (!Array.from(event.dataTransfer.types).includes('application/x-crm-subitem')) return;
@@ -2534,7 +2585,12 @@ export function CRMBoard({ clients,
     if (!canEditSelectedSubitems) { showAssignmentPermissionError(); return; }
     setIsDuplicatingSubitems(true);
     try {
-      await Promise.all(selectedSubitemIds.map((subitemId) => duplicateSubitemRow(subitemId)));
+      // Preserve the board sequence for a multi-item duplication. Running these
+      // sequentially avoids concurrent appends assigning arbitrary positions.
+      const orderedIds = clients
+        .flatMap((client) => client.subitems.map((subitem) => subitem.id))
+        .filter((id) => selectedSubitemIds.includes(id));
+      for (const subitemId of orderedIds) await duplicateSubitemRow(subitemId);
       await reloadClients();
       toast.success('Subitems duplicated', { description: `${selectedSubitemIds.length} subitem${selectedSubitemIds.length === 1 ? '' : 's'} duplicated.` });
       clearSubitemSelection();
@@ -2544,7 +2600,7 @@ export function CRMBoard({ clients,
     } finally {
       setIsDuplicatingSubitems(false);
     }
-  }, [canEditSelectedSubitems, reloadClients, selectedSubitemIds, showAssignmentPermissionError]);
+  }, [canEditSelectedSubitems, clients, reloadClients, selectedSubitemIds, showAssignmentPermissionError]);
 
   const duplicateSubitemAction = useCallback(async (subitemId: string) => {
     const owner = clients.find((client) => client.subitems.some((subitem) => subitem.id === subitemId));
@@ -3339,6 +3395,9 @@ export function CRMBoard({ clients,
                   onToggleAllSubitems={toggleAllSubitems}
                   onSubitemDragStart={(subitemId, event) => handleSubitemDragStart(subitemId, client.id, event)}
                   onSubitemDragEnd={handleSubitemDragEnd}
+                  onSubitemRowDragOver={(event, subitemId) => handleSubitemRowDragOver(event, client.id, subitemId)}
+                  onSubitemRowDrop={(event, subitemId) => void handleSubitemRowDrop(event, client.id, subitemId)}
+                  subitemDropMarker={subitemDropMarker?.clientId === client.id ? { subitemId: subitemDropMarker.subitemId, edge: subitemDropMarker.edge } : null}
                   onSubitemDragOver={handleSubitemDragOver}
                   onSubitemDrop={handleSubitemDrop}
                   isSubitemDropTarget={dragOverSubitemClientId === client.id && draggedSubitem?.sourceClientId !== client.id}

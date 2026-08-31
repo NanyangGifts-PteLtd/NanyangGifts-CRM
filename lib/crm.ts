@@ -98,6 +98,7 @@ export async function setSalesRoundRobinActive(userId: string, isActive: boolean
 type Subitems = {
     id: string;
     client_id: string;
+    position: number | null;
     created_at: string | null;
     waiting_started_at: string | null;
     name: string | null;
@@ -300,6 +301,7 @@ function mapSubitems(row: Subitems): Subitem {
     return {
         id: row.id,
         createdAt: row.created_at ?? null,
+        position: row.position ?? Number.MAX_SAFE_INTEGER,
         name: row.name ?? '',
         people: row.people ?? '',
         status: row.status ?? '',
@@ -378,7 +380,7 @@ function mapClients(row: Clients): Client {
         expanded: row.expanded ?? false,
         color: row.color ?? '#7BCBD5',
         activityLog: (row.activity_log ?? []).map(mapActivityEntry),
-        subitems: (row.subitems ?? []).map(mapSubitems),
+        subitems: (row.subitems ?? []).map(mapSubitems).sort((first, second) => first.position - second.position || (first.createdAt ?? '').localeCompare(second.createdAt ?? '')),
         customFields: row.custom_fields ?? {},
 
     };
@@ -676,6 +678,15 @@ export async function deleteClientRow(clientId: string) {
 
 // subitem functions
 export async function createSubitemRow(clientId: string, name: string, currentUserId?: string | null) {
+    const { data: lastSubitem, error: lastSubitemError } = await supabase
+        .from('subitems')
+        .select('position')
+        .eq('client_id', clientId)
+        .order('position', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+    if (lastSubitemError) throw lastSubitemError;
+    const position = Number(lastSubitem?.position ?? -1) + 1;
     const timelineRows = [
         { id: crypto.randomUUID(), name: 'Sample', person: '', remarks: '', subProgress: '', timelineStart: '', timelineEnd: '', duration: '', dependency: '' },
         { id: crypto.randomUUID(), name: 'Production 📦', person: '', remarks: '', subProgress: '', timelineStart: '', timelineEnd: '', duration: '', dependency: 'Sample' },
@@ -690,6 +701,7 @@ export async function createSubitemRow(clientId: string, name: string, currentUs
         .from('subitems')
         .insert({
             client_id: clientId,
+            position,
             name: name.trim(),
             people: '',
             status: '',
@@ -777,11 +789,20 @@ export async function duplicateSubitemRow(subitemId: string) {
         ? copy.timeline_rows.map((row: TimelineRow) => ({ ...row, id: crypto.randomUUID() }))
         : [];
 
+    const { data: lastSubitem, error: lastSubitemError } = await supabase
+        .from('subitems')
+        .select('position')
+        .eq('client_id', existing.client_id)
+        .order('position', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+    if (lastSubitemError) throw lastSubitemError;
+
     const { data: duplicate, error: duplicateError } = await supabase
         .from('subitems')
         .insert({
             ...copy,
-            name: `${existing.name ?? 'New Item'} (Copy)`,
+            position: Number(lastSubitem?.position ?? -1) + 1,
             timeline_rows: duplicateTimelineRows,
         })
         .select('*')
@@ -982,9 +1003,18 @@ export async function moveSubitemRow(subitemId: string, targetClientId: string) 
     const oldClientName = clients?.find((client) => client.id === existing.client_id)?.name ?? existing.client_id;
     const newClientName = clients?.find((client) => client.id === targetClientId)?.name ?? targetClientId;
 
+    const { data: lastTargetSubitem, error: lastTargetSubitemError } = await supabase
+        .from('subitems')
+        .select('position')
+        .eq('client_id', targetClientId)
+        .order('position', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+    if (lastTargetSubitemError) throw lastTargetSubitemError;
+
     const { error } = await supabase
         .from('subitems')
-        .update({ client_id: targetClientId })
+        .update({ client_id: targetClientId, position: Number(lastTargetSubitem?.position ?? -1) + 1 })
         .eq('id', subitemId);
 
     if (error) throw error;
@@ -1064,6 +1094,14 @@ export async function deleteSubitemRow(subitemId: string) {
     if (error) throw error;
 }
 
+export async function reorderSubitemRows(clientId: string, orderedSubitemIds: string[]) {
+    const { error } = await supabase.rpc('reorder_client_subitems', {
+        target_client_id: clientId,
+        ordered_subitem_ids: orderedSubitemIds,
+    });
+    if (error) throw error;
+}
+
 export async function duplicateClientRow(clientId: string) {
     const { data: existing, error: clientError } = await supabase.from('clients').select('*').eq('id', clientId).single();
     if (clientError) throw clientError;
@@ -1075,12 +1113,15 @@ export async function duplicateClientRow(clientId: string) {
     delete clientCopy.activity_log;
     const { data: duplicate, error: duplicateError } = await supabase.from('clients').insert({
         ...clientCopy,
-        name: `${existing.name ?? 'New Client'} (Copy)`,
         activity_log: [],
     }).select('*').single();
     if (duplicateError) throw duplicateError;
 
-    const { data: sourceSubitems, error: subitemError } = await supabase.from('subitems').select('*').eq('client_id', clientId);
+    const { data: sourceSubitems, error: subitemError } = await supabase
+        .from('subitems')
+        .select('*')
+        .eq('client_id', clientId)
+        .order('position');
     if (subitemError) throw subitemError;
     for (const source of sourceSubitems ?? []) {
         const copy = { ...source };
