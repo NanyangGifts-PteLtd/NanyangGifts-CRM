@@ -1092,7 +1092,6 @@ export function ClientRow({
                                     updateClientCustomField(client.id, col.id, String(v))
                                 }
                                 type={col.field_type}
-                                placeholder="—"
                             />
                         )}
                     </div>

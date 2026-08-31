@@ -950,7 +950,9 @@ export function SubitemsTable({
             onDragStart={(event) => onSubitemDragStart?.(sub.id, event)}
             onDragEnd={onSubitemDragEnd}
             onClick={(event) => {
-                if ((event.target as HTMLElement).closest('input, button, textarea, select')) return;
+                // The name cell opens its inline editor on click. Do not let that
+                // same click bubble into the row-level "open subitem" action.
+                if ((event.target as HTMLElement).closest('input, button, textarea, select, [data-editable-cell]')) return;
                 onOpenSubitemDetail?.(sub.id);
             }}
             className="flex h-[30px] cursor-grab items-center gap-1 active:cursor-grabbing"
@@ -1774,7 +1776,6 @@ export function SubitemsTable({
                                                         })
                                                     }
                                                     type={col.field_type}
-                                                    placeholder="—"
                                                 />
                                             )}
                                         </td>
@@ -1844,6 +1845,7 @@ export function SubitemsTable({
                                                 void submitNewSubitem();
                                             }
                                         }}
+                                        onBlur={() => void submitNewSubitem()}
                                         disabled={isAddingSubitem}
                                         placeholder={isAddingSubitem ? "Adding subitem…" : "Add subitem"}
                                         aria-label="New subitem name"

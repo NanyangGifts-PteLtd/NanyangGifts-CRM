@@ -5,7 +5,7 @@ export function EditableCell({
     value,
     onChange,
     type = 'text',
-    placeholder = '–',
+    placeholder = '',
     className = '',
     readOnly = false,
     multiline = false,
@@ -104,7 +104,7 @@ export function EditableCell({
             className={`flex w-15 justify-center py-0.5 text-xs ${readOnly ? 'cursor-default' : 'cursor-text hover:bg-blue-50'} rounded min-h-[22px] items-center ${multiline ? 'whitespace-nowrap overflow-hidden text-ellipsis' : 'truncate'
                 } ${className}`}
         >
-            {value || <span className="text-gray-300 select-none">{placeholder}</span>}
+            {value || (placeholder && <span className="text-gray-300 select-none">{placeholder}</span>)}
         </div>
     );
 }
