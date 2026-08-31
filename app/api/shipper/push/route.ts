@@ -6,6 +6,7 @@ type PushShipperViewBody = {
     subitemIds: string[];
     overwrite?: boolean;
     preview?: boolean;
+    statusOnly?: boolean;
     targetShipperId?: string;
     targetShipperLabel?: string;
     values?: Array<Record<string, unknown> & { subitemId: string }>;
@@ -106,6 +107,23 @@ export async function POST(req: NextRequest) {
 
         if (subitemIds.length === 0) {
             return NextResponse.json({ error: "subitemIds is required" }, { status: 400 });
+        }
+
+        if (body.statusOnly) {
+            const { data: pushedRows, error: pushedRowsError } = await supabaseAdmin
+                .from("shipper_view_rows")
+                .select("subitem_id")
+                .in("subitem_id", subitemIds);
+
+            if (pushedRowsError) {
+                return NextResponse.json({ error: pushedRowsError.message }, { status: 500 });
+            }
+
+            return NextResponse.json({
+                pushedSubitemIds: (pushedRows ?? [])
+                    .map((row) => row.subitem_id)
+                    .filter((subitemId): subitemId is string => typeof subitemId === "string"),
+            });
         }
 
         const { data: allShippers, error: shippersError } = await supabase

@@ -77,7 +77,7 @@ export const SUBITEM_COLS: ColumnDef[] = [
 export const PAYMENT_COLS: ColumnDef[] = [
     { key: "name", label: "Subitem", width: 290, minWidth: 170 },
     { key: "payment", label: "Payment", width: 82, minWidth: 7 },
-    { key: "paymentStatus", label: "Status", width: 100, minWidth: 7 },
+    { key: "paymentStatus", label: "Payment Status", width: 100, minWidth: 7 },
     { key: "shipper", label: "Shipper", width: 80, minWidth: 7 },
     { key: "supplier", label: "Supplier", width: 80, minWidth: 7 },
     { key: "description", label: "Description", width: 80, minWidth: 7 },
@@ -337,6 +337,7 @@ export function SubitemsTable({
     }, [openColumnMenu, openColumnInfo]);
 
     const [pushingSubitemId, setPushingSubitemId] = useState<string | null>(null);
+    const [pushedSubitemIds, setPushedSubitemIds] = useState<Set<string>>(new Set());
     const [pendingPushSubitemId, setPendingPushSubitemId] = useState<string | null>(null);
     const [pushPreview, setPushPreview] = useState<ShipperPushValues | null>(null);
     const [pushPreviewShipperName, setPushPreviewShipperName] = useState("");
@@ -444,7 +445,39 @@ export function SubitemsTable({
             toast.success('Column arrangement saved', { description: `${tableMode === 'payment' ? 'Payment' : 'Subitem'} column order was saved to your account.` });
     };
 
-    const isPm = currentUserRole === "pm" || currentUserRole === "dev" || currentUserRole === "director";
+    const normalizedCurrentUserRole = String(currentUserRole ?? "").trim().toLowerCase();
+    const canAccessPush = normalizedCurrentUserRole !== "sales" && (normalizedCurrentUserRole === "pm" || normalizedCurrentUserRole === "dev" || normalizedCurrentUserRole === "director");
+    const subitemIdsKey = subitems.map((subitem) => subitem.id).join(",");
+
+    React.useEffect(() => {
+        if (!canAccessPush || subitems.length === 0) {
+            setPushedSubitemIds(new Set());
+            return;
+        }
+
+        let active = true;
+        const subitemIds = subitems.map((subitem) => subitem.id);
+        void fetch("/api/shipper/push", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ subitemIds, statusOnly: true }),
+        })
+            .then(async (response) => {
+                if (!response.ok) return [] as string[];
+                const result = await response.json();
+                return Array.isArray(result?.pushedSubitemIds) ? result.pushedSubitemIds.map(String) : [];
+            })
+            .then((ids) => {
+                if (active) setPushedSubitemIds(new Set(ids));
+            })
+            .catch(() => {
+                if (active) setPushedSubitemIds(new Set());
+            });
+
+        return () => {
+            active = false;
+        };
+    }, [canAccessPush, subitemIdsKey]);
 
     const cols = tableMode === "payment" ? paymentCols : subitemCols;
     const tablePrefix = tableMode === "payment" ? "payment" : "subitem";
@@ -870,6 +903,8 @@ export function SubitemsTable({
                 }
             }
 
+            setPushedSubitemIds((previous) => new Set(previous).add(subitemId));
+
             toast.success("Pushed to shipper view", {
                 description: "The shipping record was created or updated successfully.",
                 action: {
@@ -938,6 +973,7 @@ export function SubitemsTable({
             const result = await response.json();
             if (!response.ok) throw new Error(result?.error || "Failed to push to shipper view.");
             onUpdateSubitem(pushPreview.subitemId, { cnTracking: pushPreview.cn_tracking_no });
+            setPushedSubitemIds((previous) => new Set(previous).add(pushPreview.subitemId));
             setPushPreview(null);
             setPushPreviewShipperName("");
             setPushPreviewHistory(null);
@@ -1033,7 +1069,9 @@ export function SubitemsTable({
                     <Activity size={15} />
                 </button>
 
-                {isPm ? (
+                {canAccessPush ? (() => {
+                    const wasPushed = pushedSubitemIds.has(sub.id);
+                    return (
                     <button
                         type="button"
                         onClick={(e) => {
@@ -1041,12 +1079,16 @@ export function SubitemsTable({
                             void openPushPreview(sub.id);
                         }}
                         disabled={pushingSubitemId === sub.id || isLoadingPushPreview || !canEditSubitem(sub.id)}
-                        className="rounded-sm border border-teal-200 px-2 py-1 text-[11px] font-medium text-teal-500 transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
+                        className={`rounded-sm border px-2 py-1 text-[11px] font-medium transition disabled:cursor-not-allowed disabled:opacity-60 ${wasPushed
+                            ? "border-teal-100 bg-teal-50 text-teal-400 hover:bg-teal-100"
+                            : "border-teal-200 text-teal-500 hover:bg-blue-50"
+                        }`}
                         title={!canEditSubitem(sub.id) ? "You can only edit items that are assigned to you" : "Push to shipper view"}
                     >
-                        {pushingSubitemId === sub.id || isLoadingPushPreview ? "Preparing..." : "Push"}
+                        {pushingSubitemId === sub.id || isLoadingPushPreview ? "Preparing..." : wasPushed ? "Pushed" : "Push"}
                     </button>
-                ) : null}
+                    );
+                })() : null}
 
             </div>
         </div>
