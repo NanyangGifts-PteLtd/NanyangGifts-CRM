@@ -591,6 +591,7 @@ export function CRMBoard({ clients,
   const [isAddingCol, setIsAddingCol] = useState(false);
   const [pendingDeleteCustomColumn, setPendingDeleteCustomColumn] = useState<CustomColumn | null>(null);
   const [isDeletingCustomColumn, setIsDeletingCustomColumn] = useState(false);
+  const canCreateCustomColumns = ['director', 'dev'].includes(String(currentUserRole ?? '').trim().toLowerCase());
 
   const clientCustomCols = customColumns.filter((c) => c.target === 'client');
   const subitemCustomCols = customColumns.filter((c) => c.target === 'subitem');
@@ -1500,6 +1501,10 @@ export function CRMBoard({ clients,
   // Custom col handlers
 
   const handleAddCustomColumn = useCallback(async () => {
+    if (!canCreateCustomColumns) {
+      toast.error('Only directors and developers can create custom columns.');
+      return;
+    }
     const trimmed = newColName.trim();
     if (!trimmed || !showAddColModal) return;
     setIsAddingCol(true);
@@ -1519,7 +1524,7 @@ export function CRMBoard({ clients,
     } finally {
       setIsAddingCol(false);
     }
-  }, [newColName, newColType, showAddColModal, customColumns]);
+  }, [canCreateCustomColumns, newColName, newColType, showAddColModal, customColumns]);
 
   const handleDeleteCustomColumn = useCallback((id: string) => {
     const column = customColumns.find((item) => item.id === id);
@@ -3189,14 +3194,14 @@ export function CRMBoard({ clients,
                       className={`w-3 h-3 rounded accent-[#7BCBD5] ${selectedSubitemIds.length > 0 ? 'cursor-not-allowed opacity-40' : 'cursor-pointer'}`}
                     />
                   ) : col.key === 'addClientCol' ? (
-                    <button
-                      type="button"
-                      onClick={() => setShowAddColModal('client')}
-                      className="mx-auto flex h-5 w-5 items-center justify-center rounded-md text-teal-500 hover:bg-teal-100 hover:text-black"
-                      title="Add client column"
-                    >
-                      <Plus size={14} />
-                    </button>
+                    canCreateCustomColumns ? <button
+                        type="button"
+                        onClick={() => setShowAddColModal('client')}
+                        className="mx-auto flex h-5 w-5 items-center justify-center rounded-md text-teal-500 hover:bg-teal-100 hover:text-black"
+                        title="Add client column"
+                      >
+                        <Plus size={14} />
+                      </button> : null
                   ) : (
                     <div className="flex items-center gap-1 min-w-0">
                       <span className="truncate">{col.label}</span>
@@ -3369,7 +3374,7 @@ export function CRMBoard({ clients,
                               className={`w-3 h-3 rounded accent-[#7BCBD5] ${selectedSubitemIds.length > 0 || groupClients.length === 0 ? 'cursor-not-allowed opacity-40' : 'cursor-pointer'}`}
                             />
                           ) : col.key === 'addClientCol' ? (
-                            <button type="button" onClick={() => setShowAddColModal('client')} className="mx-auto flex h-5 w-5 items-center justify-center rounded-md text-teal-500 hover:bg-teal-100 hover:text-black" title="Add client column"><Plus size={14} /></button>
+                            canCreateCustomColumns ? <button type="button" onClick={() => setShowAddColModal('client')} className="mx-auto flex h-5 w-5 items-center justify-center rounded-md text-teal-500 hover:bg-teal-100 hover:text-black" title="Add client column"><Plus size={14} /></button> : null
                           ) : (
                             <div className="flex items-center gap-1 min-w-0 max-w-full px-1"><span className="truncate">{col.label}</span>{col.isCustom && col.customColumnId ? <button type="button" onClick={() => handleDeleteCustomColumn(col.customColumnId!)} className="text-gray-400 hover:text-red-500 flex-shrink-0" title="Delete column"><X size={12} /></button> : null}</div>
                           )}
@@ -3508,7 +3513,10 @@ export function CRMBoard({ clients,
                   updateClientCustomField={updateClientCustomField}
                   subitemCustomCols={subitemCustomCols}
                   onDeleteCustomColumn={handleDeleteCustomColumn}
-                  onRequestAddSubitemCol={() => setShowAddColModal('subitem')}
+                  onRequestAddSubitemCol={() => {
+                    if (canCreateCustomColumns) setShowAddColModal('subitem');
+                    else toast.error('Only directors and developers can create custom columns.');
+                  }}
                   onUpdateOptionColor={updateOptionColor}
                   onRenameOption={renameOptionValue}
                   onFilterColumn={openColumnFilter}

@@ -859,7 +859,7 @@ export function ClientRow({
                         type="date"
                         value={toDateInputValue(client.followUp)}
                         onChange={(e) => onUpdate({ followUp: e.target.value })}
-                        className="text-[12.6px] px-1 border-none outline-none bg-transparent cursor-pointer w-full"
+                        className={`text-[12.6px] px-1 border-none outline-none bg-transparent cursor-pointer w-full ${toDateInputValue(client.followUp) ? "text-gray-700" : "text-transparent focus:text-gray-700"}`}
                     />
                 </div>
 
@@ -1033,7 +1033,7 @@ export function ClientRow({
                         type="date"
                         value={toDateInputValue(client.nbd)}
                         onChange={(e) => onUpdate({ nbd: e.target.value })}
-                        className="text-[12.6px] border-none outline-none bg-transparent cursor-pointer w-full"
+                        className={`text-[12.6px] border-none outline-none bg-transparent cursor-pointer w-full ${toDateInputValue(client.nbd) ? "text-gray-700" : "text-transparent focus:text-gray-700"}`}
                     />
                 </div>
                 <div data-client-column="logoRequirementsFile" className="flex-1 min-w-0 border-r border-[#D0D4E4] overflow-visible bg-white" style={{ height: 30, minWidth: colWidth.logoRequirementsFile, width: colWidth.logoRequirementsFile, order: columnOrderMap.logoRequirementsFile ?? 13 }}>
@@ -1089,7 +1089,7 @@ export function ClientRow({
                                 onChange={(e) =>
                                     updateClientCustomField(client.id, col.id, e.target.value)
                                 }
-                                className="text-[12.6px] border-none outline-none bg-transparent cursor-pointer w-full px-1"
+                                className={`text-[12.6px] border-none outline-none bg-transparent cursor-pointer w-full px-1 ${client.customFields?.[col.id] ? "text-gray-700" : "text-transparent focus:text-gray-700"}`}
                             />
                         ) : (
                             <EditableCell

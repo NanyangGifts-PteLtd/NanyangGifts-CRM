@@ -89,6 +89,7 @@ export const SUBITEM_COLS: ColumnDef[] = [
 export const PAYMENT_COLS: ColumnDef[] = [
     { key: "name", label: "Subitem", width: 290, minWidth: 170 },
     { key: "payment", label: "Payment", width: 82, minWidth: 7 },
+    { key: "status", label: "Status", width: 100, minWidth: 7 },
     { key: "paymentStatus", label: "PM Status", width: 100, minWidth: 7 },
     { key: "shipper", label: "Shipper", width: 80, minWidth: 7 },
     { key: "supplier", label: "Supplier", width: 80, minWidth: 7 },
@@ -459,6 +460,7 @@ export function SubitemsTable({
 
     const normalizedCurrentUserRole = String(currentUserRole ?? "").trim().toLowerCase();
     const canAccessPush = normalizedCurrentUserRole !== "sales" && (normalizedCurrentUserRole === "pm" || normalizedCurrentUserRole === "dev" || normalizedCurrentUserRole === "director");
+    const canCreateCustomColumns = normalizedCurrentUserRole === "director" || normalizedCurrentUserRole === "dev";
     const subitemIdsKey = subitems.map((subitem) => subitem.id).join(",");
 
     React.useEffect(() => {
@@ -1297,6 +1299,22 @@ export function SubitemsTable({
                         />
                     </div>
                 );
+            case "status":
+                return (
+                    <div className="overflow-hidden whitespace-nowrap text-ellipsis !text-center border-r border-[#D0D4E4] p-0 h-[33.1px] flex-shrink-0 transition transform active:scale-95 duration-150">
+                        <StatusBadge
+                            value={sub.status ?? ""}
+                            onChange={(v) => onUpdateSubitem(sub.id, { status: v })}
+                            options={subitemStatusOptions}
+                            onAddOption={onAddSubitemStatus}
+                            onDeleteOption={onDeleteSubitemStatus}
+                            manageLabel="subitem status"
+                            onUpdateOptionColor={(name, color) => onUpdateOptionColor?.('subitem_status', name, color)}
+                            onRenameOption={(oldName, newName) => onRenameOption?.('subitem_status', oldName, newName)}
+                            small
+                        />
+                    </div>
+                );
             case "paymentStatus":
                 return (
                     <div className="overflow-hidden whitespace-nowrap text-ellipsis !text-center border-r border-[#D0D4E4] p-0 h-[33.1px] flex-shrink-0 transition transform active:scale-95 duration-150">
@@ -1767,13 +1785,13 @@ export function SubitemsTable({
                             ))}
 
                             <th className="border-r border-[#D0D4E4] px-1 text-center" style={{ width: 32 }}>
-                                <button
+                                {canCreateCustomColumns && <button
                                     onClick={onRequestAddSubitemCol}
                                     className="text-gray-300 hover:text-[#7BCBD5] text-lg leading-none"
                                     title="Add subitem column"
                                 >
                                     +
-                                </button>
+                                </button>}
                             </th>
                         </tr>
                     </thead>
@@ -1838,7 +1856,7 @@ export function SubitemsTable({
                                                             },
                                                         })
                                                     }
-                                                    className="text-xs border-none outline-none bg-transparent cursor-pointer w-full px-1"
+                                                    className={`text-xs border-none outline-none bg-transparent cursor-pointer w-full px-1 ${sub.customFields?.[col.id] ? "text-gray-700" : "text-transparent focus:text-gray-700"}`}
                                                 />
                                             ) : (
                                                 <EditableCell
