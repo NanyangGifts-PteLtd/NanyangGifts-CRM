@@ -2176,6 +2176,16 @@ export function CRMBoard({ clients,
     'Follow Up': 'Follow Up',
     'Shortlisted': 'Shortlisted',
   };
+  const CLOSING_QUALIFYING_SUBITEM_STATUSES = new Set([
+    'awarded',
+    'to verify at a later date',
+    'verified',
+    '[variation] cost difference',
+  ]);
+  const hasClosingQualifiedSubitem = (client: Client) => client.subitems.some((subitem) => {
+    const status = subitem.status?.trim().toLowerCase() ?? '';
+    return CLOSING_QUALIFYING_SUBITEM_STATUSES.has(status) || /cost difference$/i.test(status);
+  });
 
   const currentClosedLeadsGroupName = () => `Closed Leads - ${new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric', timeZone: 'Asia/Singapore' }).format(new Date())}`;
 
@@ -2262,6 +2272,10 @@ export function CRMBoard({ clients,
     const selectedGroup = updates.groupId ? groups.find((group) => group.id === updates.groupId) : null;
     const isMovingToClosedLeads = !!selectedGroup?.name.trim().toLowerCase().startsWith('closed leads');
     const isBecomingClosed = updates.status === 'Closed' || isMovingToClosedLeads;
+    if (isBecomingClosed && !existingClient?.email.trim()) {
+      toast.error('An Email address is required to close this lead', { description: 'Fill in the lead’s Email column before closing it.' });
+      return;
+    }
     if (isBecomingClosed && existingClient?.status !== 'Closed' && !closeRequirementsApproved) {
       setCloseLeadFiles({ purchaseOrder: null, signedQuotation: null, proofOfPayment: null });
       setCloseLeadOcfSigned(false);
@@ -2326,6 +2340,10 @@ export function CRMBoard({ clients,
     if (!pendingCloseLead || !closeLeadFiles.purchaseOrder || !closeLeadFiles.signedQuotation || !closeLeadFiles.proofOfPayment || !closeLeadOcfSigned) return;
     const client = clients.find((item) => item.id === pendingCloseLead.clientId);
     if (!client) return;
+    if (!client.email.trim()) {
+      toast.error('An Email address is required to close this lead', { description: 'Fill in the lead’s Email column before closing it.' });
+      return;
+    }
     setSavingCloseLead(true);
     try {
       const toAttachment = (file: File, category: string) => new Promise<Record<string, string>>((resolve, reject) => {
@@ -3061,12 +3079,20 @@ export function CRMBoard({ clients,
             <AlertDialogDescription>Upload the required closing documents and confirm that the OCF has been signed before this lead can be closed.</AlertDialogDescription>
           </AlertDialogHeader>
           <div className="grid gap-4 py-2">
+            {(() => {
+              const closingClient = pendingCloseLead ? clients.find((client) => client.id === pendingCloseLead.clientId) : null;
+              if (!closingClient) return null;
+              return <>
+                {!hasClosingQualifiedSubitem(closingClient) && <div role="alert" className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900"><strong>Warning:</strong> This lead has no subitem that has been awarded. You may still continue if this is intentional.</div>}
+                {!closingClient.email.trim() && <div role="alert" className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800"><strong>Email required:</strong> Fill in the lead’s Email column before it can be closed.</div>}
+              </>;
+            })()}
             {([['purchaseOrder', 'Purchase order'], ['signedQuotation', 'Signed quotation'], ['proofOfPayment', 'Proof of payment']] as const).map(([key, label]) => <label key={key} className="grid gap-1.5 text-sm font-medium text-slate-700">{label}<input type="file" disabled={savingCloseLead} onChange={(event) => setCloseLeadFiles((current) => ({ ...current, [key]: event.target.files?.[0] ?? null }))} className="block w-full text-xs file:mr-3 file:rounded-md file:border-0 file:bg-sky-100 file:px-3 file:py-2 file:text-xs file:font-semibold file:text-sky-700 hover:file:bg-sky-200 disabled:opacity-50" />{closeLeadFiles[key] && <span className="text-xs font-normal text-emerald-700">{closeLeadFiles[key]?.name}</span>}</label>)}
             <label className="flex items-center gap-2 text-sm font-medium text-slate-700"><input type="checkbox" checked={closeLeadOcfSigned} disabled={savingCloseLead} onChange={(event) => setCloseLeadOcfSigned(event.target.checked)} className="h-4 w-4 rounded accent-sky-600" />I confirm that the OCF has been signed.</label>
           </div>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={savingCloseLead}>Cancel</AlertDialogCancel>
-            <AlertDialogAction disabled={savingCloseLead || !closeLeadFiles.purchaseOrder || !closeLeadFiles.signedQuotation || !closeLeadFiles.proofOfPayment || !closeLeadOcfSigned} onClick={(event) => { event.preventDefault(); void confirmCloseLead(); }}>{savingCloseLead ? 'Closing…' : 'Confirm close'}</AlertDialogAction>
+            <AlertDialogAction disabled={savingCloseLead || !closeLeadFiles.purchaseOrder || !closeLeadFiles.signedQuotation || !closeLeadFiles.proofOfPayment || !closeLeadOcfSigned || !clients.find((client) => client.id === pendingCloseLead?.clientId)?.email.trim()} onClick={(event) => { event.preventDefault(); void confirmCloseLead(); }}>{savingCloseLead ? 'Closing…' : 'Confirm close'}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
