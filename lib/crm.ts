@@ -802,6 +802,7 @@ export async function duplicateSubitemRow(subitemId: string) {
         .from('subitems')
         .insert({
             ...copy,
+            name: `${existing.name ?? 'New Item'} (Copy)`,
             position: Number(lastSubitem?.position ?? -1) + 1,
             timeline_rows: duplicateTimelineRows,
         })
@@ -1113,6 +1114,7 @@ export async function duplicateClientRow(clientId: string) {
     delete clientCopy.activity_log;
     const { data: duplicate, error: duplicateError } = await supabase.from('clients').insert({
         ...clientCopy,
+        name: `${existing.name ?? 'New Client'} (Copy)`,
         activity_log: [],
     }).select('*').single();
     if (duplicateError) throw duplicateError;
