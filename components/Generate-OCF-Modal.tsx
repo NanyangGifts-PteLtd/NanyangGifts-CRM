@@ -3,8 +3,10 @@
 import { useEffect, useMemo, useState, useRef } from "react";
 import { X } from "lucide-react";
 import { Client, Subitem } from "@/app/types";
+import { FileDropTarget } from "./ui/file-drop-target";
 
-type AwardedSubitem = Pick<Subitem, "id" | "name" | "qty" | "description" | "status" | "pl" | "sl">;
+type AwardedSubitem = Pick<Subitem, "id" | "name" | "qty" | "description" | "status" | "pl" | "sl" | "customFields">;
+type FinalArtwork = { name: string; url: string; mimeType?: string };
 
 type UploadRow = {
     subitemId: string;
@@ -15,6 +17,10 @@ type UploadRow = {
     uploadedPath: string | null;
     isUploading: boolean;
     error: string | null;
+    finalArtwork: FinalArtwork | null;
+    usingFinalArtwork: boolean;
+    loadingSavedArtwork: boolean;
+    savedArtworkAttempted: boolean;
 };
 
 type GenerateOcfModalProps = {
@@ -22,6 +28,7 @@ type GenerateOcfModalProps = {
     client: Client | null;
     onClose: () => void;
     onCreated?: (result: { ocfId: string; internalUrl: string; clientUrl: string }) => void;
+    onSaveFinalArtwork?: (subitemId: string, file: File) => void | Promise<void>;
 
 
 };
@@ -57,11 +64,13 @@ function buildEstimatedDeliveryNotes(subitems: Array<{
         .filter(Boolean)
         .join("\n\n");
 }
+function savedFinalArtwork(raw?: string): FinalArtwork | null { try { const item = JSON.parse(raw ?? "null"); return item?.url ? item : null; } catch { return null; } }
 export function GenerateOcfModal({
     open,
     client,
     onClose,
     onCreated,
+    onSaveFinalArtwork,
 }: GenerateOcfModalProps) {
     const [awardedSubitems, setAwardedSubitems] = useState<AwardedSubitem[]>([]);
     const [rows, setRows] = useState<UploadRow[]>([]);
@@ -90,6 +99,7 @@ export function GenerateOcfModal({
             status: s.status,
             pl: s.pl,
             sl: s.sl,
+            customFields: s.customFields,
         }));
 
         setAwardedSubitems(mappedAwarded);
@@ -104,6 +114,10 @@ export function GenerateOcfModal({
                 uploadedPath: null,
                 isUploading: false,
                 error: null,
+                finalArtwork: savedFinalArtwork(s.customFields?.ocfFinalArtworkFile),
+                usingFinalArtwork: Boolean(savedFinalArtwork(s.customFields?.ocfFinalArtworkFile)),
+                loadingSavedArtwork: false,
+                savedArtworkAttempted: false,
             }))
         );
         setIncludedSubitemIds(awarded.map((item) => item.id));
@@ -137,6 +151,34 @@ export function GenerateOcfModal({
         );
     }
 
+    function selectImage(subitemId: string, file: File | undefined) {
+        if (!file) return;
+        const row = rows.find((item) => item.subitemId === subitemId);
+        if (row?.finalArtwork && !window.confirm("This image will overwrite the current OCF (Final Artwork) after the OCF is generated. Continue?")) return;
+        updateRow(subitemId, { file, uploadedPath: null, error: null, usingFinalArtwork: false, loadingSavedArtwork: false });
+    }
+
+    async function loadSavedFinalArtwork(subitemId: string) {
+        const row = rows.find((item) => item.subitemId === subitemId);
+        if (!row?.finalArtwork) return;
+        updateRow(subitemId, { usingFinalArtwork: true, loadingSavedArtwork: true, savedArtworkAttempted: true, error: null });
+        try {
+            const response = await fetch(row.finalArtwork.url);
+            const blob = await response.blob();
+            updateRow(subitemId, { usingFinalArtwork: true, file: new File([blob], row.finalArtwork.name, { type: blob.type || row.finalArtwork.mimeType || "image/png" }), uploadedPath: null, loadingSavedArtwork: false, error: null });
+        } catch { updateRow(subitemId, { usingFinalArtwork: false, loadingSavedArtwork: false, error: "Unable to load the saved final artwork." }); }
+    }
+
+    function useSavedFinalArtwork(subitemId: string, enabled: boolean) {
+        if (!enabled) { updateRow(subitemId, { usingFinalArtwork: false, file: null, uploadedPath: null, loadingSavedArtwork: false, error: null }); return; }
+        void loadSavedFinalArtwork(subitemId);
+    }
+
+    useEffect(() => {
+        if (!open) return;
+        rows.filter((row) => row.finalArtwork && row.usingFinalArtwork && !row.file && !row.loadingSavedArtwork && !row.savedArtworkAttempted).forEach((row) => { void loadSavedFinalArtwork(row.subitemId); });
+    }, [open, rows]);
+
     async function handleUploadRow(subitemId: string) {
         const row = rows.find((r) => r.subitemId === subitemId);
         if (!row || !row.file || !clientId) return;
@@ -159,6 +201,8 @@ export function GenerateOcfModal({
             if (!res.ok) {
                 throw new Error(data.error || "Upload failed");
             }
+
+            await Promise.all(selectedRows.filter((row) => row.file && !row.usingFinalArtwork).map((row) => onSaveFinalArtwork?.(row.subitemId, row.file!)));
 
             updateRow(subitemId, {
                 uploadedPath: data.path,
@@ -313,21 +357,16 @@ export function GenerateOcfModal({
                                                 <p className="mt-1 text-xs text-gray-600">
                                                     Remarks: {row.remarks || "-"}
                                                 </p>
+                                                {row.finalArtwork && <div className="mt-2 flex items-center gap-3 rounded border border-sky-100 bg-sky-50 p-2"><label className="flex cursor-pointer items-center gap-2 text-xs font-medium text-sky-700"><input type="checkbox" checked={row.usingFinalArtwork} onChange={(event) => useSavedFinalArtwork(row.subitemId, event.target.checked)} className="h-4 w-4 accent-[#7BCBD5]" />{row.loadingSavedArtwork ? "Loading saved final artwork..." : "Use saved OCF (Final Artwork)"}</label>{(row.finalArtwork.mimeType?.startsWith("image/") || row.finalArtwork.url.startsWith("data:image/")) && <a href={row.finalArtwork.url} target="_blank" rel="noreferrer" title="Open saved final artwork"><img src={row.finalArtwork.url} alt={`Saved final artwork for ${row.subitemName}`} className="h-12 w-12 rounded border border-sky-200 object-cover" /></a>}</div>}
                                                 </div>
                                             </div>
                                         </div>
 
-                                        {isIncluded && <div className="flex flex-col gap-2 md:flex-row md:items-center">
+                                        {isIncluded && <FileDropTarget onFiles={(files) => selectImage(row.subitemId, files.find((file) => file.type.startsWith("image/")))} className="rounded-md"><div className="flex flex-col gap-2 md:flex-row md:items-center">
                                             <input
                                                 type="file"
                                                 accept="image/png,image/jpeg,image/webp"
-                                                onChange={(e) =>
-                                                    updateRow(row.subitemId, {
-                                                        file: e.target.files?.[0] ?? null,
-                                                        uploadedPath: null,
-                                                        error: null,
-                                                    })
-                                                }
+                                                onChange={(e) => selectImage(row.subitemId, e.target.files?.[0])}
                                                 className="block text-sm file:mr-4 file:rounded-md file:border-0 file:bg-[#7BCBD5] file:px-3 file:py-2 file:font-medium file:text-white hover:file:bg-[#6cbac4]"
                                             />
 
@@ -343,7 +382,7 @@ export function GenerateOcfModal({
                                             {row.uploadedPath && (
                                                 <span className="text-xs font-medium text-teal-600">Uploaded</span>
                                             )}
-                                        </div>}
+                                        </div></FileDropTarget>}
 
                                         {row.error && (
                                             <p className="mt-2 text-xs text-red-600">{row.error}</p>

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ImagePlus, PaintBucket, Trash2, X } from "lucide-react";
+import { FileDropTarget } from "@/components/ui/file-drop-target";
 
 export type ShipperRow = {
     id: string;
@@ -212,7 +213,7 @@ function RemarksCell({
     if (!editable) return <div>{text || "-"}{imagePreview}</div>;
 
     return (
-        <div className="min-h-[42px] min-w-[240px]" onPaste={(event) => {
+        <FileDropTarget onFiles={(files) => { const image = files.find((file) => file.type.startsWith("image/")); if (image) void uploadImage(image); }} disabled={uploading} className="min-h-[42px] min-w-[240px]"><div className="min-h-[42px] min-w-[240px]" onPaste={(event) => {
             const image = Array.from(event.clipboardData.files).find((file) => file.type.startsWith("image/"));
             if (image) {
                 event.preventDefault();
@@ -236,7 +237,7 @@ function RemarksCell({
                     event.target.value = "";
                 }} />
             </label>
-        </div>
+        </div></FileDropTarget>
     );
 }
 

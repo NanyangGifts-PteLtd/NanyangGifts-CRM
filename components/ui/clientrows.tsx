@@ -15,6 +15,7 @@ import type { CustomColumn } from '@/lib/custom-columns';
 import { calculateSubitemFinancials } from '@/lib/subitem-calculations';
 import { useGenerateEstimate } from '@/components/hooks/use-generate-estimate-button';
 import { ClientActionsMenu } from '@/components/ClientActionsMenu';
+import { FileDropTarget } from './file-drop-target';
 
 type OptionEntry = { value: string; color: string };
 type AttachmentItem = {
@@ -360,9 +361,9 @@ export function ClientRow({
             setAttachmentLinkDialog(null);
         };
 
-        const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+        const addFiles = async (files: File[]) => {
             try {
-                const nextItems = await Promise.all(Array.from(event.target.files ?? []).map(async (file) => {
+                const nextItems = await Promise.all(files.map(async (file) => {
                     const url = await new Promise<string>((resolve, reject) => {
                         const reader = new FileReader();
                         reader.onload = () => resolve(String(reader.result ?? ""));
@@ -373,7 +374,6 @@ export function ClientRow({
                 }));
                 if (nextItems.length) saveItems([...items, ...nextItems]);
             } finally {
-                event.target.value = "";
                 setAttachmentSourceMenu(null);
             }
         };
@@ -382,7 +382,8 @@ export function ClientRow({
         const removeItem = (id: string) => saveItems(items.filter((item) => item.id !== id));
 
         return (
-            <div className="group/attachment relative flex min-h-[34px] items-center gap-1 px-1 py-0.5">
+            <FileDropTarget onFiles={(files) => { void addFiles(files); }} className="group/attachment min-h-[34px]">
+            <div className="relative flex min-h-[34px] items-center gap-1 px-1 py-0.5">
                 <div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
                     {items.map((item) => (
                         <div key={item.id} className="relative shrink-0" onMouseEnter={() => setAttachmentPreview(`${fieldKey}:${item.id}`)} onMouseLeave={() => setAttachmentPreview(null)}>
@@ -406,7 +407,7 @@ export function ClientRow({
                 <button type="button" data-attachment-menu-trigger onClick={() => setAttachmentSourceMenu(attachmentSourceMenu === fieldKey ? null : fieldKey)} className="flex h-7 w-7 shrink-0 items-center justify-center gap-0.5 rounded text-slate-400 opacity-0 transition-opacity group-hover/attachment:opacity-100 hover:bg-sky-50 hover:text-sky-600" title="Add attachment"><Plus size={12} /><FileText size={14} /></button>
                 {attachmentSourceMenu === fieldKey && (
                     <div data-attachment-menu className="absolute right-0 top-full z-[110] mt-1 w-40 rounded-lg border border-slate-200 bg-white p-1 shadow-xl">
-                        <label className="flex cursor-pointer items-center gap-2 rounded px-2 py-2 text-xs text-slate-700 hover:bg-slate-50"><Paperclip size={14} /> From computer<input type="file" multiple className="hidden" onChange={handleFileChange} /></label>
+                        <label className="flex cursor-pointer items-center gap-2 rounded px-2 py-2 text-xs text-slate-700 hover:bg-slate-50"><Paperclip size={14} /> From computer<input type="file" multiple className="hidden" onChange={(event) => { void addFiles(Array.from(event.target.files ?? [])); event.target.value = ""; }} /></label>
                         <button type="button" onClick={() => { setAttachmentSourceMenu(null); setAttachmentLinkDialog(fieldKey); }} className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-xs text-slate-700 hover:bg-slate-50"><LinkIcon size={14} /> From link</button>
                     </div>
                 )}
@@ -420,6 +421,7 @@ export function ClientRow({
                     </div>
                 )}
             </div>
+            </FileDropTarget>
         );
     };
 
@@ -887,6 +889,7 @@ export function ClientRow({
 
                             <div className="space-y-4 py-2">
                                 <div>
+                                    <FileDropTarget onFiles={setCloseFiles} className="rounded-md">
                                     <label className="text-sm font-medium">Upload purchase order</label>
                                     <input
                                         type="file"
@@ -897,7 +900,9 @@ export function ClientRow({
                                             setCloseFiles(files);
                                         }}
                                     />
+                                    </FileDropTarget>
                                     <br />
+                                    <FileDropTarget onFiles={setCloseFiles} className="rounded-md">
                                     <label className="text-sm font-medium">Upload signed quotation</label>
                                     <input
                                         type="file"
@@ -908,7 +913,9 @@ export function ClientRow({
                                             setCloseFiles(files);
                                         }}
                                     />
+                                    </FileDropTarget>
                                     <br />
+                                    <FileDropTarget onFiles={setCloseFiles} className="rounded-md">
                                     <label className="text-sm font-medium">Upload proof of payment</label>
                                     <input
                                         type="file"
@@ -919,6 +926,7 @@ export function ClientRow({
                                             setCloseFiles(files);
                                         }}
                                     />
+                                    </FileDropTarget>
                                     {closeFiles.length > 0 && (
                                         <div className="mt-2 text-[12.6px] text-gray-500 font-semibold">
                                             {closeFiles.length} file(s) selected

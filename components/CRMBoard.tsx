@@ -3615,6 +3615,12 @@ export function CRMBoard({ clients,
         open={isOcfModalOpen}
         client={ocfClient}
         onClose={handleCloseOcfModal}
+        onSaveFinalArtwork={async (subitemId, file) => {
+          if (!ocfClient) return;
+          const reader = new FileReader();
+          const artwork = await new Promise<{ id: string; name: string; url: string; mimeType: string }>((resolve, reject) => { reader.onload = () => resolve({ id: crypto.randomUUID(), name: file.name, url: String(reader.result), mimeType: file.type }); reader.onerror = () => reject(reader.error); reader.readAsDataURL(file); });
+          await updateSubitem(ocfClient.id, subitemId, { customFields: { ...(ocfClient.subitems.find((item) => item.id === subitemId)?.customFields ?? {}), ocfFinalArtworkFile: JSON.stringify(artwork) } });
+        }}
         onCreated={({ internalUrl }) => { void reloadClients(); window.open(internalUrl, "_blank", "noopener,noreferrer"); }}
       />
       <OcfChooserModal open={isOcfChooserOpen} client={ocfClient} canGenerate={String(currentUserRole ?? '').trim().toLowerCase() !== 'pm'} onClose={() => { setIsOcfChooserOpen(false); setOcfClient(null); }} onView={() => { if (!ocfClient) return; setIsOcfChooserOpen(false); setDetailClientInitialTab("files"); setDetailClientId(ocfClient.id); setOcfClient(null); }} onGenerate={() => { setIsOcfChooserOpen(false); setIsOcfModalOpen(true); }} />
