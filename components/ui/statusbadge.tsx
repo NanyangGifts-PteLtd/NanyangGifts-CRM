@@ -22,7 +22,7 @@ function normalizeOptions(options: (string | BadgeOption)[]): BadgeOption[] {
 
 export function StatusBadge({
     value, onChange, options: rawOptions, small = false, onAddOption, onDeleteOption,
-    canDeleteOption, onUpdateOptionColor, onRenameOption, manageLabel = "option",
+    canDeleteOption, onUpdateOptionColor, onRenameOption, manageLabel = "option", readOnly = false,
 }: {
     value: string; onChange: (value: string) => void; options: (string | BadgeOption)[]; small?: boolean;
     onAddOption?: (name: string) => void | Promise<void>;
@@ -31,6 +31,7 @@ export function StatusBadge({
     onUpdateOptionColor?: (name: string, color: string) => void | Promise<void>;
     onRenameOption?: (oldName: string, newName: string) => void | Promise<void>;
     manageLabel?: string;
+    readOnly?: boolean;
 }) {
     const [open, setOpen] = useState(false);
     const [editingLabels, setEditingLabels] = useState(false);
@@ -77,6 +78,7 @@ export function StatusBadge({
     }, [open]);
 
     const handleOpen = () => {
+        if (readOnly) return;
         if (!btnRef.current) return;
         if (open) {
             closeMenu();
@@ -120,5 +122,5 @@ export function StatusBadge({
         </div>, document.body
     );
 
-    return <><button ref={btnRef} type="button" onClick={handleOpen} aria-label={value || "Set label"} className={`ck h-full w-full whitespace-nowrap font-medium leading-none transition duration-150 active:scale-95 ${small ? "text-[12.6px]" : "text-[12.6px]"}`} style={{ background: activeBg, color: "#ffffff", minWidth: 50 }}>{value}</button>{menu}</>;
+    return <><button ref={btnRef} type="button" onClick={handleOpen} aria-label={value || "Set label"} title={readOnly ? "Cost fields are locked because this subitem is paid" : undefined} className={`ck h-full w-full whitespace-nowrap font-medium leading-none transition duration-150 ${readOnly ? "cursor-not-allowed opacity-70" : "active:scale-95"} ${small ? "text-[12.6px]" : "text-[12.6px]"}`} style={{ background: activeBg, color: "#ffffff", minWidth: 50 }}>{value}</button>{menu}</>;
 }

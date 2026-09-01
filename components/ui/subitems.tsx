@@ -43,6 +43,14 @@ const AWARDED_OR_LATER_SUBITEM_STATUSES = new Set([
     "[variation] cost difference",
 ]);
 
+const LOCKED_COST_INPUTS = new Set([
+    "qty", "cost", "currency", "manpower", "ls", "os", "up", "idealMarkup", "paymentAmount",
+]);
+
+function isCostLocked(subitem: Subitem) {
+    return subitem.payment?.trim().toLowerCase() === "paid";
+}
+
 function hasReachedAwardedPhase(status: string | null | undefined) {
     const normalized = status?.trim().toLowerCase() ?? "";
     return AWARDED_OR_LATER_SUBITEM_STATUSES.has(normalized) || /cost difference$/i.test(normalized);
@@ -1128,6 +1136,7 @@ export function SubitemsTable({
     );
 
     const renderSubitemCell = (sub: Subitem, key: string) => {
+        const costLocked = isCostLocked(sub) && LOCKED_COST_INPUTS.has(key);
         const { quantity: qty, cSgd, tcSgd, tc, price, markup, percentMarkup } = calculateSubitemFinancials(sub);
         const hasCurrency = Boolean(sub.currency?.trim());
         const uc = qty > 0 ? tc / qty : null;
@@ -1187,7 +1196,7 @@ export function SubitemsTable({
                     </div>
                 );
             case "qty":
-                return <EditableCell value={sub.qty} onChange={(v) => onUpdateSubitem(sub.id, { qty: v })} type="number" />;
+                return <EditableCell value={sub.qty} onChange={(v) => onUpdateSubitem(sub.id, { qty: v })} type="number" readOnly={costLocked} />;
             case "description":
                 return <EditableCell className="!justify-start" value={sub.description} onChange={(v) => onUpdateSubitem(sub.id, { description: v })} multiline />;
             case "remarks":
@@ -1211,7 +1220,7 @@ export function SubitemsTable({
             case "supplier":
                 return <EditableCell value={sub.supplier} onChange={(v) => onUpdateSubitem(sub.id, { supplier: v })} />;
             case "cost":
-                return <EditableCell value={sub.cost} onChange={(v) => onUpdateSubitem(sub.id, { cost: v })} type="number" />;
+                return <EditableCell value={sub.cost} onChange={(v) => onUpdateSubitem(sub.id, { cost: v })} type="number" readOnly={costLocked} />;
             case "currency":
                 return (
                     <div className="overflow-hidden whitespace-nowrap text-ellipsis !text-center border-r border-[#D0D4E4] p-0 h-[33.1px] flex-shrink-0 transition transform active:scale-95 duration-150">
@@ -1224,16 +1233,17 @@ export function SubitemsTable({
                             manageLabel="currency"
                             onUpdateOptionColor={(name, color) => onUpdateOptionColor?.('currency', name, color)}
                             onRenameOption={(oldName, newName) => onRenameOption?.('currency', oldName, newName)}
+                            readOnly={costLocked}
                             small
                         />
                     </div>
                 );
             case "manpower":
-                return <EditableCell value={sub.manpower} onChange={(v) => onUpdateSubitem(sub.id, { manpower: v })} type="number" />;
+                return <EditableCell value={sub.manpower} onChange={(v) => onUpdateSubitem(sub.id, { manpower: v })} type="number" readOnly={costLocked} />;
             case "ls":
-                return <EditableCell value={sub.ls} onChange={(v) => onUpdateSubitem(sub.id, { ls: v })} type="number" />;
+                return <EditableCell value={sub.ls} onChange={(v) => onUpdateSubitem(sub.id, { ls: v })} type="number" readOnly={costLocked} />;
             case "os":
-                return <EditableCell value={sub.os} onChange={(v) => onUpdateSubitem(sub.id, { os: v })} type="number" />;
+                return <EditableCell value={sub.os} onChange={(v) => onUpdateSubitem(sub.id, { os: v })} type="number" readOnly={costLocked} />;
             
             case "cSgd":
                 return <div className="flex justify-center text-xs text-gray-800">{hasCurrency ? formatMoney(cSgd) : ""}</div>;
@@ -1250,7 +1260,7 @@ export function SubitemsTable({
             case "price":
                 return <div className="flex justify-center text-xs text-gray-800">{hasCurrency ? formatMoney(price) : ""} </div>;
             case "up":
-                return <EditableCell value={sub.up} onChange={(v) => onUpdateSubitem(sub.id, { up: v })} type="number" />;
+                return <EditableCell value={sub.up} onChange={(v) => onUpdateSubitem(sub.id, { up: v })} type="number" readOnly={costLocked} />;
             case "markup":
                 return <div className="flex justify-center text-xs text-gray-800">{hasCurrency ? formatMoney(markup) : ""}</div>;
             case "percentMarkup":
@@ -1266,6 +1276,7 @@ export function SubitemsTable({
                             },
                         })}
                         type="number"
+                        readOnly={costLocked}
                     />
                 );
             case "priceToSet":
@@ -1280,6 +1291,7 @@ export function SubitemsTable({
     };
 
     const renderPaymentCell = (sub: Subitem, key: string) => {
+        const costLocked = isCostLocked(sub) && LOCKED_COST_INPUTS.has(key);
         const hasCurrency = Boolean(sub.currency?.trim());
         const qty = parseNumber(sub.qty);
         const cost = parseNumber(sub.cost);
@@ -1364,13 +1376,13 @@ export function SubitemsTable({
             case "currency":
                 return (
                     <div className="overflow-hidden whitespace-nowrap text-ellipsis !text-center border-r border-[#D0D4E4] p-0 h-[33.1px] flex-shrink-0 transition transform active:scale-95 duration-150">
-                        <StatusBadge value={sub.currency ?? ""} onChange={(v) => onUpdateSubitem(sub.id, { currency: v })} options={currencyOptions} onAddOption={onAddCurrency} onDeleteOption={onDeleteCurrency} manageLabel="currency" onUpdateOptionColor={(name, color) => onUpdateOptionColor?.('currency', name, color)} onRenameOption={(oldName, newName) => onRenameOption?.('currency', oldName, newName)} small />
+                        <StatusBadge value={sub.currency ?? ""} onChange={(v) => onUpdateSubitem(sub.id, { currency: v })} options={currencyOptions} onAddOption={onAddCurrency} onDeleteOption={onDeleteCurrency} manageLabel="currency" onUpdateOptionColor={(name, color) => onUpdateOptionColor?.('currency', name, color)} onRenameOption={(oldName, newName) => onRenameOption?.('currency', oldName, newName)} readOnly={costLocked} small />
                     </div>
                 );
             case "qty":
-                return <EditableCell value={sub.qty} onChange={(v) => onUpdateSubitem(sub.id, { qty: v })} type="number" />;
+                return <EditableCell value={sub.qty} onChange={(v) => onUpdateSubitem(sub.id, { qty: v })} type="number" readOnly={costLocked} />;
             case "cost":
-                return <EditableCell value={sub.cost} onChange={(v) => onUpdateSubitem(sub.id, { cost: v })} type="number" />;
+                return <EditableCell value={sub.cost} onChange={(v) => onUpdateSubitem(sub.id, { cost: v })} type="number" readOnly={costLocked} />;
             case "totalUc":
                 return <div className="flex justify-center text-xs text-gray-800">{hasCurrency ? formatMoney(totalUc) : ""}</div>;
             case "manpower":
@@ -1404,7 +1416,7 @@ export function SubitemsTable({
             case "qtyFor":
                 return <EditableCell value={sub.qtyFor ?? ""} onChange={(v) => onUpdateSubitem(sub.id, { qtyFor: v })} type="number" />;
             case "paymentAmount":
-                return <EditableCell value={sub.paymentAmount ?? ""} onChange={(v) => onUpdateSubitem(sub.id, { paymentAmount: v })} type="number" />;
+                return <EditableCell value={sub.paymentAmount ?? ""} onChange={(v) => onUpdateSubitem(sub.id, { paymentAmount: v })} type="number" readOnly={costLocked} />;
             case "difference":
                 return <div className="flex justify-center text-xs text-gray-800">{hasCurrency ? formatMoney(difference) : ""}</div>;
             case "paymentRemarks":

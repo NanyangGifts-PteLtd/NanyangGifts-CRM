@@ -919,14 +919,47 @@ export function CRMBoard({ clients,
   );
 
   const fetchOptions = useCallback(async (code: string): Promise<OptionEntry[]> => {
-    const supabase = createSupabaseClient();
-    const { data: group } = await supabase
-      .from('option_groups').select('id').eq('code', code).single();
-    if (!group) return [];
-    const { data } = await supabase
-      .from('option_values').select('value, color').eq('group_id', group.id).order('sort_order');
-    return data ?? [];
+    const response = await fetch(`/api/options?code=${encodeURIComponent(code)}`);
+    const data = await response.json();
+    if (!response.ok) {
+      console.error(`Failed to load option values for ${code}`, data.error);
+      return [];
+    }
+    return data.values ?? [];
   }, []);
+
+  // Label lists must not depend on unrelated board bootstrap requests such as
+  // profiles, groups, or custom columns. Otherwise one failed request leaves
+  // every StatusBadge with only its synthetic blank option.
+  useEffect(() => {
+    let active = true;
+    void Promise.all([
+      fetchOptions('reply_status'), fetchOptions('client_status'), fetchOptions('channel'),
+      fetchOptions('importance'), fetchOptions('progress'), fetchOptions('payment'),
+      fetchOptions('payment_status'), fetchOptions('mode_of_payment'), fetchOptions('shipper'),
+      fetchOptions('local_overseas'), fetchOptions('subitem_status'), fetchOptions('currency'),
+      fetchOptions('subitem_subprogress'),
+    ]).then(([
+      reply, status, channel, importance, progress, payment, paymentStatus, modeOfPayment,
+      shipper, localOverseas, subitemStatus, currency, subitemSubprogress,
+    ]) => {
+      if (!active) return;
+      setReplyStatusEntries(reply);
+      setClientStatusEntries(status);
+      setChannelEntries(channel);
+      setImportanceEntries(importance);
+      setProgressEntries(progress);
+      setPaymentEntries(payment);
+      setPaymentStatusEntries(paymentStatus);
+      setModeOfPaymentEntries(modeOfPayment);
+      setShipperEntries(shipper);
+      setLocalOverseasEntries(localOverseas);
+      setSubitemStatusEntries(subitemStatus);
+      setCurrencyEntries(currency);
+      setSubitemSubprogressEntries(subitemSubprogress);
+    });
+    return () => { active = false; };
+  }, [fetchOptions]);
 
   async function fetchGroups(): Promise<CRMGroup[]> {
     const supabase = createSupabaseClient();
