@@ -748,7 +748,7 @@ export function ClientRow({
                                     <div className="max-h-[420px] space-y-3 overflow-y-auto">
                                         {(() => {
                                             const clientActivities = [...(client.activityLog ?? [])]
-                                                .filter((entry) => !entry.subitemId || entry.action === 'subitem_added' || entry.action === 'subitem_deleted')
+                                                .filter((entry) => !entry.subitemId || ['subitem_added', 'subitem_deleted', 'shipper_pushed', 'file_uploaded', 'file_replaced', 'file_removed'].includes(entry.action))
                                                 .filter((entry) => !showOnlyAttachedActivities || Boolean(entry.link))
                                                 .sort(
                                                     (a, b) =>

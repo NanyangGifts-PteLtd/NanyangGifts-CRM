@@ -387,7 +387,7 @@ function mapClients(row: Clients): Client {
 async function insertActivityLog(params: {
     clientId: string;
     subitemId?: string | null;
-        action: 'field_changed' | 'client_added' | 'subitem_added' | 'subitem_deleted' | 'subitem_field_changed' | 'ocf_created' | 'ocf_signed' | 'ocf_updated';
+        action: 'field_changed' | 'client_added' | 'subitem_added' | 'subitem_deleted' | 'subitem_field_changed' | 'ocf_created' | 'ocf_signed' | 'ocf_updated' | 'estimate_created' | 'file_uploaded' | 'file_replaced' | 'file_removed' | 'shipper_pushed';
     fieldName?: string | null;
     oldValue?: unknown;
     newValue?: unknown;
@@ -428,6 +428,42 @@ async function insertActivityLog(params: {
         throw error;
     }
     return data;
+}
+
+type LoggedAttachment = { id?: string; name: string; url: string };
+
+function fileAttachmentsForLog(value: unknown): LoggedAttachment[] {
+    if (typeof value !== 'string' || !value.trim()) return [];
+    try {
+        const parsed = JSON.parse(value) as unknown;
+        const items = Array.isArray(parsed) ? parsed : [parsed];
+        return items.filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object' && typeof (item as Record<string, unknown>).url === 'string'))
+            .map((item) => ({ id: typeof item.id === 'string' ? item.id : undefined, name: typeof item.name === 'string' ? item.name : 'File', url: String(item.url) }));
+    } catch {
+        return [];
+    }
+}
+
+async function logFileAttachmentDiffs(params: { clientId: string; subitemId?: string | null; subitemName?: string | null; before?: Record<string, unknown> | null; after?: Record<string, unknown> | null }) {
+    const before = params.before ?? {};
+    const after = params.after ?? {};
+    for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
+        const oldFiles = fileAttachmentsForLog(before[key]);
+        const newFiles = fileAttachmentsForLog(after[key]);
+        if (!oldFiles.length && !newFiles.length) continue;
+        const oldByIdentity = new Map(oldFiles.map((file) => [file.id ?? file.url, file]));
+        const newByIdentity = new Map(newFiles.map((file) => [file.id ?? file.url, file]));
+        if (oldFiles.length === 1 && newFiles.length === 1 && !oldByIdentity.has(newFiles[0].id ?? newFiles[0].url)) {
+            await insertActivityLog({ clientId: params.clientId, subitemId: params.subitemId, subitemName: params.subitemName, action: 'file_replaced', fieldName: key, title: `replaced ${oldFiles[0].name} with ${newFiles[0].name}`, link: newFiles[0].url, meta: { field: key, previousFileName: oldFiles[0].name, fileName: newFiles[0].name } });
+            continue;
+        }
+        for (const file of newFiles) {
+            const previous = oldByIdentity.get(file.id ?? file.url);
+            if (!previous) await insertActivityLog({ clientId: params.clientId, subitemId: params.subitemId, subitemName: params.subitemName, action: 'file_uploaded', fieldName: key, title: `uploaded ${file.name}`, link: file.url, meta: { field: key, fileName: file.name } });
+            else if (previous.url !== file.url || previous.name !== file.name) await insertActivityLog({ clientId: params.clientId, subitemId: params.subitemId, subitemName: params.subitemName, action: 'file_replaced', fieldName: key, title: `replaced ${previous.name} with ${file.name}`, link: file.url, meta: { field: key, previousFileName: previous.name, fileName: file.name } });
+        }
+        for (const file of oldFiles) if (!newByIdentity.has(file.id ?? file.url)) await insertActivityLog({ clientId: params.clientId, subitemId: params.subitemId, subitemName: params.subitemName, action: 'file_removed', fieldName: key, title: `removed ${file.name}`, meta: { field: key, fileName: file.name } });
+    }
 }
 
 export async function logOcfCreated(params: {
@@ -622,6 +658,7 @@ export async function updateClientRow(
             meta: activityMeta,
         });
     }
+    if (updates.customFields !== undefined) await logFileAttachmentDiffs({ clientId, before: existing.custom_fields, after: updates.customFields });
 }
 
 async function assertDeletionAllowed(table: 'clients' | 'subitems', id: string) {
@@ -979,6 +1016,7 @@ export async function updateSubitemRow(subitemId: string, updates: Partial<Subit
             newValue: formatValueForLog(value),
         });
     }
+    if (updates.customFields !== undefined) await logFileAttachmentDiffs({ clientId: existing.client_id, subitemId, subitemName: existing.name, before: existing.custom_fields, after: updates.customFields });
 }
 
 export async function moveSubitemRow(subitemId: string, targetClientId: string) {

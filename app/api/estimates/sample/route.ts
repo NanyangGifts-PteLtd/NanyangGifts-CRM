@@ -158,5 +158,22 @@ export async function POST(req: NextRequest) {
     const pdf = await makePdf({ client, rows, createdBy });
     const { error: uploadError } = await supabase.storage.from("crm-files").upload(storagePath, pdf, { contentType: "application/pdf", upsert: false });
     if (uploadError) return NextResponse.json({ error: uploadError.message }, { status: 500 });
-    return NextResponse.json({ ok: true, filename, storagePath, url: `/api/files/download?path=${encodeURIComponent(storagePath)}`, createdAt: new Date().toISOString(), createdBy });
+    const url = `/api/files/download?path=${encodeURIComponent(storagePath)}`;
+    const { error: activityError } = await supabase.from("activity_log").insert({
+        client_id: client.id,
+        subitem_id: null,
+        actor_name: createdBy,
+        action: "estimate_created",
+        field_name: null,
+        old_value: null,
+        new_value: null,
+        subitem_name: null,
+        link: url,
+        title: "generated a sample estimate",
+        description: filename,
+        meta: { kind: "sample", storagePath, subitemIds: subitems.map((item: any) => item.id) },
+        created_at: new Date().toISOString(),
+    });
+    if (activityError) return NextResponse.json({ error: `Estimate generated, but the activity log could not be updated: ${activityError.message}` }, { status: 500 });
+    return NextResponse.json({ ok: true, filename, storagePath, url, createdAt: new Date().toISOString(), createdBy });
 }

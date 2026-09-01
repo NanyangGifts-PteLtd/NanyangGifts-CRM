@@ -75,6 +75,8 @@ export async function POST(req: NextRequest) {
         }
 
         const supabase = await createClient();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
         const { data: client, error } = await supabase
             .from('clients')
@@ -155,6 +157,25 @@ export async function POST(req: NextRequest) {
             quickbooks_estimate_id: estimate?.Id ?? null,
             quickbooks_estimate_doc_number: estimate?.DocNumber ?? null,
         });
+
+        const { data: profile } = await supabase.from('profiles').select('full_name, email').eq('id', user.id).maybeSingle();
+        const actorName = profile?.full_name?.trim() || profile?.email || user.email || 'CRM user';
+        const { error: activityError } = await supabase.from('activity_log').insert({
+            client_id: client.id,
+            subitem_id: null,
+            actor_name: actorName,
+            action: 'estimate_created',
+            field_name: null,
+            old_value: null,
+            new_value: null,
+            subitem_name: null,
+            link: null,
+            title: 'generated a QuickBooks estimate',
+            description: estimate?.DocNumber ? `QuickBooks estimate ${estimate.DocNumber}` : 'QuickBooks estimate generated',
+            meta: { kind: 'quickbooks', quickbooksEstimateId: estimate?.Id ?? null, docNumber: estimate?.DocNumber ?? null, subitemIds: subitems.map((item: { id: string }) => item.id) },
+            created_at: new Date().toISOString(),
+        });
+        if (activityError) throw activityError;
 
         return NextResponse.json({
             success: true,

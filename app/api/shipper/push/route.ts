@@ -360,6 +360,33 @@ export async function POST(req: NextRequest) {
             if (error) return NextResponse.json({ error: error.message }, { status: 500 });
         }
 
+        const activityRows = rowsToUpsert
+            .filter((row) => typeof row.client_id === "string" && typeof row.subitem_id === "string")
+            .map((row) => {
+                const source = subitems.find((item) => item.id === row.subitem_id);
+                const previous = existingBySubitemId.get(row.subitem_id);
+                const shipperName = shipperNameById.get(row.shipper_id) ?? "shipper";
+                return {
+                    client_id: row.client_id,
+                    subitem_id: row.subitem_id,
+                    actor_name: pushedByName,
+                    action: "shipper_pushed",
+                    field_name: null,
+                    old_value: null,
+                    new_value: null,
+                    subitem_name: source?.name ?? null,
+                    link: null,
+                    title: `${previous ? "re-pushed" : "pushed"} this subitem to ${shipperName}`,
+                    description: null,
+                    meta: { shipperId: row.shipper_id, shipperName, rePushed: Boolean(previous), stagingValuesApplied: Boolean(suppliedBySubitemId.get(row.subitem_id)) },
+                    created_at: new Date().toISOString(),
+                };
+            });
+        if (activityRows.length) {
+            const { error: activityError } = await supabase.from("activity_log").insert(activityRows);
+            if (activityError) return NextResponse.json({ error: `Shipper rows were pushed, but activity logging failed: ${activityError.message}` }, { status: 500 });
+        }
+
         return NextResponse.json({
             ok: true,
             count: pushedRows?.length ?? 0,

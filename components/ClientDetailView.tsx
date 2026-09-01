@@ -94,7 +94,7 @@ export function ClientDetailView({ client, clients, profiles, assigneeIds, pmIds
   const displayValue = (field: string | undefined, value: unknown) => field === "groupId" && typeof value === "string" ? groupNamesById[value] ?? "Ungrouped" : String(value ?? "empty");
   const activityText = (entry: ActivityEntry) => entry.title || (entry.fieldName ? `changed ${entry.fieldName} from ${displayValue(entry.fieldName, entry.oldValue)} to ${displayValue(entry.fieldName, entry.newValue)}` : entry.action.replaceAll("_", " "));
   const clientActivities = (client.activityLog ?? [])
-    .filter((entry) => !entry.subitemId || entry.action === "subitem_added" || entry.action === "subitem_deleted")
+    .filter((entry) => !entry.subitemId || ["subitem_added", "subitem_deleted", "shipper_pushed", "file_uploaded", "file_replaced", "file_removed"].includes(entry.action))
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   const showPermissionNotice = (element: HTMLElement) => {
     const rect = element.getBoundingClientRect();
