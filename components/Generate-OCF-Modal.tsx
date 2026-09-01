@@ -65,6 +65,7 @@ export function GenerateOcfModal({
 }: GenerateOcfModalProps) {
     const [awardedSubitems, setAwardedSubitems] = useState<AwardedSubitem[]>([]);
     const [rows, setRows] = useState<UploadRow[]>([]);
+    const [includedSubitemIds, setIncludedSubitemIds] = useState<string[]>([]);
     const [estimatedDeliveryDate, setEstimatedDeliveryDate] = useState("");
     const [estimatedDeliveryNotes, setEstimatedDeliveryNotes] = useState("");
     const [loadingItems, setLoadingItems] = useState(false);
@@ -105,6 +106,7 @@ export function GenerateOcfModal({
                 error: null,
             }))
         );
+        setIncludedSubitemIds(awarded.map((item) => item.id));
 
         setEstimatedDeliveryDate("");
         setEstimatedDeliveryNotes(buildEstimatedDeliveryNotes(mappedAwarded));
@@ -115,10 +117,19 @@ export function GenerateOcfModal({
 
     const hasAwarded = awardedSubitems.length > 0;
 
-    const allFilesChosen = useMemo(() => {
-        if (!rows.length) return false;
-        return rows.every((r) => !!r.file || !!r.uploadedPath);
-    }, [rows]);
+    const selectedRows = useMemo(() => rows.filter((row) => includedSubitemIds.includes(row.subitemId)), [includedSubitemIds, rows]);
+    const selectedAwardedSubitems = useMemo(() => awardedSubitems.filter((item) => includedSubitemIds.includes(item.id)), [awardedSubitems, includedSubitemIds]);
+    const hasIncludedItems = selectedRows.length > 0;
+    const allFilesChosen = useMemo(() => hasIncludedItems && selectedRows.every((r) => !!r.file || !!r.uploadedPath), [hasIncludedItems, selectedRows]);
+
+    function toggleIncludedSubitem(subitemId: string, checked: boolean) {
+        setIncludedSubitemIds((previous) => checked ? [...new Set([...previous, subitemId])] : previous.filter((id) => id !== subitemId));
+    }
+
+    useEffect(() => {
+        if (!open) return;
+        setEstimatedDeliveryNotes(buildEstimatedDeliveryNotes(selectedAwardedSubitems));
+    }, [open, selectedAwardedSubitems]);
 
     function updateRow(subitemId: string, patch: Partial<UploadRow>) {
         setRows((prev) =>
@@ -162,7 +173,7 @@ export function GenerateOcfModal({
     }
 
     async function handleUploadAll() {
-        for (const row of rows) {
+        for (const row of selectedRows) {
             if (row.file && !row.uploadedPath) {
                 await handleUploadRow(row.subitemId);
             }
@@ -179,12 +190,17 @@ export function GenerateOcfModal({
             return;
         }
 
-        if (!allFilesChosen) {
-            setFormError("Please choose an image for every awarded subitem.");
+        if (!hasIncludedItems) {
+            setFormError("Select at least one awarded subitem to include in the OCF.");
             return;
         }
 
-        const notUploaded = rows.filter((r) => !r.uploadedPath);
+        if (!allFilesChosen) {
+            setFormError("Please choose an image for every included subitem.");
+            return;
+        }
+
+        const notUploaded = selectedRows.filter((r) => !r.uploadedPath);
         if (notUploaded.length > 0) {
             setFormError("Please upload all selected files before generating the OCF.");
             return;
@@ -197,7 +213,7 @@ export function GenerateOcfModal({
                 clientId,
                 estimatedDeliveryDate: estimatedDeliveryDate || null,
                 estimatedDeliveryNotes: estimatedDeliveryNotes || "",
-                itemUploads: rows.map((row) => ({
+                itemUploads: selectedRows.map((row) => ({
                     subitemId: row.subitemId,
                     imagePath: row.uploadedPath,
                 })),
@@ -278,22 +294,30 @@ export function GenerateOcfModal({
                             </div>
 
                             <div className="space-y-3">
-                                {rows.map((row) => (
+                                {rows.map((row) => {
+                                    const isIncluded = includedSubitemIds.includes(row.subitemId);
+                                    return (
                                     <div
                                         key={row.subitemId}
-                                        className="rounded-lg border border-gray-200 bg-gray-50 p-4"
+                                        className={`rounded-lg border p-4 ${isIncluded ? "border-gray-200 bg-gray-50" : "border-gray-200 bg-white opacity-70"}`}
                                     >
                                         <div className="mb-2 flex items-start justify-between gap-4">
-                                            <div>
+                                            <div className="flex min-w-0 items-start gap-3">
+                                                <label className="flex shrink-0 cursor-pointer flex-col items-center gap-1 text-center text-[10px] font-medium text-gray-600">
+                                                    <input type="checkbox" checked={isIncluded} onChange={(event) => toggleIncludedSubitem(row.subitemId, event.target.checked)} className="h-4 w-4 accent-[#7BCBD5]" />
+                                                    <span>Include in<br />OCF?</span>
+                                                </label>
+                                                <div>
                                                 <p className="text-sm font-semibold text-gray-900">{row.subitemName}</p>
                                                 <p className="text-xs text-gray-500">Qty: {row.qty || "-"}</p>
                                                 <p className="mt-1 text-xs text-gray-600">
                                                     Remarks: {row.remarks || "-"}
                                                 </p>
+                                                </div>
                                             </div>
                                         </div>
 
-                                        <div className="flex flex-col gap-2 md:flex-row md:items-center">
+                                        {isIncluded && <div className="flex flex-col gap-2 md:flex-row md:items-center">
                                             <input
                                                 type="file"
                                                 accept="image/png,image/jpeg,image/webp"
@@ -319,13 +343,14 @@ export function GenerateOcfModal({
                                             {row.uploadedPath && (
                                                 <span className="text-xs font-medium text-teal-600">Uploaded</span>
                                             )}
-                                        </div>
+                                        </div>}
 
                                         {row.error && (
                                             <p className="mt-2 text-xs text-red-600">{row.error}</p>
                                         )}
                                     </div>
-                                ))}
+                                    );
+                                })}
                             </div>
                         </>
                     )}
@@ -341,7 +366,7 @@ export function GenerateOcfModal({
                     <button
                         type="button"
                         onClick={handleUploadAll}
-                        disabled={!hasAwarded}
+                        disabled={!hasIncludedItems}
                         className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 disabled:opacity-50"
                     >
                         Upload all selected
@@ -359,7 +384,7 @@ export function GenerateOcfModal({
                         <button
                             type="button"
                             onClick={handleCreate}
-                            disabled={!hasAwarded || creating}
+                            disabled={!hasIncludedItems || creating}
                             className="rounded-md bg-[#7BCBD5] px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
                         >
                             {creating ? "Generating..." : "Generate OCF"}

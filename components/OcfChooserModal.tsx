@@ -3,9 +3,10 @@
 import { FilePlus2, Files, X } from "lucide-react";
 import type { Client } from "@/app/types";
 
-export function OcfChooserModal({ open, client, onClose, onView, onGenerate }: {
+export function OcfChooserModal({ open, client, canGenerate, onClose, onView, onGenerate }: {
     open: boolean;
     client: Client | null;
+    canGenerate: boolean;
     onClose: () => void;
     onView: () => void;
     onGenerate: () => void;
@@ -28,11 +29,13 @@ export function OcfChooserModal({ open, client, onClose, onView, onGenerate }: {
                         <strong className="block text-sm text-sky-900">View OCFs</strong>
                         <span className="mt-1 block text-xs leading-5 text-sky-800">Open this client&apos;s Files tab and browse their OCFs.</span>
                     </button>
-                    <button type="button" onClick={onGenerate} className="min-h-36 rounded-xl border-2 border-teal-200 bg-teal-50 p-5 text-left transition hover:border-teal-400 hover:bg-teal-100">
-                        <FilePlus2 size={22} className="mb-3 text-teal-600" />
-                        <strong className="block text-sm text-teal-900">Generate OCF</strong>
-                        <span className="mt-1 block text-xs leading-5 text-teal-800">Create a new Order Confirmation Form for this client.</span>
-                    </button>
+                    <span title={canGenerate ? undefined : "Generating OCF is for Sales"} className="block">
+                        <button type="button" onClick={onGenerate} disabled={!canGenerate} className="min-h-36 w-full rounded-xl border-2 border-teal-200 bg-teal-50 p-5 text-left transition hover:border-teal-400 hover:bg-teal-100 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-teal-200 disabled:hover:bg-teal-50">
+                            <FilePlus2 size={22} className="mb-3 text-teal-600" />
+                            <strong className="block text-sm text-teal-900">Generate OCF</strong>
+                            <span className="mt-1 block text-xs leading-5 text-teal-800">Create a new Order Confirmation Form for this client.</span>
+                        </button>
+                    </span>
                 </div>
             </div>
         </div>

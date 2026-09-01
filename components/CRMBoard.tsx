@@ -3617,7 +3617,7 @@ export function CRMBoard({ clients,
         onClose={handleCloseOcfModal}
         onCreated={({ internalUrl }) => { void reloadClients(); window.open(internalUrl, "_blank", "noopener,noreferrer"); }}
       />
-      <OcfChooserModal open={isOcfChooserOpen} client={ocfClient} onClose={() => { setIsOcfChooserOpen(false); setOcfClient(null); }} onView={() => { if (!ocfClient) return; setIsOcfChooserOpen(false); setDetailClientInitialTab("files"); setDetailClientId(ocfClient.id); setOcfClient(null); }} onGenerate={() => { setIsOcfChooserOpen(false); setIsOcfModalOpen(true); }} />
+      <OcfChooserModal open={isOcfChooserOpen} client={ocfClient} canGenerate={String(currentUserRole ?? '').trim().toLowerCase() !== 'pm'} onClose={() => { setIsOcfChooserOpen(false); setOcfClient(null); }} onView={() => { if (!ocfClient) return; setIsOcfChooserOpen(false); setDetailClientInitialTab("files"); setDetailClientId(ocfClient.id); setOcfClient(null); }} onGenerate={() => { setIsOcfChooserOpen(false); setIsOcfModalOpen(true); }} />
       {showAddColModal && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/30">
           <div className="w-full max-w-sm rounded-2xl border border-gray-200 bg-white shadow-2xl p-5">

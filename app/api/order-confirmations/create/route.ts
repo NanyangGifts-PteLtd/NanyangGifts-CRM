@@ -24,6 +24,11 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
+        const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
+        if (String(profile?.role ?? "").trim().toLowerCase() === "pm") {
+            return NextResponse.json({ error: "Generating OCF is for Sales" }, { status: 403 });
+        }
+
         const body = (await req.json()) as CreateOcfBody;
         const { clientId, estimatedDeliveryNotes, itemUploads } = body;
 
@@ -98,16 +103,10 @@ export async function POST(req: NextRequest) {
             assignees.find((a: any) => a.id === user.id) ?? assignees[0] ?? null;
 
         const awardedIds = new Set(awardedSubitems.map((s) => s.id));
-        const uploadMap = new Map(itemUploads.map((u) => [u.subitemId, u.imagePath]));
-
-        for (const subitem of awardedSubitems) {
-            if (!uploadMap.has(subitem.id)) {
-                return NextResponse.json(
-                    { error: `Missing uploaded image for awarded subitem "${subitem.name}"` },
-                    { status: 400 }
-                );
-            }
+        if (itemUploads.length === 0) {
+            return NextResponse.json({ error: "Select at least one awarded subitem for this OCF" }, { status: 400 });
         }
+        const uploadMap = new Map(itemUploads.map((u) => [u.subitemId, u.imagePath]));
 
         for (const upload of itemUploads) {
             if (!awardedIds.has(upload.subitemId)) {
@@ -115,6 +114,9 @@ export async function POST(req: NextRequest) {
                     { error: "itemUploads contains an invalid subitemId" },
                     { status: 400 }
                 );
+            }
+            if (!upload.imagePath) {
+                return NextResponse.json({ error: "Every included subitem needs an uploaded image" }, { status: 400 });
             }
         }
 
@@ -143,7 +145,7 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        const itemRows = awardedSubitems.map((item) => ({
+        const itemRows = awardedSubitems.filter((item) => uploadMap.has(item.id)).map((item) => ({
             order_confirmation_id: ocf.id,
             subitem_id: item.id,
             qty: item.qty,
