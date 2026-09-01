@@ -106,6 +106,7 @@ export type ClientRowProps = {
     statusOptions: OptionEntry[];
     channelOptions: OptionEntry[];
     importanceOptions: OptionEntry[];
+    progressOptions: OptionEntry[];
     onAddReplyStatus?: (name: string) => void | Promise<void>;
     onDeleteReplyStatus?: (name: string) => void | Promise<void>;
     onAddStatus?: (name: string) => void | Promise<void>;
@@ -114,6 +115,8 @@ export type ClientRowProps = {
     onDeleteChannel?: (name: string) => void | Promise<void>;
     onAddImportance?: (name: string) => void | Promise<void>;
     onDeleteImportance?: (name: string) => void | Promise<void>;
+    onAddProgress?: (name: string) => void | Promise<void>;
+    onDeleteProgress?: (name: string) => void | Promise<void>;
     paymentOptions: OptionEntry[];
     paymentStatusOptions: OptionEntry[];
     modeOfPaymentOptions: OptionEntry[];
@@ -211,6 +214,7 @@ export function ClientRow({
     statusOptions,
     channelOptions,
     importanceOptions,
+    progressOptions,
     onAddReplyStatus,
     onDeleteReplyStatus,
     onAddStatus,
@@ -219,6 +223,8 @@ export function ClientRow({
     onDeleteChannel,
     onAddImportance,
     onDeleteImportance,
+    onAddProgress,
+    onDeleteProgress,
     paymentOptions,
     paymentStatusOptions,
     modeOfPaymentOptions,
@@ -1109,6 +1115,22 @@ export function ClientRow({
                 </div>
                 <div data-client-column="totalMarkup" className="flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height: 30, minWidth: colWidth.totalMarkup, width: colWidth.totalMarkup, order: columnOrderMap.totalMarkup ?? 16 }}>
                     <span className="block px-2 text-center text-[12.6px] text-gray-800">{aggregateSubitemValues.totalMarkup.toFixed(2)}</span>
+                </div>
+                <div
+                    data-client-column="progress"
+                    className="overflow-hidden whitespace-nowrap text-ellipsis !text-center border-r border-[#D0D4E4] p-0 h-[33.1px] flex-shrink-0 transition transform active:scale-95 duration-150"
+                    style={{ minWidth: colWidth.progress, width: colWidth.progress, order: columnOrderMap.progress ?? 17 }}
+                >
+                    <StatusBadge
+                        value={client.progress}
+                        onChange={(value) => onUpdate({ progress: value })}
+                        options={progressOptions}
+                        onAddOption={onAddProgress}
+                        onDeleteOption={onDeleteProgress}
+                        manageLabel="progress"
+                        onUpdateOptionColor={(name, color) => onUpdateOptionColor?.('progress', name, color)}
+                        onRenameOption={(oldName, newName) => onRenameOption?.('progress', oldName, newName)}
+                    />
                 </div>
                 <div data-client-column="dateCreated" className="flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height: 30, minWidth: colWidth.dateCreated, width: colWidth.dateCreated, order: columnOrderMap.dateCreated ?? 19 }}>
                     <span title={clientCreatedTooltip} className="block px-1 text-[12.6px] text-gray-700">

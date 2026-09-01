@@ -78,6 +78,7 @@ const CLIENT_HEADER_COLS: HeaderCol[] = [
   { key: 'filesMiscellaneous', label: 'Files (Miscellaneous)', width: 170, minWidth: 7 },
   { key: 'totalPrice', label: 'Total Price', width: 80, minWidth: 7 },
   { key: 'totalMarkup', label: 'Total Markup', width: 90, minWidth: 7 },
+  { key: 'progress', label: 'Progress', width: 110, minWidth: 7 },
   { key: 'dateCreated', label: 'Date Created', width: 90, minWidth: 7 },
   { key: 'addClientCol', label: '', width: 44, minWidth: 44 },
   { key: 'empty', label: '', width: 44, minWidth: 44 },
@@ -290,6 +291,7 @@ export function CRMBoard({ clients,
   const [clientStatusEntries, setClientStatusEntries] = useState<OptionEntry[]>([]);
   const [channelEntries, setChannelEntries] = useState<OptionEntry[]>([]);
   const [importanceEntries, setImportanceEntries] = useState<OptionEntry[]>([]);
+  const [progressEntries, setProgressEntries] = useState<OptionEntry[]>([]);
   const [paymentEntries, setPaymentEntries] = useState<OptionEntry[]>([]);
   const [paymentStatusEntries, setPaymentStatusEntries] = useState<OptionEntry[]>([]);
   const [modeOfPaymentEntries, setModeOfPaymentEntries] = useState<OptionEntry[]>([]);
@@ -303,6 +305,7 @@ export function CRMBoard({ clients,
   const clientStatuses = clientStatusEntries.map((e) => e.value);
   const channelOptions = channelEntries.map((e) => e.value);
   const importanceOptions = importanceEntries.map((e) => e.value);
+  const progressOptions = progressEntries.map((e) => e.value);
   const subprogressOptions = subitemSubprogressEntries.map((e) => e.value);
   const subitemStatusOptionsForFilter = subitemStatusEntries.map((e) => e.value);
   const paymentOptionsForFilter = paymentEntries.map((e) => e.value);
@@ -315,6 +318,7 @@ export function CRMBoard({ clients,
   const paymentColors = Object.fromEntries(paymentEntries.map((e) => [e.value, e.color]));
   const paymentStatusColors = Object.fromEntries(paymentStatusEntries.map((e) => [e.value, e.color]));
   const importanceColors = Object.fromEntries(importanceEntries.map((e) => [e.value, e.color]));
+  const progressColors = Object.fromEntries(progressEntries.map((e) => [e.value, e.color]));
   const replyStatusColors = Object.fromEntries(replyStatusEntries.map((e) => [e.value, e.color]));
   const channelColors = Object.fromEntries(channelEntries.map((e) => [e.value, e.color]));
 
@@ -980,6 +984,7 @@ export function CRMBoard({ clients,
           statusOpts,
           channelOpts,
           importanceOpts,
+          progressOpts,
           paymentOpts,
           paymentStatusOpts,
           modeOfPaymentOpts,
@@ -998,6 +1003,7 @@ export function CRMBoard({ clients,
           fetchOptions('client_status'),
           fetchOptions('channel'),
           fetchOptions('importance'),
+          fetchOptions('progress'),
           fetchOptions('payment'),
           fetchOptions('payment_status'),
           fetchOptions('mode_of_payment'),
@@ -1020,6 +1026,7 @@ export function CRMBoard({ clients,
         setClientStatusEntries(statusOpts);
         setChannelEntries(channelOpts);
         setImportanceEntries(importanceOpts);
+        setProgressEntries(progressOpts);
         setPaymentEntries(paymentOpts);
         setPaymentStatusEntries(paymentStatusOpts);
         setModeOfPaymentEntries(modeOfPaymentOpts);
@@ -1178,6 +1185,7 @@ export function CRMBoard({ clients,
       client_status: setClientStatusEntries,
       channel: setChannelEntries,
       importance: setImportanceEntries,
+      progress: setProgressEntries,
       payment: setPaymentEntries,
       payment_status: setPaymentStatusEntries,
       mode_of_payment: setModeOfPaymentEntries,
@@ -1210,7 +1218,7 @@ export function CRMBoard({ clients,
 
     const fieldMap: Record<string, { table: 'clients' | 'subitems'; column: string }> = {
       reply_status: { table: 'clients', column: 'reply_status' }, client_status: { table: 'clients', column: 'status' },
-      channel: { table: 'clients', column: 'channel' }, importance: { table: 'clients', column: 'importance' },
+      channel: { table: 'clients', column: 'channel' }, importance: { table: 'clients', column: 'importance' }, progress: { table: 'clients', column: 'progress' },
       payment: { table: 'subitems', column: 'payment' }, payment_status: { table: 'subitems', column: 'payment_status' },
       mode_of_payment: { table: 'subitems', column: 'mode_of_payment' }, shipper: { table: 'subitems', column: 'shipper' },
       local_overseas: { table: 'subitems', column: 'local_overseas' }, subitem_status: { table: 'subitems', column: 'status' },
@@ -1235,7 +1243,7 @@ export function CRMBoard({ clients,
 
     const setters: Record<string, React.Dispatch<React.SetStateAction<OptionEntry[]>>> = {
       reply_status: setReplyStatusEntries, client_status: setClientStatusEntries, channel: setChannelEntries,
-      importance: setImportanceEntries, payment: setPaymentEntries, payment_status: setPaymentStatusEntries,
+      importance: setImportanceEntries, progress: setProgressEntries, payment: setPaymentEntries, payment_status: setPaymentStatusEntries,
       mode_of_payment: setModeOfPaymentEntries, shipper: setShipperEntries, local_overseas: setLocalOverseasEntries,
       subitem_status: setSubitemStatusEntries, currency: setCurrencyEntries, subitem_subprogress: setSubitemSubprogressEntries,
     };
@@ -1442,6 +1450,14 @@ export function CRMBoard({ clients,
     setImportanceEntries((prev) => prev.filter((e) => e.value !== name));
     notifyChange('Option deleted', `${name} was removed from Importance.`);
   }, [notifyChange]);
+
+  const handleAddProgress = useCallback(async (name: string) => {
+    await insertOptionValue('progress', name, progressEntries, setProgressEntries);
+  }, [insertOptionValue, progressEntries]);
+
+  const handleDeleteProgress = useCallback(async (name: string) => {
+    await deleteOptionValue('progress', name, setProgressEntries);
+  }, [deleteOptionValue]);
 
   // --- Groups ---
   const handleAddGroup = useCallback(async (name: string) => {
@@ -2483,7 +2499,7 @@ export function CRMBoard({ clients,
         id: createdClient.id, name: createdClient.name ?? '', people: createdClient.people ?? '',
         replyStatus: createdClient.reply_status ?? '', followUp: createdClient.follow_up ?? '',
         status: (createdClient.status as ClientStatus) ?? 'New Lead', channel: createdClient.channel ?? '',
-        importance: createdClient.importance ?? '', company: createdClient.company ?? '',
+        importance: createdClient.importance ?? '', progress: createdClient.progress ?? '', company: createdClient.company ?? '',
         email: createdClient.email ?? '', phone: createdClient.phone ?? '',
         requirements: createdClient.requirements ?? '', nbd: createdClient.nbd ?? '',
         groupId: createdClient.group_id ?? defaultGroupId, totalPrice: createdClient.total_price ?? '',
@@ -3481,6 +3497,7 @@ export function CRMBoard({ clients,
                   statusOptions={clientStatusEntries}
                   channelOptions={channelEntries}
                   importanceOptions={importanceEntries}
+                  progressOptions={progressEntries}
                   paymentOptions={paymentEntries}
                   paymentStatusOptions={paymentStatusEntries}
                   modeOfPaymentOptions={modeOfPaymentEntries}
@@ -3507,6 +3524,8 @@ export function CRMBoard({ clients,
                   onDeleteChannel={handleDeleteChannel}
                   onAddImportance={handleAddImportance}
                   onDeleteImportance={handleDeleteImportance}
+                  onAddProgress={handleAddProgress}
+                  onDeleteProgress={handleDeleteProgress}
                   onAddPayment={handleAddPayment}
                   onDeletePayment={handleDeletePayment}
                   onAddPaymentStatus={handleAddPaymentStatus}

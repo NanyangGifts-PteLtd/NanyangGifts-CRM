@@ -152,6 +152,7 @@ export interface Client {
   status: ClientStatus;
   channel: string;
   importance: string;
+  progress: string;
   company: string;
   email: string;
   phone: string;

@@ -162,6 +162,7 @@ type Clients = {
     status: string | null;
     channel: string | null;
     importance: string | null;
+    progress: string | null;
     company: string | null;
     email: string | null;
     phone: string | null;
@@ -365,6 +366,7 @@ function mapClients(row: Clients): Client {
         status: (row.status as Client['status']) ?? 'New Lead',
         channel: row.channel ?? '',
         importance: row.importance ?? '',
+        progress: row.progress ?? '',
         company: row.company ?? '',
         email: row.email ?? '',
         phone: row.phone ?? '',
@@ -558,6 +560,7 @@ export async function createClientRow(currentUserId?: string | null, groupId?: s
             status: 'New Lead',
             channel: '',
             importance: '',
+            progress: '',
             company: '',
             email: '',
             phone: '',
@@ -623,6 +626,7 @@ export async function updateClientRow(
         ...(updates.status !== undefined ? { status: updates.status } : {}),
         ...(updates.channel !== undefined ? { channel: updates.channel } : {}),
         ...(updates.importance !== undefined ? { importance: updates.importance } : {}),
+        ...(updates.progress !== undefined ? { progress: updates.progress } : {}),
         ...(updates.company !== undefined ? { company: updates.company } : {}),
         ...(updates.email !== undefined ? { email: updates.email } : {}),
         ...(updates.phone !== undefined ? { phone: updates.phone } : {}),
