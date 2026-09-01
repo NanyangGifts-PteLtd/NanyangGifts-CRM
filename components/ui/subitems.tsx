@@ -118,7 +118,6 @@ const CUSTOM_COL_WIDTH = 120;
 
 const SHIPPER_PUSH_FIELDS: Array<{ key: keyof Omit<ShipperPushValues, "subitemId">; label: string; required?: boolean; type?: "date" | "number" | "textarea" }> = [
     { key: "cn_tracking_no", label: "单号 / CN Tracking #", required: true },
-    { key: "ic", label: "谁下单 / I/C", required: true },
     { key: "info_provided_date", label: "提供资料日期", required: true, type: "date" },
     { key: "cartons", label: "箱子 / Cartons", type: "number" },
     { key: "qty", label: "数量 / Qty", required: true, type: "number" },
@@ -962,9 +961,11 @@ export function SubitemsTable({
             if (!response.ok) throw new Error(result?.error || "Could not prepare the shipper push.");
             const row = result?.rows?.[0];
             if (!row) throw new Error("No shipper data was available for this subitem.");
+            const singaporeNow = new Date(Date.now() + 8 * 60 * 60 * 1000);
+            const today = `${singaporeNow.getUTCFullYear()}-${String(singaporeNow.getUTCMonth() + 1).padStart(2, "0")}-${String(singaporeNow.getUTCDate()).padStart(2, "0")}`;
             setPushPreview({
                 subitemId,
-                ...Object.fromEntries(SHIPPER_PUSH_FIELDS.map(({ key }) => [key, row[key] == null ? "" : String(row[key])])),
+                ...Object.fromEntries(SHIPPER_PUSH_FIELDS.map(({ key }) => [key, key === "info_provided_date" && !row[key] ? today : row[key] == null ? "" : String(row[key])])),
             } as ShipperPushValues);
             setPushPreviewShipperName(String(row.shipper_name || "Selected shipper"));
             setPushPreviewHistory({ alreadyPushed: Boolean(row.already_pushed), differentShipper: Boolean(row.pushed_to_different_shipper), previousShipperName: String(row.previous_shipper_name || "another shipper") });
@@ -978,6 +979,15 @@ export function SubitemsTable({
     const updatePushPreview = (field: string, value: string) => setPushPreview((previous) => previous ? { ...previous, [field]: value } : previous);
     const pushValue = pushPreview ? Number(pushPreview.qty || 0) * Number(pushPreview.up || 0) : 0;
     const pushPreviewComplete = !!pushPreview && SHIPPER_PUSH_FIELDS.filter((field) => field.required).every((field) => pushPreview[field.key]?.trim());
+    const pushField = (key: string, label: string) => {
+        if (!pushPreview) return null;
+        const field = SHIPPER_PUSH_FIELDS.find((item) => item.key === key);
+        const value = pushPreview[key] ?? "";
+        const invalid = !!field?.required && !value.trim();
+        const className = `mt-1 w-full rounded-md border px-3 py-2 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-cyan-200 ${invalid ? "border-red-300 bg-red-50" : "border-slate-300"}`;
+        const control = key === "sea_or_air" ? <select value={value} onChange={(event) => updatePushPreview(key, event.target.value)} className={className}><option value="" /><option value="空运">空运</option><option value="海运">海运</option><option value="海运/小包">海运/小包</option></select> : key === "tax_refund" ? <select value={value} onChange={(event) => updatePushPreview(key, event.target.value)} className={className}><option value="" /><option value="退">退</option><option value="X">X</option></select> : field?.type === "textarea" ? <textarea value={value} onChange={(event) => updatePushPreview(key, event.target.value)} rows={3} className={className} /> : <input type={field?.type === "date" ? "date" : field?.type === "number" ? "number" : "text"} value={value} onChange={(event) => updatePushPreview(key, event.target.value)} className={className} />;
+        return <label className="block text-xs font-medium text-slate-700">{label}{field?.required && <span className="ml-1 text-red-500">*</span>}{control}</label>;
+    };
     async function confirmPushPreview() {
         if (!pushPreview || !pushPreviewComplete) return;
         setPushingSubitemId(pushPreview.subitemId);
@@ -1517,24 +1527,13 @@ export function SubitemsTable({
                             <p className={`font-semibold ${pushPreviewHistory.differentShipper ? "text-orange-900" : "text-amber-900"}`}>{pushPreviewHistory.differentShipper ? "This subitem was previously pushed to a different shipper" : "This subitem has already been pushed"}</p>
                             <p className={`mt-1 text-sm ${pushPreviewHistory.differentShipper ? "text-orange-800" : "text-amber-700"}`}>{pushPreviewHistory.differentShipper ? <>It was previously pushed to <strong>{pushPreviewHistory.previousShipperName}</strong>. Confirming this push will move its linked shipper row to <strong>{pushPreviewShipperName || "the selected shipper"}</strong>, so it will no longer appear under the previous shipper.</> : <>Confirming will overwrite its existing information in <strong>{pushPreviewShipperName || "the selected shipper"}</strong>.</>}</p>
                         </div>}
-                        <div className="grid flex-1 grid-cols-1 gap-4 overflow-y-auto p-5 md:grid-cols-2">
-                            {SHIPPER_PUSH_FIELDS.slice(0, 6).map((field) => {
-                                const value = pushPreview[field.key] ?? "";
-                                const invalid = !!field.required && !value.trim();
-                                return <label key={field.key} className="block text-xs font-medium text-slate-700">{field.label}{field.required && <span className="ml-1 text-red-500">*</span>}
-                                    <input type={field.type === "date" ? "date" : field.type === "number" ? "number" : "text"} value={value} onChange={(event) => updatePushPreview(field.key, event.target.value)} className={`mt-1 h-10 w-full rounded-md border px-3 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-cyan-200 ${invalid ? "border-red-300 bg-red-50" : "border-slate-300"}`} />
-                                </label>;
-                            })}
-                            <div className="block text-xs font-medium text-slate-700">货值 / Value
-                                <div className="mt-1 flex h-10 items-center rounded-md border border-slate-200 bg-slate-100 px-3 text-sm font-medium text-slate-700">{Number.isFinite(pushValue) ? pushValue.toFixed(2) : "0.00"}</div>
+                        <div className="flex-1 space-y-4 overflow-y-auto p-5">
+                            <div className="grid gap-4 border-b border-slate-200 pb-4 md:grid-cols-2">{pushField("info_provided_date", "Date of Submission")}{pushField("cn_tracking_no", "CN Tracking")}</div>
+                            <div className="grid gap-4 md:grid-cols-3">
+                                <div className="space-y-4 md:border-r md:border-slate-200 md:pr-4">{pushField("qty", "Qty")}{pushField("up", "Unit Price")}<div className="text-xs font-medium text-slate-700">Value<div className="mt-1 rounded-md border border-slate-200 bg-slate-100 px-3 py-2 text-sm">{Number.isFinite(pushValue) ? pushValue.toFixed(2) : "0.00"}</div></div>{pushField("cartons", "Cartons")}{pushField("tax_refund", "退税?")}</div>
+                                <div className="space-y-4 md:border-r md:border-slate-200 md:px-4">{pushField("delivery_info", "Address")}{pushField("sea_or_air", "Air/Sea?")}</div>
+                                <div className="space-y-4 md:pl-4">{pushField("samples_by_air", "Samples by Air")}{pushField("samples_by_sea", "Samples by Sea")}{pushField("shipper_remarks", "Remarks")}</div>
                             </div>
-                            {SHIPPER_PUSH_FIELDS.slice(6).map((field) => {
-                                const value = pushPreview[field.key] ?? "";
-                                const invalid = !!field.required && !value.trim();
-                                return <label key={field.key} className="block text-xs font-medium text-slate-700">{field.label}{field.required && <span className="ml-1 text-red-500">*</span>}
-                                    {field.type === "textarea" ? <textarea value={value} onChange={(event) => updatePushPreview(field.key, event.target.value)} rows={3} className={`mt-1 w-full rounded-md border px-3 py-2 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-cyan-200 ${invalid ? "border-red-300 bg-red-50" : "border-slate-300"}`} /> : <input value={value} onChange={(event) => updatePushPreview(field.key, event.target.value)} className={`mt-1 h-10 w-full rounded-md border px-3 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-cyan-200 ${invalid ? "border-red-300 bg-red-50" : "border-slate-300"}`} />}
-                                </label>;
-                            })}
                         </div>
                         <div className="flex items-center justify-between border-t border-slate-200 px-5 py-4">
                             <p className="text-xs text-slate-500">CN Tracking # will also update the CRM Board.</p>

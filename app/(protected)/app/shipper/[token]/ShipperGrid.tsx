@@ -114,6 +114,12 @@ function SpreadsheetTextCell({ value, onSave }: { value: unknown; onSave: (value
     return <textarea ref={ref} value={draft} rows={1} onChange={(event) => setDraft(event.target.value)} onBlur={() => void onSave(draft)} className="block min-h-[42px] w-full resize-none overflow-hidden border-0 bg-transparent px-2 py-2 text-center text-[13px] whitespace-pre-wrap break-words outline-none focus:bg-blue-50" />;
 }
 
+function NumberCell({ value, onSave }: { value: unknown; onSave: (value: string) => Promise<void> }) {
+    const [draft, setDraft] = useState(value == null ? "" : String(value));
+    useEffect(() => { setDraft(value == null ? "" : String(value)); }, [value]);
+    return <input type="number" step="any" value={draft} onChange={(event) => setDraft(event.target.value)} onBlur={() => void onSave(draft)} className="min-h-[42px] w-full border-0 bg-transparent px-2 text-center outline-none focus:bg-blue-50" />;
+}
+
 const IMAGE_MARKER = /\[\[shipper-image:(https?:\/\/[^\]]+)\]\]/g;
 
 function parseRemarks(value: unknown) {
@@ -324,8 +330,8 @@ export default function ShipperGrid({ rows, mode, token }: ShipperGridProps) {
     }, [rows]);
 
     useEffect(() => {
-        setCellFills(Object.fromEntries(gridRows.flatMap((row) => Object.entries(row.cell_fills ?? {}).map(([column, color]) => [`${row.id}:${column}`, color]))));
-    }, [gridRows]);
+        setCellFills(Object.fromEntries(rows.flatMap((row) => Object.entries(row.cell_fills ?? {}).map(([column, color]) => [`${row.id}:${column}`, color]))));
+    }, [rows]);
 
     const selectionBounds = selection && {
         firstRow: Math.min(selection.startRow, selection.endRow), lastRow: Math.max(selection.startRow, selection.endRow),
@@ -423,6 +429,12 @@ export default function ShipperGrid({ rows, mode, token }: ShipperGridProps) {
                                                     />
                                                 ) : col.key === "info_provided_date" ? (
                                                     <DateCell value={row.info_provided_date} editable={editable} tooltip={dateCellTooltip(row.info_provided_date)} onSave={(nextValue) => saveCell(row, col.key, nextValue)} />
+                                                ) : editable && col.key === "sea_or_air" ? (
+                                                    <select value={String(value ?? "")} onChange={(event) => void saveCell(row, col.key, event.target.value)} className="min-h-[42px] w-full border-0 bg-transparent px-2 text-center outline-none focus:bg-blue-50"><option value="" /><option value="空运">空运</option><option value="海运">海运</option><option value="海运/小包">海运/小包</option></select>
+                                                ) : editable && col.key === "tax_refund" ? (
+                                                    <select value={String(value ?? "")} onChange={(event) => void saveCell(row, col.key, event.target.value)} className="min-h-[42px] w-full border-0 bg-transparent px-2 text-center outline-none focus:bg-blue-50"><option value="" /><option value="退">退</option><option value="X">X</option></select>
+                                                ) : editable && ["pieces", "chargeable_weight_kg", "freight_unit_price", "gst", "other_fees", "cartons", "qty", "up"].includes(col.key) ? (
+                                                    <NumberCell value={value} onSave={(nextValue) => saveCell(row, col.key, nextValue)} />
                                                 ) : editable ? (
                                                     <SpreadsheetTextCell value={value} onSave={(nextValue) => saveCell(row, col.key, nextValue)} />
                                                 ) : (

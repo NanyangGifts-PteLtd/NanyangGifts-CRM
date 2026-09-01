@@ -13,11 +13,13 @@ type PushShipperViewBody = {
 };
 
 const PREVIEW_FIELDS = [
-    "cn_tracking_no", "ic", "info_provided_date", "cartons", "qty", "up",
+    "cn_tracking_no", "info_provided_date", "cartons", "qty", "up",
     "tax_refund", "delivery_info", "sea_or_air", "shipper_remarks",
     "samples_by_air", "samples_by_sea", "item_name", "air_received", "sea_received",
 ] as const;
 const REQUIRED_PREVIEW_FIELDS = PREVIEW_FIELDS.filter((field) => !["cartons", "shipper_remarks", "item_name", "air_received", "sea_received"].includes(field));
+const SEA_OR_AIR_VALUES = ["空运", "海运", "海运/小包"];
+const TAX_REFUND_VALUES = ["退", "X"];
 
 const ALLOWED_ROLES = ["pm", "director", "dev"];
 
@@ -331,6 +333,10 @@ export async function POST(req: NextRequest) {
             const qty = Number(edits.qty);
             const up = Number(edits.up);
             if (!Number.isFinite(qty) || !Number.isFinite(up)) throw new Error("Qty and Unit Price must be valid numbers.");
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(String(edits.info_provided_date))) throw new Error("Date of submission must be a valid date.");
+            if (!["", null, undefined].includes(edits.cartons) && !Number.isFinite(Number(edits.cartons))) throw new Error("Cartons must be a valid number.");
+            if (!SEA_OR_AIR_VALUES.includes(String(edits.sea_or_air))) throw new Error("Sea or Air must be 空运, 海运, or 海运/小包.");
+            if (!TAX_REFUND_VALUES.includes(String(edits.tax_refund))) throw new Error("退税 must be 退 or X.");
             return {
                 ...preview,
                 ...edits,
@@ -342,6 +348,7 @@ export async function POST(req: NextRequest) {
                 client_id: preview.client_id,
                 shipper_id: preview.shipper_id,
                 pushed_by: user.id,
+                ic: pushedByName,
             };
         });
 

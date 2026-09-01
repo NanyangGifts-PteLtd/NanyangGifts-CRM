@@ -63,6 +63,10 @@ export async function POST(req: NextRequest) {
         if (!dbKey) {
             return NextResponse.json({ error: 'Unsupported field' }, { status: 400 });
         }
+        if (dbKey === "info_provided_date" && body.value && !/^\d{4}-\d{2}-\d{2}$/.test(String(body.value))) return NextResponse.json({ error: "Date must use a valid date format" }, { status: 400 });
+        if (["pieces", "chargeable_weight_kg", "freight_unit_price", "gst", "other_fees", "cartons", "qty", "up"].includes(dbKey) && body.value !== "" && !Number.isFinite(Number(body.value))) return NextResponse.json({ error: "This field must be a number" }, { status: 400 });
+        if (dbKey === "sea_or_air" && body.value && !["空运", "海运", "海运/小包"].includes(String(body.value))) return NextResponse.json({ error: "Sea or Air must be 空运, 海运, or 海运/小包" }, { status: 400 });
+        if (dbKey === "tax_refund" && body.value && !["退", "X"].includes(String(body.value))) return NextResponse.json({ error: "退税 must be 退 or X" }, { status: 400 });
 
         let shipperId = body.shipperId ?? null;
 
