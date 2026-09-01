@@ -401,14 +401,17 @@ async function insertActivityLog(params: {
         data: { user },
     } = await supabase.auth.getUser();
 
-    const actorEmail = user?.email ?? 'Unknown user';
+    const { data: actorProfile } = user
+        ? await supabase.from('profiles').select('full_name, email').eq('id', user.id).maybeSingle()
+        : { data: null };
+    const actorName = actorProfile?.full_name?.trim() || actorProfile?.email || user?.email || 'Unknown user';
 
     const { data, error } = await supabase
         .from('activity_log')
         .insert({
             client_id: params.clientId,
             subitem_id: params.subitemId ?? null,
-            actor_name: actorEmail,
+            actor_name: actorName,
             action: params.action,
             field_name: params.fieldName ?? null,
             old_value: params.oldValue ?? null,
@@ -430,7 +433,7 @@ async function insertActivityLog(params: {
     return data;
 }
 
-type LoggedAttachment = { id?: string; name: string; url: string };
+type LoggedAttachment = { id?: string; name: string; url: string; storagePath?: string };
 
 function fileAttachmentsForLog(value: unknown): LoggedAttachment[] {
     if (typeof value !== 'string' || !value.trim()) return [];
@@ -438,7 +441,7 @@ function fileAttachmentsForLog(value: unknown): LoggedAttachment[] {
         const parsed = JSON.parse(value) as unknown;
         const items = Array.isArray(parsed) ? parsed : [parsed];
         return items.filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object' && typeof (item as Record<string, unknown>).url === 'string'))
-            .map((item) => ({ id: typeof item.id === 'string' ? item.id : undefined, name: typeof item.name === 'string' ? item.name : 'File', url: String(item.url) }));
+            .map((item) => ({ id: typeof item.id === 'string' ? item.id : undefined, name: typeof item.name === 'string' ? item.name : 'File', url: String(item.url), storagePath: typeof item.storagePath === 'string' ? item.storagePath : undefined }));
     } catch {
         return [];
     }
@@ -454,15 +457,25 @@ async function logFileAttachmentDiffs(params: { clientId: string; subitemId?: st
         const oldByIdentity = new Map(oldFiles.map((file) => [file.id ?? file.url, file]));
         const newByIdentity = new Map(newFiles.map((file) => [file.id ?? file.url, file]));
         if (oldFiles.length === 1 && newFiles.length === 1 && !oldByIdentity.has(newFiles[0].id ?? newFiles[0].url)) {
-            await insertActivityLog({ clientId: params.clientId, subitemId: params.subitemId, subitemName: params.subitemName, action: 'file_replaced', fieldName: key, title: `replaced ${oldFiles[0].name} with ${newFiles[0].name}`, link: newFiles[0].url, meta: { field: key, previousFileName: oldFiles[0].name, fileName: newFiles[0].name } });
+            const retire = supabase.from('activity_log').update({ link: null, description: 'File has been replaced' }).eq('client_id', params.clientId);
+            if (oldFiles[0].storagePath) await retire.contains('meta', { storagePath: oldFiles[0].storagePath });
+            else await retire.eq('field_name', key).contains('meta', { fileName: oldFiles[0].name });
+            await insertActivityLog({ clientId: params.clientId, subitemId: params.subitemId, subitemName: params.subitemName, action: 'file_replaced', fieldName: key, title: `replaced ${oldFiles[0].name} with ${newFiles[0].name}`, link: newFiles[0].url, meta: { field: key, previousFileName: oldFiles[0].name, fileName: newFiles[0].name, storagePath: newFiles[0].storagePath } });
             continue;
         }
         for (const file of newFiles) {
             const previous = oldByIdentity.get(file.id ?? file.url);
-            if (!previous) await insertActivityLog({ clientId: params.clientId, subitemId: params.subitemId, subitemName: params.subitemName, action: 'file_uploaded', fieldName: key, title: `uploaded ${file.name}`, link: file.url, meta: { field: key, fileName: file.name } });
-            else if (previous.url !== file.url || previous.name !== file.name) await insertActivityLog({ clientId: params.clientId, subitemId: params.subitemId, subitemName: params.subitemName, action: 'file_replaced', fieldName: key, title: `replaced ${previous.name} with ${file.name}`, link: file.url, meta: { field: key, previousFileName: previous.name, fileName: file.name } });
+            if (!previous) await insertActivityLog({ clientId: params.clientId, subitemId: params.subitemId, subitemName: params.subitemName, action: 'file_uploaded', fieldName: key, title: `uploaded ${file.name}`, link: file.url, meta: { field: key, fileName: file.name, storagePath: file.storagePath } });
+            else if (previous.url !== file.url || previous.name !== file.name) await insertActivityLog({ clientId: params.clientId, subitemId: params.subitemId, subitemName: params.subitemName, action: 'file_replaced', fieldName: key, title: `replaced ${previous.name} with ${file.name}`, link: file.url, meta: { field: key, previousFileName: previous.name, fileName: file.name, storagePath: file.storagePath } });
         }
-        for (const file of oldFiles) if (!newByIdentity.has(file.id ?? file.url)) await insertActivityLog({ clientId: params.clientId, subitemId: params.subitemId, subitemName: params.subitemName, action: 'file_removed', fieldName: key, title: `removed ${file.name}`, meta: { field: key, fileName: file.name } });
+        for (const file of oldFiles) {
+            if (newByIdentity.has(file.id ?? file.url)) continue;
+            // Retire prior activity links so a removed attachment cannot still be opened from its old log entry.
+            const retire = supabase.from('activity_log').update({ link: null, description: 'File has been removed' }).eq('client_id', params.clientId);
+            if (file.storagePath) await retire.contains('meta', { storagePath: file.storagePath });
+            else await retire.eq('field_name', key).contains('meta', { fileName: file.name });
+            await insertActivityLog({ clientId: params.clientId, subitemId: params.subitemId, subitemName: params.subitemName, action: 'file_removed', fieldName: key, title: `removed ${file.name}`, meta: { field: key, fileName: file.name, storagePath: file.storagePath } });
+        }
     }
 }
 

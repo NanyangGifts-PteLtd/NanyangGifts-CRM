@@ -784,8 +784,17 @@ export function ClientRow({
                                                                             rel="noopener noreferrer"
                                                                             className="ml-4 inline-flex items-center rounded-md bg-teal-100 px-2 py-1 text-[12.6px] font-medium text-teal-500 hover:bg-teal-200"
                                                                         >
-                                                                            Open OCF
+                                                                            {entry.action === 'estimate_created' || String(entry.meta?.fileName ?? '').startsWith('Sample Estimate') ? 'Open Estimate' : 'Open OCF'}
                                                                         </a>
+                                                                    ) : null}
+                                                                    {entry.description === 'File has been removed' ? (
+                                                                        <span className="ml-4 inline-flex items-center rounded-md bg-slate-100 px-2 py-1 text-[12.6px] font-medium text-slate-500" title="This file is no longer available">
+                                                                            File has been removed
+                                                                        </span>
+                                                                    ) : entry.description === 'File has been replaced' ? (
+                                                                        <span className="ml-4 inline-flex items-center rounded-md bg-slate-100 px-2 py-1 text-[12.6px] font-medium text-slate-500" title="This file has been replaced">
+                                                                            File has been replaced
+                                                                        </span>
                                                                     ) : null}
                                                                 </p>
                                                                 <p className="mt-1 text-[12.6px] text-gray-500">
