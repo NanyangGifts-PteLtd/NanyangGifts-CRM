@@ -913,6 +913,18 @@ export async function updateSubitemRow(subitemId: string, updates: Partial<Subit
 
     const nextUpdates: Partial<Subitem> = { ...updates };
 
+    // A duration without either boundary needs an anchor. Apply this here so
+    // timeline edits from every CRM surface behave consistently.
+    if (nextUpdates.timelineRows !== undefined) {
+        const singaporeNow = new Date(Date.now() + 8 * 60 * 60 * 1000);
+        const today = `${singaporeNow.getUTCFullYear()}-${String(singaporeNow.getUTCMonth() + 1).padStart(2, '0')}-${String(singaporeNow.getUTCDate()).padStart(2, '0')}`;
+        nextUpdates.timelineRows = nextUpdates.timelineRows.map((row) =>
+            String(row.duration ?? '').trim() && !String(row.timelineStart ?? '').trim() && !String(row.timelineEnd ?? '').trim()
+                ? { ...row, timelineStart: today }
+                : row
+        );
+    }
+
     if ("qty" in updates || "up" in updates) {
         const qty = Number(updates.qty ?? 0);
         const up = Number(updates.up ?? 0);
@@ -992,13 +1004,13 @@ export async function updateSubitemRow(subitemId: string, updates: Partial<Subit
 
     if (error) throw error;
 
-    if (updates.timelineRows !== undefined) {
+    if (nextUpdates.timelineRows !== undefined) {
         await logTimelineRowDiffs({
             clientId: existing.client_id,
             subitemId,
             subitemName: existing.name,
             oldRows: existing.timeline_rows ?? [],
-            newRows: updates.timelineRows,
+            newRows: nextUpdates.timelineRows,
         });
     }
 
