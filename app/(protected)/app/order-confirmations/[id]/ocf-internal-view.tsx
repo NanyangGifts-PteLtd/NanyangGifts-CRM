@@ -10,6 +10,7 @@ type OcfItem = {
     id: string;
     qty: string | number | null;
     item_name: string | null;
+    need_by_date?: string | null;
     remarks: string | null;
     image_path: string | null;
     image_url: string | null;
@@ -42,6 +43,8 @@ type Ocf = {
     locked_at: string | null;
     order_confirmation_items: OcfItem[];
 };
+
+const formatNeedBy = (value?: string | null) => /^\d{4}-\d{2}-\d{2}$/.test(value ?? "") ? String(value).split("-").reverse().join("/") : value || "-";
 
 export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
     const router = useRouter();
@@ -228,10 +231,11 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
                 <table className="w-full table-fixed border border-black text-[11px]">
                     <thead>
                         <tr className="bg-gray-100 text-left">
-                            <th className="w-[22%] border border-black px-2 py-2 font-semibold">Item Name</th>
-                            <th className="w-[10%] border border-black px-2 py-2 font-semibold">Qty</th>
-                            <th className="w-[18%] border border-black px-2 py-2 font-semibold">Remarks</th>
-                            <th className="w-[50%] border border-black px-2 py-2 font-semibold">
+                            <th className="w-[20%] border border-black px-2 py-2 font-semibold">Item Name</th>
+                            <th className="w-[8%] border border-black px-2 py-2 font-semibold">Qty</th>
+                            <th className="w-[11%] border border-black px-2 py-2 font-semibold">Need by</th>
+                            <th className="w-[16%] border border-black px-2 py-2 font-semibold">Remarks</th>
+                            <th className="w-[45%] border border-black px-2 py-2 font-semibold">
                                 <div className="flex items-center justify-between gap-3">
                                     <span className="text-left">Delivery Information</span>
 
@@ -277,6 +281,7 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
                                         </div>
                                     </td>
                                     <td className="border border-black px-2 py-3">{item.qty || "-"}</td>
+                                    <td className="border border-black px-2 py-3 font-medium">{formatNeedBy(item.need_by_date)}</td>
                                     <td className="border border-black px-2 py-3">
                                         <textarea
                                             value={item.remarks ?? ""}
@@ -298,7 +303,7 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
                             ))
                         ) : (
                             <tr>
-                                <td colSpan={4} className="border border-black px-3 py-4 text-center text-gray-500">
+                                <td colSpan={5} className="border border-black px-3 py-4 text-center text-gray-500">
                                     No awarded items found.
                                 </td>
                             </tr>

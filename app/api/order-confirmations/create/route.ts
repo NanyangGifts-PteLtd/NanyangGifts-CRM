@@ -8,6 +8,7 @@ type CreateOcfBody = {
     itemUploads: Array<{
         subitemId: string;
         imagePath: string | null;
+        needBy: string | null;
     }>;
 };
 
@@ -68,7 +69,7 @@ export async function POST(req: NextRequest) {
 
         const { data: awardedSubitems, error: subitemsError } = await supabase
             .from("subitems")
-            .select("id, client_id, name, qty, description, status")
+            .select("id, client_id, name, qty, description, status, timeline_rows")
             .eq("client_id", clientId)
             .eq("status", "Awarded")
             .order("position");
@@ -106,7 +107,7 @@ export async function POST(req: NextRequest) {
         if (itemUploads.length === 0) {
             return NextResponse.json({ error: "Select at least one awarded subitem for this OCF" }, { status: 400 });
         }
-        const uploadMap = new Map(itemUploads.map((u) => [u.subitemId, u.imagePath]));
+        const uploadMap = new Map(itemUploads.map((u) => [u.subitemId, u]));
 
         for (const upload of itemUploads) {
             if (!awardedIds.has(upload.subitemId)) {
@@ -117,6 +118,9 @@ export async function POST(req: NextRequest) {
             }
             if (!upload.imagePath) {
                 return NextResponse.json({ error: "Every included subitem needs an uploaded image" }, { status: 400 });
+            }
+            if (upload.needBy !== "ASAP" && !/^\d{4}-\d{2}-\d{2}$/.test(String(upload.needBy ?? ""))) {
+                return NextResponse.json({ error: "Every included subitem needs a Need by Date or ASAP" }, { status: 400 });
             }
         }
 
@@ -151,7 +155,8 @@ export async function POST(req: NextRequest) {
             qty: item.qty,
             item_name: item.name,
             remarks: item.description,
-            image_path: uploadMap.get(item.id) ?? null,
+            image_path: uploadMap.get(item.id)?.imagePath ?? null,
+            need_by_date: uploadMap.get(item.id)?.needBy ?? null,
         }));
 
         const internalUrl = `/app/order-confirmations/${ocf.id}`;
@@ -193,6 +198,27 @@ export async function POST(req: NextRequest) {
                 { error: itemsError.message ?? "Failed to create OCF items" },
                 { status: 500 }
             );
+        }
+
+        const timelineUpdates = await Promise.all(itemUploads.map(async (upload) => {
+            const subitem = awardedSubitems.find((item) => item.id === upload.subitemId);
+            if (!subitem) return null;
+            const rows = Array.isArray(subitem.timeline_rows) ? subitem.timeline_rows : [];
+            const nbdIndex = rows.findIndex((row: any) => String(row?.name ?? "").trim().toLowerCase() === "nbd");
+            const nbdRow = {
+                id: crypto.randomUUID(), name: "NBD", person: "", remarks: "", numOfCartons: "", subProgress: "", timelineStart: "", timelineEnd: "", duration: "", dependency: "",
+            };
+            const nextNbd = {
+                ...(nbdIndex >= 0 ? rows[nbdIndex] : nbdRow),
+                timelineStart: upload.needBy === "ASAP" ? "" : upload.needBy,
+                remarks: upload.needBy === "ASAP" ? "ASAP" : (String((nbdIndex >= 0 ? rows[nbdIndex]?.remarks : "") ?? "").trim().toLowerCase() === "asap" ? "" : (nbdIndex >= 0 ? rows[nbdIndex]?.remarks ?? "" : "")),
+            };
+            const timeline_rows = nbdIndex >= 0 ? rows.map((row: any, index: number) => index === nbdIndex ? nextNbd : row) : [...rows, nextNbd];
+            return supabase.from("subitems").update({ timeline_rows }).eq("id", upload.subitemId);
+        }));
+        const timelineError = timelineUpdates.find((result) => result?.error)?.error;
+        if (timelineError) {
+            return NextResponse.json({ error: `OCF was created, but the NBD timeline could not be updated: ${timelineError.message}` }, { status: 500 });
         }
 
         return NextResponse.json({

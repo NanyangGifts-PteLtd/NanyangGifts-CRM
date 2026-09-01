@@ -33,6 +33,7 @@ export default async function OcfContent({ params }: Props) {
         id,
         qty,
         item_name,
+        need_by_date,
         image_path,
         remarks,
         delivery_name,

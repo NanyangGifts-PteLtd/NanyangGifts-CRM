@@ -37,6 +37,7 @@ export default async function OrderConfirmationPage({ params }: PageProps) {
         id,
         qty,
         item_name,
+        need_by_date,
         image_path,
         delivery_name,
         delivery_address,

@@ -5,7 +5,7 @@ import { X } from "lucide-react";
 import { Client, Subitem } from "@/app/types";
 import { FileDropTarget } from "./ui/file-drop-target";
 
-type AwardedSubitem = Pick<Subitem, "id" | "name" | "qty" | "description" | "status" | "pl" | "sl" | "customFields">;
+type AwardedSubitem = Pick<Subitem, "id" | "name" | "qty" | "description" | "status" | "pl" | "sl" | "customFields" | "timelineRows">;
 type FinalArtwork = { name: string; url: string; mimeType?: string };
 
 type UploadRow = {
@@ -21,6 +21,8 @@ type UploadRow = {
     usingFinalArtwork: boolean;
     loadingSavedArtwork: boolean;
     savedArtworkAttempted: boolean;
+    needByDate: string;
+    needByAsap: boolean;
 };
 
 type GenerateOcfModalProps = {
@@ -65,6 +67,16 @@ function buildEstimatedDeliveryNotes(subitems: Array<{
         .join("\n\n");
 }
 function savedFinalArtwork(raw?: string): FinalArtwork | null { try { const item = JSON.parse(raw ?? "null"); return item?.url ? item : null; } catch { return null; } }
+function dateInputValue(value?: string | null) {
+    if (!value) return "";
+    const matched = value.match(/^\d{4}-\d{2}-\d{2}/);
+    if (matched) return matched[0];
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? "" : date.toISOString().slice(0, 10);
+}
+function nbdTimelineRow(subitem: Pick<Subitem, "timelineRows">) {
+    return (subitem.timelineRows ?? []).find((row) => row.name.trim().toLowerCase() === "nbd");
+}
 export function GenerateOcfModal({
     open,
     client,
@@ -97,9 +109,10 @@ export function GenerateOcfModal({
             qty: s.qty,
             description: s.description,
             status: s.status,
-            pl: s.pl,
-            sl: s.sl,
-            customFields: s.customFields,
+                pl: s.pl,
+                sl: s.sl,
+                customFields: s.customFields,
+                timelineRows: s.timelineRows,
         }));
 
         setAwardedSubitems(mappedAwarded);
@@ -118,6 +131,8 @@ export function GenerateOcfModal({
                 usingFinalArtwork: Boolean(savedFinalArtwork(s.customFields?.ocfFinalArtworkFile)),
                 loadingSavedArtwork: false,
                 savedArtworkAttempted: false,
+                needByDate: dateInputValue(nbdTimelineRow(s)?.timelineStart),
+                needByAsap: !dateInputValue(nbdTimelineRow(s)?.timelineStart) && nbdTimelineRow(s)?.remarks.trim().toLowerCase() === "asap",
             }))
         );
         setIncludedSubitemIds(awarded.map((item) => item.id));
@@ -135,6 +150,7 @@ export function GenerateOcfModal({
     const selectedAwardedSubitems = useMemo(() => awardedSubitems.filter((item) => includedSubitemIds.includes(item.id)), [awardedSubitems, includedSubitemIds]);
     const hasIncludedItems = selectedRows.length > 0;
     const allFilesChosen = useMemo(() => hasIncludedItems && selectedRows.every((r) => !!r.file || !!r.uploadedPath), [hasIncludedItems, selectedRows]);
+    const allNeedByDatesSet = useMemo(() => hasIncludedItems && selectedRows.every((row) => row.needByAsap || !!row.needByDate), [hasIncludedItems, selectedRows]);
 
     function toggleIncludedSubitem(subitemId: string, checked: boolean) {
         setIncludedSubitemIds((previous) => checked ? [...new Set([...previous, subitemId])] : previous.filter((id) => id !== subitemId));
@@ -244,6 +260,11 @@ export function GenerateOcfModal({
             return;
         }
 
+        if (!allNeedByDatesSet) {
+            setFormError("Set a Need by Date (NBD), or select ASAP, for every included subitem.");
+            return;
+        }
+
         const notUploaded = selectedRows.filter((r) => !r.uploadedPath);
         if (notUploaded.length > 0) {
             setFormError("Please upload all selected files before generating the OCF.");
@@ -260,6 +281,7 @@ export function GenerateOcfModal({
                 itemUploads: selectedRows.map((row) => ({
                     subitemId: row.subitemId,
                     imagePath: row.uploadedPath,
+                    needBy: row.needByAsap ? "ASAP" : row.needByDate,
                 })),
             };
 
@@ -357,6 +379,7 @@ export function GenerateOcfModal({
                                                 <p className="mt-1 text-xs text-gray-600">
                                                     Remarks: {row.remarks || "-"}
                                                 </p>
+                                                {isIncluded && <div className="mt-3 flex flex-wrap items-end gap-3 rounded border border-amber-200 bg-amber-50 p-2.5"><label className="text-xs font-medium text-amber-900">Need by date (NBD) *<input type="date" value={row.needByDate} disabled={row.needByAsap} onChange={(event) => updateRow(row.subitemId, { needByDate: event.target.value, needByAsap: false })} className="mt-1 block rounded border border-amber-300 bg-white px-2 py-1.5 text-sm text-slate-800 disabled:cursor-not-allowed disabled:bg-slate-100" /></label><label className="flex cursor-pointer items-center gap-2 pb-1.5 text-xs font-medium text-amber-900"><input type="checkbox" checked={row.needByAsap} onChange={(event) => updateRow(row.subitemId, { needByAsap: event.target.checked, needByDate: event.target.checked ? "" : row.needByDate })} className="h-4 w-4 accent-[#7BCBD5]" />ASAP</label><p className="pb-1.5 text-xs text-amber-800">Synced to the first NBD timeline date.</p></div>}
                                                 {row.finalArtwork && <div className="mt-2 flex items-center gap-3 rounded border border-sky-100 bg-sky-50 p-2"><label className="flex cursor-pointer items-center gap-2 text-xs font-medium text-sky-700"><input type="checkbox" checked={row.usingFinalArtwork} onChange={(event) => useSavedFinalArtwork(row.subitemId, event.target.checked)} className="h-4 w-4 accent-[#7BCBD5]" />{row.loadingSavedArtwork ? "Loading saved final artwork..." : "Use saved OCF (Final Artwork)"}</label>{(row.finalArtwork.mimeType?.startsWith("image/") || row.finalArtwork.url.startsWith("data:image/")) && <a href={row.finalArtwork.url} target="_blank" rel="noreferrer" title="Open saved final artwork"><img src={row.finalArtwork.url} alt={`Saved final artwork for ${row.subitemName}`} className="h-12 w-12 rounded border border-sky-200 object-cover" /></a>}</div>}
                                                 </div>
                                             </div>

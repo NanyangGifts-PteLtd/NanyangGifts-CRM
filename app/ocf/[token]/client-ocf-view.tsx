@@ -11,6 +11,7 @@ type OcfItem = {
     id: string;
     qty: string | number | null;
     item_name: string | null;
+    need_by_date?: string | null;
     remarks: string | null;
     image_path: string | null;
     image_url: string | null;
@@ -48,6 +49,8 @@ type EditableItem = OcfItem & {
     delivery_contact_number: string;
     delivery_remarks: string;
 };
+
+const formatNeedBy = (value?: string | null) => /^\d{4}-\d{2}-\d{2}$/.test(value ?? "") ? String(value).split("-").reverse().join("/") : value || "-";
 
 export default function ClientOcfView({ ocf }: { ocf: Ocf }) {
     const isLocked =
@@ -230,10 +233,11 @@ function updateItemField(
                 <table className="w-full table-fixed border border-black text-sm">
                     <thead>
                         <tr className="bg-gray-100 text-left">
-                            <th className="w-[22%] border border-black px-2 py-2 font-semibold">Item Name</th>
-                            <th className="w-[10%] border border-black px-2 py-2 font-semibold">Qty</th>
-                            <th className="w-[18%] border border-black px-2 py-2 font-semibold">Remarks</th>
-                            <th className="w-[50%] border border-black px-2 py-2 font-semibold">
+                            <th className="w-[20%] border border-black px-2 py-2 font-semibold">Item Name</th>
+                            <th className="w-[8%] border border-black px-2 py-2 font-semibold">Qty</th>
+                            <th className="w-[11%] border border-black px-2 py-2 font-semibold">Need by</th>
+                            <th className="w-[16%] border border-black px-2 py-2 font-semibold">Remarks</th>
+                            <th className="w-[45%] border border-black px-2 py-2 font-semibold">
                                 <div className="flex items-center justify-between gap-3">
                                     <span>Delivery Information</span>
                                     <label className="flex items-center gap-2 text-[11px] font-medium text-gray-700">
@@ -281,6 +285,7 @@ function updateItemField(
                                         </div>
                                     </td>
                                     <td className="border border-black px-2 py-3">{item.qty || "-"}</td>
+                                    <td className="border border-black px-2 py-3 font-medium">{formatNeedBy(item.need_by_date)}</td>
                                     <td className="border border-black px-2 py-3">{item.remarks || "-"}</td>
                                     <td className="border border-black px-2 py-3">
                                         <div className="space-y-2">
