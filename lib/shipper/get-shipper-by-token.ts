@@ -5,12 +5,13 @@ export type ShipperByToken = {
     id: string;
     name: string | null;
     token: string;
+    website_url?: string | null;
 };
 
 export async function getShippers(): Promise<ShipperByToken[]> {
     const { data, error } = await supabaseAdmin
         .from("shippers")
-        .select("id, name, token")
+        .select("id, name, token, website_url")
         .order("name", { ascending: true });
 
     if (error) throw error;
@@ -22,7 +23,7 @@ export async function getShipperByToken(token: string): Promise<ShipperByToken |
 
     const { data, error } = await supabaseAdmin
         .from("shippers")
-        .select("id, name, token")
+        .select("id, name, token, website_url")
         .eq("token", token)
         .maybeSingle();
 

@@ -1,11 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import { ExternalLink } from "lucide-react";
 import ShipperGrid, { type ShipperRow } from "./[token]/ShipperGrid";
 import { ShipperStagingTable } from "./ShipperStagingTable";
 import type { ShipperStagingRow } from "@/lib/shipper/get-shipper-staging-rows";
 
-type Shipper = { id: string; name: string | null };
+type Shipper = { id: string; name: string | null; website_url?: string | null };
 
 export function ShipperMasterSheets({ shippers, rows, stagingRows }: { shippers: Shipper[]; rows: ShipperRow[]; stagingRows: ShipperStagingRow[] }) {
     const [activeShipperId, setActiveShipperId] = useState(shippers[0]?.id ?? "");
@@ -16,6 +17,10 @@ export function ShipperMasterSheets({ shippers, rows, stagingRows }: { shippers:
     if (!activeShipper) return <div className="rounded border border-slate-200 bg-white p-6 text-sm text-slate-500">No shippers configured.</div>;
 
     return <div className="flex min-h-0 flex-1 flex-col rounded-md border border-slate-300 bg-white shadow-sm">
+        <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-2.5">
+            <div className="text-sm font-semibold text-slate-700">{activeShipper.name || "Unnamed shipper"}</div>
+            {activeShipper.website_url ? <a href={activeShipper.website_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded border border-sky-200 bg-sky-50 px-2.5 py-1.5 text-xs font-medium text-sky-700 hover:bg-sky-100"><ExternalLink size={13} /> Open shipper website</a> : null}
+        </div>
         <div className="min-h-0 flex-1 overflow-auto">
             <ShipperGrid rows={gridRows.filter((row) => row.shipper_id === activeShipper.id)} mode="pm" />
             <ShipperStagingTable key={activeShipper.id} shipper={activeShipper} initialRows={stagedRows.filter((row) => row.shipper_id === activeShipper.id)} onRowsChange={(next) => setStagedRows((current) => [...current.filter((row) => row.shipper_id !== activeShipper.id), ...next])} onPushed={(row) => setGridRows((current) => { const exists = current.some((item) => item.subitem_id === row.subitem_id); return exists ? current.map((item) => item.subitem_id === row.subitem_id ? row : item) : [...current, row]; })} />

@@ -62,6 +62,7 @@ function numberValue(value: unknown) {
 
 function formulaValue(row: ShipperRow, key: string) {
     if (key === "value") return numberValue(row.qty) * numberValue(row.up);
+    if (key === "freight_cost") return numberValue(row.chargeable_weight_kg) * numberValue(row.freight_unit_price);
     if (key === "total_cost") return numberValue(row.freight_cost) + numberValue(row.gst) + numberValue(row.other_fees);
     return row[key as keyof ShipperRow];
 }
@@ -69,7 +70,8 @@ function formulaValue(row: ShipperRow, key: string) {
 function rowWithCellValue(row: ShipperRow, field: string, value: string): ShipperRow {
     const next = { ...row, [field]: field === "cell_fills" ? JSON.parse(value) : value } as ShipperRow;
     if (field === "qty" || field === "up") next.value = numberValue(next.qty) * numberValue(next.up);
-    if (field === "freight_cost" || field === "gst" || field === "other_fees") next.total_cost = numberValue(next.freight_cost) + numberValue(next.gst) + numberValue(next.other_fees);
+    if (field === "chargeable_weight_kg" || field === "freight_unit_price") next.freight_cost = numberValue(next.chargeable_weight_kg) * numberValue(next.freight_unit_price);
+    if (field === "chargeable_weight_kg" || field === "freight_unit_price" || field === "gst" || field === "other_fees") next.total_cost = numberValue(next.freight_cost) + numberValue(next.gst) + numberValue(next.other_fees);
     return next;
 }
 
@@ -254,7 +256,7 @@ export default function ShipperGrid({ rows, mode, token }: ShipperGridProps) {
         "#e9d5ff", "#ddd6fe", "#c4b5fd", "#a78bfa", "#8b5cf6", "#7c3aed",
         "#bae6fd", "#7dd3fc", "#38bdf8", "#0ea5e9", "#0284c7", "#0369a1",
         "#bbf7d0", "#86efac", "#4ade80", "#22c55e", "#16a34a", "#15803d",
-        "#ccfbf1", "#99f6e4", "#5eead4", "#2dd4bf", "#14b8a6", "#0f766e",
+        "#ccfbf1",
     ];
     const columns = [
         { key: "serial_number", label: "序号", editableByPm: true, editableByShipper: true },
@@ -264,7 +266,7 @@ export default function ShipperGrid({ rows, mode, token }: ShipperGridProps) {
         { key: "chargeable_weight_kg", label: "计费重量（KG）", editableByPm: true, editableByShipper: true },
         { key: "destination", label: "目的地", editableByPm: true, editableByShipper: true },
         { key: "freight_unit_price", label: "单价", editableByPm: true, editableByShipper: true },
-        { key: "freight_cost", label: "运费", editableByPm: true, editableByShipper: true },
+        { key: "freight_cost", label: "运费", editableByPm: false, editableByShipper: false, formula: true },
         { key: "gst", label: "消费税", editableByPm: true, editableByShipper: true },
         { key: "other_fees", label: "其他费用", editableByPm: true, editableByShipper: true },
         { key: "total_cost", label: "总计费用", editableByPm: false, editableByShipper: false, formula: true },
@@ -364,7 +366,7 @@ export default function ShipperGrid({ rows, mode, token }: ShipperGridProps) {
 
     return (
         <div className="w-full overflow-auto">
-            <div className="sticky left-0 z-40 mb-1 flex h-10 max-w-[calc(100vw-1rem)] items-center gap-1 rounded-md border border-slate-300 bg-white p-1.5 shadow-md">{selectionBounds && isFillPaletteOpen ? <><span className="shrink-0 px-1 text-xs font-medium text-slate-500">Fill</span><div className="flex min-w-0 flex-1 gap-1 overflow-x-auto py-0.5">{fillColors.map((color) => <button key={color} type="button" onClick={() => fillSelectedCells(color)} className="h-5 w-5 shrink-0 rounded border border-slate-300 transition hover:scale-110" style={{ backgroundColor: color }} title="Fill selected cells" />)}</div><button type="button" onClick={() => fillSelectedCells("")} className="ml-1 shrink-0 rounded border border-slate-300 px-2 py-1 text-[10px] text-slate-600 hover:bg-slate-50">Clear</button><button type="button" onClick={() => setIsFillPaletteOpen(false)} className="ml-1 shrink-0 rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" title="Close fill palette" aria-label="Close fill palette"><X size={14} /></button></> : <button type="button" disabled={gridRows.length === 0} onClick={() => { if (!selectionBounds) setSelection({ startRow: 0, startCol: 0, endRow: 0, endCol: 0 }); setIsFillPaletteOpen(true); }} className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-40" title={selectionBounds ? "Open fill palette" : "Select the top-left cell and choose a fill colour"}><PaintBucket size={15} /> Fill colour</button>}</div>
+            <div className="sticky left-0 z-40 mb-1 flex h-10 max-w-[calc(100vw-1rem)] items-center gap-1 rounded-md border border-slate-300 bg-white p-1.5 shadow-md">{selectionBounds && isFillPaletteOpen ? <><span className="shrink-0 px-1 text-xs font-medium text-slate-500">Fill</span><div className="flex min-w-0 flex-1 gap-1 overflow-x-auto py-0.5">{fillColors.map((color) => <button key={color} type="button" onClick={() => fillSelectedCells(color)} className="h-5 w-5 shrink-0 rounded border border-slate-300 transition hover:scale-110" style={{ backgroundColor: color }} title="Fill selected cells" />)}<button type="button" onClick={() => fillSelectedCells("")} className="shrink-0 rounded border border-slate-300 px-2 py-1 text-[10px] text-slate-600 hover:bg-slate-50">Clear</button></div><button type="button" onClick={() => setIsFillPaletteOpen(false)} className="ml-1 shrink-0 rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" title="Close fill palette" aria-label="Close fill palette"><X size={14} /></button></> : <button type="button" disabled={gridRows.length === 0} onClick={() => { if (!selectionBounds) setSelection({ startRow: 0, startCol: 0, endRow: 0, endCol: 0 }); setIsFillPaletteOpen(true); }} className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-40" title={selectionBounds ? "Open fill palette" : "Select the top-left cell and choose a fill colour"}><PaintBucket size={15} /> Fill colour</button>}</div>
             <div className="rounded-md border border-slate-300 bg-white shadow-sm">
                 <table className="min-w-[2400px] border-separate border-spacing-0 text-[13px] text-black">
                     <thead>

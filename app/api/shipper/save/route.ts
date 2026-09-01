@@ -102,6 +102,8 @@ export async function POST(req: NextRequest) {
                 dbKey === 'tc_sgd' ||
                 dbKey === 'price' ||
                 dbKey === 'up' ||
+                dbKey === 'chargeable_weight_kg' ||
+                dbKey === 'freight_unit_price' ||
                 dbKey === 'freight_cost' ||
                 dbKey === 'gst' ||
                 dbKey === 'other_fees'
@@ -135,10 +137,13 @@ export async function POST(req: NextRequest) {
             payload.value = nextQty !== null && nextUp !== null ? nextQty * nextUp : null;
         }
 
-        if (body.field === 'freight_cost' || body.field === 'gst' || body.field === 'other_fees') {
-            const nextFreight = toNumberOrNull(body.field === 'freight_cost' ? body.value : existing?.freight_cost) ?? 0;
+        if (body.field === 'chargeable_weight_kg' || body.field === 'freight_unit_price' || body.field === 'gst' || body.field === 'other_fees') {
+            const nextWeight = toNumberOrNull(body.field === 'chargeable_weight_kg' ? body.value : existing?.chargeable_weight_kg) ?? 0;
+            const nextFreightUnitPrice = toNumberOrNull(body.field === 'freight_unit_price' ? body.value : existing?.freight_unit_price) ?? 0;
+            const nextFreight = nextWeight * nextFreightUnitPrice;
             const nextGst = toNumberOrNull(body.field === 'gst' ? body.value : existing?.gst) ?? 0;
             const nextOtherFees = toNumberOrNull(body.field === 'other_fees' ? body.value : existing?.other_fees) ?? 0;
+            payload.freight_cost = nextFreight;
             payload.total_cost = nextFreight + nextGst + nextOtherFees;
         }
 
