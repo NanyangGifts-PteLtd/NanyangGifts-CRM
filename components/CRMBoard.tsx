@@ -31,6 +31,7 @@ import { calculateSubitemFinancials, parseSubitemNumber } from '@/lib/subitem-ca
 import { ClientDetailView } from './ClientDetailView';
 import { SubitemDetailView } from './SubitemDetailView';
 import { AdvancedFilters, type AdvancedFilterColumn, type AdvancedFilterRule } from './AdvancedFilters';
+import { uploadCrmFiles } from '@/lib/crm-files';
 
 type OptionEntry = { value: string; color: string };
 const normalizeBlacklistPhone = (value: string) => value.replace(/\D/g, '');
@@ -2382,12 +2383,10 @@ export function CRMBoard({ clients,
     }
     setSavingCloseLead(true);
     try {
-      const toAttachment = (file: File, category: string) => new Promise<Record<string, string>>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onerror = () => reject(new Error(`Could not read ${file.name}`));
-        reader.onload = () => resolve({ id: crypto.randomUUID(), name: file.name, url: String(reader.result), kind: 'file', category, actorName: currentUserId ?? 'Unknown user', createdAt: new Date().toISOString() });
-        reader.readAsDataURL(file);
-      });
+      const toAttachment = async (file: File, category: string) => {
+        const [stored] = await uploadCrmFiles([file], `clients/${pendingCloseLead.clientId}/closed-lead-files`);
+        return { ...stored, kind: 'file', category, actorName: currentUserId ?? 'Unknown user', createdAt: new Date().toISOString() };
+      };
       const uploads: Array<[File | null, string]> = [
         [closeLeadFiles.purchaseOrder, 'Purchase order'],
         [closeLeadFiles.signedQuotation, 'Signed quotation'],
@@ -3617,8 +3616,7 @@ export function CRMBoard({ clients,
         onClose={handleCloseOcfModal}
         onSaveFinalArtwork={async (subitemId, file) => {
           if (!ocfClient) return;
-          const reader = new FileReader();
-          const artwork = await new Promise<{ id: string; name: string; url: string; mimeType: string }>((resolve, reject) => { reader.onload = () => resolve({ id: crypto.randomUUID(), name: file.name, url: String(reader.result), mimeType: file.type }); reader.onerror = () => reject(reader.error); reader.readAsDataURL(file); });
+          const [artwork] = await uploadCrmFiles([file], `subitems/${subitemId}/ocf-final-artwork`);
           await updateSubitem(ocfClient.id, subitemId, { customFields: { ...(ocfClient.subitems.find((item) => item.id === subitemId)?.customFields ?? {}), ocfFinalArtworkFile: JSON.stringify(artwork) } });
         }}
         onCreated={({ internalUrl }) => { void reloadClients(); window.open(internalUrl, "_blank", "noopener,noreferrer"); }}

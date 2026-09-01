@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFImage } from "pdf-lib";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 
 const ELIGIBLE = new Set(["Quoted", "Shortlisted", "Awarded"]);
 const W = 595.28;
@@ -153,5 +154,9 @@ export async function POST(req: NextRequest) {
     const rows = subitems.map((item: any) => { const qty = numberValue(item.qty) || 1; const unitPrice = numberValue(item.up) || (qty > 0 ? numberValue(item.price) / qty : 0); return { name: item.name || "Unnamed item", description: item.description || "", qty, unitPrice, amount: qty * unitPrice, artwork: artworkById.get(item.id) }; });
     const filename = `Sample Estimate - ${String(client.company).replace(/[^a-z0-9]+/gi, " ").trim() || "Client"}.pdf`;
     const createdBy = profile?.full_name?.trim() || profile?.email || "CRM user";
-    return NextResponse.json({ ok: true, filename, url: `data:application/pdf;base64,${(await makePdf({ client, rows, createdBy })).toString("base64")}`, createdAt: new Date().toISOString(), createdBy });
+    const storagePath = `sample-estimates/${clientId}/${randomUUID()}.pdf`;
+    const pdf = await makePdf({ client, rows, createdBy });
+    const { error: uploadError } = await supabase.storage.from("crm-files").upload(storagePath, pdf, { contentType: "application/pdf", upsert: false });
+    if (uploadError) return NextResponse.json({ error: uploadError.message }, { status: 500 });
+    return NextResponse.json({ ok: true, filename, storagePath, url: `/api/files/download?path=${encodeURIComponent(storagePath)}`, createdAt: new Date().toISOString(), createdBy });
 }

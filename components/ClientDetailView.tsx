@@ -8,8 +8,9 @@ import { StatusBadge, type BadgeOption } from "./ui/statusbadge";
 import { EditableCell } from "./ui/editablecell";
 import { ClientActionsMenu } from "./ClientActionsMenu";
 import { FileDropTarget } from "./ui/file-drop-target";
+import { uploadCrmFiles } from "@/lib/crm-files";
 
-type Attachment = { id: string; name: string; url: string; kind?: string; actorName?: string; createdAt?: string; createdThrough?: string; signed?: boolean };
+type Attachment = { id: string; name: string; url: string; storagePath?: string; kind?: string; actorName?: string; createdAt?: string; createdThrough?: string; signed?: boolean };
 type OcfFile = Pick<Attachment, "id" | "name" | "url" | "createdAt" | "signed">;
 type Tab = "overview" | "files" | "activity" | "updates" | "related";
 type ClientUpdate = { id: string; client_id: string; author_id: string; content: string; mentions: string[]; created_at: string; author: Profile | null };
@@ -31,12 +32,7 @@ function attachments(raw: string | undefined, field: string): Attachment[] {
 }
 
 function attachmentsFromFiles(files: File[]): Promise<Attachment[]> {
-  return Promise.all(files.map((file) => new Promise<Attachment>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve({ id: crypto.randomUUID(), name: file.name, url: String(reader.result), kind: "file" });
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(file);
-  })));
+  return uploadCrmFiles(files, "client-files");
 }
 
 function formatDate(value: string | undefined) {

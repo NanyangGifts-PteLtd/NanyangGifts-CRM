@@ -16,6 +16,7 @@ import { calculateSubitemFinancials } from '@/lib/subitem-calculations';
 import { useGenerateEstimate } from '@/components/hooks/use-generate-estimate-button';
 import { ClientActionsMenu } from '@/components/ClientActionsMenu';
 import { FileDropTarget } from './file-drop-target';
+import { uploadCrmFiles } from '@/lib/crm-files';
 
 type OptionEntry = { value: string; color: string };
 type AttachmentItem = {
@@ -27,6 +28,7 @@ type AttachmentItem = {
     actorName?: string;
     createdAt?: string;
     createdThrough?: string;
+    storagePath?: string;
 };
 
 type SampleArtworkUpload = { name: string; url: string; mimeType: string };
@@ -40,10 +42,24 @@ function imageFileToArtwork(file: File): Promise<SampleArtworkUpload> {
     });
 }
 
+function artworkUrlToDataUrl(url: string): Promise<string> {
+    if (url.startsWith("data:image/")) return Promise.resolve(url);
+    return fetch(url).then(async (response) => {
+        if (!response.ok) throw new Error("Could not load saved artwork");
+        const blob = await response.blob();
+        return new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result));
+            reader.onerror = () => reject(reader.error);
+            reader.readAsDataURL(blob);
+        });
+    });
+}
+
 function readArtwork(value?: string): AttachmentItem | null {
     try {
         const parsed = JSON.parse(value ?? "");
-        return parsed && typeof parsed.url === "string" && parsed.url.startsWith("data:image/") ? parsed as AttachmentItem : null;
+        return parsed && typeof parsed.url === "string" && (parsed.url.startsWith("data:image/") || parsed.mimeType?.startsWith("image/")) ? parsed as AttachmentItem : null;
     } catch {
         return null;
     }
@@ -296,14 +312,15 @@ export function ClientRow({
     const generateSampleEstimate = async () => {
         setIsGeneratingSample(true); setSampleEstimateError(null);
         try {
+            const preparedArtwork = await Promise.all(sampleEstimateArtwork.map(async ({ subitem, artwork }) => ({ subitemId: subitem.id, dataUrl: artwork ? await artworkUrlToDataUrl(artwork.url) : "" })));
             const response = await fetch("/api/estimates/sample", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ clientId: client.id, artworks: sampleEstimateArtwork.map(({ subitem, artwork }) => ({ subitemId: subitem.id, dataUrl: artwork?.url ?? "" })) }),
+                body: JSON.stringify({ clientId: client.id, artworks: preparedArtwork }),
             });
             const result = await response.json();
             if (!response.ok) throw new Error(result?.error || "Could not generate sample estimate");
-            const attachment: AttachmentItem = { id: crypto.randomUUID(), kind: "file", name: result.filename, url: result.url, mimeType: "application/pdf", actorName: result.createdBy, createdAt: result.createdAt, createdThrough: "Created through CRM app" };
+            const attachment: AttachmentItem = { id: crypto.randomUUID(), kind: "file", name: result.filename, url: result.url, storagePath: result.storagePath, mimeType: "application/pdf", actorName: result.createdBy, createdAt: result.createdAt, createdThrough: "Created through CRM app" };
             let current: AttachmentItem[] = [];
             try { const parsed = JSON.parse(client.customFields?.filesMiscellaneous ?? "[]"); if (Array.isArray(parsed)) current = parsed; } catch {}
             await updateClientCustomField(client.id, "filesMiscellaneous", JSON.stringify([...current, attachment]));
@@ -395,15 +412,7 @@ export function ClientRow({
 
         const addFiles = async (files: File[]) => {
             try {
-                const nextItems = await Promise.all(files.map(async (file) => {
-                    const url = await new Promise<string>((resolve, reject) => {
-                        const reader = new FileReader();
-                        reader.onload = () => resolve(String(reader.result ?? ""));
-                        reader.onerror = () => reject(new Error(`Failed to read ${file.name}`));
-                        reader.readAsDataURL(file);
-                    });
-                    return { id: crypto.randomUUID(), kind: "file" as const, name: file.name, url, mimeType: file.type };
-                }));
+                const nextItems = (await uploadCrmFiles(files, `client-columns/${client.id}/${fieldKey}`)).map((file) => ({ ...file, kind: "file" as const }));
                 if (nextItems.length) saveItems([...items, ...nextItems]);
             } finally {
                 setAttachmentSourceMenu(null);
