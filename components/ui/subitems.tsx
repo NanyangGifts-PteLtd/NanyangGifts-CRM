@@ -1585,7 +1585,7 @@ export function SubitemsTable({
                                                 <>{entry.fieldName || entry.action}: {displayActivityValue(entry.oldValue)} <span className="text-gray-400">to</span> {displayActivityValue(entry.newValue)}</>
                                             )}
                                         </div>
-                                        <div className="mt-1 text-gray-400">{entry.actorName} · {new Date(entry.createdAt).toLocaleString()}</div>
+                                        <div className="mt-1 text-gray-400">{entry.actorName} · {new Date(entry.createdAt).toLocaleString("en-GB")}</div>
                                     </div>
                                     {!entry.meta?.automated && entry.action === 'subitem_field_changed' && !entry.fieldName?.startsWith('timeline:') && entry.oldValue !== undefined && (
                                         <button

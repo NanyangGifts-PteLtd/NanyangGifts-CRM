@@ -29,6 +29,26 @@ type AttachmentItem = {
     createdThrough?: string;
 };
 
+type SampleArtworkUpload = { name: string; url: string; mimeType: string };
+
+function imageFileToArtwork(file: File): Promise<SampleArtworkUpload> {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve({ name: file.name, url: String(reader.result), mimeType: file.type || "image/png" });
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(file);
+    });
+}
+
+function readArtwork(value?: string): AttachmentItem | null {
+    try {
+        const parsed = JSON.parse(value ?? "");
+        return parsed && typeof parsed.url === "string" && parsed.url.startsWith("data:image/") ? parsed as AttachmentItem : null;
+    } catch {
+        return null;
+    }
+}
+
 export type ClientRowProps = {
     client: Client;
     isBlacklisted: boolean;
@@ -260,8 +280,11 @@ export function ClientRow({
     const [sampleEstimate, setSampleEstimate] = useState<{ filename: string; url: string } | null>(null);
     const [isGeneratingSample, setIsGeneratingSample] = useState(false);
     const [sampleEstimateError, setSampleEstimateError] = useState<string | null>(null);
+    const [sampleArtworkUploads, setSampleArtworkUploads] = useState<Record<string, SampleArtworkUpload>>({});
     const { handleGenerateEstimate, isGeneratingEstimate, estimateError, resetEstimateState } = useGenerateEstimate();
     const estimateEligibleSubitems = client.subitems.filter((subitem) => ["Quoted", "Shortlisted", "Awarded"].includes(subitem.status?.trim()));
+    const sampleEstimateArtwork = estimateEligibleSubitems.map((subitem) => ({ subitem, artwork: sampleArtworkUploads[subitem.id] ?? readArtwork(subitem.customFields?.artworkFile) }));
+    const missingSampleEstimateArtwork = sampleEstimateArtwork.filter(({ artwork }) => !artwork);
     const generateEstimate = async () => {
         try {
             const result = await handleGenerateEstimate(client.id) as { estimateId?: string | null; docNumber?: string | null };
@@ -273,15 +296,24 @@ export function ClientRow({
     const generateSampleEstimate = async () => {
         setIsGeneratingSample(true); setSampleEstimateError(null);
         try {
-            const response = await fetch("/api/estimates/sample", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ clientId: client.id }) });
+            const response = await fetch("/api/estimates/sample", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ clientId: client.id, artworks: sampleEstimateArtwork.map(({ subitem, artwork }) => ({ subitemId: subitem.id, dataUrl: artwork?.url ?? "" })) }),
+            });
             const result = await response.json();
             if (!response.ok) throw new Error(result?.error || "Could not generate sample estimate");
             const attachment: AttachmentItem = { id: crypto.randomUUID(), kind: "file", name: result.filename, url: result.url, mimeType: "application/pdf", actorName: result.createdBy, createdAt: result.createdAt, createdThrough: "Created through CRM app" };
             let current: AttachmentItem[] = [];
             try { const parsed = JSON.parse(client.customFields?.filesMiscellaneous ?? "[]"); if (Array.isArray(parsed)) current = parsed; } catch {}
             await updateClientCustomField(client.id, "filesMiscellaneous", JSON.stringify([...current, attachment]));
+            sampleEstimateArtwork.forEach(({ subitem, artwork }) => {
+                const uploaded = sampleArtworkUploads[subitem.id];
+                if (!uploaded || !artwork) return;
+                onUpdateSubitem(subitem.id, { customFields: { ...subitem.customFields, artworkFile: JSON.stringify({ id: crypto.randomUUID(), kind: "file", name: uploaded.name, url: uploaded.url, mimeType: uploaded.mimeType }) } });
+            });
             setSampleEstimate({ filename: result.filename, url: result.url });
-        } catch (error: any) { setSampleEstimateError(error?.message || "Could not generate sample estimate"); }
+        } catch (error: unknown) { setSampleEstimateError(error instanceof Error ? error.message : "Could not generate sample estimate"); }
         finally { setIsGeneratingSample(false); }
     };
 
@@ -439,7 +471,7 @@ export function ClientRow({
 
     const clientCreationActivity = client.activityLog?.find((entry) => entry.action === "client_added");
     const clientCreatedTooltip = client.createdAt
-        ? `Created by ${clientCreationActivity?.actorName ?? "Unknown user"} on ${new Date(client.createdAt).toLocaleDateString("en-SG")} at ${new Date(client.createdAt).toLocaleTimeString("en-SG")}`
+        ? `Created by ${clientCreationActivity?.actorName ?? "Unknown user"} on ${new Date(client.createdAt).toLocaleDateString("en-GB")} at ${new Date(client.createdAt).toLocaleTimeString("en-GB")}`
         : "";
 
     // activity log text
@@ -543,7 +575,7 @@ export function ClientRow({
             <style>{Array.from(hiddenColumnKeys).filter((key) => key.startsWith('client:')).map((key) => `[data-client-column="${key.slice(7)}"]{display:none!important}`).join('')}</style>
             {permissionNotice && <div role="alert" className="fixed z-[10000] rounded-md bg-slate-800 px-3 py-2 text-xs font-medium text-white shadow-xl" style={permissionNotice}>You can only edit items that are assigned to you</div>}
             {blacklistNotice && <div role="alert" className="pointer-events-none fixed z-[10010] rounded-md border border-red-700 bg-red-600 px-3 py-2 text-xs font-semibold text-white shadow-xl" style={blacklistNotice}>This client is in the blacklist</div>}
-            <AlertDialog open={showEstimateDialog} onOpenChange={(open) => { setShowEstimateDialog(open); if (!open) { setEstimateResult(null); setSampleEstimate(null); setSampleEstimateError(null); setEstimateMode("choice"); resetEstimateState(); } }}>
+            <AlertDialog open={showEstimateDialog} onOpenChange={(open) => { setShowEstimateDialog(open); if (!open) { setEstimateResult(null); setSampleEstimate(null); setSampleEstimateError(null); setSampleArtworkUploads({}); setEstimateMode("choice"); resetEstimateState(); } }}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
                         <AlertDialogTitle>{estimateMode === "choice" ? "Generate estimate" : estimateMode === "sample" ? sampleEstimate ? "Sample estimate created" : sampleEstimateError ? "Could not create sample estimate" : "Generate sample estimate?" : estimateResult ? "QuickBooks estimate created" : estimateError ? "Could not create QuickBooks estimate" : "Generate QuickBooks estimate?"}</AlertDialogTitle>
@@ -551,6 +583,8 @@ export function ClientRow({
                             {estimateMode === "choice" ? "Choose whether to create a PDF preview or send an estimate to QuickBooks." : estimateMode === "sample" ? sampleEstimate ? <>The PDF sample estimate was saved under this client’s Miscellaneous files.</> : sampleEstimateError ? sampleEstimateError : <>This preview uses the same eligible subitems but does not create or change anything in QuickBooks.</> : estimateResult ? <>An estimate has been created for <strong>{client.company || client.name}</strong>{estimateResult.docNumber ? <> with document number <strong>{estimateResult.docNumber}</strong></> : ""}.</> : estimateError ? estimateError : <>This will find or create the QuickBooks customer for <strong>{client.company || "this client"}</strong> and create an estimate using the {estimateEligibleSubitems.length} eligible subitem{estimateEligibleSubitems.length === 1 ? "" : "s"}.</>}
                         </AlertDialogDescription>
                     </AlertDialogHeader>
+                    {estimateMode === "sample" && !sampleEstimate && !sampleEstimateError && <div className="space-y-2 rounded-md border border-slate-200 bg-white p-3 text-xs text-slate-600"><p className="font-medium text-slate-800">Add or replace Artwork without leaving this dialog</p>{estimateEligibleSubitems.map((subitem) => <div key={subitem.id} className="flex items-center justify-between gap-3"><span className="min-w-0 truncate">{subitem.name || "Unnamed subitem"}</span><label className="shrink-0 cursor-pointer rounded border border-sky-200 bg-sky-50 px-2 py-1 text-sky-700 hover:bg-sky-100">Upload image<input type="file" accept="image/png,image/jpeg" className="hidden" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (!file) return; if (readArtwork(subitem.customFields?.artworkFile) && !sampleArtworkUploads[subitem.id] && !window.confirm("This will replace the saved Artwork for this subitem after the sample estimate is created. Continue?")) return; void imageFileToArtwork(file).then((upload) => setSampleArtworkUploads((current) => ({ ...current, [subitem.id]: upload }))).catch(() => setSampleEstimateError("Could not read that artwork image.")); }} /></label></div>)}</div>}
+                    {estimateMode === "sample" && !sampleEstimate && !sampleEstimateError && <div className="max-h-72 space-y-2 overflow-y-auto rounded-md border border-sky-100 bg-sky-50 p-3 text-xs text-slate-600"><p className="font-medium text-slate-800">Artwork included in this sample estimate</p>{sampleEstimateArtwork.map(({ subitem, artwork }) => <div key={subitem.id} className="flex items-center gap-3 rounded border border-slate-200 bg-white p-2"><div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded border bg-slate-50">{artwork ? <img src={artwork.url} alt="" className="h-full w-full object-contain" /> : <span className="text-center text-[10px] text-red-600">Artwork required</span>}</div><div className="min-w-0"><p className="truncate font-medium text-slate-800">{subitem.name || "Unnamed subitem"}</p><p className={artwork ? "text-emerald-700" : "text-red-600"}>{artwork ? "Saved Artwork will be used" : "Upload an image in Files (Images) > Artwork before generating."}</p></div></div>)}{missingSampleEstimateArtwork.length > 0 && <p className="pt-1 font-medium text-red-600">Every eligible subitem needs an Artwork image before the PDF can be generated.</p>}</div>}
                     {estimateMode === "choice" ? <div className="grid gap-3 sm:grid-cols-2"><button type="button" onClick={() => setEstimateMode("sample")} className="rounded-xl border-2 border-sky-200 bg-sky-50 p-5 text-left hover:border-sky-400"><strong className="block text-base text-sky-800">Generate sample estimate</strong><span className="mt-1 block text-xs text-slate-600">Create and save a PDF preview. Nothing is sent to QuickBooks.</span></button><button type="button" onClick={() => setEstimateMode("quickbooks")} className="rounded-xl border-2 border-emerald-200 bg-emerald-50 p-5 text-left hover:border-emerald-400"><strong className="block text-base text-emerald-800">Generate QuickBooks estimate</strong><span className="mt-1 block text-xs text-slate-600">Create the customer/items if needed, then send the estimate to QuickBooks.</span></button></div> : !estimateResult && !estimateError && !sampleEstimate && !sampleEstimateError && <div className="rounded-md bg-slate-50 p-3 text-xs text-slate-600"><p className="font-medium text-slate-700">Included subitems</p><ul className="mt-1 list-disc pl-4">{estimateEligibleSubitems.map((subitem) => <li key={subitem.id}>{subitem.name || "Unnamed subitem"} — {subitem.status}</li>)}</ul>{!client.company.trim() && <p className="mt-2 text-red-600">A Company name is required before generating an estimate.</p>}{!estimateEligibleSubitems.length && <p className="mt-2 text-red-600">At least one subitem must be Quoted, Shortlisted, or Awarded.</p>}</div>}
                     <AlertDialogFooter>
                         {estimateMode === "choice" ? <AlertDialogCancel>Cancel</AlertDialogCancel> : estimateMode === "sample" ? sampleEstimate || sampleEstimateError ? <><AlertDialogAction onClick={() => setShowEstimateDialog(false)}>Close</AlertDialogAction>{sampleEstimate && <a href={sampleEstimate.url} target="_blank" rel="noreferrer" className="inline-flex items-center justify-center rounded-md bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-700">Open PDF</a>}</> : <><AlertDialogCancel disabled={isGeneratingSample}>Cancel</AlertDialogCancel><AlertDialogAction disabled={isGeneratingSample || !client.company.trim() || !estimateEligibleSubitems.length} onClick={(event) => { event.preventDefault(); void generateSampleEstimate(); }}>{isGeneratingSample ? "Generating…" : "Generate sample PDF"}</AlertDialogAction></> : estimateResult || estimateError ? <AlertDialogAction onClick={() => setShowEstimateDialog(false)}>Close</AlertDialogAction> : <><AlertDialogCancel disabled={isGeneratingEstimate}>Cancel</AlertDialogCancel><AlertDialogAction disabled={isGeneratingEstimate || !client.company.trim() || !estimateEligibleSubitems.length} onClick={(event) => { event.preventDefault(); void generateEstimate(); }}>{isGeneratingEstimate ? "Generating…" : "Generate estimate"}</AlertDialogAction></>}
@@ -746,7 +780,7 @@ export function ClientRow({
                                                                     ) : null}
                                                                 </p>
                                                                 <p className="mt-1 text-[12.6px] text-gray-500">
-                                                                    {new Date(entry.createdAt).toLocaleString()}
+                                                                    {new Date(entry.createdAt).toLocaleString("en-GB")}
                                                                 </p>
                                                             </div>
                                                             {(entry.action === 'field_changed' || entry.action === 'subitem_field_changed') && entry.oldValue !== undefined && entry.oldValue !== null && (
@@ -1060,7 +1094,7 @@ export function ClientRow({
                 </div>
                 <div data-client-column="dateCreated" className="flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height: 30, minWidth: colWidth.dateCreated, width: colWidth.dateCreated, order: columnOrderMap.dateCreated ?? 19 }}>
                     <span title={clientCreatedTooltip} className="block px-1 text-[12.6px] text-gray-700">
-                        {client.createdAt ? new Date(client.createdAt).toLocaleDateString("en-SG") : "-"}
+                        {client.createdAt ? new Date(client.createdAt).toLocaleDateString("en-GB") : "-"}
                     </span>
                 </div>
                 {/* custom cols */}
