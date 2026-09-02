@@ -19,6 +19,9 @@ import { FileDropTarget } from './file-drop-target';
 import { uploadCrmFiles } from '@/lib/crm-files';
 
 type OptionEntry = { value: string; color: string };
+const trackingSummaryOptions: OptionEntry[] = [{ value: 'Started', color: '#ffae3d' }, { value: 'Successful', color: '#16a34a' }, { value: 'Delivered', color: '#9748d7' }, { value: 'Discussed', color: '#0ea5e9' }, { value: 'Variation', color: '#a855f7' }];
+const trackingMultipleInvoiceOptions: OptionEntry[] = [{ value: 'Yes', color: '#f59e0b' }, { value: 'No', color: '#64748b' }];
+const trackingPaymentStatusOptions: OptionEntry[] = ['Not Delivered', '30days Credit terms', 'NHG AP-Direct Done', 'To Fill Up', 'Submitted', 'Gebiz Done', 'Sesami Done', 'Vendors@GOV Done', 'Chase for payment', 'Paypal Payment', 'Tenderboard Done', 'PAID', 'Ariba Done', 'To Verify Issues', 'Partially PAID', 'Coupa Done', 'Cardup', 'Partial Invoice', 'Chase for PO', 'Others (remarks)'].map((value, index) => ({ value, color: ['#ff5b57','#e63959','#5595f5','#bfc0c2','#f6c900','#008bc4','#ed5acb','#835446','#c52a50','#008448','#8bcf13','#00c976','#2f75d6','#333333','#ffae3d','#5a5fd7','#9748d7','#777777','#ec087a','#54c2ed'][index] }));
 type AttachmentItem = {
     id: string;
     kind: "file" | "link";
@@ -169,6 +172,7 @@ export type ClientRowProps = {
     onDuplicateSubitemAction: (subitemId: string) => void | Promise<void>;
     onMoveSubitemAction: (subitemId: string, targetClientId: string) => void | Promise<void>;
     onOpenSubitemDetail?: (subitemId: string) => void;
+    trackingMode?: boolean;
 
 
 };
@@ -265,7 +269,7 @@ export function ClientRow({
     currentUserId,
     onPushToShipperView
     , onUndoActivity
-    , groupNamesById, groups, onDuplicateClient, onMoveClient, subitemMoveTargetGroups, onDuplicateSubitemAction, onMoveSubitemAction, onOpenSubitemDetail
+    , groupNamesById, groups, onDuplicateClient, onMoveClient, subitemMoveTargetGroups, onDuplicateSubitemAction, onMoveSubitemAction, onOpenSubitemDetail, trackingMode = false
 
 
 }: ClientRowProps) {
@@ -587,7 +591,7 @@ export function ClientRow({
             onDragOver={(event) => onSubitemDragOver?.(event, client.id)}
             onDrop={(event) => onSubitemDrop?.(event, client.id)}
         >
-            <style>{Array.from(hiddenColumnKeys).filter((key) => key.startsWith('client:')).map((key) => `[data-client-column="${key.slice(7)}"]{display:none!important}`).join('')}</style>
+            <style>{`${Array.from(hiddenColumnKeys).filter((key) => key.startsWith('client:')).map((key) => `[data-client-column="${key.slice(7)}"]{display:none!important}`).join('')} ${trackingMode ? '[data-client-row] [data-client-column]:not([data-client-column="selectCheckbox"]):not([data-client-column="client"]):not([data-client-column="people"]):not([data-client-column="channel"]):not([data-client-column^="custom:"]):not(.tracking-client-cell){display:none!important}' : ''}`}</style>
             {permissionNotice && <div role="alert" className="fixed z-[10000] rounded-md bg-slate-800 px-3 py-2 text-xs font-medium text-white shadow-xl" style={permissionNotice}>You can only edit items that are assigned to you</div>}
             {blacklistNotice && <div role="alert" className="pointer-events-none fixed z-[10010] rounded-md border border-red-700 bg-red-600 px-3 py-2 text-xs font-semibold text-white shadow-xl" style={blacklistNotice}>This client is in the blacklist</div>}
             <AlertDialog open={showEstimateDialog} onOpenChange={(open) => { setShowEstimateDialog(open); if (!open) { setEstimateResult(null); setSampleEstimate(null); setSampleEstimateError(null); setSampleArtworkUploads({}); setEstimateMode("choice"); resetEstimateState(); } }}>
@@ -658,7 +662,7 @@ export function ClientRow({
                         title={selectedSubitemIds.length > 0 ? "Clients and subitems cannot be selected together" : "Select client"}
                         className={`w-3 h-3 rounded accent-[#7BCBD5] transition transform active:scale-150 duration-200 ${selectedSubitemIds.length > 0 ? 'cursor-not-allowed opacity-40' : 'cursor-pointer'}`}
                     />
-                    <button
+                    {!trackingMode && <button
                         data-selection-control
                         onClick={onToggleExpand}
                         className="text-gray-400 hover:text-gray-700 transition-colors"
@@ -668,7 +672,7 @@ export function ClientRow({
                         ) : (
                             <ChevronRight size={14} className="transition transform active:scale-150 duration-100" />
                         )}
-                    </button>
+                    </button>}
                 </div>
 
                 <div
@@ -690,7 +694,7 @@ export function ClientRow({
                         />
                     </div>
                     <div className="ml-auto flex items-center justify-start gap-1 flex-shrink-0">
-                        <Tooltip.Provider>
+                        {!trackingMode && <Tooltip.Provider>
                             <Tooltip.Root>
                                 <Tooltip.Trigger asChild>
                                     <button
@@ -709,7 +713,7 @@ export function ClientRow({
                                     </Tooltip.Content>
                                 </Tooltip.Portal>
                             </Tooltip.Root>
-                        </Tooltip.Provider>
+                        </Tooltip.Provider>}
                         {showActivityLog && (
                             <div
                                 data-activity-log
@@ -830,7 +834,7 @@ export function ClientRow({
                                 </div>
                             </div>
                         )}
-                        <Tooltip.Provider>
+                        {!trackingMode && <Tooltip.Provider>
                             <Tooltip.Root>
                                 <Tooltip.Trigger asChild>
                                     <button
@@ -847,8 +851,8 @@ export function ClientRow({
 
                                 </Tooltip.Portal>
                             </Tooltip.Root>
-                        </Tooltip.Provider>
-                        <Tooltip.Provider>
+                        </Tooltip.Provider>}
+                        {!trackingMode && <Tooltip.Provider>
                             <Tooltip.Root>
                                 <Tooltip.Trigger asChild>
                                     <button
@@ -860,7 +864,7 @@ export function ClientRow({
                                     <Tooltip.Content className="TooltipContent">Order Confirmation Form<Tooltip.Arrow className="TooltipArrow" /></Tooltip.Content>
                                 </Tooltip.Portal>
                             </Tooltip.Root>
-                        </Tooltip.Provider>
+                        </Tooltip.Provider>}
                     </div>
                 </div>
                 <div
@@ -1132,6 +1136,20 @@ export function ClientRow({
                         onRenameOption={(oldName, newName) => onRenameOption?.('progress', oldName, newName)}
                     />
                 </div>
+                {trackingMode && <>
+                    <div data-client-column="trackingSummary" className="tracking-client-cell overflow-hidden border-r border-[#D0D4E4] p-0" style={{ height: 30, minWidth: colWidth.trackingSummary, width: colWidth.trackingSummary, order: columnOrderMap.trackingSummary }}>
+                        <StatusBadge value={client.customFields?.trackingSummary ?? ''} onChange={(value) => onUpdate({ customFields: { ...(client.customFields ?? {}), trackingSummary: value } })} options={trackingSummaryOptions} manageLabel="tracking summary" />
+                    </div>
+                    <div data-client-column="trackingInvoiceNumber" className="tracking-client-cell overflow-hidden border-r border-[#D0D4E4] py-1" style={{ height: 30, minWidth: colWidth.trackingInvoiceNumber, width: colWidth.trackingInvoiceNumber, order: columnOrderMap.trackingInvoiceNumber }}>
+                        <EditableCell value={client.customFields?.trackingInvoiceNumber ?? ''} onChange={(value) => { const fields: Record<string, string> = { ...(client.customFields ?? {}), trackingInvoiceNumber: value }; if (value.trim() && !fields.trackingMultipleInvoices) { const answer = window.prompt('Does this closed lead have Multiple Invoices? Type Yes or No.'); if (/^yes$/i.test(answer?.trim() ?? '')) fields.trackingMultipleInvoices = 'Yes'; if (/^no$/i.test(answer?.trim() ?? '')) fields.trackingMultipleInvoices = 'No'; } onUpdate({ customFields: fields }); }} />
+                    </div>
+                    <div data-client-column="trackingMultipleInvoices" className={`tracking-client-cell overflow-hidden border-r p-0 ${client.customFields?.trackingInvoiceNumber && !client.customFields?.trackingMultipleInvoices ? 'border-2 border-red-500 bg-red-50' : 'border-[#D0D4E4]'}`} style={{ height: 30, minWidth: colWidth.trackingMultipleInvoices, width: colWidth.trackingMultipleInvoices, order: columnOrderMap.trackingMultipleInvoices }}>
+                        <StatusBadge value={client.customFields?.trackingMultipleInvoices ?? ''} onChange={(value) => onUpdate({ customFields: { ...(client.customFields ?? {}), trackingMultipleInvoices: value } })} options={trackingMultipleInvoiceOptions} manageLabel="multiple invoices" />
+                    </div>
+                    <div data-client-column="trackingPaymentStatus" className="tracking-client-cell overflow-hidden border-r border-[#D0D4E4] p-0" style={{ height: 30, minWidth: colWidth.trackingPaymentStatus, width: colWidth.trackingPaymentStatus, order: columnOrderMap.trackingPaymentStatus }}>
+                        <StatusBadge value={client.customFields?.trackingPaymentStatus || 'To Fill Up'} onChange={(value) => onUpdate({ customFields: { ...(client.customFields ?? {}), trackingPaymentStatus: value } })} options={trackingPaymentStatusOptions} manageLabel="tracking payment status" includeBlankOption={false} />
+                    </div>
+                </>}
                 <div data-client-column="dateCreated" className="flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis" style={{ height: 30, minWidth: colWidth.dateCreated, width: colWidth.dateCreated, order: columnOrderMap.dateCreated ?? 19 }}>
                     <span title={clientCreatedTooltip} className="block px-1 text-[12.6px] text-gray-700">
                         {client.createdAt ? new Date(client.createdAt).toLocaleDateString("en-GB") : "-"}
@@ -1194,7 +1212,7 @@ export function ClientRow({
 
             </div>
 
-            {isExpanded && (
+            {!trackingMode && isExpanded && (
                 <SubitemsTable
                     clientId={client.id}
                     subitems={client.subitems}

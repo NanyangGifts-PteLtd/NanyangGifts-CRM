@@ -83,6 +83,17 @@ const CLIENT_HEADER_COLS: HeaderCol[] = [
   { key: 'addClientCol', label: '', width: 44, minWidth: 44 },
   { key: 'empty', label: '', width: 44, minWidth: 44 },
 ];
+const TRACKING_HEADER_COLS: HeaderCol[] = [
+  { key: 'selectCheckbox', label: '', width: 60, minWidth: 7 },
+  { key: 'client', label: 'Client', width: 250, minWidth: 7 },
+  { key: 'people', label: 'People', width: 90, minWidth: 7 },
+  { key: 'trackingSummary', label: 'Summary', width: 130, minWidth: 7 },
+  { key: 'channel', label: 'Channel', width: 110, minWidth: 7 },
+  { key: 'trackingInvoiceNumber', label: 'Invoice Number', width: 180, minWidth: 7 },
+  { key: 'trackingMultipleInvoices', label: 'Multiple Invoices?', width: 180, minWidth: 7 },
+  { key: 'trackingPaymentStatus', label: 'Payment Status', width: 190, minWidth: 7 },
+  { key: 'empty', label: '', width: 44, minWidth: 44 },
+];
 
 interface CRMBoardProps {
   clients: Client[];
@@ -354,6 +365,7 @@ export function CRMBoard({ clients,
   const [showHideColumns, setShowHideColumns] = useState(false);
   const [showBoardMoreMenu, setShowBoardMoreMenu] = useState(false);
   const [showSortMenu, setShowSortMenu] = useState(false);
+  const [trackingView, setTrackingView] = useState(false);
   const [boardSort, setBoardSort] = useState<BoardSortSetting>(DEFAULT_BOARD_SORT);
 
   useEffect(() => {
@@ -633,10 +645,19 @@ export function CRMBoard({ clients,
   const clientColumnOrderMap = React.useMemo<Record<string, number>>(() => {
     return Object.fromEntries(mergedHeaderCols.map((col, index) => [col.key, index]));
   }, [mergedHeaderCols]);
-
   const visibleClientHeaderCols = React.useMemo(
     () => mergedHeaderCols.filter((col) => !hiddenColumnKeys.has(`client:${col.key}`) || ['selectCheckbox', 'client', 'addClientCol', 'empty'].includes(col.key)),
     [mergedHeaderCols, hiddenColumnKeys],
+  );
+  const trackingHeaderCols = React.useMemo<HeaderCol[]>(() => [
+    ...TRACKING_HEADER_COLS.filter((column) => column.key !== 'empty'),
+    ...clientCustomCols.filter((column) => !hiddenColumnKeys.has(`client:custom:${column.id}`)).map((column) => ({ key: `custom:${column.id}`, label: column.name, width: customClientWidths[`custom:${column.id}`] ?? 120, minWidth: 80, customColumnId: column.id, isCustom: true, field_type: column.field_type })),
+    ...TRACKING_HEADER_COLS.filter((column) => column.key === 'empty'),
+  ], [clientCustomCols, customClientWidths, hiddenColumnKeys]);
+  const activeClientHeaderCols = trackingView ? trackingHeaderCols : visibleClientHeaderCols;
+  const activeClientColumnOrderMap = React.useMemo<Record<string, number>>(
+    () => Object.fromEntries(activeClientHeaderCols.map((col, index) => [col.key, index])),
+    [activeClientHeaderCols],
   );
 
   const visibleClientCustomCols = React.useMemo(
@@ -762,10 +783,10 @@ export function CRMBoard({ clients,
     try { window.dispatchEvent(new CustomEvent('authChanged', { detail: currentUserId })); } catch {}
   }, [currentUserId]);
 
-  const totalMinWidth = visibleClientHeaderCols.reduce((sum, col) => sum + col.width, 0);
+  const totalMinWidth = activeClientHeaderCols.reduce((sum, col) => sum + col.width, 0);
   const colWidth = React.useMemo(
-    () => Object.fromEntries(visibleClientHeaderCols.map((c) => [c.key, c.width])),
-    [visibleClientHeaderCols]
+    () => Object.fromEntries(activeClientHeaderCols.map((c) => [c.key, c.width])),
+    [activeClientHeaderCols]
   );
 
   // Persist client column widths per-user in DB (fallback to localStorage)
@@ -2931,6 +2952,10 @@ export function CRMBoard({ clients,
           )}
         </div>
 
+        <button type="button" onClick={() => setTrackingView((enabled) => !enabled)} className={`flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium text-white transition active:scale-95 ${trackingView ? 'bg-[#0f8da8]' : 'bg-[#43adc4] hover:bg-[#0f8da8]'}`}>
+          Tracking View
+        </button>
+
         <div className="flex items-center gap-1">
           {clientStatuses.map((st) => {
             const count = clients.filter((c) => c.status === st).length;
@@ -3186,7 +3211,7 @@ export function CRMBoard({ clients,
       <div className="flex min-w-0 text-gray-500 font-semibold">
         <div style={{ minWidth: totalMinWidth }}>
           <div className="hidden" style={{ minWidth: totalMinWidth }}>
-            {visibleClientHeaderCols.map((col) => {
+            {activeClientHeaderCols.map((col) => {
               const fixedKeys = new Set(['selectCheckbox', 'client', 'addClientCol', 'empty']);
               const isDraggable = !fixedKeys.has(col.key);
               const isDragging = draggedHeaderKey === col.key;
@@ -3292,7 +3317,7 @@ export function CRMBoard({ clients,
           </div>
 
 
-          {groupedClients.map(({ group, clients: groupClients }) => (
+          {(trackingView ? groupedClients.filter(({ group }) => /^closed leads\s*-\s*/i.test(group.name)) : groupedClients).map(({ group, clients: groupClients }) => (
             <React.Fragment key={group.id}>
               {groupDragOverId === group.id && groupDragOverEdge === 'top' && (
                 <div className="pointer-events-none h-1 w-full bg-[#0f8da8] shadow-[0_0_5px_rgba(15,141,168,0.6)]" />
@@ -3360,7 +3385,7 @@ export function CRMBoard({ clients,
                 <div>
                   <div className="crm-group-name text-lg leading-6 text-slate-700">{group.name}</div>
                   <div className="text-[13px] italic font-normal text-slate-500">
-                    {groupClients.length} {groupClients.length === 1 ? 'Client' : 'Clients'} / {groupClients.reduce((total, client) => total + client.subitems.length, 0)} {groupClients.reduce((total, client) => total + client.subitems.length, 0) === 1 ? 'Subitem' : 'Subitems'}
+                    {groupClients.length} {groupClients.length === 1 ? 'Client' : 'Clients'} / {trackingView ? 0 : groupClients.reduce((total, client) => total + client.subitems.length, 0)} {trackingView || groupClients.reduce((total, client) => total + client.subitems.length, 0) !== 1 ? 'Subitems' : 'Subitem'}
                   </div>
                 </div>
               </div>
@@ -3368,7 +3393,7 @@ export function CRMBoard({ clients,
               {!collapsedGroups[group.id] && (
                 <div data-client-group={group.id} onDragOver={(event) => handleDragOver(event, group.id, 'top')} onDrop={() => handleDrop(group.id)} onDragLeave={() => { setDragOverGroupId(null); setDragOverGroupEdge(null); }} className="relative" style={{ minWidth: totalMinWidth }}>
                   <div className="relative flex text-[12.6px] items-center justify-center min-w-0 flex-shrink-0 border border-[#D0D4E4] overflow-visible bg-white" style={{ minWidth: totalMinWidth, width: totalMinWidth }}>
-                    {visibleClientHeaderCols.map((col) => {
+                    {activeClientHeaderCols.map((col) => {
                       const fixedKeys = new Set(['selectCheckbox', 'client', 'addClientCol', 'empty']);
                       const isDraggable = !fixedKeys.has(col.key);
                       const isDragging = draggedHeaderKey === col.key;
@@ -3426,7 +3451,7 @@ export function CRMBoard({ clients,
                               title={selectedSubitemIds.length > 0 ? "Clients and subitems cannot be selected together" : "Select clients in this group"}
                               className={`w-3 h-3 rounded accent-[#7BCBD5] ${selectedSubitemIds.length > 0 || groupClients.length === 0 ? 'cursor-not-allowed opacity-40' : 'cursor-pointer'}`}
                             />
-                          ) : col.key === 'addClientCol' ? (
+                          ) : (col.key === 'addClientCol' || (trackingView && col.key === 'empty')) ? (
                             canCreateCustomColumns ? <button type="button" onClick={() => setShowAddColModal('client')} className="mx-auto flex h-5 w-5 items-center justify-center rounded-md text-teal-500 hover:bg-teal-100 hover:text-black" title="Add client column"><Plus size={14} /></button> : null
                           ) : (
                             <div className="flex items-center gap-1 min-w-0 max-w-full px-1"><span className="truncate">{col.label}</span>{col.isCustom && col.customColumnId ? <button type="button" onClick={() => handleDeleteCustomColumn(col.customColumnId!)} className="text-gray-400 hover:text-red-500 flex-shrink-0" title="Delete column"><X size={12} /></button> : null}</div>
@@ -3522,7 +3547,8 @@ export function CRMBoard({ clients,
                   onChangeSubitemAssignees={handleSubitemAssigneesChange}
                   colWidth={colWidth}
                   boardWidth={totalMinWidth}
-                  columnOrderMap={clientColumnOrderMap}
+                  columnOrderMap={activeClientColumnOrderMap}
+                  trackingMode={trackingView}
                   onDragStart={(event) => handleDragStart(client.id, event)}
                   onDragEnd={handleDragEnd}
                   isDragging={draggedClientId === client.id}

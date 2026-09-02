@@ -22,7 +22,7 @@ function normalizeOptions(options: (string | BadgeOption)[]): BadgeOption[] {
 
 export function StatusBadge({
     value, onChange, options: rawOptions, small = false, onAddOption, onDeleteOption,
-    canDeleteOption, onUpdateOptionColor, onRenameOption, manageLabel = "option", readOnly = false,
+    canDeleteOption, onUpdateOptionColor, onRenameOption, manageLabel = "option", readOnly = false, includeBlankOption = true,
 }: {
     value: string; onChange: (value: string) => void; options: (string | BadgeOption)[]; small?: boolean;
     onAddOption?: (name: string) => void | Promise<void>;
@@ -32,6 +32,7 @@ export function StatusBadge({
     onRenameOption?: (oldName: string, newName: string) => void | Promise<void>;
     manageLabel?: string;
     readOnly?: boolean;
+    includeBlankOption?: boolean;
 }) {
     const [open, setOpen] = useState(false);
     const [editingLabels, setEditingLabels] = useState(false);
@@ -44,7 +45,7 @@ export function StatusBadge({
     const configuredOptions = normalizeOptions(rawOptions);
     // A synthetic blank option clears the label without adding a mutable option
     // to the shared label configuration.
-    const options = configuredOptions.some((option) => option.value === "")
+    const options = !includeBlankOption || configuredOptions.some((option) => option.value === "")
         ? configuredOptions
         : [{ value: "", color: "#bfc0c2" }, ...configuredOptions];
     const activeBg = options.find((option) => option.value === value)?.color ?? "#e5e7eb";
