@@ -361,6 +361,94 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: upsertError.message }, { status: 500 });
         }
 
+        // Keep the existing one-row grid as a compatibility projection, while
+        // every newly pushed item also receives a first-class Shipment record.
+        // A later combined-push flow will create one shipment with many items;
+        // this path deliberately remains one item per shipment so its current
+        // behaviour is unchanged.
+        const shipmentIdBySubitemId = new Map<string, string>();
+        for (const pushedRow of pushedRows ?? []) {
+            const row = rowsToUpsert.find((candidate) => candidate.subitem_id === pushedRow.subitem_id);
+            if (!row || !pushedRow.id) continue;
+
+            const priorRow = existingBySubitemId.get(row.subitem_id);
+            const shipmentValues = {
+                shipper_id: row.shipper_id,
+                ic: row.ic || null,
+                serial_number: row.serial_number || null,
+                waybill_date: row.waybill_date || null,
+                waybill_number: row.waybill_number || null,
+                pieces: row.pieces === "" || row.pieces == null ? null : Number(row.pieces),
+                chargeable_weight_kg: row.chargeable_weight_kg === "" || row.chargeable_weight_kg == null ? null : Number(row.chargeable_weight_kg),
+                destination: row.destination || null,
+                freight_unit_price: row.freight_unit_price === "" || row.freight_unit_price == null ? null : Number(row.freight_unit_price),
+                freight_cost: row.freight_cost === "" || row.freight_cost == null ? null : Number(row.freight_cost),
+                gst: row.gst === "" || row.gst == null ? null : Number(row.gst),
+                other_fees: row.other_fees === "" || row.other_fees == null ? null : Number(row.other_fees),
+                total_cost: row.total_cost === "" || row.total_cost == null ? null : Number(row.total_cost),
+                channel: row.channel || null,
+                date_of_submission: row.info_provided_date || null,
+                cn_tracking_no: row.cn_tracking_no || null,
+                cartons: row.cartons === "" || row.cartons == null ? null : Number(row.cartons),
+                delivery_info: row.delivery_info || null,
+                sea_or_air: row.sea_or_air || null,
+                tax_refund: row.tax_refund || null,
+                samples_by_air: row.samples_by_air || null,
+                samples_by_sea: row.samples_by_sea || null,
+                remarks: row.shipper_remarks || null,
+                updated_at: new Date().toISOString(),
+            };
+
+            let shipmentId = priorRow?.shipment_id as string | undefined;
+            if (shipmentId) {
+                const { error } = await supabaseAdmin
+                    .from("shipper_shipments")
+                    .update(shipmentValues)
+                    .eq("id", shipmentId);
+                if (error) return NextResponse.json({ error: `Shipper row was pushed, but its shipment could not be updated: ${error.message}` }, { status: 500 });
+            } else {
+                const { data: shipment, error } = await supabaseAdmin
+                    .from("shipper_shipments")
+                    .insert({ ...shipmentValues, shipment_kind: "shipment", status: "active", created_by: user.id })
+                    .select("id")
+                    .single();
+                if (error || !shipment) return NextResponse.json({ error: `Shipper row was pushed, but its shipment could not be created: ${error?.message ?? "unknown error"}` }, { status: 500 });
+                shipmentId = shipment.id;
+            }
+            if (!shipmentId) return NextResponse.json({ error: "Shipper row was pushed, but no shipment ID was returned." }, { status: 500 });
+
+            const { error: itemError } = await supabaseAdmin
+                .from("shipper_shipment_items")
+                .upsert({
+                    shipment_id: shipmentId,
+                    subitem_id: row.subitem_id,
+                    client_id: row.client_id,
+                    line_type: "subitem_delivery",
+                    position: 0,
+                    display_name: row.item_name || "",
+                    quantity: row.qty,
+                    unit_price: row.up,
+                    declared_value: row.value,
+                    cn_tracking_no: row.cn_tracking_no || null,
+                    cartons: row.cartons === "" || row.cartons == null ? null : Number(row.cartons),
+                    samples_by_air: row.samples_by_air || null,
+                    samples_by_sea: row.samples_by_sea || null,
+                    air_received: row.air_received || null,
+                    sea_received: row.sea_received || null,
+                    remarks: row.shipper_remarks || null,
+                    legacy_shipper_view_row_id: pushedRow.id,
+                    updated_at: new Date().toISOString(),
+                }, { onConflict: "legacy_shipper_view_row_id" });
+            if (itemError) return NextResponse.json({ error: `Shipper row was pushed, but its shipment item could not be saved: ${itemError.message}` }, { status: 500 });
+
+            const { error: bridgeError } = await supabaseAdmin
+                .from("shipper_view_rows")
+                .update({ shipment_id: shipmentId })
+                .eq("id", pushedRow.id);
+            if (bridgeError) return NextResponse.json({ error: `Shipper row was pushed, but its shipment bridge could not be saved: ${bridgeError.message}` }, { status: 500 });
+            shipmentIdBySubitemId.set(row.subitem_id, shipmentId);
+        }
+
         // CN Tracking is deliberately a two-way value: the reviewed value is also stored on the CRM subitem.
         for (const row of rowsToUpsert) {
             const { error } = await supabase.from("subitems").update({ cn_tracking: row.cn_tracking_no }).eq("id", row.subitem_id);
@@ -397,7 +485,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({
             ok: true,
             count: pushedRows?.length ?? 0,
-            rows: pushedRows ?? [],
+            rows: (pushedRows ?? []).map((row) => ({ ...row, shipment_id: shipmentIdBySubitemId.get(row.subitem_id) ?? row.shipment_id ?? null })),
         });
     } catch (error: any) {
         return NextResponse.json(

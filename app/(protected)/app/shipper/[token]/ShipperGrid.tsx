@@ -9,6 +9,7 @@ export type ShipperRow = {
     subitem_id?: string | null;
     client_id?: string | null;
     shipper_id?: string | null;
+    shipment_id?: string | null;
 
     serial_number: string | null;
     waybill_date: string | null;

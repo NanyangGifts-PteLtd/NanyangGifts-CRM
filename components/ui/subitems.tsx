@@ -363,6 +363,7 @@ export function SubitemsTable({
     const [pushPreviewShipperName, setPushPreviewShipperName] = useState("");
     const [pushPreviewHistory, setPushPreviewHistory] = useState<{ alreadyPushed: boolean; differentShipper: boolean; previousShipperName: string } | null>(null);
     const [isLoadingPushPreview, setIsLoadingPushPreview] = useState(false);
+    const [preparingPushSubitemId, setPreparingPushSubitemId] = useState<string | null>(null);
     const [activitySubitem, setActivitySubitem] = useState<Subitem | null>(null);
     const [undoneActivityIds, setUndoneActivityIds] = useState<Set<string>>(new Set());
     const canEditSubitem = (subitemId: string) => !!currentUserId && (clientAssignedIds.includes(currentUserId) || clientPmAssignedIds.includes(currentUserId) || (subitemAssigneeMap[subitemId] ?? []).includes(currentUserId));
@@ -959,6 +960,7 @@ export function SubitemsTable({
             return;
         }
         setIsLoadingPushPreview(true);
+        setPreparingPushSubitemId(subitemId);
         try {
             const response = await fetch("/api/shipper/push", {
                 method: "POST",
@@ -981,8 +983,18 @@ export function SubitemsTable({
             toast.error("Could not open shipper preview", { description: error?.message || "Please try again." });
         } finally {
             setIsLoadingPushPreview(false);
+            setPreparingPushSubitemId(null);
         }
     }
+
+    React.useEffect(() => {
+        const openFromSelection = (event: Event) => {
+            const subitemId = (event as CustomEvent<{ subitemId?: string }>).detail?.subitemId;
+            if (subitemId && subitems.some((subitem) => subitem.id === subitemId)) void openPushPreview(subitemId);
+        };
+        window.addEventListener('openShipperPush', openFromSelection);
+        return () => window.removeEventListener('openShipperPush', openFromSelection);
+    }, [subitems]);
 
     const updatePushPreview = (field: string, value: string) => setPushPreview((previous) => previous ? { ...previous, [field]: value } : previous);
     const pushValue = pushPreview ? Number(pushPreview.qty || 0) * Number(pushPreview.up || 0) : 0;
@@ -1119,14 +1131,14 @@ export function SubitemsTable({
                             e.stopPropagation();
                             void openPushPreview(sub.id);
                         }}
-                        disabled={pushingSubitemId === sub.id || isLoadingPushPreview || !canEditSubitem(sub.id)}
+                        disabled={pushingSubitemId === sub.id || preparingPushSubitemId === sub.id || !canEditSubitem(sub.id)}
                         className={`rounded-sm border px-2 py-1 text-[11px] font-medium transition disabled:cursor-not-allowed disabled:opacity-60 ${wasPushed
                             ? "border-teal-100 bg-teal-50 text-teal-400 hover:bg-teal-100"
                             : "border-teal-200 text-teal-500 hover:bg-blue-50"
                         }`}
                         title={!canEditSubitem(sub.id) ? "You can only edit items that are assigned to you" : "Push to shipper view"}
                     >
-                        {pushingSubitemId === sub.id || isLoadingPushPreview ? "Preparing..." : wasPushed ? "Pushed" : "Push"}
+                        {pushingSubitemId === sub.id || preparingPushSubitemId === sub.id ? "Preparing..." : wasPushed ? "Pushed" : "Push"}
                     </button>
                     );
                 })() : null}

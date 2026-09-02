@@ -12,12 +12,13 @@ export async function POST(req: NextRequest) {
     try {
         const formData = await req.formData();
         const file = formData.get("file");
-        const subitemId = String(formData.get("subitemId") ?? "");
+        const shipmentId = String(formData.get("shipmentId") ?? "");
+        const shipmentItemId = String(formData.get("shipmentItemId") ?? "");
         const shipperId = String(formData.get("shipperId") ?? "");
         const shipperToken = String(formData.get("shipperToken") ?? "");
 
-        if (!(file instanceof File) || !subitemId) {
-            return NextResponse.json({ error: "An image and subitemId are required" }, { status: 400 });
+        if (!(file instanceof File) || (!shipmentId && !shipmentItemId)) {
+            return NextResponse.json({ error: "An image and shipment target are required" }, { status: 400 });
         }
         if (!file.type.startsWith("image/")) {
             return NextResponse.json({ error: "Only image files are allowed" }, { status: 400 });
@@ -40,17 +41,15 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "A valid shipper is required" }, { status: 400 });
         }
 
-        const { data: row, error: rowError } = await supabase
-            .from("shipper_view_rows")
-            .select("subitem_id, shipper_id")
-            .eq("subitem_id", subitemId)
-            .eq("shipper_id", resolvedShipperId)
-            .maybeSingle();
+        const { data: row, error: rowError } = shipmentId
+            ? await supabase.from("shipper_shipments").select("id, shipper_id").eq("id", shipmentId).eq("shipper_id", resolvedShipperId).maybeSingle()
+            : await supabase.from("shipper_shipment_items").select("id, shipment:shipper_shipments(shipper_id)").eq("id", shipmentItemId).maybeSingle();
         if (rowError) throw rowError;
-        if (!row) return NextResponse.json({ error: "Shipper view row not found" }, { status: 404 });
+        const itemShipperId = (row as any)?.shipment?.shipper_id ?? (row as any)?.shipment?.[0]?.shipper_id;
+        if (!row || (!shipmentId && itemShipperId !== resolvedShipperId)) return NextResponse.json({ error: "Shipment target not found" }, { status: 404 });
 
         const extension = file.name.split(".").pop()?.toLowerCase() || "bin";
-        const path = `${resolvedShipperId}/${subitemId}/${crypto.randomUUID()}.${extension}`;
+        const path = `${resolvedShipperId}/shipments/${shipmentId || shipmentItemId}/${crypto.randomUUID()}.${extension}`;
         const { error: uploadError } = await supabase.storage
             .from(BUCKET)
             .upload(path, Buffer.from(await file.arrayBuffer()), {

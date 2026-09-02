@@ -1,0 +1,9 @@
+"use client";
+
+export type ShipmentPreview = { rows: Array<Record<string, string>>; shared: Record<string, string> };
+
+export function CombinedShipmentInfo({ preview, onChange }: { preview: ShipmentPreview; onChange: (next: ShipmentPreview) => void }) {
+  const total = preview.rows.reduce((sum, row) => sum + (Number(row.qty) || 0) * (Number(row.up) || 0), 0);
+  const set = (key: string, value: string) => onChange({ ...preview, shared: { ...preview.shared, [key]: value } });
+  return <section className="mt-5 border-t pt-4"><h3 className="font-semibold">Combined shipment information</h3><div className="mt-3"><label className="block max-w-[440px] text-xs">Date of Submission *<input type="date" value={preview.shared.info_provided_date} onChange={e => set('info_provided_date', e.target.value)} className="mt-1 w-full rounded border px-3 py-2" /></label></div><div className="mt-4 grid gap-6 md:grid-cols-2"><div className="space-y-4 border-r pr-6"><div className="text-xs">Total Value<div className="mt-1 rounded bg-slate-100 px-3 py-2">{total.toFixed(2)}</div></div><label className="block text-xs">退税?<select value={preview.shared.tax_refund ?? ''} onChange={e => set('tax_refund', e.target.value)} className="mt-1 w-full rounded border px-3 py-2"><option value="退">退</option><option value="X">X</option></select></label></div><div className="space-y-4"><label className="block text-xs">Address *<textarea value={preview.shared.delivery_info} onChange={e => set('delivery_info', e.target.value)} rows={3} className="mt-1 w-full rounded border px-3 py-2" /></label><label className="block text-xs">Air/Sea? *<select value={preview.shared.sea_or_air} onChange={e => set('sea_or_air', e.target.value)} className="mt-1 w-full rounded border px-3 py-2"><option value="" /><option value="空运">空运</option><option value="海运">海运</option><option value="海运/小包">海运/小包</option></select></label></div></div></section>;
+}

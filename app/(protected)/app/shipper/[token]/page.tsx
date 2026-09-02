@@ -1,8 +1,8 @@
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getShipperByToken } from "@/lib/shipper/get-shipper-by-token";
-import { getShipperSubitems } from "@/lib/shipper/get-shipper-subitems";
-import ShipperGrid from "./ShipperGrid";
+import { getShipperShipments } from "@/lib/shipper/shipments";
+import { ShipmentGrid } from "../ShipmentGrid";
 import ShipperAccountMenu from "./ShipperAccountMenu";
 
 export default async function ShipperPage({
@@ -21,7 +21,7 @@ export default async function ShipperPage({
     const { data: profile } = await supabase.from("profiles").select("role, full_name, email").eq("id", user.id).maybeSingle();
     if (profile?.role === "shipper" && user.user_metadata?.shipper_id !== shipper.id) notFound();
 
-    const rows = await getShipperSubitems(shipper.id);
+    const shipments = await getShipperShipments(shipper.id);
 
     return (
         <main className="p-2">
@@ -29,7 +29,7 @@ export default async function ShipperPage({
                 <h1 className="text-lg font-semibold">{shipper.name}</h1>
                 <ShipperAccountMenu name={profile?.full_name ?? profile?.email ?? user.email} />
             </div>
-            <ShipperGrid rows={rows} mode="shipper" token={token} />
+            <ShipmentGrid shipments={shipments} mode="shipper" />
         </main>
     );
 }

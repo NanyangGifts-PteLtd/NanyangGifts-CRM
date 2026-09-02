@@ -32,6 +32,8 @@ import { ClientDetailView } from './ClientDetailView';
 import { SubitemDetailView } from './SubitemDetailView';
 import { AdvancedFilters, type AdvancedFilterColumn, type AdvancedFilterRule } from './AdvancedFilters';
 import { uploadCrmFiles } from '@/lib/crm-files';
+import { PreviousShipmentChoicesDialog } from './shipper/PreviousShipmentChoicesDialog';
+import { CombinedPushPreviewModal } from './shipper/CombinedPushPreviewModal';
 
 type OptionEntry = { value: string; color: string };
 const normalizeBlacklistPhone = (value: string) => value.replace(/\D/g, '');
@@ -57,7 +59,15 @@ type HeaderCol = {
   isCustom?: boolean;
   field_type?: 'text' | 'number' | 'date';
 };
-
+type CombinedPushPreview = {
+  rows: Array<Record<string, any> & { subitemId: string; name: string; alreadyPushed: boolean }>;
+  shipperName: string;
+  page: number;
+  shared: Record<string, string>;
+  existingMode: 'separate' | 'repush';
+  amendShipmentIdBySubitemId?: Record<string, string>;
+};
+type ShipmentHistory = { id: string; cn_tracking_no?: string | null; date_of_submission?: string | null; shippers?: { name?: string | null } | null };
 const CLIENT_HEADER_COLS: HeaderCol[] = [
   { key: 'selectCheckbox', label: '', width: 60, minWidth: 7 },
   { key: 'client', label: 'Client', width: 250, minWidth: 7 },
@@ -223,6 +233,9 @@ export function CRMBoard({ clients,
   const [pendingDeleteSubitem, setPendingDeleteSubitem] = useState<{ clientId: string; subitemId: string } | null>(null);
   const [pendingDeleteSelectedSubitems, setPendingDeleteSelectedSubitems] = useState<string[] | null>(null);
   const [selectedSubitemIds, setSelectedSubitemIds] = useState<string[]>([]);
+  const [combinedPushPreview, setCombinedPushPreview] = useState<CombinedPushPreview | null>(null);
+  const [shipmentChoiceDialog, setShipmentChoiceDialog] = useState<{ preview: CombinedPushPreview; history: Record<string, ShipmentHistory[]> } | null>(null);
+  const [loadingCombinedPush, setLoadingCombinedPush] = useState(false);
   const [showSubitemMoveMenu, setShowSubitemMoveMenu] = useState(false);
   const [subitemMoveSearch, setSubitemMoveSearch] = useState('');
   const [isMovingSubitems, setIsMovingSubitems] = useState(false);
@@ -2081,6 +2094,51 @@ export function CRMBoard({ clients,
     }, { totalPrice: 0, totalMarkup: 0, totalUp: 0, totalUc: 0 }),
     [selectedSubitems],
   );
+  const canAccessShipperPush = ['pm', 'director', 'dev'].includes((currentUserRole ?? '').toLowerCase());
+  const openCombinedPush = async () => {
+    if (!canAccessShipperPush || !canEditSelectedSubitems) return;
+    const owner = clients.find((client) => client.subitems.some((subitem) => subitem.id === selectedSubitemIds[0]));
+    const orderedSelectedIds = owner?.subitems.filter((subitem) => selectedSubitemIds.includes(subitem.id)).map((subitem) => subitem.id) ?? selectedSubitemIds;
+    const owners = new Set(orderedSelectedIds.map((id) => clients.find((client) => client.subitems.some((subitem) => subitem.id === id))?.id));
+    if (owners.size !== 1) return toast.error('Combined shipments can only include subitems from the same client.');
+    setLoadingCombinedPush(true);
+    try {
+      const response = await fetch('/api/shipper/push', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ subitemIds: orderedSelectedIds, preview: true }) });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Could not prepare the shipment.');
+      const rows = [...(result.rows ?? [])].sort((left: any, right: any) => orderedSelectedIds.indexOf(String(left.subitem_id)) - orderedSelectedIds.indexOf(String(right.subitem_id)));
+      const shipperIds = new Set(rows.map((row: any) => row.shipper_id).filter(Boolean));
+      const modes = new Set(rows.map((row: any) => row.sea_or_air).filter(Boolean));
+      if (shipperIds.size !== 1) throw new Error('Combined shipments require all selected subitems to have the same shipper.');
+      if (modes.size !== 1) throw new Error('Combined shipments require the same Sea/Air mode for every selected subitem.');
+      const today = new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      const first = rows[0] ?? {};
+      const preview: CombinedPushPreview = {
+        shipperName: String(first.shipper_name || 'selected shipper'), page: 0, existingMode: 'separate',
+        rows: rows.map((row: any) => ({ subitemId: String(row.subitem_id), name: String(row.item_name || 'Unnamed subitem'), alreadyPushed: Boolean(row.already_pushed), cn_tracking_no: String(row.cn_tracking_no || ''), qty: String(row.qty ?? ''), up: String(row.up ?? ''), samples_by_air: String(row.samples_by_air ?? ''), samples_by_sea: String(row.samples_by_sea ?? ''), shipper_remarks: String(row.shipper_remarks ?? ''), sea_or_air: String(row.sea_or_air || '') })),
+        shared: { info_provided_date: String(first.info_provided_date || today), tax_refund: rows.reduce((sum: number, row: any) => sum + (Number(row.qty) || 0) * (Number(row.up) || 0), 0) > 2500 ? '退' : 'X', cn_tracking_no: '', cartons: String(first.cartons ?? ''), delivery_info: String(first.delivery_info || ''), sea_or_air: String(first.sea_or_air || ''), samples_by_air: String(first.samples_by_air ?? ''), samples_by_sea: String(first.samples_by_sea ?? ''), serial_number: '', waybill_date: '', waybill_number: '', pieces: '', chargeable_weight_kg: '', destination: '', freight_unit_price: '', gst: '', other_fees: '', channel: '' }, amendShipmentIdBySubitemId: {},
+      };
+      const historyResponse = await fetch(`/api/shipper/shipments/history?subitemIds=${encodeURIComponent(orderedSelectedIds.join(','))}`);
+      const historyResult = await historyResponse.json();
+      if (!historyResponse.ok) throw new Error(historyResult.error || 'Could not load previous shipments.');
+      const history = historyResult.shipmentsBySubitemId ?? {};
+      if (Object.values(history).some((shipments: any) => Array.isArray(shipments) && shipments.length)) setShipmentChoiceDialog({ preview, history }); else setCombinedPushPreview(preview);
+    } catch (error: any) { toast.error('Could not create combined shipment', { description: error?.message }); }
+    finally { setLoadingCombinedPush(false); }
+  };
+  const confirmCombinedPush = async () => {
+    if (!combinedPushPreview) return;
+    setLoadingCombinedPush(true);
+    try {
+      const response = await fetch('/api/shipper/combined-push', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ subitemIds: combinedPushPreview.rows.map((row) => row.subitemId), values: combinedPushPreview.rows, shared: combinedPushPreview.shared, amendShipmentIdBySubitemId: combinedPushPreview.amendShipmentIdBySubitemId }) });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Could not create shipment.');
+      setClients((current) => current.map((client) => ({ ...client, subitems: client.subitems.map((subitem) => { const value = combinedPushPreview.rows.find((row) => row.subitemId === subitem.id); return value ? { ...subitem, cnTracking: value.cn_tracking_no } : subitem; }) })));
+      toast.success('Combined shipment created', { description: `${combinedPushPreview.rows.length} subitems were grouped into one shipment.` });
+      setCombinedPushPreview(null); setSelectedSubitemIds([]);
+    } catch (error: any) { toast.error('Could not create combined shipment', { description: error?.message }); }
+    finally { setLoadingCombinedPush(false); }
+  };
 
   const selectedClientTotals = useMemo(() => clients.filter((client) => selectedIds.has(client.id)).reduce((totals, client) => {
     const clientTotals = client.subitems.reduce((subitemTotals, subitem) => {
@@ -2773,7 +2831,7 @@ export function CRMBoard({ clients,
         return <ClientDetailView key={detailClient.id} client={detailClient} clients={groupedClients.flatMap(({ clients: groupClients }) => groupClients)} profiles={profiles} assigneeIds={clientAssignees[detailClient.id] ?? []} pmIds={clientPmAssigneeIds(detailClient)} canEdit={canEditClientRecord(detailClient.id)} currentUserId={currentUserId} currentUserRole={currentUserRole} groups={groups} initialTab={detailClientInitialTab ?? undefined} onDuplicate={() => duplicateClientAction(detailClient.id)} onMove={(groupId) => moveClientAction(detailClient.id, groupId)} onDelete={() => { setDetailClientId(null); setDetailClientInitialTab(null); setPendingDeleteClientId(detailClient.id); }} onClose={() => { setDetailClientId(null); setDetailClientInitialTab(null); }} onNavigate={(client) => { setDetailClientId(client.id); setDetailClientInitialTab(null); }} onUpdate={(updates) => updateClient(detailClient.id, updates)} onChangeAssignees={(ids) => handleClientAssigneesChange(detailClient.id, ids)} onUndo={undoActivity} statusOptions={clientStatusEntries} replyStatusOptions={replyStatusEntries} channelOptions={channelEntries} importanceOptions={importanceEntries} groupNamesById={Object.fromEntries(groups.map((group) => [group.id, group.name]))} />;
       })()}
       {selectedIds.size > 0 && (
-        <div className="fixed bottom-8 left-1/2 z-[100] flex min-h-16 w-[min(900px,calc(100vw-2rem))] -translate-x-1/2 items-center gap-5 rounded-2xl border border-slate-200 bg-white px-6 py-4 shadow-2xl">
+        <div className="fixed bottom-8 left-1/2 z-[100] flex min-h-16 w-[min(1100px,calc(100vw-2rem))] -translate-x-1/2 items-center gap-2 overflow-x-auto rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-2xl">
           <div className="whitespace-nowrap text-base font-medium text-slate-800">{selectedIds.size} Client{selectedIds.size === 1 ? '' : 's'} selected</div>
           <button type="button" disabled={isDuplicatingClients || !canEditSelectedClients} title={!canEditSelectedClients ? 'You can only edit items that are assigned to you' : 'Duplicate selected clients'} onClick={() => void duplicateSelectedClients()} className="flex items-center gap-1.5 rounded px-3 py-2 text-sm text-slate-500 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"><Copy size={17} /> {isDuplicatingClients ? 'Duplicating...' : 'Duplicate'}</button>
           <div className="relative">
@@ -2794,8 +2852,9 @@ export function CRMBoard({ clients,
         </div>
       )}
       {selectedSubitemIds.length > 0 && (
-        <div className="fixed bottom-8 left-1/2 z-[100] flex min-h-16 w-[min(900px,calc(100vw-2rem))] -translate-x-1/2 items-center gap-5 rounded-2xl border border-slate-200 bg-white px-6 py-4 shadow-2xl">
+        <div className="fixed bottom-8 left-1/2 z-[100] flex min-h-16 w-[calc(100vw-3.5rem)] max-w-[1100px] -translate-x-1/2 items-center gap-2 overflow-x-auto rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-2xl">
           <div className="whitespace-nowrap text-base font-medium text-slate-800">{selectedSubitemIds.length} Subitem{selectedSubitemIds.length === 1 ? '' : 's'} selected</div>
+          <button type="button" disabled={!canAccessShipperPush || !canEditSelectedSubitems || loadingCombinedPush} onClick={() => selectedSubitemIds.length === 1 ? window.dispatchEvent(new CustomEvent('openShipperPush', { detail: { subitemId: selectedSubitemIds[0] } })) : void openCombinedPush()} title={!canAccessShipperPush ? 'Pushing is available to PM, Director, and Dev roles' : !canEditSelectedSubitems ? 'You can only edit items that are assigned to you' : 'Push selected subitems as one shipment'} className="shrink-0 flex items-center gap-1.5 rounded bg-teal-600 px-3 py-2 text-sm text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-50">{loadingCombinedPush ? 'Preparing...' : selectedSubitemIds.length > 1 ? 'Multi-push' : 'Push'}</button>
           <button type="button" disabled={isDuplicatingSubitems || !canEditSelectedSubitems} title={!canEditSelectedSubitems ? 'You can only edit items that are assigned to you' : 'Duplicate selected subitems'} onClick={() => void duplicateSelectedSubitems()} className="flex items-center gap-1.5 rounded px-3 py-2 text-sm text-slate-500 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"><Copy size={17} /> {isDuplicatingSubitems ? 'Duplicating...' : 'Duplicate'}</button>
           <div className="relative">
             <button type="button" disabled={isMovingSubitems || !canEditSelectedSubitems} onClick={() => setShowSubitemMoveMenu((open) => !open)} title={!canEditSelectedSubitems ? 'You can only edit items that are assigned to you' : 'Move selected subitems'} className="flex items-center gap-1.5 rounded px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"><MoveRight size={17} /> {isMovingSubitems ? 'Moving...' : 'Move'}</button>
@@ -2817,6 +2876,27 @@ export function CRMBoard({ clients,
           <div className="whitespace-nowrap text-center text-sm text-slate-600"><div>Total U.C</div><div className="font-medium text-slate-900">{selectedSubitemTotals.totalUc.toFixed(2)}</div></div>
           <button type="button" onClick={clearSubitemSelection} className="rounded p-1 text-slate-400 hover:bg-slate-50 hover:text-slate-700" title="Clear selection"><X size={21} /></button>
         </div>
+      )}
+      {shipmentChoiceDialog && (
+        <PreviousShipmentChoicesDialog
+          preview={shipmentChoiceDialog.preview}
+          history={shipmentChoiceDialog.history}
+          onChange={(preview) => setShipmentChoiceDialog((current) => current ? { ...current, preview: preview as CombinedPushPreview } : current)}
+          onCancel={() => setShipmentChoiceDialog(null)}
+          onContinue={() => {
+            setCombinedPushPreview(shipmentChoiceDialog.preview);
+            setShipmentChoiceDialog(null);
+          }}
+        />
+      )}
+      {combinedPushPreview && (
+        <CombinedPushPreviewModal
+          preview={combinedPushPreview}
+          saving={loadingCombinedPush}
+          onChange={setCombinedPushPreview}
+          onClose={() => setCombinedPushPreview(null)}
+          onConfirm={() => void confirmCombinedPush()}
+        />
       )}
       <div className="flex items-center gap-2 px-2 py-1 border-b border-gray-200 bg-white flex-shrink-0">
         <button onClick={addClient} className="flex items-center gap-1 px-2 py-1 bg-[#43adc4] hover:bg-[#0f8da8] text-white rounded-md text-[10px] font-medium transition-colors transition transform active:scale-95 duration-150">
