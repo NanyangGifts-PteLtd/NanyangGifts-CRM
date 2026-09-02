@@ -43,6 +43,7 @@ export type ShipmentRecord = {
   other_fees: number | null;
   total_cost: number | null;
   channel: string | null;
+  is_locked?: boolean;
   logistics_remarks?: string | null;
   cell_fills?: CellFills | null;
   items: ShipmentItem[];
@@ -131,6 +132,7 @@ function EditableCell({
   onSave: (value: string) => void;
 }) {
   const [draft, setDraft] = useState(text(value));
+  const [editingDate, setEditingDate] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => setDraft(text(value)), [value]);
@@ -169,7 +171,11 @@ function EditableCell({
     return <textarea ref={textareaRef} spellCheck={false} value={draft} rows={1} onChange={(event) => setDraft(event.target.value)} onBlur={() => onSave(draft)} className="block min-h-[56px] w-full resize-none overflow-hidden border-0 bg-transparent px-3 py-2 text-center whitespace-pre-wrap break-words outline-none focus:bg-blue-50" />;
   }
 
-  return <input spellCheck={false} type={column.input === "date" ? "date" : "number"} step={column.input === "number" ? "any" : undefined} value={draft} onChange={(event) => setDraft(event.target.value)} onBlur={() => onSave(draft)} className="min-h-[56px] w-full border-0 bg-transparent px-3 text-center outline-none focus:bg-blue-50" />;
+  if (column.input === "date" && !editingDate) {
+    return <button type="button" onClick={() => setEditingDate(true)} className="min-h-[56px] w-full px-3 text-center outline-none hover:bg-blue-50">{draft ? new Intl.DateTimeFormat("en-GB").format(new Date(`${draft}T00:00:00`)) : ""}</button>;
+  }
+
+  return <input autoFocus spellCheck={false} type={column.input === "date" ? "date" : "number"} step={column.input === "number" ? "any" : undefined} value={draft} onChange={(event) => setDraft(event.target.value)} onBlur={() => { onSave(draft); setEditingDate(false); }} className="min-h-[56px] w-full border-0 bg-transparent px-3 text-center outline-none focus:bg-blue-50" />;
 }
 
 function ShipmentRemarkCell({ value, shipmentId, shipperId, itemId, onSave }: { value: unknown; shipmentId: string; shipperId: string | null; itemId?: string; onSave: (value: string) => void }) {
@@ -256,6 +262,7 @@ export function ShipmentGrid({ shipments, mode = "pm" }: ShipmentGridProps) {
     });
     setPaletteOpen(false);
   };
+  const toggleLock = (shipment: ShipmentRecord) => void saveCell(shipment.id, undefined, "is_locked", shipment.is_locked ? "false" : "true");
 
   return (
     <div className="w-full">
@@ -277,13 +284,13 @@ export function ShipmentGrid({ shipments, mode = "pm" }: ShipmentGridProps) {
         <table className="min-w-[3150px] border-separate border-spacing-0 text-[13px] text-slate-900">
           <thead>
             <tr>
-              {columns.map((column, index) => <th key={column.key} style={column.width ? { minWidth: column.width, width: column.width } : undefined} className={`sticky top-0 z-20 border-b-2 border-r border-slate-400 px-3 py-2 text-center font-medium whitespace-nowrap ${index < 13 ? "bg-white" : "bg-[#4588ed] text-white"}`}>{column.label}</th>)}
+              <th className="sticky left-0 top-0 z-30 w-12 border-b-2 border-r border-slate-400 bg-slate-100">🔒</th>{columns.map((column, index) => <th key={column.key} style={column.width ? { minWidth: column.width, width: column.width } : undefined} className={`sticky top-0 z-20 border-b-2 border-r border-slate-400 px-3 py-2 text-center font-medium whitespace-nowrap ${index < 13 ? "bg-white" : "bg-[#4588ed] text-white"}`}>{column.label}</th>)}
             </tr>
           </thead>
           <tbody>
-            {gridShipments.length === 0 ? <tr><td colSpan={columns.length} className="p-8 text-center text-slate-500">No shipments yet.</td></tr> : gridShipments.flatMap((shipment) => {
+            {gridShipments.length === 0 ? <tr><td colSpan={columns.length + 1} className="p-8 text-center text-slate-500">No shipments yet.</td></tr> : gridShipments.flatMap((shipment) => {
               const items = shipment.items.length ? shipment.items : [emptyItem(shipment.id)];
-              return items.map((item, itemIndex) => <tr key={`${shipment.id}-${item.id}`} className="hover:bg-slate-50">{columns.map((column) => {
+              return items.map((item, itemIndex) => <tr key={`${shipment.id}-${item.id}`} className="hover:bg-slate-50">{itemIndex === 0 && <td rowSpan={items.length} className="sticky left-0 z-10 border-b border-r bg-white text-center"><button onClick={() => toggleLock(shipment)} className="p-2" title={shipment.is_locked ? "Unlock shipment" : "Lock shipment"}>{shipment.is_locked ? "🔒" : "🔓"}</button></td>}{columns.map((column) => {
                 const isShared = column.scope === "shipment";
                 if (isShared && itemIndex > 0) return null;
                 const record = isShared ? shipment : item;
@@ -293,7 +300,7 @@ export function ShipmentGrid({ shipments, mode = "pm" }: ShipmentGridProps) {
                 const cellKey = `${targetId}:${column.key}`;
                 const cell = { id: targetId, scope: column.scope, field: column.key } as const;
                 const isSelected = selectedCells.some(selected => selected.id === cell.id && selected.field === cell.field);
-                const editable = mode === "pm" || shipperEditableFields.has(column.key);
+                const editable = (mode === "pm" || shipperEditableFields.has(column.key)) && (!shipment.is_locked || ["air_received", "sea_received"].includes(column.key));
                 const saveValue = (nextValue: string) => { if (nextValue !== text(value)) void saveCell(shipment.id, isShared ? undefined : item.id, column.key, nextValue); };
                 return <td key={column.key} rowSpan={isShared ? items.length : undefined} style={{ ...(column.width ? { minWidth: column.width, width: column.width } : {}), backgroundColor: fill }} onClick={(event) => setSelectedCells(current => { if (!event.ctrlKey && !event.metaKey) return [cell]; return isSelected ? current.filter(selected => !(selected.id === cell.id && selected.field === cell.field)) : [...current, cell]; })} className={`border-b border-r border-slate-300 p-0 text-center align-middle ${isSelected ? "ring-2 ring-inset ring-sky-600" : ""}`}>{savingCell === cellKey ? <div className="min-h-[56px] px-2 py-3 text-xs text-slate-400">Saving…</div> : editable && (column.key === "logistics_remarks" || column.key === "remarks") ? <ShipmentRemarkCell value={value} shipmentId={shipment.id} shipperId={shipment.shipper_id} itemId={isShared ? undefined : item.id} onSave={saveValue} /> : editable ? <EditableCell value={value} column={column} onSave={saveValue} /> : <div className="min-h-[56px] px-3 py-2 whitespace-pre-wrap">{text(value)}</div>}</td>;
               })}</tr>);

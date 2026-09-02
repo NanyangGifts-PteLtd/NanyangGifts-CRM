@@ -50,6 +50,7 @@ const shipmentFields = new Set([
     "chargeable_weight_kg", "destination", "freight_unit_price", "gst",
     "other_fees", "channel", "ic", "date_of_submission", "cn_tracking_no",
     "cartons", "delivery_info", "sea_or_air", "tax_refund",
+    "is_locked",
     "samples_by_air", "samples_by_sea", "remarks", "logistics_remarks",
     "cell_fills",
 ]);
@@ -73,6 +74,7 @@ function nullableNumber(value: unknown) {
 }
 
 function validatedValue(field: string, value: unknown, numericFields: Set<string>) {
+    if (field === "is_locked") return value === true || value === "true";
     if (numericFields.has(field)) return nullableNumber(value);
     if (field === "sea_or_air" && value && !["空运", "海运", "海运/小包"].includes(String(value))) {
         throw new Error("Sea or Air must be 空运, 海运, or 海运/小包.");
@@ -111,6 +113,9 @@ export async function PATCH(request: NextRequest) {
         const id = body.shipmentId ?? body.itemId!;
         const allowed = body.shipmentId ? shipmentFields : itemFields;
         if (!allowed.has(body.field)) return NextResponse.json({ error: "Unsupported shipment field." }, { status: 400 });
+        const { data: lockSource } = body.shipmentId ? await supabase.from("shipper_shipments").select("is_locked").eq("id", id).single() : await supabase.from("shipper_shipment_items").select("shipment:shipper_shipments(is_locked)").eq("id", id).single();
+        const locked = body.shipmentId ? (lockSource as any)?.is_locked : ((lockSource as any)?.shipment?.[0]?.is_locked ?? (lockSource as any)?.shipment?.is_locked);
+        if (locked && body.field !== "is_locked" && !["air_received", "sea_received"].includes(body.field)) return NextResponse.json({ error: "This shipment is locked." }, { status: 423 });
 
         if (session.profile.role === "shipper") {
             const shipperId = String(session.user.user_metadata?.shipper_id ?? "");
