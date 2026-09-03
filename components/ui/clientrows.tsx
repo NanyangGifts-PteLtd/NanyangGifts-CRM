@@ -2376,15 +2376,17 @@ export function ClientRow({
             )}
           </div>
         ))}
-        <div
-          className="flex-shrink-0 border-r border-[#D0D4E4]"
-          style={{
-            height: 30,
-            minWidth: colWidth.addClientCol ?? 44,
-            width: colWidth.addClientCol ?? 44,
-            order: columnOrderMap.addClientCol ?? 999,
-          }}
-        />
+        {!trackingMode && (
+          <div
+            className="flex-shrink-0 border-r border-[#D0D4E4]"
+            style={{
+              height: 30,
+              minWidth: colWidth.addClientCol ?? 44,
+              width: colWidth.addClientCol ?? 44,
+              order: columnOrderMap.addClientCol ?? 999,
+            }}
+          />
+        )}
         {/* delete button */}
         <div
           className="flex items-center flex-shrink-0"
