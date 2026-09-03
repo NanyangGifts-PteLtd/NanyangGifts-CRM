@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createClient as createServiceClient } from '@supabase/supabase-js';
+import { createClient } from '@/lib/supabase/server';
 
-const supabase = createClient(
+const supabase = createServiceClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
@@ -53,6 +54,17 @@ function toNumberOrNull(value: unknown): number | null {
 
 export async function POST(req: NextRequest) {
     try {
+        const sessionClient = await createClient();
+        const { data: { user } } = await sessionClient.auth.getUser();
+        if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        const { data: profile } = await sessionClient
+            .from('profiles')
+            .select('role, shipper_id')
+            .eq('id', user.id)
+            .maybeSingle();
+        const role = profile?.role?.toLowerCase() ?? '';
+        const isShipmentStaff = ['pm', 'admin', 'director', 'dev'].includes(role);
+        if (!isShipmentStaff && role !== 'shipper') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
         const body = (await req.json()) as Body;
 
         if (!body.subitemId || !body.field) {
@@ -62,6 +74,14 @@ export async function POST(req: NextRequest) {
         const dbKey = FIELD_MAP[body.field];
         if (!dbKey) {
             return NextResponse.json({ error: 'Unsupported field' }, { status: 400 });
+        }
+        const shipperEditableFields = new Set([
+            'serial_number', 'waybill_date', 'waybill_number', 'pieces',
+            'chargeable_weight_kg', 'destination', 'freight_unit_price', 'gst',
+            'other_fees', 'channel', 'logistics_remarks',
+        ]);
+        if (role === 'shipper' && !shipperEditableFields.has(dbKey)) {
+            return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
         }
         if (dbKey === "info_provided_date" && body.value && !/^\d{4}-\d{2}-\d{2}$/.test(String(body.value))) return NextResponse.json({ error: "Date must use a valid date format" }, { status: 400 });
         if (["pieces", "chargeable_weight_kg", "freight_unit_price", "gst", "other_fees", "cartons", "qty", "up"].includes(dbKey) && body.value !== "" && !Number.isFinite(Number(body.value))) return NextResponse.json({ error: "This field must be a number" }, { status: 400 });
@@ -87,6 +107,9 @@ export async function POST(req: NextRequest) {
                 { status: 400 }
             );
         }
+        if (role === 'shipper' && profile?.shipper_id !== shipperId) {
+            return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+        }
 
         const { data: existing, error: existingError } = await supabase
             .from('shipper_view_rows')
@@ -95,6 +118,9 @@ export async function POST(req: NextRequest) {
             .maybeSingle();
 
         if (existingError) throw existingError;
+        if (role === 'shipper' && (!existing || existing.shipper_id !== shipperId)) {
+            return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+        }
 
         let nextValue =
             dbKey === 'qty' ||

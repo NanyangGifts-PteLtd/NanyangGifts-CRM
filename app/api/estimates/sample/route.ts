@@ -154,7 +154,7 @@ export async function POST(req: NextRequest) {
     const rows = subitems.map((item: any) => { const qty = numberValue(item.qty) || 1; const unitPrice = numberValue(item.up) || (qty > 0 ? numberValue(item.price) / qty : 0); return { name: item.name || "Unnamed item", description: item.description || "", qty, unitPrice, amount: qty * unitPrice, artwork: artworkById.get(item.id) }; });
     const filename = `Sample Estimate - ${String(client.company).replace(/[^a-z0-9]+/gi, " ").trim() || "Client"}.pdf`;
     const createdBy = profile?.full_name?.trim() || profile?.email || "CRM user";
-    const storagePath = `sample-estimates/${clientId}/${randomUUID()}.pdf`;
+    const storagePath = `clients/${clientId}/sample-estimates/${user.id}/${randomUUID()}.pdf`;
     const pdf = await makePdf({ client, rows, createdBy });
     const { error: uploadError } = await supabase.storage.from("crm-files").upload(storagePath, pdf, { contentType: "application/pdf", upsert: false });
     if (uploadError) return NextResponse.json({ error: uploadError.message }, { status: 500 });

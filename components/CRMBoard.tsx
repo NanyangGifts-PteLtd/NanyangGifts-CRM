@@ -53,6 +53,7 @@ import {
 import {
   fetchProfiles,
   saveClientAssignees,
+  saveClientPmAssignees,
   saveSubitemAssignees,
 } from "@/lib/assignments";
 import {
@@ -67,7 +68,7 @@ import {
   duplicateSubitemRow,
   duplicateClientRow,
 } from "@/lib/crm";
-import { fetchClientAssigneeMap } from "@/lib/assignments";
+import { fetchClientAssignmentMaps } from "@/lib/assignments";
 import { GenerateOcfModal } from "./Generate-OCF-Modal";
 import { OcfChooserModal } from "./OcfChooserModal";
 import { AddGroupModal } from "./Add-Group-Modal";
@@ -219,6 +220,8 @@ interface CRMBoardProps {
   currentUserRole?: string | null;
   clientAssignees: ClientAssigneeMap;
   setClientAssignees: React.Dispatch<React.SetStateAction<ClientAssigneeMap>>;
+  clientPmAssignees: ClientAssigneeMap;
+  setClientPmAssignees: React.Dispatch<React.SetStateAction<ClientAssigneeMap>>;
   subitemAssignees: SubitemAssigneeMap;
   setSubitemAssignees: React.Dispatch<React.SetStateAction<SubitemAssigneeMap>>;
   searchTarget?: SearchResult | null;
@@ -247,6 +250,8 @@ export function CRMBoard({
   currentUserRole,
   clientAssignees,
   setClientAssignees,
+  clientPmAssignees,
+  setClientPmAssignees,
   subitemAssignees,
   setSubitemAssignees,
   searchTarget,
@@ -460,16 +465,10 @@ export function CRMBoard({
     };
   }, []);
 
-  const clientPmAssigneeIds = useCallback((client: Client) => {
-    try {
-      const ids = JSON.parse(client.customFields?.pmAssigneeIds ?? "[]");
-      return Array.isArray(ids)
-        ? ids.filter((id): id is string => typeof id === "string")
-        : [];
-    } catch {
-      return [];
-    }
-  }, []);
+  const clientPmAssigneeIds = useCallback(
+    (client: Client) => clientPmAssignees[client.id] ?? [],
+    [clientPmAssignees],
+  );
 
   const canEditClientRecord = useCallback(
     (clientId: string) => {
@@ -4137,6 +4136,40 @@ export function CRMBoard({
     [clientAssignees, clients, currentUserId],
   );
 
+  const handleClientPmAssigneesChange = useCallback(
+    async (clientId: string, ids: string[]) => {
+      const previousIds = clientPmAssignees[clientId] ?? [];
+      setClientPmAssignees((previous) => ({ ...previous, [clientId]: ids }));
+      try {
+        await saveClientPmAssignees(clientId, ids, currentUserId);
+        const clientName =
+          clients.find((client) => client.id === clientId)?.name ?? "A client";
+        await Promise.all(
+          ids
+            .filter((id) => !previousIds.includes(id))
+            .map((recipientUserId) =>
+              fetch("/api/notifications", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  recipientUserId,
+                  clientId,
+                  message: `You have been assigned as PM for ${clientName}.`,
+                }),
+              }),
+            ),
+        );
+      } catch (error) {
+        console.error("Failed to save client PM assignees", error);
+        setClientPmAssignees((previous) => ({
+          ...previous,
+          [clientId]: previousIds,
+        }));
+      }
+    },
+    [clientPmAssignees, clients, currentUserId, setClientPmAssignees],
+  );
+
   const handleSubitemAssigneesChange = useCallback(
     async (subitemId: string, ids: string[]) => {
       const previousIds = subitemAssignees[subitemId] ?? [];
@@ -4203,21 +4236,11 @@ export function CRMBoard({
     );
     if (existing) return existing;
 
-    const supabase = createSupabaseClient();
-    const nextSort = groups.length
-      ? Math.max(...groups.map((group) => group.sort_order ?? 0)) + 1
-      : 0;
-    const { data, error } = await supabase
-      .from("crm_groups")
-      .insert({
-        name,
-        color: "#7BCBD5",
-        sort_order: nextSort,
-        created_by: currentUserId,
-      })
-      .select("id, name, color, sort_order")
-      .single();
-    if (error) throw error;
+    const response = await fetch("/api/crm-groups/ensure-current-closed", {
+      method: "POST",
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data?.error ?? "Could not create the current Closed Leads group.");
     setGroups((previous) =>
       previous.some((group) => group.id === data.id)
         ? previous
@@ -4225,7 +4248,7 @@ export function CRMBoard({
     );
     setCollapsedGroups((previous) => ({ ...previous, [data.id]: false }));
     return data;
-  }, [currentUserId, groups]);
+  }, [groups]);
 
   const commitCustomerMatch = useCallback(
     async (
@@ -4296,16 +4319,7 @@ export function CRMBoard({
       closeRequirementsApproved = false,
     ) => {
       const existingClient = clients.find((client) => client.id === clientId);
-      const pmAssignmentOnly =
-        Object.keys(updates).length === 1 &&
-        updates.customFields !== undefined &&
-        updates.customFields.pmAssigneeIds !== undefined &&
-        Object.entries(updates.customFields).every(
-          ([key, value]) =>
-            key === "pmAssigneeIds" ||
-            existingClient?.customFields?.[key] === value,
-        );
-      if (!pmAssignmentOnly && !canEditClientRecord(clientId)) {
+      if (!canEditClientRecord(clientId)) {
         showAssignmentPermissionError();
         return;
       }
@@ -4527,6 +4541,7 @@ export function CRMBoard({
         const [stored] = await uploadCrmFiles(
           [file],
           `clients/${pendingCloseLead.clientId}/closed-lead-files`,
+          { clientId: pendingCloseLead.clientId },
         );
         return {
           ...stored,
@@ -4770,8 +4785,11 @@ export function CRMBoard({
         }));
       setExpandedIds((prev) => [...prev, newClient.id]);
       notifyChange("Client added", `${newClient.name} was added to the board.`);
-      fetchClientAssigneeMap()
-        .then((m) => setClientAssignees(m))
+      fetchClientAssignmentMaps()
+        .then((maps) => {
+          setClientAssignees(maps.people);
+          setClientPmAssignees(maps.pm);
+        })
         .catch((e) => console.error("Failed to refresh assignees", e));
     } catch (error: any) {
       console.error("Failed to add client", error);
@@ -4783,6 +4801,7 @@ export function CRMBoard({
     currentUserId,
     groups,
     setClientAssignees,
+    setClientPmAssignees,
     setClients,
     setExpandedIds,
     notifyChange,
@@ -4883,11 +4902,12 @@ export function CRMBoard({
         [...selectedIds].map((clientId) => duplicateClientRow(clientId)),
       );
       await reloadClients();
-      const [nextClientAssignees, nextSubitemAssignees] = await Promise.all([
-        fetchClientAssigneeMap(),
+      const [nextClientAssignmentMaps, nextSubitemAssignees] = await Promise.all([
+        fetchClientAssignmentMaps(),
         fetchAllSubitemAssignees(),
       ]);
-      setClientAssignees(nextClientAssignees);
+      setClientAssignees(nextClientAssignmentMaps.people);
+      setClientPmAssignees(nextClientAssignmentMaps.pm);
       setSubitemAssignees(nextSubitemAssignees);
       toast.success("Clients duplicated", {
         description: `${selectedIds.size} selected client${selectedIds.size === 1 ? "" : "s"} were copied with their subitems.`,
@@ -4909,6 +4929,7 @@ export function CRMBoard({
     reloadClients,
     selectedIds,
     setClientAssignees,
+    setClientPmAssignees,
     setSubitemAssignees,
     showAssignmentPermissionError,
   ]);
@@ -4922,11 +4943,12 @@ export function CRMBoard({
       try {
         await duplicateClientRow(clientId);
         await reloadClients();
-        const [nextClientAssignees, nextSubitemAssignees] = await Promise.all([
-          fetchClientAssigneeMap(),
+        const [nextClientAssignmentMaps, nextSubitemAssignees] = await Promise.all([
+          fetchClientAssignmentMaps(),
           fetchAllSubitemAssignees(),
         ]);
-        setClientAssignees(nextClientAssignees);
+        setClientAssignees(nextClientAssignmentMaps.people);
+        setClientPmAssignees(nextClientAssignmentMaps.pm);
         setSubitemAssignees(nextSubitemAssignees);
         toast.success("Client duplicated");
       } catch (error: any) {
@@ -4939,6 +4961,7 @@ export function CRMBoard({
       canEditClientRecord,
       reloadClients,
       setClientAssignees,
+      setClientPmAssignees,
       setSubitemAssignees,
       showAssignmentPermissionError,
     ],
@@ -5261,6 +5284,7 @@ export function CRMBoard({
             <SubitemDetailView
               key={subitem.id}
               subitem={subitem}
+              clientId={owner.id}
               clientName={owner.name}
               siblings={owner.subitems}
               profiles={profiles}
@@ -5350,6 +5374,9 @@ export function CRMBoard({
               onUpdate={(updates) => updateClient(detailClient.id, updates)}
               onChangeAssignees={(ids) =>
                 handleClientAssigneesChange(detailClient.id, ids)
+              }
+              onChangePmAssignees={(ids) =>
+                handleClientPmAssigneesChange(detailClient.id, ids)
               }
               onUndo={undoActivity}
               statusOptions={clientStatusEntries}
@@ -7505,6 +7532,10 @@ export function CRMBoard({
                       onChangeClientAssignees={(ids) =>
                         handleClientAssigneesChange(client.id, ids)
                       }
+                      clientPmAssignedIds={clientPmAssignees[client.id] ?? []}
+                      onChangeClientPmAssignees={(ids) =>
+                        handleClientPmAssigneesChange(client.id, ids)
+                      }
                       subitemAssigneeMap={subitemAssignees}
                       onChangeSubitemAssignees={handleSubitemAssigneesChange}
                       colWidth={colWidth}
@@ -7714,6 +7745,7 @@ export function CRMBoard({
           const [artwork] = await uploadCrmFiles(
             [file],
             `subitems/${subitemId}/ocf-final-artwork`,
+            { clientId: ocfClient.id, subitemId },
           );
           await updateSubitem(ocfClient.id, subitemId, {
             customFields: {

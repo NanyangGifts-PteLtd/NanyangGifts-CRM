@@ -40,60 +40,44 @@ export type RoundRobinQueueRow = {
 }
 
 export async function saveSalesRoundRobinLayout(rows: Array<{ user_id: string; list_name: 'sales' | 'whatsapp' | 'out'; position: number }>) {
-    const { error } = await supabase.rpc('save_sales_round_robin_layout', { layout: rows });
-    if (error) throw error;
+    const response = await fetch('/api/round-robin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'save-layout', layout: rows }) });
+    if (!response.ok) throw new Error((await response.json()).error ?? 'Could not save round robin layout.');
 }
 
 export async function getSalesRoundRobinPointer() {
-    const { data, error } = await supabase.rpc('get_sales_round_robin_pointer');
-    if (error) throw error;
-    return Number(data ?? 0);
+    const response = await fetch('/api/round-robin');
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error ?? 'Could not load round robin.');
+    return Number(result.pointer ?? 0);
 }
 
 export async function setSalesRoundRobinPointer(position: number) {
-    const { error } = await supabase.rpc('set_sales_round_robin_pointer', { new_position: position });
-    if (error) throw error;
+    const response = await fetch('/api/round-robin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'set-pointer', position }) });
+    if (!response.ok) throw new Error((await response.json()).error ?? 'Could not set round robin pointer.');
 }
 
 export async function getSalesRoundRobinQueue() {
-    const supabase = createClient();
-    const [{ data: queue, error }, { data: layout, error: layoutError }] = await Promise.all([
-        supabase.rpc('get_sales_round_robin_queue'),
-        supabase.from('sales_round_robin_pool').select('user_id, position, is_active, list_name').order('position'),
-    ]);
-
-    if (error) throw error;
-    if (layoutError) throw layoutError;
-    const queueById = new Map((queue ?? []).map((row: any) => [row.user_id, row]));
-    return (layout ?? []).map((row: any) => ({ ...row, ...(queueById.get(row.user_id) ?? {}), list_name: row.list_name })) as RoundRobinQueueRow[];
+    const response = await fetch('/api/round-robin');
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error ?? 'Could not load round robin.');
+    return (result.queue ?? []) as RoundRobinQueueRow[];
 }
 
 export async function getNextSalesAssignee() {
-    const supabase = createClient();
-    const { data, error } = await supabase.rpc('get_next_sales_assignee');
-
-    if (error) throw error;
-    return (data?.[0] ?? null) as { user_id: string; position: number } | null;
+    const response = await fetch('/api/round-robin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'get-next' }) });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error ?? 'Could not load round robin.');
+    return (result.next ?? null) as { user_id: string; position: number } | null;
 }
 
 export async function swapSalesRoundRobinFunctions(firstUserId: string, secondUserId: string) {
-    const supabase = createClient();
-    const { error } = await supabase.rpc('swap_sales_round_robin_positions', {
-        first_user_id: firstUserId,
-        second_user_id: secondUserId,
-    });
-
-    if (error) throw error;
+    const response = await fetch('/api/round-robin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'swap', firstUserId, secondUserId }) });
+    if (!response.ok) throw new Error((await response.json()).error ?? 'Could not swap round robin positions.');
 }
 
 export async function setSalesRoundRobinActive(userId: string, isActive: boolean) {
-    const supabase = createClient();
-    const { error } = await supabase
-        .from('sales_round_robin_pool')
-        .update({ is_active: isActive })
-        .eq('user_id', userId);
-
-    if (error) throw error;
+    const response = await fetch('/api/round-robin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'set-active', userId, isActive }) });
+    if (!response.ok) throw new Error((await response.json()).error ?? 'Could not update round robin member.');
 }
 type Subitems = {
     id: string;
@@ -688,11 +672,11 @@ async function assertDeletionAllowed(table: 'clients' | 'subitems', id: string) 
         .eq('id', user.id)
         .single();
     if (profileError) throw profileError;
-    if (profile?.role === 'director' || profile?.role === 'dev') return;
+    if (['admin', 'director', 'dev'].includes(String(profile?.role ?? '').toLowerCase())) return;
 
     const { data: item, error: itemError } = await supabase
         .from(table)
-        .select('created_at')
+        .select('created_at, deletion_owner_id')
         .eq('id', id)
         .single();
     if (itemError) throw itemError;
@@ -702,16 +686,8 @@ async function assertDeletionAllowed(table: 'clients' | 'subitems', id: string) 
     const ageInHours = (Date.now() - new Date(createdAt).getTime()) / 3_600_000;
     if (ageInHours >= 72) throw new Error('This item is more than 72 hours old and can only be deleted by a director or dev.');
 
-    const assigneeTable = table === 'clients' ? 'client_assignees' : 'subitem_assignees';
-    const foreignKey = table === 'clients' ? 'client_id' : 'subitem_id';
-    const { data: creator } = await supabase
-        .from(assigneeTable)
-        .select('user_id')
-        .eq(foreignKey, id)
-        .limit(1)
-        .maybeSingle();
-    if (!creator?.user_id || creator.user_id !== user.id) {
-        throw new Error('You can only delete items created by you, unless you are a director or dev.');
+    if (!item.deletion_owner_id || item.deletion_owner_id !== user.id) {
+        throw new Error('You can only delete items created by you, unless you are an admin, director, or developer.');
     }
 }
 

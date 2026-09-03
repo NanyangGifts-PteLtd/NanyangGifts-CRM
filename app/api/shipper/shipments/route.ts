@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createShipment, getShipperShipments, type ShipmentInput } from "@/lib/shipper/shipments";
 
-const ALLOWED_ROLES = new Set(["pm", "director", "dev"]);
+const ALLOWED_ROLES = new Set(["pm", "admin", "director", "dev"]);
 
 async function currentProfile() {
     const supabase = await createClient();
@@ -11,7 +11,7 @@ async function currentProfile() {
 
     const { data: profile, error: profileError } = await supabase
         .from("profiles")
-    .select("id, role")
+    .select("id, role, shipper_id")
         .eq("id", user.id)
         .single();
     if (profileError || !profile || (![...ALLOWED_ROLES, "shipper"].includes(profile.role ?? ""))) return { error: "Forbidden" as const };
@@ -118,7 +118,7 @@ export async function PATCH(request: NextRequest) {
         if (locked && body.field !== "is_locked" && !["air_received", "sea_received"].includes(body.field)) return NextResponse.json({ error: "This shipment is locked." }, { status: 423 });
 
         if (session.profile.role === "shipper") {
-            const shipperId = String(session.user.user_metadata?.shipper_id ?? "");
+            const shipperId = session.profile.shipper_id ?? "";
             const { data: owner, error: ownerError } = body.shipmentId
                 ? await supabase.from("shipper_shipments").select("shipper_id").eq("id", id).single()
                 : await supabase.from("shipper_shipment_items").select("shipment:shipper_shipments(shipper_id)").eq("id", id).single();

@@ -68,8 +68,11 @@ function attachments(raw: string | undefined, field: string): Attachment[] {
   return raw ? [{ id: `${field}-legacy`, name: raw, url: raw }] : [];
 }
 
-function attachmentsFromFiles(files: File[]): Promise<Attachment[]> {
-  return uploadCrmFiles(files, "client-files");
+function attachmentsFromFiles(
+  files: File[],
+  clientId: string,
+): Promise<Attachment[]> {
+  return uploadCrmFiles(files, "client-files", { clientId });
 }
 
 function formatDate(value: string | undefined) {
@@ -105,6 +108,7 @@ export function ClientDetailView({
   onNavigate,
   onUpdate,
   onChangeAssignees,
+  onChangePmAssignees,
   onUndo,
   statusOptions,
   replyStatusOptions,
@@ -129,6 +133,7 @@ export function ClientDetailView({
   onNavigate: (client: Client) => void;
   onUpdate: (updates: Partial<Client>) => void;
   onChangeAssignees: (ids: string[]) => void;
+  onChangePmAssignees: (ids: string[]) => void;
   onUndo: (entry: ActivityEntry) => void | Promise<void>;
   statusOptions: BadgeOption[];
   replyStatusOptions: BadgeOption[];
@@ -570,14 +575,7 @@ export function ClientDetailView({
                     <AssigneeMultiSelect
                       profiles={pmProfiles}
                       selectedIds={pmIds}
-                      onChange={(ids) =>
-                        onUpdate({
-                          customFields: {
-                            ...(client.customFields ?? {}),
-                            pmAssigneeIds: JSON.stringify(ids),
-                          },
-                        })
-                      }
+                      onChange={onChangePmAssignees}
                     />
                   </div>
                 </div>
@@ -652,7 +650,7 @@ export function ClientDetailView({
                 key={field}
                 disabled={!canEdit || field === "ocfFiles"}
                 onFiles={(files) => {
-                  void attachmentsFromFiles(files).then((next) =>
+                  void attachmentsFromFiles(files, client.id).then((next) =>
                     saveFiles(field, [...items, ...next]),
                   );
                 }}
@@ -670,6 +668,7 @@ export function ClientDetailView({
                           onChange={(event) => {
                             void attachmentsFromFiles(
                               Array.from(event.target.files ?? []),
+                              client.id,
                             ).then((next) =>
                               saveFiles(field, [...items, ...next]),
                             );

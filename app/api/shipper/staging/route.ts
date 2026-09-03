@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { createShipment } from "@/lib/shipper/shipments";
 
-const ROLES = ["pm", "director", "dev"];
+const ROLES = ["pm", "admin", "director", "dev"];
 async function authorized() { const supabase = await createClient(); const { data: { user } } = await supabase.auth.getUser(); if (!user) return null; const { data } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle(); return data?.role && ROLES.includes(data.role) ? user : null; }
 
 export async function POST(request: NextRequest) {

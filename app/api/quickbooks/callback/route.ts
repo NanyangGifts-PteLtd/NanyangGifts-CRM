@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { supabaseAdmin } from '@/lib/supabase/admin';
 
 export async function GET(req: NextRequest) {
     const url = new URL(req.url);
@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ error: tokenJson }, { status: 500 });
     }
 
-    const supabase = await createClient();
+    const supabase = supabaseAdmin;
     const now = Date.now();
     const accessExpiresAt = new Date(now + tokenJson.expires_in * 1000).toISOString();
 

@@ -8,6 +8,9 @@ async function currentProfile() {
     if (!user) return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
     const { data: profile } = await supabaseAdmin.from("profiles").select("id, full_name, email, role").eq("id", user.id).maybeSingle();
     if (!profile) return { error: NextResponse.json({ error: "Profile not found" }, { status: 403 }) };
+    if (!["sales", "pm", "admin", "director", "dev"].includes(profile.role?.toLowerCase() ?? "")) {
+        return { error: NextResponse.json({ error: "Forbidden" }, { status: 403 }) };
+    }
     return { user, profile };
 }
 
@@ -51,7 +54,7 @@ export async function DELETE(req: NextRequest) {
     if (!id) return NextResponse.json({ error: "id is required" }, { status: 400 });
     const { data: update, error } = await supabaseAdmin.from("client_updates").select("id, author_id").eq("id", id).maybeSingle();
     if (error || !update) return NextResponse.json({ error: error?.message ?? "Update not found" }, { status: 404 });
-    if (update.author_id !== current.user.id && !["director", "dev"].includes(current.profile.role ?? "")) return NextResponse.json({ error: "Only the author, a director, or a developer can delete this update" }, { status: 403 });
+    if (update.author_id !== current.user.id && !["admin", "director", "dev"].includes(current.profile.role?.toLowerCase() ?? "")) return NextResponse.json({ error: "Only the author, an admin, a director, or a developer can delete this update" }, { status: 403 });
     const { error: deleteError } = await supabaseAdmin.from("client_updates").delete().eq("id", id);
     if (deleteError) return NextResponse.json({ error: deleteError.message }, { status: 500 });
     return NextResponse.json({ ok: true });

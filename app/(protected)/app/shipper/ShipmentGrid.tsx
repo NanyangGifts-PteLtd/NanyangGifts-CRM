@@ -339,6 +339,14 @@ function ShipmentRemarkCell({
   itemId?: string;
   onSave: (value: string) => void;
 }) {
+  const attachmentSource = (reference: string) => {
+    if (reference.startsWith("/api/shipper/image?path=")) return reference;
+    const publicMarker = "/storage/v1/object/public/shipper-attachments/";
+    const markerIndex = reference.indexOf(publicMarker);
+    if (markerIndex === -1) return reference;
+    const path = reference.slice(markerIndex + publicMarker.length);
+    return `/api/shipper/image?path=${encodeURIComponent(path)}`;
+  };
   const [draft, setDraft] = useState(text(value));
   const [uploading, setUploading] = useState(false);
   useEffect(() => setDraft(text(value)), [value]);
@@ -368,11 +376,11 @@ function ShipmentRemarkCell({
       setUploading(false);
     }
   };
-  const urls = [
-    ...draft.matchAll(/\[\[shipper-image:(https?:\/\/[^\]]+)\]\]/g),
-  ].map((match) => match[1]);
+  const urls = [...draft.matchAll(/\[\[shipper-image:([^\]]+)\]\]/g)].map(
+    (match) => match[1],
+  );
   const plainText = draft
-    .replace(/\[\[shipper-image:https?:\/\/[^\]]+\]\]/g, "")
+    .replace(/\[\[shipper-image:[^\]]+\]\]/g, "")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
   const setPlainText = (nextText: string) =>
@@ -426,9 +434,9 @@ function ShipmentRemarkCell({
       />
       {urls.map((url) => (
         <div key={url} className="relative mx-auto mb-2 w-fit">
-          <a href={url} target="_blank" rel="noreferrer">
+          <a href={attachmentSource(url)} target="_blank" rel="noreferrer">
             <img
-              src={url}
+              src={attachmentSource(url)}
               alt="Remark attachment"
               className="max-h-32 max-w-[180px] rounded border"
             />

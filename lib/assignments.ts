@@ -11,34 +11,53 @@ export type ProfileOption = {
     role?: string | null;
 };
 
-export async function fetchClientAssigneeMap() {
+export type ClientAssignmentType = 'people' | 'pm';
+
+export type ClientAssignmentMaps = {
+    people: Record<string, string[]>;
+    pm: Record<string, string[]>;
+};
+
+export async function fetchClientAssignmentMaps(): Promise<ClientAssignmentMaps> {
     const { data, error } = await supabase
         .from('client_assignees')
-        .select('client_id, user_id');
+        .select('client_id, user_id, assignment_type');
 
     if (error) throw error;
 
-    const map: Record<string, string[]> = {};
+    const maps: ClientAssignmentMaps = { people: {}, pm: {} };
 
     for (const row of data ?? []) {
+        const assignmentType: ClientAssignmentType = row.assignment_type === 'pm' ? 'pm' : 'people';
+        const map = maps[assignmentType];
         if (!map[row.client_id]) {
             map[row.client_id] = [];
         }
         map[row.client_id].push(row.user_id);
     }
 
-    return map;
+    return maps;
+}
+
+export async function fetchClientAssigneeMap() {
+    return (await fetchClientAssignmentMaps()).people;
+}
+
+export async function fetchClientPmAssigneeMap() {
+    return (await fetchClientAssignmentMaps()).pm;
 }
 export async function addClientAssignee(
     clientId: string,
     userId: string,
-    currentUserId?: string | null
+    currentUserId?: string | null,
+    assignmentType: ClientAssignmentType = 'people',
 ) {
     const { data, error } = await supabase
         .from('client_assignees')
         .insert({
             client_id: clientId,
             user_id: userId,
+            assignment_type: assignmentType,
             assigned_by: currentUserId ?? null,
         })
         .select('*');
@@ -65,7 +84,8 @@ export async function fetchClientAssigneeIds(clientId: string) {
     const { data, error } = await supabase
         .from('client_assignees')
         .select('user_id')
-        .eq('client_id', clientId);
+        .eq('client_id', clientId)
+        .eq('assignment_type', 'people');
 
     if (error) throw error;
     return (data ?? []).map((row) => row.user_id as string);
@@ -84,12 +104,14 @@ export async function fetchSubitemAssigneeIds(subitemId: string) {
 export async function saveClientAssignees(
     clientId: string,
     selectedProfileIds: string[],
-    currentUserId?: string | null
+    currentUserId?: string | null,
+    assignmentType: ClientAssignmentType = 'people',
 ) {
     const { error: deleteError } = await supabase
         .from('client_assignees')
         .delete()
-        .eq('client_id', clientId);
+        .eq('client_id', clientId)
+        .eq('assignment_type', assignmentType);
 
     if (deleteError) throw deleteError;
 
@@ -98,6 +120,7 @@ export async function saveClientAssignees(
     const rows = selectedProfileIds.map((profileId) => ({
         client_id: clientId,
         user_id: profileId,
+        assignment_type: assignmentType,
         assigned_by: currentUserId ?? null,
     }));
 
@@ -106,6 +129,14 @@ export async function saveClientAssignees(
         .insert(rows);
 
     if (insertError) throw insertError;
+}
+
+export async function saveClientPmAssignees(
+    clientId: string,
+    selectedProfileIds: string[],
+    currentUserId?: string | null,
+) {
+    return saveClientAssignees(clientId, selectedProfileIds, currentUserId, 'pm');
 }
 
 export async function saveSubitemAssignees(

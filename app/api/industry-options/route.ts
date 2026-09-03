@@ -8,6 +8,10 @@ export async function GET(request: NextRequest) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
+  if (!["sales", "pm", "admin", "director", "dev"].includes(profile?.role?.toLowerCase() ?? "")) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
 
   const search = (request.nextUrl.searchParams.get("q") ?? "").trim().slice(0, 100);
   let query = supabaseAdmin

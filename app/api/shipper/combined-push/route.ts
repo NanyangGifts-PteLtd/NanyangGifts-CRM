@@ -5,7 +5,7 @@ import { createShipment, type ShipmentInput } from "@/lib/shipper/shipments";
 
 type PushValue = Record<string, string> & { subitemId: string };
 type Body = { subitemIds: string[]; values: PushValue[]; shared: Record<string, string>; existingMode?: "separate" | "repush"; amendShipmentIdBySubitemId?: Record<string, string> };
-const ALLOWED_ROLES = new Set(["pm", "director", "dev"]);
+const ALLOWED_ROLES = new Set(["pm", "admin", "director", "dev"]);
 
 export async function POST(request: NextRequest) {
     try {

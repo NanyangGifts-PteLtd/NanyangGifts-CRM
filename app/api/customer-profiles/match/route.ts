@@ -23,7 +23,10 @@ function levenshtein(left: string, right: string) {
 
 async function auth() {
   const supabase = await createClient();
-  return (await supabase.auth.getUser()).data.user;
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return null;
+  const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
+  return ["sales", "pm", "admin", "director", "dev"].includes(profile?.role?.toLowerCase() ?? "") ? user : null;
 }
 
 async function currentLink(clientId: string, field: Field, oldValue: string) {
@@ -82,13 +85,10 @@ export async function POST(request: NextRequest) {
   if (!clientId || !["phone", "company"].includes(field) || !value || (field === "phone" && !normalizePhone(value))) return NextResponse.json({ error: "A valid client, field, and value are required." }, { status: 400 });
 
   const [{ data: client }, { data: assignment }] = await Promise.all([
-    supabaseAdmin.from("clients").select("custom_fields").eq("id", clientId).maybeSingle(),
-    supabaseAdmin.from("client_assignees").select("client_id").eq("client_id", clientId).eq("user_id", user.id).maybeSingle(),
+    supabaseAdmin.from("clients").select("id").eq("id", clientId).maybeSingle(),
+    supabaseAdmin.from("client_assignees").select("client_id").eq("client_id", clientId).eq("user_id", user.id).in("assignment_type", ["people", "pm"]).maybeSingle(),
   ]);
-  const rawPmIds = client?.custom_fields && typeof client.custom_fields === "object" ? (client.custom_fields as Record<string, unknown>).pmAssigneeIds : null;
-  let pmIds: string[] = [];
-  try { pmIds = Array.isArray(rawPmIds) ? rawPmIds.map(String) : typeof rawPmIds === "string" ? JSON.parse(rawPmIds) : []; } catch { pmIds = []; }
-  if (!client || (!assignment && !pmIds.includes(user.id))) return NextResponse.json({ error: "You can only edit items that are assigned to you." }, { status: 403 });
+  if (!client || !assignment) return NextResponse.json({ error: "You can only edit items that are assigned to you." }, { status: 403 });
 
   const linkedProfileId = await currentLink(clientId, field, oldValue);
   const exactProfileId = await exactMatch(field, value);

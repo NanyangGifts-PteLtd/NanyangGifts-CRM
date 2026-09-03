@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
-const ALLOWED_ROLES = ["sales", "pm", "admin", "dev", "shipper"] as const;
+const ALLOWED_ROLES = ["sales", "pm", "admin", "director", "dev", "shipper"] as const;
 type AllowedRole = typeof ALLOWED_ROLES[number];
 
 export async function POST(request: NextRequest) {
@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
             const { error: profileUpsertError } = await supabaseAdmin
                 .from("profiles")
                 .upsert(
-                    { id: data.user.id, email, role },
+                    { id: data.user.id, email, role, shipper_id: role === "shipper" ? shipperId : null },
                     { onConflict: "id" },
                 );
 

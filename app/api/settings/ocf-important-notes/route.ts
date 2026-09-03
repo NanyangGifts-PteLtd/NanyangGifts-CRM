@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: profileError.message }, { status: 500 });
         }
 
-        if (profile?.role !== "director" && profile?.role !== "dev") {
+        if (!['admin', 'director', 'dev'].includes(String(profile?.role ?? '').toLowerCase())) {
             return NextResponse.json({ error: "Forbidden" }, { status: 403 });
         }
 

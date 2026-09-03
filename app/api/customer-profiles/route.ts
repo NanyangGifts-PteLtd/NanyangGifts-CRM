@@ -6,10 +6,16 @@ const PAYMENT_TERMS = ["Net 30", "Net 60", "Net 90", "Due on Receipt", "End of M
 const COMPANY_SELECT = "id, name, payment_term, industry, industry_option_id, industry_custom_text, industry_source, organization_type, remarks, created_at, industry_option:industry_options!customer_company_profiles_industry_option_id_fkey(id, code, name, section_code, section_name)";
 const CLIENT_SELECT = "id, phone_number, name, remarks, is_blacklisted, blacklisted_at, created_at, phone_numbers:customer_client_profile_phone_numbers(id, phone_number, is_primary)";
 
-async function authenticatedUser() {
+async function authenticatedInternalUser() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  return user;
+  if (!user) return null;
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .maybeSingle();
+  return ["sales", "pm", "admin", "director", "dev"].includes(profile?.role?.toLowerCase() ?? "") ? user : null;
 }
 
 function normalizePhone(value: string) {
@@ -71,7 +77,7 @@ async function resolveIndustry(body: Record<string, unknown>) {
 }
 
 export async function GET() {
-  const user = await authenticatedUser();
+  const user = await authenticatedInternalUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const [clientsResult, companiesResult, linksResult] = await Promise.all([
@@ -86,7 +92,7 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  const user = await authenticatedUser();
+  const user = await authenticatedInternalUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const body = await request.json() as Record<string, unknown>;
   const type = String(body.type ?? "");
@@ -129,7 +135,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
-  const user = await authenticatedUser();
+  const user = await authenticatedInternalUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const body = await request.json() as Record<string, unknown>;
   const type = String(body.type ?? "");
@@ -176,7 +182,7 @@ export async function PATCH(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const user = await authenticatedUser();
+  const user = await authenticatedInternalUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { data: profile } = await supabaseAdmin.from("profiles").select("role").eq("id", user.id).maybeSingle();
   if (!profile?.role || !["admin", "director", "dev"].includes(profile.role.toLowerCase())) return NextResponse.json({ error: "Only admins, directors, and developers can delete customer profiles." }, { status: 403 });

@@ -7,7 +7,9 @@ async function context() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
   const { data: profile } = await supabaseAdmin.from("profiles").select("role").eq("id", user.id).maybeSingle();
-  return { user, role: profile?.role?.toLowerCase() ?? "" };
+  const role = profile?.role?.toLowerCase() ?? "";
+  if (!["sales", "pm", "admin", "director", "dev"].includes(role)) return null;
+  return { user, role };
 }
 
 function parentColumn(type: string) {

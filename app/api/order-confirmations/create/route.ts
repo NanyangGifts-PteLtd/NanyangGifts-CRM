@@ -26,8 +26,8 @@ export async function POST(req: NextRequest) {
         }
 
         const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
-        if (String(profile?.role ?? "").trim().toLowerCase() === "pm") {
-            return NextResponse.json({ error: "Generating OCF is for Sales" }, { status: 403 });
+        if (!['sales', 'pm', 'admin', 'director', 'dev'].includes(String(profile?.role ?? "").trim().toLowerCase())) {
+            return NextResponse.json({ error: "Forbidden" }, { status: 403 });
         }
 
         const body = (await req.json()) as CreateOcfBody;

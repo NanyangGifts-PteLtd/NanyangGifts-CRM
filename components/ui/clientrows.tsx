@@ -204,6 +204,8 @@ export type ClientRowProps = {
   profiles: Profile[];
   clientAssignedIds: string[];
   onChangeClientAssignees: (ids: string[]) => void;
+  clientPmAssignedIds: string[];
+  onChangeClientPmAssignees: (ids: string[]) => void;
   subitemAssigneeMap: Record<string, string[]>;
   onChangeSubitemAssignees: (subitemId: string, ids: string[]) => void;
   colWidth: Record<string, number>;
@@ -329,6 +331,8 @@ export function ClientRow({
   profiles,
   clientAssignedIds,
   onChangeClientAssignees,
+  clientPmAssignedIds,
+  onChangeClientPmAssignees,
   subitemAssigneeMap,
   onChangeSubitemAssignees,
   colWidth,
@@ -421,16 +425,7 @@ export function ClientRow({
   const pmProfiles = profiles.filter(
     (profile) => profile.role?.toLowerCase() === "pm",
   );
-  let pmAssignedIds: string[] = [];
-  try {
-    const storedPmIds = JSON.parse(client.customFields?.pmAssigneeIds ?? "[]");
-    if (Array.isArray(storedPmIds))
-      pmAssignedIds = storedPmIds.filter(
-        (id): id is string => typeof id === "string",
-      );
-  } catch {
-    pmAssignedIds = [];
-  }
+  const pmAssignedIds = clientPmAssignedIds;
   const canEditClient =
     !!currentUserId &&
     (clientAssignedIds.includes(currentUserId) ||
@@ -670,7 +665,11 @@ export function ClientRow({
     const addFiles = async (files: File[]) => {
       try {
         const nextItems = (
-          await uploadCrmFiles(files, `client-columns/${client.id}/${fieldKey}`)
+          await uploadCrmFiles(
+            files,
+            `client-columns/${client.id}/${fieldKey}`,
+            { clientId: client.id },
+          )
         ).map((file) => ({ ...file, kind: "file" as const }));
         if (nextItems.length) saveItems([...items, ...nextItems]);
       } finally {
@@ -1763,14 +1762,7 @@ export function ClientRow({
             <AssigneeMultiSelect
               profiles={pmProfiles}
               selectedIds={pmAssignedIds}
-              onChange={(ids) =>
-                onUpdate({
-                  customFields: {
-                    ...(client.customFields ?? {}),
-                    pmAssigneeIds: JSON.stringify(ids),
-                  },
-                })
-              }
+              onChange={onChangeClientPmAssignees}
             />
           </div>
         </div>

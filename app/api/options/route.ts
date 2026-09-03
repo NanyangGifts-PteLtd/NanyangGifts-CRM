@@ -7,6 +7,15 @@ export async function GET(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .maybeSingle();
+  if (!['sales', 'pm', 'admin', 'director', 'dev'].includes(String(profile?.role ?? '').toLowerCase())) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
   const code = request.nextUrl.searchParams.get("code")?.trim();
   if (!code) return NextResponse.json({ error: "Option group code is required" }, { status: 400 });
 

@@ -6,6 +6,10 @@ export async function GET(request: NextRequest) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
+  if (!["pm", "admin", "director", "dev"].includes(profile?.role?.toLowerCase() ?? "")) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
   const ids = (request.nextUrl.searchParams.get("subitemIds") ?? "").split(",").filter(Boolean);
   if (!ids.length) return NextResponse.json({ shipmentsBySubitemId: {} });
   const { data, error } = await supabaseAdmin

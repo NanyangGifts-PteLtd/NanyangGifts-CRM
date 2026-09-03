@@ -3,9 +3,22 @@ import { getShippers } from "@/lib/shipper/get-shipper-by-token";
 import { ShipperMasterSheets } from "./ShipperMasterSheets";
 import { getShipperStagingRows } from "@/lib/shipper/get-shipper-staging-rows";
 import { getShipperShipments } from "@/lib/shipper/shipments";
+import { createClient } from "@/lib/supabase/server";
+import { redirect } from "next/navigation";
 
 export default async function ShipperMasterPage() {
     try {
+        const supabase = await createClient();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) redirect("/auth/login?next=/app/shipper");
+        const { data: profile } = await supabase
+            .from("profiles")
+            .select("role")
+            .eq("id", user.id)
+            .maybeSingle();
+        if (!["pm", "admin", "director", "dev"].includes(profile?.role?.toLowerCase() ?? "")) {
+            redirect("/app");
+        }
         const [rows, shippers, stagingRows, shipments] = await Promise.all([
             getShipperSubitems(),
             getShippers(),

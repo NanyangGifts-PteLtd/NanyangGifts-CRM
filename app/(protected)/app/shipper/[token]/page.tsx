@@ -18,8 +18,14 @@ export default async function ShipperPage({
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) redirect(`/auth/login?next=${encodeURIComponent(`/app/shipper/${token}`)}`);
-    const { data: profile } = await supabase.from("profiles").select("role, full_name, email").eq("id", user.id).maybeSingle();
-    if (profile?.role === "shipper" && user.user_metadata?.shipper_id !== shipper.id) notFound();
+    const { data: profile } = await supabase
+        .from("profiles")
+        .select("role, full_name, email, shipper_id")
+        .eq("id", user.id)
+        .maybeSingle();
+    const role = profile?.role?.toLowerCase();
+    if (!role || !["pm", "admin", "director", "dev", "shipper"].includes(role)) notFound();
+    if (role === "shipper" && profile?.shipper_id !== shipper.id) notFound();
 
     const shipments = await getShipperShipments(shipper.id);
 

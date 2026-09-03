@@ -234,7 +234,7 @@ function NumberCell({
   );
 }
 
-const IMAGE_MARKER = /\[\[shipper-image:(https?:\/\/[^\]]+)\]\]/g;
+const IMAGE_MARKER = /\[\[shipper-image:([^\]]+)\]\]/g;
 
 function parseRemarks(value: unknown) {
   const raw = String(value ?? "");

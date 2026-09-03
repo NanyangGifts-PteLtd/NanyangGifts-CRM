@@ -1,7 +1,7 @@
-import { createClient } from '@/lib/supabase/server';
+import { supabaseAdmin } from '@/lib/supabase/admin';
 
 export async function getValidQuickBooksConnection() {
-    const supabase = await createClient();
+    const supabase = supabaseAdmin;
     
 
     const { data: connection, error } = await supabase

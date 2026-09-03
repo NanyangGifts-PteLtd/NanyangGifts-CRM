@@ -94,6 +94,7 @@ export function RoundRobinAdminPanel({
     void load();
   }, []);
   const saveRows = (next: RoundRobinQueueRow[]) => {
+    if (!editable) return;
     const ordered = next.map((row, position) => ({ ...row, position }));
     setRows(ordered);
     void saveSalesRoundRobinLayout(
@@ -105,6 +106,7 @@ export function RoundRobinAdminPanel({
     ).catch(() => void load());
   };
   const setPointerPosition = (position: number) => {
+    if (!editable) return;
     setPointer(position);
     setDraggingPointer(false);
     void setSalesRoundRobinPointer(position)
@@ -112,6 +114,7 @@ export function RoundRobinAdminPanel({
       .catch(() => void load());
   };
   const place = (list: ListName, before?: string) => {
+    if (!editable) return;
     if (!draggedUser) return;
     const moved = users.find((user) => user.user_id === draggedUser);
     if (!moved) return;
@@ -134,6 +137,7 @@ export function RoundRobinAdminPanel({
     setOver(null);
   };
   const nudge = (row: RoundRobinQueueRow, direction: -1 | 1) => {
+    if (!editable) return;
     const same = users.filter((user) => user.list_name === row.list_name);
     const index = same.findIndex((user) => user.user_id === row.user_id);
     const target = same[index + direction];
@@ -145,27 +149,24 @@ export function RoundRobinAdminPanel({
     saveRows(next);
   };
 
-  if (!editable)
-    return (
-      <div className="rounded-xl border bg-white p-6 text-sm text-gray-500">
-        Only directors, admins, and developers can edit the Round Robin.
-      </div>
-    );
   if (loading)
     return (
       <div className="text-sm text-gray-500">Loading round robin lists...</div>
     );
   return (
     <div className="grid gap-5 lg:grid-cols-3">
+      {!editable && (
+        <p className="lg:col-span-3 text-sm text-gray-500">
+          View only. Only admins, directors, and developers can edit the Round Robin.
+        </p>
+      )}
       {lists.map((list) => {
         const entries = users.filter((user) => user.list_name === list.id);
         return (
           <section
             key={list.id}
-            onDragOver={(event) => event.preventDefault()}
-            onDrop={() =>
-              place(list.id, over?.list === list.id ? over.id : undefined)
-            }
+            onDragOver={(event) => editable && event.preventDefault()}
+            onDrop={() => editable && place(list.id, over?.list === list.id ? over.id : undefined)}
             className="min-h-[420px] rounded-2xl border border-gray-200 bg-white p-5 shadow-sm"
           >
             <h2 className="text-base font-semibold">{list.title}</h2>
@@ -175,7 +176,7 @@ export function RoundRobinAdminPanel({
                 <div
                   key={row.user_id}
                   className="relative"
-                  onDragOver={(event) => event.preventDefault()}
+                  onDragOver={(event) => editable && event.preventDefault()}
                   onDrop={(event) => {
                     event.stopPropagation();
                     if (draggingPointer && list.id === "sales")
@@ -183,7 +184,7 @@ export function RoundRobinAdminPanel({
                     else place(list.id, row.user_id);
                   }}
                 >
-                  {list.id === "sales" && index === pointer && (
+                  {editable && list.id === "sales" && index === pointer && (
                     <button
                       type="button"
                       draggable
@@ -204,7 +205,7 @@ export function RoundRobinAdminPanel({
                       <PointerArrow />
                     </button>
                   )}
-                  {draggingPointer &&
+                  {editable && draggingPointer &&
                     list.id === "sales" &&
                     index !== pointer && (
                       <button
@@ -223,23 +224,23 @@ export function RoundRobinAdminPanel({
                       </button>
                     )}
                   <div
-                    draggable={!draggingPointer}
-                    onDragStart={() => setDraggedUser(row.user_id)}
-                    className="flex cursor-grab items-center gap-2 rounded-lg border bg-white px-3 py-3 text-sm shadow-sm"
+                    draggable={editable && !draggingPointer}
+                    onDragStart={() => editable && setDraggedUser(row.user_id)}
+                    className={`flex items-center gap-2 rounded-lg border bg-white px-3 py-3 text-sm shadow-sm ${editable ? "cursor-grab" : ""}`}
                   >
                     <GripVertical size={16} className="text-gray-400" />
                     <span className="flex-1">
                       {row.full_name || row.email || "Unknown user"}
                     </span>
                     <button
-                      disabled={index === 0}
+                      disabled={!editable || index === 0}
                       onClick={() => nudge(row, -1)}
                       className="rounded border p-1 disabled:opacity-30"
                     >
                       <ChevronUp size={14} />
                     </button>
                     <button
-                      disabled={index === entries.length - 1}
+                      disabled={!editable || index === entries.length - 1}
                       onClick={() => nudge(row, 1)}
                       className="rounded border p-1 disabled:opacity-30"
                     >

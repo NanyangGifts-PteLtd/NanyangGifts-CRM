@@ -21,7 +21,7 @@ const REQUIRED_PREVIEW_FIELDS = PREVIEW_FIELDS.filter((field) => !["cartons", "s
 const SEA_OR_AIR_VALUES = ["空运", "海运", "海运/小包"];
 const TAX_REFUND_VALUES = ["退", "X"];
 
-const ALLOWED_ROLES = ["pm", "director", "dev"];
+const ALLOWED_ROLES = ["pm", "admin", "director", "dev"];
 
 type OcfJoinRow = {
     id: string;

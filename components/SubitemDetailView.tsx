@@ -66,6 +66,7 @@ const dateValue = (value: string) => {
 
 export function SubitemDetailView({
   subitem,
+  clientId,
   clientName,
   siblings,
   profiles,
@@ -84,6 +85,7 @@ export function SubitemDetailView({
   onDelete,
 }: {
   subitem: Subitem;
+  clientId: string;
   clientName: string;
   siblings: Subitem[];
   profiles: Profile[];
@@ -232,7 +234,11 @@ export function SubitemDetailView({
       )
     )
       return;
-    void uploadCrmFiles([incoming], `subitems/${subitem.id}/${key}`).then(
+    void uploadCrmFiles(
+      [incoming],
+      `subitems/${subitem.id}/${key}`,
+      { clientId, subitemId: subitem.id },
+    ).then(
       ([file]) => saveSingleFile(key, file),
     );
   };
@@ -610,6 +616,7 @@ export function SubitemDetailView({
                   void uploadCrmFiles(
                     dropped,
                     `subitems/${subitem.id}/files`,
+                    { clientId, subitemId: subitem.id },
                   ).then((next) => saveFiles([...files, ...next]));
                 }}
               >
@@ -629,6 +636,7 @@ export function SubitemDetailView({
                             void uploadCrmFiles(
                               Array.from(event.target.files ?? []),
                               `subitems/${subitem.id}/files`,
+                              { clientId, subitemId: subitem.id },
                             ).then((next) => saveFiles([...files, ...next]));
                             event.target.value = "";
                           }}

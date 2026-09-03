@@ -11,7 +11,7 @@ import { createClient as createSupabaseClient } from '@/lib/supabase/client';
 import { ReportsPanel } from '@/components/ReportsPanel';
 import { RoundRobinAdminPanel } from '@/components/RoundRobinPanel';
 import GanttChart from '@/components/Gantt-Chart';
-import { fetchClientAssigneeMap } from '@/lib/assignments';
+import { fetchClientAssignmentMaps } from '@/lib/assignments';
 import { fetchAllSubitemAssignees } from '@/components/CRMBoard';
 import { TeamPanel } from '@/components/TeamPanel';
 import { UserAdminPanel } from '@/components/UserAdminPanel';
@@ -26,6 +26,7 @@ export default function Page() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [expandedClientIds, setExpandedClientIds] = useState<string[]>([]);
   const [clientAssignees, setClientAssignees] = useState<ClientAssigneeMap>({});
+  const [clientPmAssignees, setClientPmAssignees] = useState<ClientAssigneeMap>({});
   const [subitemAssignees, setSubitemAssignees] = useState<SubitemAssigneeMap>({});
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [groups, setGroups] = useState<CRMGroup[]>([]);
@@ -65,14 +66,15 @@ export default function Page() {
 
   const reloadClients = useCallback(async () => {
     try {
-      const [rows, assigneeMap, subitemAssigneeMap] = await Promise.all([
+      const [rows, clientAssignmentMaps, subitemAssigneeMap] = await Promise.all([
         fetchClientsWithSubitems(),
-        fetchClientAssigneeMap(),
+        fetchClientAssignmentMaps(),
         fetchAllSubitemAssignees(),
       ]);
 
       setClients(rows);
-      setClientAssignees(assigneeMap);
+      setClientAssignees(clientAssignmentMaps.people);
+      setClientPmAssignees(clientAssignmentMaps.pm);
       setSubitemAssignees(subitemAssigneeMap);
     } catch (error) {
       console.error('Failed to load clients', error);
@@ -205,6 +207,8 @@ export default function Page() {
             currentUserRole={currentUserRole}
             clientAssignees={clientAssignees}
             setClientAssignees={setClientAssignees}
+            clientPmAssignees={clientPmAssignees}
+            setClientPmAssignees={setClientPmAssignees}
             subitemAssignees={subitemAssignees}
             setSubitemAssignees={setSubitemAssignees}
             searchTarget={searchTarget}

@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { supabaseAdmin } from "@/lib/supabase/admin";
 import ClientOcfView from "./client-ocf-view";
 
 type Props = {
@@ -8,7 +8,9 @@ type Props = {
 
 export default async function OcfContent({ params }: Props) {
     const { token } = await params;
-    const supabase = await createClient();
+    // The token itself is the client-facing bearer credential. Keep this
+    // server-only so RLS can deny all anonymous table and Storage access.
+    const supabase = supabaseAdmin;
 
     const { data: ocf, error } = await supabase
         .from("order_confirmations")
