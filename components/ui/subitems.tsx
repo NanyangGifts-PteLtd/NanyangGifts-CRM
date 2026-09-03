@@ -413,6 +413,23 @@ export function SubitemsTable({
     window.setTimeout(() => setPermissionNotice(null), 2600);
   };
   const [tableMode, setTableMode] = useState<TableMode | null>(null);
+  const [subitemViewById, setSubitemViewById] = useState<
+    Record<string, "timeline" | "sample" | null>
+  >({});
+  const activeSubitemView = (subitem: Subitem) =>
+    Object.hasOwn(subitemViewById, subitem.id)
+      ? subitemViewById[subitem.id]
+      : subitem.showTimeline
+        ? "timeline"
+        : subitem.showSample
+          ? "sample"
+          : null;
+  const toggleSubitemView = (subitem: Subitem, view: "timeline" | "sample") => {
+    setSubitemViewById((current) => ({
+      ...current,
+      [subitem.id]: activeSubitemView(subitem) === view ? null : view,
+    }));
+  };
   const [newSubitemName, setNewSubitemName] = useState("");
   const [isAddingSubitem, setIsAddingSubitem] = useState(false);
   const [pendingSubitemName, setPendingSubitemName] = useState<string | null>(
@@ -1491,23 +1508,21 @@ export function SubitemsTable({
 
       <div className="ml-auto flex items-center gap-1 shrink-0">
         <button
+          type="button"
+          data-view-action
           onClick={() => {
-            if (!sub.showTimeline && !hasReachedAwardedPhase(sub.status)) {
+            if (activeSubitemView(sub) !== "timeline" && !hasReachedAwardedPhase(sub.status)) {
               toast.warning("This subitem has not been awarded yet", {
                 description:
                   "Timeline and payment details are available once the subitem has reached the Awarded phase.",
               });
               return;
             }
-            onUpdateSubitem(sub.id, {
-              showTimeline: !sub.showTimeline,
-              showPayments: false,
-              showSample: false,
-            });
-            if (!sub.showTimeline) setTableMode("payment");
+            toggleSubitemView(sub, "timeline");
+            if (activeSubitemView(sub) !== "timeline") setTableMode("payment");
           }}
           className={`flex items-center justify-center rounded-sm border p-1 transition active:scale-95 ${
-            sub.showTimeline
+            activeSubitemView(sub) === "timeline"
               ? "border-[#7BCBD5] bg-[#7BCBD5] text-white"
               : "border-teal-200 bg-transparent text-[#6db6bf] hover:bg-teal-100"
           }`}
@@ -1517,6 +1532,8 @@ export function SubitemsTable({
         </button>
 
         <button
+          type="button"
+          data-view-action
           onClick={() =>
             setTableMode((prev) => (prev === "payment" ? null : "payment"))
           }
@@ -1531,15 +1548,11 @@ export function SubitemsTable({
         </button>
 
         <button
-          onClick={() => {
-            onUpdateSubitem(sub.id, {
-              showSample: !sub.showSample,
-              showTimeline: false,
-              showPayments: false,
-            });
-          }}
+          type="button"
+          data-view-action
+          onClick={() => toggleSubitemView(sub, "sample")}
           className={`flex items-center justify-center rounded-sm border p-1 transition active:scale-95 ${
-            sub.showSample
+            activeSubitemView(sub) === "sample"
               ? "border-[#d5a5ec] bg-[#d5a5ec] text-white"
               : "border-purple-200 bg-transparent text-[#ac7ec2] hover:bg-purple-100"
           }`}
@@ -3080,7 +3093,7 @@ export function SubitemsTable({
                   </td>
                 </tr>
 
-                {sub.showTimeline && hasReachedAwardedPhase(sub.status) && (
+                {activeSubitemView(sub) === "timeline" && hasReachedAwardedPhase(sub.status) && (
                   <ExpandedRow colSpan={totalColSpan} tone="blue">
                     <TimelineSection
                       rows={
@@ -3120,7 +3133,7 @@ export function SubitemsTable({
                   </ExpandedRow>
                 )}
 
-                {sub.showSample && (
+                {activeSubitemView(sub) === "sample" && (
                   <ExpandedRow colSpan={totalColSpan} tone="purple">
                     <SamplesSection
                       subitem={sub}

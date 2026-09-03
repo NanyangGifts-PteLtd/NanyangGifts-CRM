@@ -51,15 +51,20 @@ export function AssigneeMultiSelect({ profiles, selectedIds, onChange }: Props) 
         [profiles, selectedIds]
     );
 
-    const filteredProfiles = useMemo(() => {
-        const q = query.toLowerCase().trim();
-        if (!q) return profiles;
-        return profiles.filter((p) => {
+  const selectableProfiles = useMemo(
+    () => profiles.filter((profile) => profile.role?.toLowerCase() !== "shipper"),
+    [profiles],
+  );
+
+  const filteredProfiles = useMemo(() => {
+    const q = query.toLowerCase().trim();
+    if (!q) return selectableProfiles;
+    return selectableProfiles.filter((p) => {
             const name = p.full_name?.toLowerCase() ?? '';
             const email = p.email?.toLowerCase() ?? '';
             return name.includes(q) || email.includes(q);
         });
-    }, [profiles, query]);
+  }, [selectableProfiles, query]);
 
     const toggle = (id: string) => {
         if (selectedIds.includes(id)) {

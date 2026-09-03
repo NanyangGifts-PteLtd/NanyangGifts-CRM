@@ -556,7 +556,7 @@ export function CRMBoard({
     (e) => e.value,
   );
   const peopleOptions = profiles
-    .filter((profile) => profile.id)
+    .filter((profile) => profile.id && profile.role?.toLowerCase() !== "shipper")
     .map((profile) => ({
       value: profile.id,
       label: profile.full_name || profile.email || profile.id,
