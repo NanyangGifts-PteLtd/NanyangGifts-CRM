@@ -1487,6 +1487,17 @@ export function ClientRow({
             />
           </div>
           <div className="ml-auto flex items-center justify-start gap-1 flex-shrink-0">
+            {trackingMode && (
+              <button
+                type="button"
+                data-view-action
+                disabled
+                title="Invoice retrieval will be connected here soon"
+                className="rounded border border-sky-300 bg-sky-50 px-2 py-1 text-[10px] font-semibold text-sky-700 opacity-70 disabled:cursor-not-allowed"
+              >
+                Pull Invoice
+              </button>
+            )}
             {!trackingMode && (
               <Tooltip.Provider>
                 <Tooltip.Root>
@@ -2237,6 +2248,28 @@ export function ClientRow({
                 }
                 options={trackingSummaryOptions}
                 manageLabel="tracking summary"
+              />
+            </div>
+            <div
+              data-client-column="trackingEstimateNumber"
+              className="tracking-client-cell overflow-hidden border-r border-[#D0D4E4] py-1"
+              style={{
+                height: 30,
+                minWidth: colWidth.trackingEstimateNumber,
+                width: colWidth.trackingEstimateNumber,
+                order: columnOrderMap.trackingEstimateNumber,
+              }}
+            >
+              <EditableCell
+                value={client.customFields?.trackingEstimateNumber ?? ""}
+                onChange={(value) =>
+                  onUpdate({
+                    customFields: {
+                      ...(client.customFields ?? {}),
+                      trackingEstimateNumber: value,
+                    },
+                  })
+                }
               />
             </div>
             <div

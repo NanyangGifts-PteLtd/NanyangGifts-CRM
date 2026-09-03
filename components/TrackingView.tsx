@@ -52,6 +52,7 @@ const paymentStatusOptions: BadgeOption[] = [
 
 type TrackingField =
   | "trackingSummary"
+  | "trackingEstimateNumber"
   | "trackingInvoiceNumber"
   | "trackingMultipleInvoices"
   | "trackingPaymentStatus";
@@ -173,6 +174,7 @@ export function TrackingView({
                       "People",
                       "Summary",
                       "Channel",
+                      "Estimate Number",
                       "Invoice Number",
                       "Multiple Invoices?",
                       "Payment Status",
@@ -232,6 +234,14 @@ export function TrackingView({
                         <td className="w-[250px] border border-[#D0D4E4] px-2 font-medium">
                           <span className="mr-1 text-slate-400">›</span>
                           {client.name}
+                          <button
+                            type="button"
+                            disabled
+                            title="Invoice retrieval will be connected here soon"
+                            className="float-right rounded border border-sky-300 bg-sky-50 px-2 py-1 text-[10px] font-semibold text-sky-700 opacity-70 disabled:cursor-not-allowed"
+                          >
+                            Pull Invoice
+                          </button>
                         </td>
                         <td className="w-[90px] border border-[#D0D4E4] p-0">
                           <AssigneeMultiSelect
@@ -254,6 +264,18 @@ export function TrackingView({
                         </td>
                         <td className="w-[130px] border border-[#D0D4E4] px-2">
                           {client.channel}
+                        </td>
+                        <td className="w-[160px] border border-[#D0D4E4] p-1">
+                          <EditableCell
+                            value={valueOf(client, "trackingEstimateNumber")}
+                            onChange={(value) =>
+                              updateTracking(
+                                client,
+                                "trackingEstimateNumber",
+                                value,
+                              )
+                            }
+                          />
                         </td>
                         <td className="w-[180px] border border-[#D0D4E4] p-1">
                           <EditableCell

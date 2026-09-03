@@ -151,12 +151,17 @@ export async function POST(req: NextRequest) {
 
         const estimate = estimateRes?.Estimate;
 
-        await supabase.from('estimate_generations').insert({
-            client_id: client.id,
-            quickbooks_customer_id: customer.Id,
-            quickbooks_estimate_id: estimate?.Id ?? null,
-            quickbooks_estimate_doc_number: estimate?.DocNumber ?? null,
-        });
+        const { data: generation, error: generationError } = await supabase
+            .from('estimate_generations')
+            .insert({
+                client_id: client.id,
+                quickbooks_customer_id: customer.Id,
+                quickbooks_estimate_id: estimate?.Id ?? null,
+                quickbooks_estimate_doc_number: estimate?.DocNumber ?? null,
+            })
+            .select('id')
+            .single();
+        if (generationError) throw generationError;
 
         const { data: profile } = await supabase.from('profiles').select('full_name, email').eq('id', user.id).maybeSingle();
         const actorName = profile?.full_name?.trim() || profile?.email || user.email || 'CRM user';
@@ -172,13 +177,14 @@ export async function POST(req: NextRequest) {
             link: null,
             title: 'generated a QuickBooks estimate',
             description: estimate?.DocNumber ? `QuickBooks estimate ${estimate.DocNumber}` : 'QuickBooks estimate generated',
-            meta: { kind: 'quickbooks', quickbooksEstimateId: estimate?.Id ?? null, docNumber: estimate?.DocNumber ?? null, subitemIds: subitems.map((item: { id: string }) => item.id) },
+            meta: { kind: 'quickbooks', estimateGenerationId: generation.id, quickbooksEstimateId: estimate?.Id ?? null, docNumber: estimate?.DocNumber ?? null, subitemIds: subitems.map((item: { id: string }) => item.id) },
             created_at: new Date().toISOString(),
         });
         if (activityError) throw activityError;
 
         return NextResponse.json({
             success: true,
+            estimateGenerationId: generation.id,
             estimateId: estimate?.Id ?? null,
             docNumber: estimate?.DocNumber ?? null,
         });

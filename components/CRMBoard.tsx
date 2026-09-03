@@ -190,6 +190,12 @@ const TRACKING_HEADER_COLS: HeaderCol[] = [
   { key: "trackingSummary", label: "Summary", width: 130, minWidth: 7 },
   { key: "channel", label: "Channel", width: 110, minWidth: 7 },
   {
+    key: "trackingEstimateNumber",
+    label: "Estimate Number",
+    width: 160,
+    minWidth: 7,
+  },
+  {
     key: "trackingInvoiceNumber",
     label: "Invoice Number",
     width: 180,
