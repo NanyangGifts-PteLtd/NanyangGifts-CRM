@@ -430,6 +430,34 @@ export function SubitemsTable({
       [subitem.id]: activeSubitemView(subitem) === view ? null : view,
     }));
   };
+  const canCreateSubitems =
+    !!currentUserId &&
+    (clientAssignedIds.includes(currentUserId) ||
+      clientPmAssignedIds.includes(currentUserId));
+  const hasPaymentEligibleSubitems = subitems.some((subitem) =>
+    hasReachedAwardedPhase(subitem.status),
+  );
+  const togglePaymentView = () => {
+    if (tableMode === "payment") {
+      setTableMode(null);
+      setSubitemViewById((current) =>
+        Object.fromEntries(
+          Object.entries(current).map(([id, view]) => [
+            id,
+            view === "timeline" ? null : view,
+          ]),
+        ),
+      );
+      return;
+    }
+    if (!hasPaymentEligibleSubitems) {
+      toast.warning("No eligible payment rows", {
+        description: "Payment columns are available once a subitem reaches the Awarded phase.",
+      });
+      return;
+    }
+    setTableMode("payment");
+  };
   const [newSubitemName, setNewSubitemName] = useState("");
   const [isAddingSubitem, setIsAddingSubitem] = useState(false);
   const [pendingSubitemName, setPendingSubitemName] = useState<string | null>(
@@ -445,7 +473,7 @@ export function SubitemsTable({
 
   const submitNewSubitem = async () => {
     const name = newSubitemName.trim();
-    if (!name || isAddingSubitem) return;
+    if (!name || isAddingSubitem || !canCreateSubitems) return;
     setIsAddingSubitem(true);
     setPendingSubitemName(name);
     setNewSubitemName("");
@@ -1522,7 +1550,7 @@ export function SubitemsTable({
             if (activeSubitemView(sub) !== "timeline") setTableMode("payment");
           }}
           className={`flex items-center justify-center rounded-sm border p-1 transition active:scale-95 ${
-            activeSubitemView(sub) === "timeline"
+            tableMode === "payment" && activeSubitemView(sub) === "timeline"
               ? "border-[#7BCBD5] bg-[#7BCBD5] text-white"
               : "border-teal-200 bg-transparent text-[#6db6bf] hover:bg-teal-100"
           }`}
@@ -1534,15 +1562,14 @@ export function SubitemsTable({
         <button
           type="button"
           data-view-action
-          onClick={() =>
-            setTableMode((prev) => (prev === "payment" ? null : "payment"))
-          }
+          onClick={togglePaymentView}
+          disabled={!hasPaymentEligibleSubitems}
           className={`flex items-center justify-center rounded-sm border p-1 transition active:scale-95 ${
             tableMode === "payment"
               ? "border-[#f291b6] bg-[#f291b6] text-white"
               : "border-pink-200 bg-transparent text-[#e87da6] hover:bg-pink-100"
           }`}
-          title="Payments"
+          title={hasPaymentEligibleSubitems ? "Payments" : "No awarded subitems for payment columns"}
         >
           <CreditCard size={15} />
         </button>
@@ -3093,7 +3120,7 @@ export function SubitemsTable({
                   </td>
                 </tr>
 
-                {activeSubitemView(sub) === "timeline" && hasReachedAwardedPhase(sub.status) && (
+                {tableMode === "payment" && activeSubitemView(sub) === "timeline" && hasReachedAwardedPhase(sub.status) && (
                   <ExpandedRow colSpan={totalColSpan} tone="blue">
                     <TimelineSection
                       rows={
@@ -3209,12 +3236,16 @@ export function SubitemsTable({
                       }
                     }}
                     onBlur={() => void submitNewSubitem()}
-                    disabled={isAddingSubitem}
+                    disabled={isAddingSubitem || !canCreateSubitems}
                     placeholder={
-                      isAddingSubitem ? "Adding subitem…" : "Add subitem"
+                      isAddingSubitem
+                        ? "Adding subitem…"
+                        : canCreateSubitems
+                          ? "Add subitem"
+                          : "Assignment required to add subitems"
                     }
                     aria-label="New subitem name"
-                    className="h-7 w-full rounded border border-transparent bg-transparent pl-7 pr-2 text-xs text-gray-700 outline-none transition group-hover/add-subitem:border-gray-500 group-hover/add-subitem:bg-white focus:border-[#3799b1] focus:bg-white focus:ring-2 focus:ring-[#7BCBD5]/25 disabled:cursor-wait disabled:opacity-50"
+                    className="h-7 w-full rounded border border-transparent bg-transparent pl-7 pr-2 text-xs text-gray-700 outline-none transition group-hover/add-subitem:border-gray-500 group-hover/add-subitem:bg-white focus:border-[#3799b1] focus:bg-white focus:ring-2 focus:ring-[#7BCBD5]/25 disabled:cursor-not-allowed disabled:opacity-50"
                   />
                 </div>
               </td>
