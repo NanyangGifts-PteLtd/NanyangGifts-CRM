@@ -431,6 +431,10 @@ export function ClientRow({
     (clientAssignedIds.includes(currentUserId) ||
       pmAssignedIds.includes(currentUserId));
   const [showCloseDialog, setShowCloseDialog] = useState(false);
+  const [showMultipleInvoicesDialog, setShowMultipleInvoicesDialog] =
+    useState(false);
+  const [pendingTrackingInvoiceNumber, setPendingTrackingInvoiceNumber] =
+    useState<string | null>(null);
   const [pendingStatus, setPendingStatus] = useState<ClientStatus | null>(null);
   const [closeFiles, setCloseFiles] = useState<File[]>([]);
   const [closeConfirmed, setCloseConfirmed] = useState(false);
@@ -471,6 +475,23 @@ export function ClientRow({
   const [sampleArtworkUploads, setSampleArtworkUploads] = useState<
     Record<string, SampleArtworkUpload>
   >({});
+  const setMultipleInvoices = (value: "Yes" | "No") => {
+    onUpdate({
+      customFields: {
+        ...(client.customFields ?? {}),
+        ...(pendingTrackingInvoiceNumber !== null
+          ? { trackingInvoiceNumber: pendingTrackingInvoiceNumber }
+          : {}),
+        trackingMultipleInvoices: value,
+      },
+    });
+    setPendingTrackingInvoiceNumber(null);
+    setShowMultipleInvoicesDialog(false);
+  };
+  const deferMultipleInvoicesDecision = () => {
+    setPendingTrackingInvoiceNumber(null);
+    setShowMultipleInvoicesDialog(false);
+  };
   const {
     handleGenerateEstimate,
     isGeneratingEstimate,
@@ -2231,20 +2252,20 @@ export function ClientRow({
               <EditableCell
                 value={client.customFields?.trackingInvoiceNumber ?? ""}
                 onChange={(value) => {
-                  const fields: Record<string, string> = {
-                    ...(client.customFields ?? {}),
-                    trackingInvoiceNumber: value,
-                  };
-                  if (value.trim() && !fields.trackingMultipleInvoices) {
-                    const answer = window.prompt(
-                      "Does this closed lead have Multiple Invoices? Type Yes or No.",
-                    );
-                    if (/^yes$/i.test(answer?.trim() ?? ""))
-                      fields.trackingMultipleInvoices = "Yes";
-                    if (/^no$/i.test(answer?.trim() ?? ""))
-                      fields.trackingMultipleInvoices = "No";
+                  onUpdate({
+                    customFields: {
+                      ...(client.customFields ?? {}),
+                      trackingInvoiceNumber: value,
+                    },
+                  });
+
+                  if (
+                    value.trim() &&
+                    !client.customFields?.trackingMultipleInvoices
+                  ) {
+                    setPendingTrackingInvoiceNumber(value);
+                    setShowMultipleInvoicesDialog(true);
                   }
-                  onUpdate({ customFields: fields });
                 }}
               />
             </div>
@@ -2455,6 +2476,48 @@ export function ClientRow({
           onOpenSubitemDetail={onOpenSubitemDetail}
         />
       )}
+      <AlertDialog
+        open={showMultipleInvoicesDialog}
+        onOpenChange={(open) => {
+          if (!open) deferMultipleInvoicesDecision();
+        }}
+      >
+        <AlertDialogContent className="max-w-2xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-xl">
+              Does this closed lead have multiple invoices?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-base">
+              Choose whether this invoice should be tracked as part of multiple
+              invoices for {client.name}.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="block sm:block">
+            <div className="grid grid-cols-2 gap-4">
+              <AlertDialogAction
+                onClick={() => setMultipleInvoices("Yes")}
+                className="min-h-40 bg-amber-500 text-3xl font-bold text-white hover:bg-amber-600"
+              >
+                YES
+              </AlertDialogAction>
+              <AlertDialogAction
+                onClick={() => setMultipleInvoices("No")}
+                className="min-h-40 bg-slate-600 text-3xl font-bold text-white hover:bg-slate-700"
+              >
+                NO
+              </AlertDialogAction>
+            </div>
+            <div className="mt-4 flex justify-center">
+              <AlertDialogCancel
+                onClick={deferMultipleInvoicesDecision}
+                className="h-8 px-3 text-xs text-slate-600"
+              >
+                Decide later
+              </AlertDialogCancel>
+            </div>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

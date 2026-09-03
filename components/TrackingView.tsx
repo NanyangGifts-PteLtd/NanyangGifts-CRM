@@ -84,6 +84,9 @@ export function TrackingView({
   const [invoicePromptClient, setInvoicePromptClient] = useState<Client | null>(
     null,
   );
+  const [pendingInvoiceNumber, setPendingInvoiceNumber] = useState<
+    string | null
+  >(null);
   const [collapsedGroupIds, setCollapsedGroupIds] = useState<Set<string>>(
     new Set(),
   );
@@ -110,7 +113,16 @@ export function TrackingView({
   };
   const setMultipleInvoices = (value: "Yes" | "No") => {
     if (!invoicePromptClient) return;
-    updateTracking(invoicePromptClient, "trackingMultipleInvoices", value);
+    onUpdate(invoicePromptClient, {
+      customFields: {
+        ...(invoicePromptClient.customFields ?? {}),
+        ...(pendingInvoiceNumber !== null
+          ? { trackingInvoiceNumber: pendingInvoiceNumber }
+          : {}),
+        trackingMultipleInvoices: value,
+      },
+    });
+    setPendingInvoiceNumber(null);
     setInvoicePromptClient(null);
   };
   const toggleGroup = (groupId: string) =>
@@ -252,8 +264,10 @@ export function TrackingView({
                                 "trackingInvoiceNumber",
                                 value,
                               );
-                              if (value.trim() && !multipleInvoices)
+                              if (value.trim() && !multipleInvoices) {
+                                setPendingInvoiceNumber(value);
                                 setInvoicePromptClient(client);
+                              }
                             }}
                           />
                         </td>
@@ -303,24 +317,42 @@ export function TrackingView({
       <AlertDialog
         open={Boolean(invoicePromptClient)}
         onOpenChange={(open) => {
-          if (!open) setInvoicePromptClient(null);
+          if (!open) {
+            setPendingInvoiceNumber(null);
+            setInvoicePromptClient(null);
+          }
         }}
       >
-        <AlertDialogContent>
+        <AlertDialogContent className="max-w-2xl">
           <AlertDialogHeader>
-            <AlertDialogTitle>Multiple invoices?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Does this closed lead have Multiple Invoices?
+            <AlertDialogTitle className="text-xl">
+              Does this closed lead have multiple invoices?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-base">
+              Choose whether this invoice should be tracked as part of multiple
+              invoices for {invoicePromptClient?.name}.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Decide later</AlertDialogCancel>
-            <AlertDialogAction onClick={() => setMultipleInvoices("No")}>
-              No
-            </AlertDialogAction>
-            <AlertDialogAction onClick={() => setMultipleInvoices("Yes")}>
-              Yes
-            </AlertDialogAction>
+          <AlertDialogFooter className="block sm:block">
+            <div className="grid grid-cols-2 gap-4">
+              <AlertDialogAction
+                onClick={() => setMultipleInvoices("Yes")}
+                className="min-h-40 bg-amber-500 text-3xl font-bold text-white hover:bg-amber-600"
+              >
+                YES
+              </AlertDialogAction>
+              <AlertDialogAction
+                onClick={() => setMultipleInvoices("No")}
+                className="min-h-40 bg-slate-600 text-3xl font-bold text-white hover:bg-slate-700"
+              >
+                NO
+              </AlertDialogAction>
+            </div>
+            <div className="mt-4 flex justify-center">
+              <AlertDialogCancel className="h-8 px-3 text-xs text-slate-600">
+                Decide later
+              </AlertDialogCancel>
+            </div>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
