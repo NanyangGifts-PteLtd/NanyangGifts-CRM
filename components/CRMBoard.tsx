@@ -97,6 +97,21 @@ import { PreviousShipmentChoicesDialog } from "./shipper/PreviousShipmentChoices
 import { CombinedPushPreviewModal } from "./shipper/CombinedPushPreviewModal";
 
 type OptionEntry = { value: string; color: string };
+const BOARD_OPTION_GROUP_CODES = [
+  "reply_status",
+  "client_status",
+  "channel",
+  "importance",
+  "progress",
+  "payment",
+  "payment_status",
+  "mode_of_payment",
+  "shipper",
+  "local_overseas",
+  "subitem_status",
+  "currency",
+  "subitem_subprogress",
+] as const;
 const normalizeBlacklistPhone = (value: string) => value.replace(/\D/g, "");
 type CustomerMatchPending = {
   clientId: string;
@@ -1712,76 +1727,72 @@ export function CRMBoard({
     [clients, setClients],
   );
 
-  const fetchOptions = useCallback(
-    async (code: string): Promise<OptionEntry[]> => {
-      const response = await fetch(
-        `/api/options?code=${encodeURIComponent(code)}`,
-      );
-      const data = await response.json();
-      if (!response.ok) {
-        console.error(`Failed to load option values for ${code}`, data.error);
-        return [];
-      }
-      return data.values ?? [];
-    },
-    [],
-  );
-
-  // Label lists must not depend on unrelated board bootstrap requests such as
-  // profiles, groups, or custom columns. Otherwise one failed request leaves
-  // every StatusBadge with only its synthetic blank option.
+  // Labels are public-to-internal Board configuration. RLS now authorizes
+  // these reads directly, avoiding the previous per-label API/service-role
+  // workaround and its 13 additional HTTP requests during Board startup.
   useEffect(() => {
     let active = true;
-    void Promise.all([
-      fetchOptions("reply_status"),
-      fetchOptions("client_status"),
-      fetchOptions("channel"),
-      fetchOptions("importance"),
-      fetchOptions("progress"),
-      fetchOptions("payment"),
-      fetchOptions("payment_status"),
-      fetchOptions("mode_of_payment"),
-      fetchOptions("shipper"),
-      fetchOptions("local_overseas"),
-      fetchOptions("subitem_status"),
-      fetchOptions("currency"),
-      fetchOptions("subitem_subprogress"),
-    ]).then(
-      ([
-        reply,
-        status,
-        channel,
-        importance,
-        progress,
-        payment,
-        paymentStatus,
-        modeOfPayment,
-        shipper,
-        localOverseas,
-        subitemStatus,
-        currency,
-        subitemSubprogress,
-      ]) => {
-        if (!active) return;
-        setReplyStatusEntries(reply);
-        setClientStatusEntries(status);
-        setChannelEntries(channel);
-        setImportanceEntries(importance);
-        setProgressEntries(progress);
-        setPaymentEntries(payment);
-        setPaymentStatusEntries(paymentStatus);
-        setModeOfPaymentEntries(modeOfPayment);
-        setShipperEntries(shipper);
-        setLocalOverseasEntries(localOverseas);
-        setSubitemStatusEntries(subitemStatus);
-        setCurrencyEntries(currency);
-        setSubitemSubprogressEntries(subitemSubprogress);
-      },
-    );
+
+    const loadBoardOptions = async () => {
+      const supabase = createSupabaseClient();
+      const { data: groups, error: groupsError } = await supabase
+        .from("option_groups")
+        .select("id, code")
+        .in("code", BOARD_OPTION_GROUP_CODES);
+      if (groupsError) {
+        console.error("Failed to load Board label groups", groupsError);
+        return;
+      }
+
+      const groupIds = (groups ?? []).map((group) => group.id);
+      const { data: values, error: valuesError } = groupIds.length
+        ? await supabase
+            .from("option_values")
+            .select("group_id, value, color")
+            .in("group_id", groupIds)
+            .order("sort_order")
+        : { data: [], error: null };
+      if (valuesError) {
+        console.error("Failed to load Board label values", valuesError);
+        return;
+      }
+      if (!active) return;
+
+      const valuesByGroupId = new Map<string, OptionEntry[]>();
+      for (const value of values ?? []) {
+        const entries = valuesByGroupId.get(value.group_id) ?? [];
+        entries.push({ value: value.value, color: value.color });
+        valuesByGroupId.set(value.group_id, entries);
+      }
+      const valuesByCode = new Map(
+        (groups ?? []).map((group) => [
+          group.code,
+          valuesByGroupId.get(group.id) ?? [],
+        ]),
+      );
+      const optionsFor = (code: (typeof BOARD_OPTION_GROUP_CODES)[number]) =>
+        valuesByCode.get(code) ?? [];
+
+      setReplyStatusEntries(optionsFor("reply_status"));
+      setClientStatusEntries(optionsFor("client_status"));
+      setChannelEntries(optionsFor("channel"));
+      setImportanceEntries(optionsFor("importance"));
+      setProgressEntries(optionsFor("progress"));
+      setPaymentEntries(optionsFor("payment"));
+      setPaymentStatusEntries(optionsFor("payment_status"));
+      setModeOfPaymentEntries(optionsFor("mode_of_payment"));
+      setShipperEntries(optionsFor("shipper"));
+      setLocalOverseasEntries(optionsFor("local_overseas"));
+      setSubitemStatusEntries(optionsFor("subitem_status"));
+      setCurrencyEntries(optionsFor("currency"));
+      setSubitemSubprogressEntries(optionsFor("subitem_subprogress"));
+    };
+
+    void loadBoardOptions();
     return () => {
       active = false;
     };
-  }, [fetchOptions]);
+  }, []);
 
   async function fetchGroups(): Promise<CRMGroup[]> {
     const supabase = createSupabaseClient();
@@ -1838,37 +1849,11 @@ export function CRMBoard({
             data: { user },
           },
           groupsData,
-          replyOpts,
-          statusOpts,
-          channelOpts,
-          importanceOpts,
-          progressOpts,
-          paymentOpts,
-          paymentStatusOpts,
-          modeOfPaymentOpts,
-          shipperOpts,
-          localOverseasOpts,
-          subitemStatusOpts,
-          currencyOpts,
-          subitemSubprogressOpts,
           customColumnsData,
         ] = await Promise.all([
           fetchProfiles(),
           supabase.auth.getUser(),
           fetchGroups(),
-          fetchOptions("reply_status"),
-          fetchOptions("client_status"),
-          fetchOptions("channel"),
-          fetchOptions("importance"),
-          fetchOptions("progress"),
-          fetchOptions("payment"),
-          fetchOptions("payment_status"),
-          fetchOptions("mode_of_payment"),
-          fetchOptions("shipper"),
-          fetchOptions("local_overseas"),
-          fetchOptions("subitem_status"),
-          fetchOptions("currency"),
-          fetchOptions("subitem_subprogress"),
           fetchCustomColumns(),
         ]);
 
@@ -1887,26 +1872,13 @@ export function CRMBoard({
             ]),
           ),
         );
-        setReplyStatusEntries(replyOpts);
-        setClientStatusEntries(statusOpts);
-        setChannelEntries(channelOpts);
-        setImportanceEntries(importanceOpts);
-        setProgressEntries(progressOpts);
-        setPaymentEntries(paymentOpts);
-        setPaymentStatusEntries(paymentStatusOpts);
-        setModeOfPaymentEntries(modeOfPaymentOpts);
-        setShipperEntries(shipperOpts);
-        setLocalOverseasEntries(localOverseasOpts);
-        setSubitemStatusEntries(subitemStatusOpts);
-        setCurrencyEntries(currencyOpts);
-        setSubitemSubprogressEntries(subitemSubprogressOpts);
         setCustomColumns(customColumnsData);
       } catch (error: any) {
         console.error("Failed to load assignments", error);
       }
     };
     void loadAssignments();
-  }, [fetchOptions]);
+  }, []);
 
   useEffect(() => {
     if (!showFilter) return;
