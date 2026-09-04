@@ -456,6 +456,11 @@ export function ClientRow({
   const [attachmentPreview, setAttachmentPreview] = useState<string | null>(
     null,
   );
+  const [pendingAttachmentRemoval, setPendingAttachmentRemoval] = useState<{
+    fieldKey: string;
+    id: string;
+    name: string;
+  } | null>(null);
   const [showEstimateDialog, setShowEstimateDialog] = useState(false);
   const [estimateMode, setEstimateMode] = useState<
     "choice" | "quickbooks" | "sample"
@@ -700,8 +705,12 @@ export function ClientRow({
 
     const isImage = (item: AttachmentItem) =>
       item.mimeType?.startsWith("image/") || /^data:image\//i.test(item.url);
-    const removeItem = (id: string) =>
-      saveItems(items.filter((item) => item.id !== id));
+    const removeItem = (item: AttachmentItem) =>
+      setPendingAttachmentRemoval({
+        fieldKey,
+        id: item.id,
+        name: item.name,
+      });
 
     return (
       <FileDropTarget
@@ -758,7 +767,7 @@ export function ClientRow({
                 )}
                 <button
                   type="button"
-                  onClick={() => removeItem(item.id)}
+                  onClick={() => removeItem(item)}
                   title="Remove attachment"
                   className="absolute -right-1 -top-1 hidden h-3.5 w-3.5 items-center justify-center rounded-full bg-white text-[10px] text-slate-500 shadow group-hover/attachment:flex hover:text-red-500"
                 >
@@ -866,6 +875,41 @@ export function ClientRow({
     );
   };
 
+  const confirmAttachmentRemoval = async () => {
+    if (!pendingAttachmentRemoval) return;
+    const { fieldKey, id } = pendingAttachmentRemoval;
+    const rawValue = String(client.customFields?.[fieldKey] ?? "");
+    let items: AttachmentItem[] = [];
+
+    try {
+      const parsed = JSON.parse(rawValue) as unknown;
+      if (Array.isArray(parsed)) {
+        items = parsed.filter(
+          (item): item is AttachmentItem =>
+            Boolean(item && typeof item === "object" && "url" in item),
+        );
+      }
+    } catch {
+      if (rawValue) {
+        items = [
+          {
+            id: `legacy-${fieldKey}`,
+            kind: /^https?:\/\//i.test(rawValue) ? "link" : "file",
+            name: /^https?:\/\//i.test(rawValue) ? rawValue : "Attachment",
+            url: rawValue,
+          },
+        ];
+      }
+    }
+
+    await updateClientCustomField(
+      client.id,
+      fieldKey,
+      JSON.stringify(items.filter((item) => item.id !== id)),
+    );
+    setPendingAttachmentRemoval(null);
+  };
+
   const aggregateSubitemValues = client.subitems.reduce(
     (totals, subitem) => {
       const { price, markup } = calculateSubitemFinancials(subitem);
@@ -911,13 +955,17 @@ export function ClientRow({
     return displayLogValue(value);
   }
   function renderActivityText(entry: ActivityEntry) {
-    if (entry.title || entry.description) {
+    const isRetiredFileDescription =
+      entry.description === "File has been removed" ||
+      entry.description === "File has been replaced";
+
+    if (entry.title || (entry.description && !isRetiredFileDescription)) {
       return (
         <>
           {entry.title ? (
             <span className="font-medium">{entry.title}</span>
           ) : null}
-          {entry.description ? (
+          {entry.description && !isRetiredFileDescription ? (
             <>
               {entry.title ? "  " : ""}
               <span className="text-gray-700">{entry.description}</span>
@@ -1625,23 +1673,6 @@ export function ClientRow({
                                   </>
                                 ) : null}
                                 {renderActivityText(entry)}
-                                {entry.description ===
-                                "File has been removed" ? (
-                                  <span
-                                    className="ml-4 inline-flex items-center rounded-md bg-slate-100 px-2 py-1 text-[12.6px] font-medium text-slate-500"
-                                    title="This file is no longer available"
-                                  >
-                                    File has been removed
-                                  </span>
-                                ) : entry.description ===
-                                  "File has been replaced" ? (
-                                  <span
-                                    className="ml-4 inline-flex items-center rounded-md bg-slate-100 px-2 py-1 text-[12.6px] font-medium text-slate-500"
-                                    title="This file has been replaced"
-                                  >
-                                    File has been replaced
-                                  </span>
-                                ) : null}
                               </p>
                               <p className="mt-1 text-[12.6px] text-gray-500">
                                 {new Date(entry.createdAt).toLocaleString(
@@ -1664,6 +1695,21 @@ export function ClientRow({
                                     ? "Open Estimate"
                                     : "Open OCF"}
                                 </a>
+                              ) : null}
+                              {entry.description === "File has been removed" ? (
+                                <span
+                                  className="inline-flex items-center rounded-md bg-slate-100 px-2 py-1 text-[12.6px] font-medium text-slate-500"
+                                  title="This file is no longer available"
+                                >
+                                  File has been removed
+                                </span>
+                              ) : entry.description === "File has been replaced" ? (
+                                <span
+                                  className="inline-flex items-center rounded-md bg-slate-100 px-2 py-1 text-[12.6px] font-medium text-slate-500"
+                                  title="This file has been replaced"
+                                >
+                                  File has been replaced
+                                </span>
                               ) : null}
                               {(entry.action === "field_changed" ||
                                 entry.action === "subitem_field_changed") &&
@@ -2513,6 +2559,31 @@ export function ClientRow({
           onOpenSubitemDetail={onOpenSubitemDetail}
         />
       )}
+      <AlertDialog
+        open={Boolean(pendingAttachmentRemoval)}
+        onOpenChange={(open) => {
+          if (!open) setPendingAttachmentRemoval(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove attachment?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingAttachmentRemoval?.name ?? "This attachment"} will be
+              removed from this client. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => void confirmAttachmentRemoval()}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              Remove file
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <AlertDialog
         open={showMultipleInvoicesDialog}
         onOpenChange={(open) => {

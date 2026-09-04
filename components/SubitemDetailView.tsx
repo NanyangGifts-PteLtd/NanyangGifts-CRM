@@ -22,6 +22,16 @@ import { toast } from "sonner";
 import { SubitemActionsMenu } from "./SubitemActionsMenu";
 import { FileDropTarget } from "./ui/file-drop-target";
 import { uploadCrmFiles } from "@/lib/crm-files";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "./ui/alert-dialog";
 
 type Attachment = {
   id: string;
@@ -120,6 +130,12 @@ export function SubitemDetailView({
   const [notice, setNotice] = useState<{ left: number; top: number } | null>(
     null,
   );
+  const [pendingSingleFileChange, setPendingSingleFileChange] = useState<{
+    type: "remove" | "replace";
+    key: "artworkFile" | "ocfFinalArtworkFile";
+    title: string;
+    incoming?: File;
+  } | null>(null);
   const people = useMemo(
     () =>
       assigneeIds
@@ -227,13 +243,15 @@ export function SubitemDetailView({
     current: Attachment | null,
     incoming: File,
   ) => {
-    if (
-      current &&
-      !window.confirm(
-        `Replace the current ${key === "artworkFile" ? "Artwork" : "OCF (Final Artwork)"} file? This cannot be undone.`,
-      )
-    )
+    if (current) {
+      setPendingSingleFileChange({
+        type: "replace",
+        key,
+        title: key === "artworkFile" ? "Artwork" : "OCF (Final Artwork)",
+        incoming,
+      });
       return;
+    }
     void uploadCrmFiles(
       [incoming],
       `subitems/${subitem.id}/${key}`,
@@ -241,6 +259,28 @@ export function SubitemDetailView({
     ).then(
       ([file]) => saveSingleFile(key, file),
     );
+  };
+  const requestSingleFileRemoval = (
+    key: "artworkFile" | "ocfFinalArtworkFile",
+  ) =>
+    setPendingSingleFileChange({
+      type: "remove",
+      key,
+      title: key === "artworkFile" ? "Artwork" : "OCF (Final Artwork)",
+    });
+  const confirmSingleFileChange = () => {
+    if (!pendingSingleFileChange) return;
+    const { type, key, incoming } = pendingSingleFileChange;
+    if (type === "remove") {
+      saveSingleFile(key, null);
+    } else if (incoming) {
+      void uploadCrmFiles(
+        [incoming],
+        `subitems/${subitem.id}/${key}`,
+        { clientId, subitemId: subitem.id },
+      ).then(([file]) => saveSingleFile(key, file));
+    }
+    setPendingSingleFileChange(null);
   };
   useEffect(() => {
     if (!canEdit) return;
@@ -365,7 +405,7 @@ export function SubitemDetailView({
                   onAdd={(file) =>
                     replaceSingleFile("artworkFile", artwork, file)
                   }
-                  onRemove={() => saveSingleFile("artworkFile", null)}
+                  onRemove={() => requestSingleFileRemoval("artworkFile")}
                 />
                 <SingleFileSlot
                   title="OCF (Final Artwork)"
@@ -378,7 +418,7 @@ export function SubitemDetailView({
                       file,
                     )
                   }
-                  onRemove={() => saveSingleFile("ocfFinalArtworkFile", null)}
+                  onRemove={() => requestSingleFileRemoval("ocfFinalArtworkFile")}
                 />
               </div>
               <Section title="Subitem details">
@@ -594,7 +634,7 @@ export function SubitemDetailView({
                   onAdd={(file) =>
                     replaceSingleFile("artworkFile", artwork, file)
                   }
-                  onRemove={() => saveSingleFile("artworkFile", null)}
+                  onRemove={() => requestSingleFileRemoval("artworkFile")}
                 />
                 <SingleFileSlot
                   title="OCF (Final Artwork)"
@@ -607,7 +647,7 @@ export function SubitemDetailView({
                       file,
                     )
                   }
-                  onRemove={() => saveSingleFile("ocfFinalArtworkFile", null)}
+                  onRemove={() => requestSingleFileRemoval("ocfFinalArtworkFile")}
                 />
               </div>
               <FileDropTarget
@@ -773,6 +813,42 @@ export function SubitemDetailView({
           You can only edit items that are assigned to you
         </button>
       )}
+      <AlertDialog
+        open={Boolean(pendingSingleFileChange)}
+        onOpenChange={(open) => {
+          if (!open) setPendingSingleFileChange(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {pendingSingleFileChange?.type === "replace"
+                ? `Replace ${pendingSingleFileChange.title}?`
+                : `Remove ${pendingSingleFileChange?.title ?? "file"}?`}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingSingleFileChange?.type === "replace"
+                ? "The current file will be replaced by the selected file."
+                : "This file will be removed from the subitem."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmSingleFileChange}
+              className={
+                pendingSingleFileChange?.type === "remove"
+                  ? "bg-red-600 hover:bg-red-700"
+                  : undefined
+              }
+            >
+              {pendingSingleFileChange?.type === "replace"
+                ? "Replace file"
+                : "Remove file"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
