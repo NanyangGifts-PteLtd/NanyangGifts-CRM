@@ -93,7 +93,8 @@ export async function POST(request: NextRequest) {
       .eq("client_id", generation.client_id)
       .eq("user_id", user.id);
     if (assignmentError) throw assignmentError;
-    if (!assignments?.length) {
+    const canManageAnyClient = ["admin", "director", "dev"].includes(role);
+    if (!canManageAnyClient && !assignments?.length) {
       return NextResponse.json(
         { error: "You must be assigned to this client to sync its invoices." },
         { status: 403 },
@@ -145,6 +146,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       estimateGenerationId: generation.id,
       linkedInvoiceCount: rows.length,
+      invoiceNumbers: rows
+        .map((row) => row.quickbooks_invoice_doc_number ?? row.quickbooks_invoice_id)
+        .filter(Boolean),
       syncedAt: new Date().toISOString(),
     });
   } catch (error) {

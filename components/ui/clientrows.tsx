@@ -46,6 +46,7 @@ import { ClientActionsMenu } from "@/components/ClientActionsMenu";
 import { FileDropTarget } from "./file-drop-target";
 import { uploadCrmFiles } from "@/lib/crm-files";
 import { FilePreview } from "./file-preview";
+import { toast } from "sonner";
 
 type OptionEntry = { value: string; color: string };
 const trackingSummaryOptions: OptionEntry[] = [
@@ -453,11 +454,32 @@ export function ClientRow({
     !!currentUserId &&
     (clientAssignedIds.includes(currentUserId) ||
       pmAssignedIds.includes(currentUserId));
+  const canManageClient =
+    canEditClient ||
+    ["admin", "director", "dev"].includes(
+      String(currentUserRole ?? "").toLowerCase(),
+    );
   const [showCloseDialog, setShowCloseDialog] = useState(false);
   const [showMultipleInvoicesDialog, setShowMultipleInvoicesDialog] =
     useState(false);
   const [pendingTrackingInvoiceNumber, setPendingTrackingInvoiceNumber] =
     useState<string | null>(null);
+  const [trackingEstimates, setTrackingEstimates] = useState<
+    Array<{
+      id: string;
+      quickbooks_estimate_doc_number: string | null;
+      created_at: string;
+    }>
+  >([]);
+  const [isLoadingTrackingEstimates, setIsLoadingTrackingEstimates] =
+    useState(false);
+  const [isPullingInvoices, setIsPullingInvoices] = useState(false);
+  const [trackingInvoiceError, setTrackingInvoiceError] = useState<
+    string | null
+  >(null);
+  const [trackingInvoiceNotice, setTrackingInvoiceNotice] = useState<
+    string | null
+  >(null);
   const [pendingStatus, setPendingStatus] = useState<ClientStatus | null>(null);
   const [closeFiles, setCloseFiles] = useState<File[]>([]);
   const [closeConfirmed, setCloseConfirmed] = useState(false);
@@ -547,6 +569,92 @@ export function ClientRow({
   const deferMultipleInvoicesDecision = () => {
     setPendingTrackingInvoiceNumber(null);
     setShowMultipleInvoicesDialog(false);
+  };
+  const loadTrackingEstimates = async () => {
+    setIsLoadingTrackingEstimates(true);
+    setTrackingInvoiceError(null);
+    try {
+      const response = await fetch(
+        `/api/quickbooks/estimate-update?clientId=${encodeURIComponent(client.id)}`,
+      );
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result?.error ?? "Could not load QuickBooks estimates");
+      }
+      setTrackingEstimates(result.estimates ?? []);
+    } catch (error) {
+      setTrackingInvoiceError(
+        error instanceof Error
+          ? error.message
+          : "Could not load QuickBooks estimates",
+      );
+    } finally {
+      setIsLoadingTrackingEstimates(false);
+    }
+  };
+  const selectTrackingEstimate = (generationId: string) => {
+    const estimate = trackingEstimates.find((item) => item.id === generationId);
+    if (!estimate) return;
+    setTrackingInvoiceError(null);
+    onUpdate({
+      customFields: {
+        ...(client.customFields ?? {}),
+        trackingEstimateGenerationId: estimate.id,
+        trackingEstimateNumber: estimate.quickbooks_estimate_doc_number ?? "",
+        trackingInvoiceNumber: "",
+        trackingMultipleInvoices: "",
+      },
+    });
+  };
+  const pullTrackingInvoices = async () => {
+    const estimateGenerationId =
+      client.customFields?.trackingEstimateGenerationId ?? "";
+    if (!estimateGenerationId) return;
+    setIsPullingInvoices(true);
+    setTrackingInvoiceError(null);
+    setTrackingInvoiceNotice(null);
+    try {
+      const response = await fetch("/api/quickbooks/estimate-invoices", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ estimateGenerationId }),
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(
+          result?.error ?? "Could not synchronize linked QuickBooks invoices",
+        );
+      }
+      const invoiceNumbers = (result.invoiceNumbers ?? [])
+        .map((value: unknown) => String(value).trim())
+        .filter(Boolean);
+      if (!invoiceNumbers.length) {
+        setTrackingInvoiceNotice("No invoices found");
+        window.setTimeout(() => setTrackingInvoiceNotice(null), 4500);
+        toast("No invoices found", {
+          description: "QuickBooks has no invoices linked to the selected estimate.",
+        });
+      }
+      onUpdate({
+        customFields: {
+          ...(client.customFields ?? {}),
+          trackingInvoiceNumber: invoiceNumbers.join(", "),
+          trackingMultipleInvoices: invoiceNumbers.length
+            ? invoiceNumbers.length > 1
+              ? "Yes"
+              : "No"
+            : "",
+        },
+      });
+    } catch (error) {
+      setTrackingInvoiceError(
+        error instanceof Error
+          ? error.message
+          : "Could not synchronize linked QuickBooks invoices",
+      );
+    } finally {
+      setIsPullingInvoices(false);
+    }
   };
   const {
     handleGenerateEstimate,
@@ -2021,7 +2129,7 @@ export function ClientRow({
           onClick={(event) => {
             if (
               !(event.target as HTMLElement).closest(
-                "button, input, [data-editable-cell], [data-activity-log]",
+                "button, input, select, [data-editable-cell], [data-activity-log]",
               )
             )
               onOpenDetail();
@@ -2047,11 +2155,29 @@ export function ClientRow({
               <button
                 type="button"
                 data-view-action
-                disabled
-                title="Invoice retrieval will be connected here soon"
-                className="rounded border border-sky-300 bg-sky-50 px-2 py-1 text-[10px] font-semibold text-sky-700 opacity-70 disabled:cursor-not-allowed"
+                disabled={
+                  !canManageClient ||
+                  !client.customFields?.trackingEstimateGenerationId ||
+                  isPullingInvoices
+                }
+                onClick={(event) => {
+                  event.stopPropagation();
+                  void pullTrackingInvoices();
+                }}
+                title={
+                  trackingInvoiceError ??
+                  trackingInvoiceNotice ??
+                  (!canManageClient
+                    ? "You do not have permission to update this client"
+                    : !client.customFields?.trackingEstimateGenerationId
+                    ? "Select a QuickBooks estimate first"
+                    : "Pull invoices linked to this QuickBooks estimate")
+                }
+                className="rounded border border-sky-300 bg-sky-50 px-2 py-1 text-[10px] font-semibold text-sky-700 hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Pull Invoice
+                {isPullingInvoices
+                  ? "Pulling…"
+                  : trackingInvoiceNotice ?? "Pull Invoice"}
               </button>
             )}
             {!trackingMode && (
@@ -2808,7 +2934,7 @@ export function ClientRow({
             </div>
             <div
               data-client-column="trackingEstimateNumber"
-              className="tracking-client-cell overflow-hidden border-r border-[#D0D4E4] py-1"
+              className="tracking-client-cell group/estimate relative overflow-hidden border-r border-[#D0D4E4] py-1"
               style={{
                 height: 30,
                 minWidth: colWidth.trackingEstimateNumber,
@@ -2816,17 +2942,52 @@ export function ClientRow({
                 order: columnOrderMap.trackingEstimateNumber,
               }}
             >
-              <EditableCell
-                value={client.customFields?.trackingEstimateNumber ?? ""}
-                onChange={(value) =>
-                  onUpdate({
-                    customFields: {
-                      ...(client.customFields ?? {}),
-                      trackingEstimateNumber: value,
-                    },
-                  })
+              <select
+                value={client.customFields?.trackingEstimateGenerationId ?? ""}
+                disabled={!canManageClient}
+                onFocus={() => {
+                  if (canManageClient) void loadTrackingEstimates();
+                }}
+                onChange={(event) => selectTrackingEstimate(event.target.value)}
+                onClick={(event) => event.stopPropagation()}
+                onPointerDown={(event) => event.stopPropagation()}
+                className="h-full w-full bg-transparent px-1 text-[11px] text-slate-700 outline-none focus:bg-white disabled:cursor-default"
+                title={
+                  trackingInvoiceError ??
+                  "Choose one of this client's QuickBooks estimates"
                 }
-              />
+              >
+                <option value="">
+                  {isLoadingTrackingEstimates
+                    ? "Loading estimates…"
+                    : "Select estimate"}
+                </option>
+                {client.customFields?.trackingEstimateGenerationId &&
+                  !trackingEstimates.some(
+                    (estimate) =>
+                      estimate.id ===
+                      client.customFields?.trackingEstimateGenerationId,
+                  ) && (
+                    <option
+                      value={client.customFields.trackingEstimateGenerationId}
+                    >
+                      {client.customFields.trackingEstimateNumber ||
+                        "Selected estimate"}
+                    </option>
+                  )}
+                {trackingEstimates.map((estimate) => (
+                  <option key={estimate.id} value={estimate.id}>
+                    Estimate {estimate.quickbooks_estimate_doc_number ?? "(no document number)"}
+                  </option>
+                ))}
+              </select>
+              {!client.customFields?.trackingEstimateGenerationId &&
+                canManageClient && (
+                <span className="pointer-events-none absolute inset-0 flex items-center justify-between bg-white px-1 text-[11px] text-transparent transition-colors group-hover/estimate:text-slate-400 group-focus-within/estimate:text-slate-400">
+                  <span>Select estimate</span>
+                  <ChevronDown size={13} aria-hidden="true" />
+                </span>
+              )}
             </div>
             <div
               data-client-column="trackingInvoiceNumber"

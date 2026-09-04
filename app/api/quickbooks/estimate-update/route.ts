@@ -189,14 +189,62 @@ export async function GET(request: NextRequest) {
     if (!(await canEditClient(supabase, clientId, user.id))) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
-    const { data: estimates, error } = await supabase
-      .from("estimate_generations")
-      .select("id, quickbooks_estimate_id, quickbooks_estimate_doc_number, created_at")
-      .eq("client_id", clientId)
-      .not("quickbooks_estimate_id", "is", null)
-      .order("created_at", { ascending: false });
-    if (error) throw error;
-    return NextResponse.json({ estimates: estimates ?? [] });
+    const [{ data: client, error: clientError }, { data: storedEstimates, error: estimatesError }] =
+      await Promise.all([
+        supabase
+          .from("clients")
+          .select("id, company")
+          .eq("id", clientId)
+          .maybeSingle(),
+        supabase
+          .from("estimate_generations")
+          .select("id, quickbooks_customer_id, quickbooks_estimate_id, quickbooks_estimate_doc_number, created_at")
+          .eq("client_id", clientId)
+          .not("quickbooks_estimate_id", "is", null)
+          .order("created_at", { ascending: false }),
+      ]);
+    if (clientError) throw clientError;
+    if (!client) return NextResponse.json({ error: "Client not found" }, { status: 404 });
+    if (estimatesError) throw estimatesError;
+
+    const estimates = [...(storedEstimates ?? [])];
+    let quickBooksCustomerId = estimates.find((estimate) => estimate.quickbooks_customer_id)
+      ?.quickbooks_customer_id;
+    if (!quickBooksCustomerId && client.company?.trim()) {
+      const customerResult = await qboQuery(
+        `SELECT * FROM Customer WHERE DisplayName = '${esc(client.company.trim())}'`,
+      );
+      quickBooksCustomerId = customerResult?.QueryResponse?.Customer?.[0]?.Id;
+    }
+    if (quickBooksCustomerId) {
+      const quickBooksResult = await qboQuery(
+        `SELECT * FROM Estimate WHERE CustomerRef = '${esc(String(quickBooksCustomerId))}'`,
+      );
+      const quickBooksEstimates = quickBooksResult?.QueryResponse?.Estimate ?? [];
+      for (const quickBooksEstimate of quickBooksEstimates) {
+        if (!quickBooksEstimate?.Id) continue;
+        if (estimates.some((estimate) => estimate.quickbooks_estimate_id === quickBooksEstimate.Id)) {
+          continue;
+        }
+        const { data: generation, error: generationError } = await supabase
+          .from("estimate_generations")
+          .insert({
+            client_id: clientId,
+            quickbooks_customer_id: String(quickBooksCustomerId),
+            quickbooks_estimate_id: String(quickBooksEstimate.Id),
+            quickbooks_estimate_doc_number: quickBooksEstimate.DocNumber ?? null,
+          })
+          .select("id, quickbooks_customer_id, quickbooks_estimate_id, quickbooks_estimate_doc_number, created_at")
+          .single();
+        if (generationError) throw generationError;
+        if (generation) estimates.push(generation);
+      }
+    }
+    estimates.sort(
+      (first, second) =>
+        new Date(second.created_at).getTime() - new Date(first.created_at).getTime(),
+    );
+    return NextResponse.json({ estimates });
   } catch (error: any) {
     return NextResponse.json({ error: quickBooksErrorMessage(error) }, { status: 500 });
   }
