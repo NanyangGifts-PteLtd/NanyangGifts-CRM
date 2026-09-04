@@ -2061,7 +2061,7 @@ export function ClientRow({
 
         <div
           data-client-column="billingAddress"
-          className="flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis"
+          className="flex-1 min-w-0 overflow-hidden border-r border-[#D0D4E4] py-1.5 whitespace-nowrap text-ellipsis"
           style={{
             height: 30,
             minWidth: colWidth.billingAddress,
@@ -2176,7 +2176,7 @@ export function ClientRow({
         </div>
         <div
           data-client-column="totalPrice"
-          className="flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis"
+          className="flex-1 min-w-0 overflow-hidden border-r border-[#D0D4E4] bg-amber-50 py-1.5 whitespace-nowrap text-ellipsis"
           style={{
             height: 30,
             minWidth: colWidth.totalPrice,
@@ -2184,13 +2184,13 @@ export function ClientRow({
             order: columnOrderMap.totalPrice ?? 15,
           }}
         >
-          <span className="block px-2 text-center text-[12.6px] text-gray-800">
+          <span className="block px-2 text-center text-[12.6px] font-medium text-amber-950">
             {aggregateSubitemValues.totalPrice.toFixed(2)}
           </span>
         </div>
         <div
           data-client-column="totalMarkup"
-          className="flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis"
+          className="flex-1 min-w-0 overflow-hidden border-r border-[#D0D4E4] bg-amber-50 py-1.5 whitespace-nowrap text-ellipsis"
           style={{
             height: 30,
             minWidth: colWidth.totalMarkup,
@@ -2198,7 +2198,7 @@ export function ClientRow({
             order: columnOrderMap.totalMarkup ?? 16,
           }}
         >
-          <span className="block px-2 text-center text-[12.6px] text-gray-800">
+          <span className="block px-2 text-center text-[12.6px] font-medium text-amber-950">
             {aggregateSubitemValues.totalMarkup.toFixed(2)}
           </span>
         </div>

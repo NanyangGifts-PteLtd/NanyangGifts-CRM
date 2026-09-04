@@ -738,7 +738,7 @@ export function ShipmentGrid({ shipments, mode = "pm" }: ShipmentGridProps) {
                                 : [...current, cell];
                             })
                           }
-                          className={`border-b border-r border-slate-300 p-0 text-center align-middle ${isSelected ? "ring-2 ring-inset ring-sky-600" : ""}`}
+                          className={`border-b border-r border-slate-300 p-0 text-center align-middle ${column.calculated ? "bg-amber-50 font-medium text-amber-950" : ""} ${isSelected ? "ring-2 ring-inset ring-sky-600" : ""}`}
                         >
                           {savingCell === cellKey ? (
                             <div className="min-h-[56px] px-2 py-3 text-xs text-slate-400">

@@ -891,7 +891,7 @@ export default function ShipperGrid({ rows, mode, token }: ShipperGridProps) {
                             : {}),
                           backgroundColor: cellFills[`${row.id}:${col.key}`],
                         }}
-                        className={`border-b border-r border-slate-300 p-0 text-center align-middle whitespace-pre-wrap ${col.formula ? "bg-slate-50 font-medium" : ""} ${cellSelected(index, colIndex) ? "ring-2 ring-inset ring-sky-600" : ""}`}
+                        className={`border-b border-r border-slate-300 p-0 text-center align-middle whitespace-pre-wrap ${col.formula ? "bg-amber-50 font-medium text-amber-950" : ""} ${cellSelected(index, colIndex) ? "ring-2 ring-inset ring-sky-600" : ""}`}
                       >
                         {col.key === "logistics_remarks" ||
                         col.key === "shipper_remarks" ? (

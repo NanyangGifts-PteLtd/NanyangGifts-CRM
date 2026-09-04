@@ -165,6 +165,17 @@ type TableMode = "subitem" | "payment" | "timeline";
 type OptionEntry = { value: string; color: string };
 type ShipperPushValues = Record<string, string> & { subitemId: string };
 const CUSTOM_COL_WIDTH = 120;
+const FORMULA_RESULT_FIELDS = new Set([
+  "cSgd",
+  "tc",
+  "uc",
+  "tcSgd",
+  "price",
+  "markup",
+  "percentMarkup",
+  "priceToSet",
+  "difference",
+]);
 
 const SHIPPER_PUSH_FIELDS: Array<{
   key: keyof Omit<ShipperPushValues, "subitemId">;
@@ -3059,7 +3070,7 @@ export function SubitemsTable({
                         col.key === "name"
                           ? "overflow-visible relative z-20"
                           : "overflow-hidden"
-                      }`}
+                      } ${FORMULA_RESULT_FIELDS.has(col.key) ? "bg-amber-50" : ""}`}
 
                       style={{ minWidth: col.minWidth }}
                     >
