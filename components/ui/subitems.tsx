@@ -1613,15 +1613,17 @@ export function SubitemsTable({
                     preparingPushSubitemId === sub.id ||
                     !canEditSubitem(sub.id)
                   }
-                  className={`rounded-sm border px-2 py-1 text-[11px] font-medium transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                  className={`rounded px-2 py-1 text-[11px] font-medium transition disabled:cursor-not-allowed disabled:opacity-60 ${
                     wasPushed
-                      ? "border-teal-100 bg-teal-50 text-teal-400 hover:bg-teal-100"
-                      : "border-teal-200 text-teal-500 hover:bg-blue-50"
+                      ? "border-slate-200 bg-slate-100 text-slate-400 shadow-none"
+                      : "border border-teal-600 bg-teal-600 text-white shadow-sm hover:bg-teal-700"
                   }`}
                   title={
                     !canEditSubitem(sub.id)
                       ? "You can only edit items that are assigned to you"
-                      : "Push to shipper view"
+                      : wasPushed
+                        ? "Already pushed. Edit shipment details from the Shipper view."
+                        : "Push to shipper view"
                   }
                 >
                   {pushingSubitemId === sub.id ||
