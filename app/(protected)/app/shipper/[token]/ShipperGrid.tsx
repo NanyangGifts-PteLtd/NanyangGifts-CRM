@@ -911,7 +911,9 @@ export default function ShipperGrid({ rows, mode, token }: ShipperGridProps) {
                               saveCell(row, col.key, nextValue)
                             }
                           />
-                        ) : editable && col.key === "sea_or_air" ? (
+                        ) :
+                          editable &&
+                          ["sea_or_air", "channel"].includes(col.key) ? (
                           <select
                             value={String(value ?? "")}
                             onChange={(event) =>

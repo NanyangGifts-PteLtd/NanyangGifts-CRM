@@ -100,7 +100,12 @@ const columns: Column[] = [
   { key: "gst", label: "消费税", scope: "shipment", input: "number" },
   { key: "other_fees", label: "其他费用", scope: "shipment", input: "number" },
   { key: "total_cost", label: "总计费用", scope: "shipment", calculated: true },
-  { key: "channel", label: "渠道", scope: "shipment" },
+  {
+    key: "channel",
+    label: "渠道",
+    scope: "shipment",
+    input: "select-air",
+  },
   {
     key: "logistics_remarks",
     label: "备注",
