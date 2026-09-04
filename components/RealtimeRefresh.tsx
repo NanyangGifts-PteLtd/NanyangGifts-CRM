@@ -1,35 +1,43 @@
 "use client";
 
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 
-export default function ClientsLiveRefresh() {
-    const router = useRouter();
+export default function ClientsLiveRefresh({
+  onRefresh,
+}: {
+  onRefresh: () => void | Promise<void>;
+}) {
+    const refreshTimeout = useRef<number | null>(null);
 
     useEffect(() => {
         const supabase = createClient();
+        const scheduleRefresh = () => {
+            if (refreshTimeout.current !== null) {
+                window.clearTimeout(refreshTimeout.current);
+            }
+            refreshTimeout.current = window.setTimeout(() => {
+                refreshTimeout.current = null;
+                void onRefresh();
+            }, 250);
+        };
 
         const channel = supabase
-            .channel("clients-debug")
+            .channel("crmboard-activity-log-live")
             .on(
                 "postgres_changes",
-                { event: "*", schema: "public", table: "clients" },
-                (payload) => {
-                    console.log("Realtime INSERT received:", payload);
-                    router.refresh();
-                }
+                { event: "*", schema: "public", table: "activity_log" },
+                scheduleRefresh,
             )
-            .on("postgres_changes", { event: "*", schema: "public", table: "activity_log" }, () => router.refresh())
-            .on("postgres_changes", { event: "*", schema: "public", table: "order_confirmations" }, () => router.refresh())
-            .subscribe((status) => {
-                console.log("Realtime status:", status);
-            });
+            .subscribe();
 
         return () => {
+            if (refreshTimeout.current !== null) {
+                window.clearTimeout(refreshTimeout.current);
+            }
             supabase.removeChannel(channel);
         };
-    }, [router]);
+    }, [onRefresh]);
 
     return null;
 }

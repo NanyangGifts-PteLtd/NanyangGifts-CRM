@@ -7858,7 +7858,7 @@ export function CRMBoard({
           </div>
         </div>
       )}
-      <ClientsLiveRefresh />
+      <ClientsLiveRefresh onRefresh={reloadClients} />
     </div>
   );
 }
