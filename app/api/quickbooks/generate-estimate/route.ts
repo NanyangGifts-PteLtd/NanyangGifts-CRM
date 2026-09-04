@@ -13,6 +13,27 @@ function numberValue(value: unknown) {
     return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function estimateMetadataFields(values: { salesperson: string; paymentTerm: string }) {
+    // Verified from the existing Make scenario's QuickBooks response:
+    // DefinitionId 2 is Payment Terms; DefinitionId 3 is the current legacy
+    // salesperson slot. Name is intentionally omitted because QuickBooks uses
+    // the definition ID to resolve a transaction custom field.
+    return [
+        ...(values.paymentTerm.trim()
+            ? [{
+                DefinitionId: '2',
+                Type: 'StringType',
+                StringValue: values.paymentTerm.trim(),
+            }]
+            : []),
+        {
+            DefinitionId: '3',
+            Type: 'StringType',
+            StringValue: values.salesperson,
+        },
+    ];
+}
+
 async function getOrCreateCustomer(client: any) {
     const name = (client.company ?? '').trim();
     if (!name) throw new Error('Client name missing');
@@ -69,7 +90,7 @@ async function getOrCreateItem(subitem: any) {
 
 export async function POST(req: NextRequest) {
     try {
-        const { clientId } = await req.json();
+        const { clientId, paymentTerm: suppliedPaymentTerm } = await req.json();
         if (!clientId) {
             return NextResponse.json({ error: 'Missing clientId' }, { status: 400 });
         }
@@ -77,6 +98,14 @@ export async function POST(req: NextRequest) {
         const supabase = await createClient();
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+        const paymentTerm = String(suppliedPaymentTerm ?? '').trim().slice(0, 200);
+        const { data: profile } = await supabase
+            .from('profiles')
+            .select('full_name, email')
+            .eq('id', user.id)
+            .maybeSingle();
+        const actorName = profile?.full_name?.trim() || profile?.email || user.email || 'CRM user';
 
         const { data: client, error } = await supabase
             .from('clients')
@@ -138,6 +167,10 @@ export async function POST(req: NextRequest) {
             });
         }
 
+        const customFields = estimateMetadataFields({
+            salesperson: actorName,
+            paymentTerm,
+        });
         const estimateRes = await qboRequest('/estimate', {
             method: 'POST',
             body: JSON.stringify({
@@ -146,6 +179,9 @@ export async function POST(req: NextRequest) {
                     name: customer.DisplayName,
                 },
                 Line: lines,
+                ...(customFields.length
+                    ? { CustomField: customFields }
+                    : {}),
             }),
         });
 
@@ -163,8 +199,6 @@ export async function POST(req: NextRequest) {
             .single();
         if (generationError) throw generationError;
 
-        const { data: profile } = await supabase.from('profiles').select('full_name, email').eq('id', user.id).maybeSingle();
-        const actorName = profile?.full_name?.trim() || profile?.email || user.email || 'CRM user';
         const { error: activityError } = await supabase.from('activity_log').insert({
             client_id: client.id,
             subitem_id: null,

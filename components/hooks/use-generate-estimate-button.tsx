@@ -4,7 +4,7 @@ export function useGenerateEstimate() {
     const [isGeneratingEstimate, setIsGeneratingEstimate] = useState(false);
     const [estimateError, setEstimateError] = useState<string | null>(null);
     const [estimateSuccess, setEstimateSuccess] = useState(false);
-    async function handleGenerateEstimate(clientId: string) {
+    async function handleGenerateEstimate(clientId: string, paymentTerm: string) {
         try {
             setIsGeneratingEstimate(true);
             setEstimateError(null);
@@ -14,7 +14,7 @@ export function useGenerateEstimate() {
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ clientId }),
+                body: JSON.stringify({ clientId, paymentTerm }),
             });
 
             const json = await res.json();

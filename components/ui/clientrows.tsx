@@ -10,7 +10,7 @@ import {
   ActivityEntry,
   Profile,
 } from "../../app/types";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ChevronDown,
   ChevronRight,
@@ -118,6 +118,28 @@ type AttachmentItem = {
 };
 
 type SampleArtworkUpload = { name: string; url: string; mimeType: string };
+
+const quickBooksNumber = (value: unknown) => {
+  const parsed = Number(String(value ?? "").replace(/,/g, "").trim());
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const formatQuickBooksAmount = (value: number) =>
+  new Intl.NumberFormat("en-SG", {
+    style: "currency",
+    currency: "SGD",
+    minimumFractionDigits: 2,
+  }).format(value);
+
+const quickBooksPaymentTerms = [
+  "Net 30",
+  "Net 60",
+  "Net 90",
+  "Due on Receipt",
+  "End of Month (EOM)",
+  "Cash on Delivery (COD)",
+  "Payment in Advance (PIA)",
+];
 
 function imageFileToArtwork(file: File): Promise<SampleArtworkUpload> {
   return new Promise((resolve, reject) => {
@@ -466,6 +488,13 @@ export function ClientRow({
   const [estimateMode, setEstimateMode] = useState<
     "choice" | "quickbooks" | "sample"
   >("choice");
+  const [quickBooksDefaults, setQuickBooksDefaults] = useState<{
+    salesperson: string;
+    paymentTermSource: string | null;
+  } | null>(null);
+  const [quickBooksPaymentTerm, setQuickBooksPaymentTerm] = useState("");
+  const [quickBooksDefaultsLoading, setQuickBooksDefaultsLoading] =
+    useState(false);
   const [estimateResult, setEstimateResult] = useState<{
     estimateId?: string | null;
     docNumber?: string | null;
@@ -507,6 +536,36 @@ export function ClientRow({
   const estimateEligibleSubitems = client.subitems.filter((subitem) =>
     ["Quoted", "Shortlisted", "Awarded"].includes(subitem.status?.trim()),
   );
+  const quickBooksEstimatePreview = useMemo(() => {
+    const lines = [...estimateEligibleSubitems]
+      .sort(
+        (first, second) =>
+          Number(first.position ?? Number.MAX_SAFE_INTEGER) -
+          Number(second.position ?? Number.MAX_SAFE_INTEGER),
+      )
+      .map((subitem) => {
+        const qty = quickBooksNumber(subitem.qty) || 1;
+        const unitPrice =
+          quickBooksNumber(subitem.up) ||
+          (qty > 0 ? quickBooksNumber(subitem.price) / qty : 0);
+        const amount = qty * unitPrice;
+        const isOverseas =
+          subitem.localOverseas.trim().toLowerCase() === "overseas";
+        return {
+          id: subitem.id,
+          name: subitem.name || "Unnamed item",
+          description: subitem.description || subitem.name || "Unnamed item",
+          qty,
+          unitPrice,
+          amount,
+          taxCode: isOverseas ? "GST free (overseas)" : "GST 9% (local)",
+          estimatedTax: isOverseas ? 0 : amount * 0.09,
+        };
+      });
+    const subtotal = lines.reduce((total, line) => total + line.amount, 0);
+    const tax = lines.reduce((total, line) => total + line.estimatedTax, 0);
+    return { lines, subtotal, tax, total: subtotal + tax };
+  }, [estimateEligibleSubitems]);
   const sampleEstimateArtwork = estimateEligibleSubitems.map((subitem) => ({
     subitem,
     artwork:
@@ -516,9 +575,32 @@ export function ClientRow({
   const missingSampleEstimateArtwork = sampleEstimateArtwork.filter(
     ({ artwork }) => !artwork,
   );
+  const loadQuickBooksDefaults = async () => {
+    setQuickBooksDefaultsLoading(true);
+    try {
+      const response = await fetch(
+        `/api/quickbooks/estimate-defaults?clientId=${encodeURIComponent(client.id)}`,
+      );
+      const result = await response.json();
+      if (!response.ok) throw new Error(result?.error || "Could not load estimate defaults");
+      setQuickBooksDefaults({
+        salesperson: String(result.salesperson ?? "CRM user"),
+        paymentTermSource: result.paymentTermSource ?? null,
+      });
+      setQuickBooksPaymentTerm(String(result.paymentTerm ?? ""));
+    } catch (error) {
+      setQuickBooksDefaults({ salesperson: "CRM user", paymentTermSource: null });
+      setQuickBooksPaymentTerm("");
+    } finally {
+      setQuickBooksDefaultsLoading(false);
+    }
+  };
   const generateEstimate = async () => {
     try {
-      const result = (await handleGenerateEstimate(client.id)) as {
+      const result = (await handleGenerateEstimate(
+        client.id,
+        quickBooksPaymentTerm,
+      )) as {
         estimateId?: string | null;
         docNumber?: string | null;
       };
@@ -1088,12 +1170,20 @@ export function ClientRow({
             setSampleEstimate(null);
             setSampleEstimateError(null);
             setSampleArtworkUploads({});
+            setQuickBooksDefaults(null);
+            setQuickBooksPaymentTerm("");
             setEstimateMode("choice");
             resetEstimateState();
           }
         }}
       >
-        <AlertDialogContent>
+        <AlertDialogContent
+          className={
+            estimateMode === "quickbooks"
+              ? "max-h-[92vh] w-[96vw] max-w-[1100px] overflow-y-auto sm:max-w-[1100px]"
+              : undefined
+          }
+        >
           <AlertDialogHeader>
             <AlertDialogTitle>
               {estimateMode === "choice"
@@ -1256,6 +1346,143 @@ export function ClientRow({
                 )}
               </div>
             )}
+          {estimateMode === "quickbooks" &&
+            !estimateResult &&
+            !estimateError && (
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50/40 text-xs text-slate-700">
+                <div className="border-b border-emerald-100 bg-white px-4 py-3">
+                  <p className="font-semibold text-slate-900">
+                    QuickBooks customer
+                  </p>
+                  <p className="mt-1 text-sm font-medium text-slate-800">
+                    {client.company || "Company name required"}
+                  </p>
+                  <p className="mt-1 text-slate-500">
+                    {[client.email, client.phone, client.billingAddress]
+                      .filter(Boolean)
+                      .join(" · ") ||
+                      "No email, phone, or billing address will be sent."}
+                  </p>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                    <label className="grid gap-1 text-[11px] font-medium text-slate-600">
+                      Salesperson
+                      <input
+                        readOnly
+                        value={
+                          quickBooksDefaultsLoading
+                            ? "Loading…"
+                            : quickBooksDefaults?.salesperson || "CRM user"
+                        }
+                        className="h-9 rounded border border-slate-200 bg-slate-50 px-2 text-sm text-slate-700 outline-none"
+                      />
+                    </label>
+                    <label className="grid gap-1 text-[11px] font-medium text-slate-600">
+                      <span>
+                        Payment Terms
+                        {quickBooksDefaults?.paymentTermSource && (
+                          <span className="ml-1 font-normal text-emerald-700">
+                            ({quickBooksDefaults.paymentTermSource})
+                          </span>
+                        )}
+                      </span>
+                      <input
+                        list={`quickbooks-payment-terms-${client.id}`}
+                        value={quickBooksPaymentTerm}
+                        onChange={(event) =>
+                          setQuickBooksPaymentTerm(event.target.value)
+                        }
+                        placeholder="Select or enter payment terms"
+                        className="h-9 rounded border border-slate-200 bg-white px-2 text-sm text-slate-700 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
+                      />
+                      <datalist id={`quickbooks-payment-terms-${client.id}`}>
+                        {quickBooksPaymentTerms.map((term) => (
+                          <option key={term} value={term} />
+                        ))}
+                      </datalist>
+                    </label>
+                  </div>
+                  <p className="mt-2 text-[11px] text-slate-500">
+                    Payment Terms is sent to QuickBooks custom field 2. The
+                    salesperson is temporarily sent to legacy custom field 3,
+                    where it can be copied into the adjacent Salesperson field.
+                  </p>
+                </div>
+                <div className="p-4">
+                  <div className="mb-2 flex items-end justify-between gap-3">
+                    <p className="font-semibold text-slate-900">
+                      Estimate lines
+                    </p>
+                    <p className="text-slate-500">
+                      {quickBooksEstimatePreview.lines.length} item(s)
+                    </p>
+                  </div>
+                  <div className="rounded border border-slate-200 bg-white">
+                    <table className="w-full table-fixed text-left">
+                      <thead className="bg-slate-100 text-[10px] uppercase tracking-wide text-slate-500">
+                        <tr>
+                          <th className="w-[42%] px-3 py-2">Item / description</th>
+                          <th className="px-2 py-2 text-right">Qty</th>
+                          <th className="px-2 py-2 text-right">Unit price</th>
+                          <th className="px-2 py-2 text-right">Amount</th>
+                          <th className="w-[16%] px-3 py-2">Tax</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {quickBooksEstimatePreview.lines.map((line) => (
+                          <tr
+                            key={line.id}
+                            className="border-t border-slate-100 align-top"
+                          >
+                            <td className="px-3 py-2">
+                              <p className="font-medium text-slate-800">
+                                {line.name}
+                              </p>
+                              {line.description !== line.name && (
+                                <p className="mt-0.5 text-slate-500">
+                                  {line.description}
+                                </p>
+                              )}
+                            </td>
+                            <td className="px-2 py-2 text-right">
+                              {line.qty}
+                            </td>
+                            <td className="px-2 py-2 text-right">
+                              {formatQuickBooksAmount(line.unitPrice)}
+                            </td>
+                            <td className="px-2 py-2 text-right font-medium">
+                              {formatQuickBooksAmount(line.amount)}
+                            </td>
+                            <td className="px-3 py-2">
+                              {line.taxCode}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="ml-auto mt-3 grid w-64 grid-cols-2 gap-y-1 text-sm">
+                    <span className="text-slate-500">Subtotal</span>
+                    <span className="text-right">
+                      {formatQuickBooksAmount(quickBooksEstimatePreview.subtotal)}
+                    </span>
+                    <span className="text-slate-500">Estimated GST</span>
+                    <span className="text-right">
+                      {formatQuickBooksAmount(quickBooksEstimatePreview.tax)}
+                    </span>
+                    <span className="border-t border-slate-300 pt-1 font-semibold text-slate-900">
+                      Estimated total
+                    </span>
+                    <span className="border-t border-slate-300 pt-1 text-right font-semibold text-slate-900">
+                      {formatQuickBooksAmount(quickBooksEstimatePreview.total)}
+                    </span>
+                  </div>
+                  <p className="mt-3 text-[11px] text-slate-500">
+                    QuickBooks calculates the final tax and total using its
+                    configured tax codes. Review this payload before sending it.
+                  </p>
+                </div>
+              </div>
+            )}
           {estimateMode === "choice" ? (
             <div className="grid gap-3 sm:grid-cols-2">
               <button
@@ -1272,7 +1499,10 @@ export function ClientRow({
               </button>
               <button
                 type="button"
-                onClick={() => setEstimateMode("quickbooks")}
+                onClick={() => {
+                  setEstimateMode("quickbooks");
+                  void loadQuickBooksDefaults();
+                }}
                 className="rounded-xl border-2 border-emerald-200 bg-emerald-50 p-5 text-left hover:border-emerald-400"
               >
                 <strong className="block text-base text-emerald-800">
@@ -1374,7 +1604,9 @@ export function ClientRow({
                     void generateEstimate();
                   }}
                 >
-                  {isGeneratingEstimate ? "Generating…" : "Generate estimate"}
+                  {isGeneratingEstimate
+                    ? "Sending to QuickBooks…"
+                    : "Confirm and send to QuickBooks"}
                 </AlertDialogAction>
               </>
             )}
