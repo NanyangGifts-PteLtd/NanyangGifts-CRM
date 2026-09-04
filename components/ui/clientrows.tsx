@@ -486,8 +486,29 @@ export function ClientRow({
   } | null>(null);
   const [showEstimateDialog, setShowEstimateDialog] = useState(false);
   const [estimateMode, setEstimateMode] = useState<
-    "choice" | "quickbooks" | "sample"
+    "choice" | "quickbooks" | "sample" | "update"
   >("choice");
+  const [updateEstimates, setUpdateEstimates] = useState<
+    Array<{ id: string; quickbooks_estimate_doc_number: string | null; created_at: string }>
+  >([]);
+  const [selectedEstimateGenerationId, setSelectedEstimateGenerationId] =
+    useState("");
+  const [updateEstimatePreview, setUpdateEstimatePreview] = useState<{
+    current: {
+      docNumber?: string;
+      customer?: string;
+      total: number;
+      paymentTerm: string;
+      lines: Array<{ name: string; description: string; qty: number; unitPrice: number; amount: number; taxCode: string }>;
+    };
+    incoming: { total: number; lines: Array<{ name: string; description: string; qty: number; unitPrice: number; amount: number; taxCode: string }> };
+    isInvoiced: boolean;
+    invoiceDocNumbers: string[];
+  } | null>(null);
+  const [updateEstimateError, setUpdateEstimateError] = useState<string | null>(null);
+  const [isLoadingUpdateEstimates, setIsLoadingUpdateEstimates] = useState(false);
+  const [isUpdatingEstimate, setIsUpdatingEstimate] = useState(false);
+  const [updateEstimateResult, setUpdateEstimateResult] = useState<{ docNumber?: string | null } | null>(null);
   const [quickBooksDefaults, setQuickBooksDefaults] = useState<{
     salesperson: string;
     paymentTermSource: string | null;
@@ -607,6 +628,66 @@ export function ClientRow({
       setEstimateResult(result);
     } catch {
       // The hook already retains the error for the result state in this dialog.
+    }
+  };
+  const loadUpdateEstimates = async () => {
+    setIsLoadingUpdateEstimates(true);
+    setUpdateEstimateError(null);
+    setUpdateEstimatePreview(null);
+    try {
+      const response = await fetch(
+        `/api/quickbooks/estimate-update?clientId=${encodeURIComponent(client.id)}`,
+      );
+      const result = await response.json();
+      if (!response.ok) throw new Error(result?.error || "Could not load estimates");
+      setUpdateEstimates(result.estimates ?? []);
+    } catch (error) {
+      setUpdateEstimateError(error instanceof Error ? error.message : "Could not load estimates");
+    } finally {
+      setIsLoadingUpdateEstimates(false);
+    }
+  };
+  const loadUpdatePreview = async (generationId: string) => {
+    setSelectedEstimateGenerationId(generationId);
+    setUpdateEstimatePreview(null);
+    setUpdateEstimateError(null);
+    if (!generationId) return;
+    try {
+      const response = await fetch(
+        `/api/quickbooks/estimate-update?generationId=${encodeURIComponent(generationId)}`,
+      );
+      const result = await response.json();
+      if (!response.ok) throw new Error(result?.error || "Could not load estimate preview");
+      setUpdateEstimatePreview({
+        current: result.current,
+        incoming: result.incoming,
+        isInvoiced: Boolean(result.isInvoiced),
+        invoiceDocNumbers: result.invoiceDocNumbers ?? [],
+      });
+    } catch (error) {
+      setUpdateEstimateError(error instanceof Error ? error.message : "Could not load estimate preview");
+    }
+  };
+  const updateQuickBooksEstimate = async () => {
+    if (!selectedEstimateGenerationId) return;
+    setIsUpdatingEstimate(true);
+    setUpdateEstimateError(null);
+    try {
+      const response = await fetch("/api/quickbooks/estimate-update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          estimateGenerationId: selectedEstimateGenerationId,
+          paymentTerm: quickBooksPaymentTerm,
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result?.error || "Could not update estimate");
+      setUpdateEstimateResult(result);
+    } catch (error) {
+      setUpdateEstimateError(error instanceof Error ? error.message : "Could not update estimate");
+    } finally {
+      setIsUpdatingEstimate(false);
     }
   };
   const generateSampleEstimate = async () => {
@@ -1172,6 +1253,11 @@ export function ClientRow({
             setSampleArtworkUploads({});
             setQuickBooksDefaults(null);
             setQuickBooksPaymentTerm("");
+            setUpdateEstimates([]);
+            setSelectedEstimateGenerationId("");
+            setUpdateEstimatePreview(null);
+            setUpdateEstimateError(null);
+            setUpdateEstimateResult(null);
             setEstimateMode("choice");
             resetEstimateState();
           }
@@ -1179,8 +1265,10 @@ export function ClientRow({
       >
         <AlertDialogContent
           className={
-            estimateMode === "quickbooks"
+            estimateMode === "quickbooks" || estimateMode === "update"
               ? "max-h-[92vh] w-[96vw] max-w-[1100px] overflow-y-auto sm:max-w-[1100px]"
+              : estimateMode === "choice"
+                ? "w-[96vw] max-w-[880px] sm:max-w-[880px]"
               : undefined
           }
         >
@@ -1194,6 +1282,10 @@ export function ClientRow({
                     : sampleEstimateError
                       ? "Could not create sample estimate"
                       : "Generate sample estimate?"
+                  : estimateMode === "update"
+                    ? updateEstimateResult
+                      ? "QuickBooks estimate updated"
+                      : "Update QuickBooks estimate"
                   : estimateResult
                     ? "QuickBooks estimate created"
                     : estimateError
@@ -1216,6 +1308,22 @@ export function ClientRow({
                     This preview uses the same eligible subitems but does not
                     create or change anything in QuickBooks.
                   </>
+                )
+              ) : estimateMode === "update" ? (
+                updateEstimateResult ? (
+                  <>
+                    QuickBooks estimate
+                    {updateEstimateResult.docNumber ? (
+                      <>
+                        {" "}<strong>{updateEstimateResult.docNumber}</strong>
+                      </>
+                    ) : null}{" "}
+                    was updated with the current CRM subitem details.
+                  </>
+                ) : updateEstimateError ? (
+                  "The selected estimate could not be loaded or updated. You can choose a different estimate or try again."
+                ) : (
+                  "Choose a previously generated QuickBooks estimate, then review its live details beside the current CRM details before updating it."
                 )
               ) : estimateResult ? (
                 <>
@@ -1297,6 +1405,133 @@ export function ClientRow({
                 ))}
               </div>
             )}
+          {estimateMode === "update" && !updateEstimateResult && (
+            <div className="space-y-4 rounded-lg border border-amber-200 bg-amber-50/40 p-4 text-xs text-slate-700">
+              <div>
+                <label className="grid gap-1 text-[11px] font-medium text-slate-600">
+                  QuickBooks estimate to update
+                  <select
+                    value={selectedEstimateGenerationId}
+                    disabled={isLoadingUpdateEstimates || isUpdatingEstimate}
+                    onChange={(event) => void loadUpdatePreview(event.target.value)}
+                    className="h-9 rounded border border-slate-200 bg-white px-2 text-sm text-slate-700 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
+                  >
+                    <option value="">
+                      {isLoadingUpdateEstimates ? "Loading estimates…" : "Select an estimate"}
+                    </option>
+                    {updateEstimates.map((estimate) => (
+                      <option key={estimate.id} value={estimate.id}>
+                        Estimate {estimate.quickbooks_estimate_doc_number ?? "(no document number)"} · {new Date(estimate.created_at).toLocaleDateString("en-GB")}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              {!isLoadingUpdateEstimates && !updateEstimates.length && !updateEstimateError && (
+                <p className="rounded border border-amber-200 bg-white p-3 text-amber-800">
+                  No QuickBooks estimates previously generated from this client were found.
+                </p>
+              )}
+              {updateEstimateError && (
+                <p role="alert" className="rounded border border-red-200 bg-red-50 p-3 text-red-700">
+                  {updateEstimateError}
+                </p>
+              )}
+              {selectedEstimateGenerationId && !updateEstimatePreview && !updateEstimateError && (
+                <p className="text-slate-500">Loading the current QuickBooks estimate…</p>
+              )}
+              {updateEstimatePreview && (
+                updateEstimatePreview.isInvoiced ? (
+                  <p className="rounded border border-red-200 bg-red-50 p-3 font-medium text-red-700">
+                    This estimate already has invoice
+                    {updateEstimatePreview.invoiceDocNumbers.length === 1 ? " " : "s "}
+                    {updateEstimatePreview.invoiceDocNumbers.join(", ") || "linked"}.
+                    It cannot be updated from the CRM.
+                  </p>
+                ) : null
+              )}
+              {updateEstimatePreview && (
+                <div className="grid gap-4 lg:grid-cols-2">
+                  {[
+                    ["Current QuickBooks estimate", updateEstimatePreview.current, "border-slate-200 bg-white"],
+                    ["New CRM details", updateEstimatePreview.incoming, "border-emerald-200 bg-emerald-50/30"],
+                  ].map(([title, preview, className]) => {
+                    const details = preview as typeof updateEstimatePreview.current;
+                    return (
+                      <section key={title as string} className={`overflow-hidden rounded border ${className as string}`}>
+                        <div className="flex items-center justify-between border-b border-inherit px-3 py-2">
+                          <p className="font-semibold text-slate-900">{title as string}</p>
+                          <p className="font-semibold text-slate-900">{formatQuickBooksAmount(details.total)}</p>
+                        </div>
+                        {title === "Current QuickBooks estimate" ? (
+                          <div className="border-b border-slate-100 px-3 py-2">
+                            <p className="text-[10px] font-medium uppercase tracking-wide text-slate-500">Payment Terms</p>
+                            <p className="mt-1 text-sm text-slate-800">
+                              {updateEstimatePreview.current.paymentTerm || "Not set"}
+                            </p>
+                          </div>
+                        ) : (
+                          <label className="grid gap-1 border-b border-emerald-100 px-3 py-2 text-[10px] font-medium uppercase tracking-wide text-slate-500">
+                            <span>
+                              Payment Terms
+                              {quickBooksDefaults?.paymentTermSource ? (
+                                <span className="ml-1 font-normal normal-case text-emerald-700">
+                                  ({quickBooksDefaults.paymentTermSource})
+                                </span>
+                              ) : null}
+                            </span>
+                            <input
+                              list={`quickbooks-payment-terms-${client.id}`}
+                              value={quickBooksPaymentTerm}
+                              onChange={(event) => setQuickBooksPaymentTerm(event.target.value)}
+                              disabled={isUpdatingEstimate}
+                              placeholder="Select or enter payment terms"
+                              className="h-9 rounded border border-slate-200 bg-white px-2 text-sm font-normal normal-case text-slate-700 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
+                            />
+                            <datalist id={`quickbooks-payment-terms-${client.id}`}>
+                              {quickBooksPaymentTerms.map((term) => (
+                                <option key={term} value={term} />
+                              ))}
+                            </datalist>
+                          </label>
+                        )}
+                        <div className="max-h-80 overflow-y-auto">
+                          <table className="w-full table-fixed text-left">
+                            <thead className="bg-slate-100/80 text-[10px] uppercase tracking-wide text-slate-500">
+                              <tr>
+                                <th className="w-[48%] px-3 py-2">Item</th>
+                                <th className="px-2 py-2 text-right">Qty</th>
+                                <th className="px-2 py-2 text-right">Rate</th>
+                                <th className="px-3 py-2 text-right">Amount</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {details.lines.map((line, index) => (
+                                <tr key={`${line.name}-${index}`} className="border-t border-slate-100 align-top">
+                                  <td className="px-3 py-2">
+                                    <p className="font-medium text-slate-800">{line.name}</p>
+                                    {line.description && line.description !== line.name ? <p className="mt-0.5 text-slate-500">{line.description}</p> : null}
+                                  </td>
+                                  <td className="px-2 py-2 text-right">{line.qty}</td>
+                                  <td className="px-2 py-2 text-right">{formatQuickBooksAmount(line.unitPrice)}</td>
+                                  <td className="px-3 py-2 text-right font-medium">{formatQuickBooksAmount(line.amount)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </section>
+                    );
+                  })}
+                </div>
+              )}
+              {updateEstimatePreview && (
+                <p className="text-[11px] text-slate-500">
+                  Updating replaces the estimate&apos;s item lines with the current eligible CRM subitems. QuickBooks tax and totals are recalculated there.
+                </p>
+              )}
+            </div>
+          )}
           {estimateMode === "sample" &&
             !sampleEstimate &&
             !sampleEstimateError && (
@@ -1484,16 +1719,16 @@ export function ClientRow({
               </div>
             )}
           {estimateMode === "choice" ? (
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-4 sm:grid-cols-3">
               <button
                 type="button"
                 onClick={() => setEstimateMode("sample")}
-                className="rounded-xl border-2 border-sky-200 bg-sky-50 p-5 text-left hover:border-sky-400"
+                className="min-h-56 rounded-xl border-2 border-sky-200 bg-sky-50 p-7 text-left transition-colors hover:border-sky-400"
               >
-                <strong className="block text-base text-sky-800">
+                <strong className="block text-center text-xl leading-snug text-sky-800">
                   Generate sample estimate
                 </strong>
-                <span className="mt-1 block text-xs text-slate-600">
+                <span className="mt-4 block text-[11px] leading-relaxed text-slate-500">
                   Create and save a PDF preview. Nothing is sent to QuickBooks.
                 </span>
               </button>
@@ -1503,18 +1738,35 @@ export function ClientRow({
                   setEstimateMode("quickbooks");
                   void loadQuickBooksDefaults();
                 }}
-                className="rounded-xl border-2 border-emerald-200 bg-emerald-50 p-5 text-left hover:border-emerald-400"
+                className="min-h-56 rounded-xl border-2 border-emerald-200 bg-emerald-50 p-7 text-left transition-colors hover:border-emerald-400"
               >
-                <strong className="block text-base text-emerald-800">
+                <strong className="block text-center text-xl leading-snug text-emerald-800">
                   Generate QuickBooks estimate
                 </strong>
-                <span className="mt-1 block text-xs text-slate-600">
+                <span className="mt-4 block text-[11px] leading-relaxed text-slate-500">
                   Create the customer/items if needed, then send the estimate to
                   QuickBooks.
                 </span>
               </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setEstimateMode("update");
+                  void loadQuickBooksDefaults();
+                  void loadUpdateEstimates();
+                }}
+                className="min-h-56 rounded-xl border-2 border-amber-200 bg-amber-50 p-7 text-left transition-colors hover:border-amber-400"
+              >
+                <strong className="block text-center text-xl leading-snug text-amber-800">
+                  Update QuickBooks estimate
+                </strong>
+                <span className="mt-4 block text-[11px] leading-relaxed text-slate-500">
+                  Compare a prior QuickBooks estimate with current CRM details, then update it.
+                </span>
+              </button>
             </div>
           ) : (
+            estimateMode !== "update" &&
             !estimateResult &&
             !estimateError &&
             !sampleEstimate &&
@@ -1581,6 +1833,30 @@ export function ClientRow({
                     }}
                   >
                     {isGeneratingSample ? "Generating…" : "Generate sample PDF"}
+                  </AlertDialogAction>
+                </>
+              )
+            ) : estimateMode === "update" ? (
+              updateEstimateResult ? (
+                <AlertDialogAction onClick={() => setShowEstimateDialog(false)}>
+                  Close
+                </AlertDialogAction>
+              ) : (
+                <>
+                  <AlertDialogCancel disabled={isUpdatingEstimate}>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    disabled={
+                      isUpdatingEstimate ||
+                      !selectedEstimateGenerationId ||
+                      !updateEstimatePreview ||
+                      updateEstimatePreview.isInvoiced
+                    }
+                    onClick={(event) => {
+                      event.preventDefault();
+                      void updateQuickBooksEstimate();
+                    }}
+                  >
+                    {isUpdatingEstimate ? "Updating QuickBooks…" : "Confirm update in QuickBooks"}
                   </AlertDialogAction>
                 </>
               )
