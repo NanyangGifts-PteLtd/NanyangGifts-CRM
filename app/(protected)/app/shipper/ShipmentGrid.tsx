@@ -44,6 +44,7 @@ export type ShipmentRecord = {
   total_cost: number | null;
   channel: string | null;
   is_locked?: boolean;
+  auto_lock_at?: string | null;
   logistics_remarks?: string | null;
   cell_fills?: CellFills | null;
   items: ShipmentItem[];
@@ -68,6 +69,13 @@ const shipperEditableFields = new Set([
   "logistics_remarks",
 ]);
 
+const alwaysEditableAfterLockFields = new Set([
+  "air_received",
+  "sea_received",
+]);
+
+const AUTO_LOCK_DELAY_MS = 10 * 60 * 1000;
+
 type Column = {
   key: string;
   label: string;
@@ -78,40 +86,42 @@ type Column = {
 };
 
 const columns: Column[] = [
-  { key: "serial_number", label: "序号", scope: "shipment" },
-  { key: "waybill_date", label: "运单日期", scope: "shipment", input: "date" },
-  { key: "waybill_number", label: "运单号码", scope: "shipment" },
-  { key: "pieces", label: "件数", scope: "shipment", input: "number" },
+  { key: "serial_number", label: "序号", scope: "shipment", width: 110 },
+  { key: "waybill_date", label: "运单日期", scope: "shipment", input: "date", width: 140 },
+  { key: "waybill_number", label: "运单号码", scope: "shipment", width: 160 },
+  { key: "pieces", label: "件数", scope: "shipment", input: "number", width: 105 },
   {
     key: "chargeable_weight_kg",
     label: "计费重量 (KG)",
     scope: "shipment",
     input: "number",
+    width: 165,
   },
-  { key: "destination", label: "目的地", scope: "shipment" },
+  { key: "destination", label: "目的地", scope: "shipment", width: 160 },
   {
     key: "freight_unit_price",
     label: "单价",
     scope: "shipment",
     input: "number",
-    width: 130,
+    width: 150,
   },
   { key: "freight_cost", label: "运费", scope: "shipment", calculated: true },
-  { key: "gst", label: "消费税", scope: "shipment", input: "number" },
-  { key: "other_fees", label: "其他费用", scope: "shipment", input: "number" },
+  { key: "gst", label: "消费税", scope: "shipment", input: "number", width: 110 },
+  { key: "other_fees", label: "其他费用", scope: "shipment", input: "number", width: 135 },
   { key: "total_cost", label: "总计费用", scope: "shipment", calculated: true },
   {
     key: "channel",
     label: "渠道",
     scope: "shipment",
     input: "select-air",
+    width: 135,
   },
   {
     key: "logistics_remarks",
     label: "备注",
     scope: "shipment",
     input: "textarea",
-    width: 220,
+    width: 280,
   },
   { key: "ic", label: "谁下单 / I/C", scope: "shipment" },
   {
@@ -168,8 +178,8 @@ const columns: Column[] = [
     label: "发样品海运 / Samples by sea",
     scope: "item",
   },
-  { key: "air_received", label: "空运收到 / Air received", scope: "item" },
-  { key: "sea_received", label: "海运收到 / Sea received", scope: "item" },
+  { key: "air_received", label: "空运收到 / Air received", scope: "item", width: 150 },
+  { key: "sea_received", label: "海运收到 / Sea received", scope: "item", width: 150 },
 ];
 
 const fillColors = [
@@ -490,6 +500,41 @@ export function ShipmentGrid({ shipments, mode = "pm" }: ShipmentGridProps) {
     });
   }, [shipments]);
 
+  const applyDueAutoLock = async (shipmentId: string) => {
+    try {
+      const response = await fetch("/api/shipper/shipments", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ shipmentId, field: "apply_auto_lock" }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Could not apply auto-lock.");
+
+      setGridShipments((current) =>
+        current.map((shipment) =>
+          shipment.id === shipmentId
+            ? { ...shipment, ...result.values }
+            : shipment,
+        ),
+      );
+    } catch (error) {
+      console.error("Could not apply shipment auto-lock.", error);
+    }
+  };
+
+  useEffect(() => {
+    const timers = gridShipments.flatMap((shipment) => {
+      if (shipment.is_locked || !shipment.auto_lock_at) return [];
+      const delay = Math.max(
+        0,
+        new Date(shipment.auto_lock_at).getTime() - Date.now(),
+      );
+      return [window.setTimeout(() => void applyDueAutoLock(shipment.id), delay)];
+    });
+
+    return () => timers.forEach((timer) => window.clearTimeout(timer));
+  }, [gridShipments]);
+
   const saveCell = async (
     shipmentId: string,
     itemId: string | undefined,
@@ -696,11 +741,10 @@ export function ShipmentGrid({ shipments, mode = "pm" }: ShipmentGridProps) {
                       );
                       const editable =
                         (mode === "pm" ||
-                          shipperEditableFields.has(column.key)) &&
+                          shipperEditableFields.has(column.key) ||
+                          alwaysEditableAfterLockFields.has(column.key)) &&
                         (!shipment.is_locked ||
-                          ["air_received", "sea_received"].includes(
-                            column.key,
-                          ));
+                          alwaysEditableAfterLockFields.has(column.key));
                       const saveValue = (nextValue: string) => {
                         if (nextValue !== text(value))
                           void saveCell(
