@@ -1625,21 +1625,6 @@ export function ClientRow({
                                   </>
                                 ) : null}
                                 {renderActivityText(entry)}
-                                {entry.link ? (
-                                  <a
-                                    href={entry.link}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="ml-4 inline-flex items-center rounded-md bg-teal-100 px-2 py-1 text-[12.6px] font-medium text-teal-500 hover:bg-teal-200"
-                                  >
-                                    {entry.action === "estimate_created" ||
-                                    String(
-                                      entry.meta?.fileName ?? "",
-                                    ).startsWith("Sample Estimate")
-                                      ? "Open Estimate"
-                                      : "Open OCF"}
-                                  </a>
-                                ) : null}
                                 {entry.description ===
                                 "File has been removed" ? (
                                   <span
@@ -1664,10 +1649,26 @@ export function ClientRow({
                                 )}
                               </p>
                             </div>
-                            {(entry.action === "field_changed" ||
-                              entry.action === "subitem_field_changed") &&
-                              entry.oldValue !== undefined &&
-                              entry.oldValue !== null && (
+                            <div className="flex shrink-0 items-start gap-2">
+                              {entry.link ? (
+                                <a
+                                  href={entry.link}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center rounded-md bg-teal-100 px-2 py-1 text-[12.6px] font-medium text-teal-500 hover:bg-teal-200"
+                                >
+                                  {entry.action === "estimate_created" ||
+                                  String(
+                                    entry.meta?.fileName ?? "",
+                                  ).startsWith("Sample Estimate")
+                                    ? "Open Estimate"
+                                    : "Open OCF"}
+                                </a>
+                              ) : null}
+                              {(entry.action === "field_changed" ||
+                                entry.action === "subitem_field_changed") &&
+                                entry.oldValue !== undefined &&
+                                entry.oldValue !== null && (
                                 <button
                                   type="button"
                                   disabled={
@@ -1694,7 +1695,8 @@ export function ClientRow({
                                     ? "Undone"
                                     : "Undo"}
                                 </button>
-                              )}
+                                )}
+                            </div>
                           </div>
                         </div>
                       ));
