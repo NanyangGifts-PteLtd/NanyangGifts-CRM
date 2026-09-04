@@ -45,6 +45,7 @@ import { useGenerateEstimate } from "@/components/hooks/use-generate-estimate-bu
 import { ClientActionsMenu } from "@/components/ClientActionsMenu";
 import { FileDropTarget } from "./file-drop-target";
 import { uploadCrmFiles } from "@/lib/crm-files";
+import { FilePreview } from "./file-preview";
 
 type OptionEntry = { value: string; color: string };
 const trackingSummaryOptions: OptionEntry[] = [
@@ -703,8 +704,6 @@ export function ClientRow({
       }
     };
 
-    const isImage = (item: AttachmentItem) =>
-      item.mimeType?.startsWith("image/") || /^data:image\//i.test(item.url);
     const removeItem = (item: AttachmentItem) =>
       setPendingAttachmentRemoval({
         fieldKey,
@@ -737,25 +736,26 @@ export function ClientRow({
                   title={item.name}
                   className="flex h-7 w-8 items-center justify-center overflow-hidden rounded border border-sky-200 bg-sky-50 text-sky-700 hover:border-sky-400"
                 >
-                  {isImage(item) ? (
-                    <img
-                      src={item.url}
-                      alt={item.name}
-                      className="h-full w-full object-cover"
-                    />
-                  ) : item.kind === "link" ? (
+                  {item.kind === "link" ? (
                     <LinkIcon size={13} />
                   ) : (
-                    <FileText size={13} />
+                    <FilePreview
+                      url={item.url}
+                      name={item.name}
+                      mimeType={item.mimeType}
+                      className="h-full w-full border-0"
+                    />
                   )}
                 </a>
                 {attachmentPreview === `${fieldKey}:${item.id}` && (
                   <div className="pointer-events-none absolute bottom-full left-0 z-[100] mb-1 w-64 rounded-md border border-slate-200 bg-white p-2 shadow-xl">
-                    {isImage(item) ? (
-                      <img
-                        src={item.url}
-                        alt={item.name}
-                        className="block max-h-52 w-full object-contain"
+                    {item.kind !== "link" ? (
+                      <FilePreview
+                        url={item.url}
+                        name={item.name}
+                        mimeType={item.mimeType}
+                        size="large"
+                        className="h-52 w-full object-contain"
                       />
                     ) : (
                       <div className="flex items-center gap-2 p-2 text-[11px] text-slate-700">

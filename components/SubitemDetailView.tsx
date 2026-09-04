@@ -22,6 +22,7 @@ import { toast } from "sonner";
 import { SubitemActionsMenu } from "./SubitemActionsMenu";
 import { FileDropTarget } from "./ui/file-drop-target";
 import { uploadCrmFiles } from "@/lib/crm-files";
+import { FilePreview } from "./ui/file-preview";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -691,7 +692,21 @@ export function SubitemDetailView({
                           key={file.id}
                           className="flex items-center gap-2 rounded border p-2"
                         >
-                          <FileText size={16} className="text-sky-600" />
+                          <a
+                            href={file.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="shrink-0"
+                            title={`Open ${file.name}`}
+                          >
+                            <FilePreview
+                              url={file.url}
+                              name={file.name}
+                              mimeType={file.mimeType}
+                              size="large"
+                              className="h-20 w-28 sm:h-24 sm:w-36"
+                            />
+                          </a>
                           <a
                             href={file.url}
                             target="_blank"
@@ -900,7 +915,20 @@ function SingleFileSlot({
         </p>
         {file ? (
           <div className="flex items-center gap-3 rounded-lg border border-slate-200 p-3">
-            <FileText size={18} className="shrink-0 text-sky-600" />
+            <a
+              href={file.url}
+              target="_blank"
+              rel="noreferrer"
+              className="shrink-0"
+              title={`Open ${file.name}`}
+            >
+              <FilePreview
+                url={file.url}
+                name={file.name}
+                mimeType={file.mimeType}
+                size="large"
+              />
+            </a>
             <a
               href={file.url}
               target="_blank"

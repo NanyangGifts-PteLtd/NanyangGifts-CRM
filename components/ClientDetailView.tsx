@@ -19,12 +19,14 @@ import { EditableCell } from "./ui/editablecell";
 import { ClientActionsMenu } from "./ClientActionsMenu";
 import { FileDropTarget } from "./ui/file-drop-target";
 import { uploadCrmFiles } from "@/lib/crm-files";
+import { FilePreview } from "./ui/file-preview";
 
 type Attachment = {
   id: string;
   name: string;
   url: string;
   storagePath?: string;
+  mimeType?: string;
   kind?: string;
   actorName?: string;
   createdAt?: string;
@@ -685,7 +687,21 @@ export function ClientDetailView({
                           key={item.id}
                           className="flex items-center gap-2 rounded border p-2"
                         >
-                          <FileText size={16} className="text-sky-600" />
+                          <a
+                            href={item.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="shrink-0"
+                            title={`Open ${item.name}`}
+                          >
+                            <FilePreview
+                              url={item.url}
+                              name={item.name}
+                              mimeType={item.mimeType}
+                              size="large"
+                              className="h-20 w-28 sm:h-24 sm:w-36"
+                            />
+                          </a>
                           <div className="min-w-0 flex-1">
                             <a
                               href={item.url}
