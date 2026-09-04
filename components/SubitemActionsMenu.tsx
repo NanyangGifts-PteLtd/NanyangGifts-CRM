@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Copy,
   ExternalLink,
@@ -36,6 +36,7 @@ export function SubitemActionsMenu({
 }) {
   const [open, setOpen] = useState(false);
   const [moving, setMoving] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
   const [search, setSearch] = useState("");
   const [processing, setProcessing] = useState<"duplicate" | "move" | null>(
     null,
@@ -60,8 +61,22 @@ export function SubitemActionsMenu({
     window.addEventListener("crm:subitem-actions", handler);
     return () => window.removeEventListener("crm:subitem-actions", handler);
   }, [subitemId]);
+  useEffect(() => {
+    if (!open) return;
+
+    const closeOnClickAway = (event: PointerEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) {
+        setMoving(false);
+        setOpen(false);
+      }
+    };
+
+    document.addEventListener("pointerdown", closeOnClickAway);
+    return () => document.removeEventListener("pointerdown", closeOnClickAway);
+  }, [open]);
   return (
     <div
+      ref={menuRef}
       data-subitem-action-menu
       data-detail-action-menu={!onOpen || undefined}
       className={`${onOpen ? "absolute -left-7 top-1/2 -translate-y-1/2" : "relative"} ${open ? "z-[200]" : "z-30"}`}
