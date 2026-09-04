@@ -481,7 +481,6 @@ export function ShipmentGrid({ shipments, mode = "pm" }: ShipmentGridProps) {
     Array<{ id: string; scope: "shipment" | "item"; field: string }>
   >([]);
   const [paletteOpen, setPaletteOpen] = useState(false);
-  const [savingCell, setSavingCell] = useState<string | null>(null);
 
   useEffect(() => {
     setGridShipments((current) => {
@@ -498,10 +497,6 @@ export function ShipmentGrid({ shipments, mode = "pm" }: ShipmentGridProps) {
     value: string,
   ) => {
     const isShipment = !itemId;
-    const targetId = isShipment ? shipmentId : itemId;
-    const targetKey = `${targetId}:${field}`;
-    setSavingCell(targetKey);
-
     setGridShipments((current) =>
       current.map((shipment) => {
         if (shipment.id !== shipmentId) return shipment;
@@ -546,8 +541,6 @@ export function ShipmentGrid({ shipments, mode = "pm" }: ShipmentGridProps) {
           : "Could not save shipment cell.",
       );
       setGridShipments(shipments);
-    } finally {
-      setSavingCell(null);
     }
   };
 
@@ -691,7 +684,6 @@ export function ShipmentGrid({ shipments, mode = "pm" }: ShipmentGridProps) {
                       const value = record[column.key as keyof typeof record];
                       const fill = (record.cell_fills ?? {})[column.key];
                       const targetId = isShared ? shipment.id : item.id;
-                      const cellKey = `${targetId}:${column.key}`;
                       const cell = {
                         id: targetId,
                         scope: column.scope,
@@ -745,11 +737,7 @@ export function ShipmentGrid({ shipments, mode = "pm" }: ShipmentGridProps) {
                           }
                           className={`border-b border-r border-slate-300 p-0 text-center align-middle ${column.calculated ? "bg-amber-50 font-medium text-amber-950" : ""} ${isSelected ? "ring-2 ring-inset ring-sky-600" : ""}`}
                         >
-                          {savingCell === cellKey ? (
-                            <div className="min-h-[56px] px-2 py-3 text-xs text-slate-400">
-                              Saving…
-                            </div>
-                          ) : editable &&
+                          {editable &&
                             (column.key === "logistics_remarks" ||
                               column.key === "remarks") ? (
                             <ShipmentRemarkCell
