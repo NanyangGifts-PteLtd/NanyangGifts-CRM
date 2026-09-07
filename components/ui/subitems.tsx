@@ -216,6 +216,7 @@ const SHIPPER_PUSH_FIELDS: Array<{
 
 type SubitemProps = {
   clientId: string;
+  subitemsLocked?: boolean;
   subitems: Subitem[];
   clientColor: string;
   onUpdateSubitem: (id: string, u: Partial<Subitem>) => void;
@@ -348,6 +349,7 @@ function ExpandedRow({
 
 export function SubitemsTable({
   clientId,
+  subitemsLocked = false,
   subitems,
   clientColor,
   onUpdateSubitem,
@@ -414,12 +416,14 @@ export function SubitemsTable({
   const [permissionNotice, setPermissionNotice] = useState<{
     left: number;
     top: number;
+    message: string;
   } | null>(null);
-  const showPermissionNotice = (target: HTMLElement) => {
+  const showPermissionNotice = (target: HTMLElement, message: string) => {
     const rect = target.getBoundingClientRect();
     setPermissionNotice({
       left: Math.min(rect.left, window.innerWidth - 300),
       top: Math.min(rect.bottom + 8, window.innerHeight - 48),
+      message,
     });
     window.setTimeout(() => setPermissionNotice(null), 2600);
   };
@@ -442,6 +446,7 @@ export function SubitemsTable({
     }));
   };
   const canCreateSubitems =
+    !subitemsLocked &&
     !!currentUserId &&
     (clientAssignedIds.includes(currentUserId) ||
       clientPmAssignedIds.includes(currentUserId));
@@ -549,11 +554,17 @@ export function SubitemsTable({
   const [undoneActivityIds, setUndoneActivityIds] = useState<Set<string>>(
     new Set(),
   );
-  const canEditSubitem = (subitemId: string) =>
+  const hasSubitemEditPermission = (subitemId: string) =>
     !!currentUserId &&
     (clientAssignedIds.includes(currentUserId) ||
       clientPmAssignedIds.includes(currentUserId) ||
       (subitemAssigneeMap[subitemId] ?? []).includes(currentUserId));
+  const canEditSubitem = (subitemId: string) =>
+    hasSubitemEditPermission(subitemId) && !subitemsLocked;
+  const subitemEditBlockMessage = (subitemId: string) =>
+    !hasSubitemEditPermission(subitemId)
+      ? "You can only edit items that are assigned to you"
+      : "This client's subitems are locked. Check with the director if there are any changes";
 
   const setDragPreview = (event: React.DragEvent, source: HTMLElement) => {
     if (!event.dataTransfer) return;
@@ -1284,7 +1295,7 @@ export function SubitemsTable({
 
   async function handlePushToShipperView(subitemId: string, overwrite = false) {
     if (!canEditSubitem(subitemId)) {
-      toast.error("You can only edit items that are assigned to you");
+      toast.error(subitemEditBlockMessage(subitemId));
       return;
     }
     try {
@@ -1345,7 +1356,7 @@ export function SubitemsTable({
 
   async function openPushPreview(subitemId: string) {
     if (!canEditSubitem(subitemId)) {
-      toast.error("You can only edit items that are assigned to you");
+      toast.error(subitemEditBlockMessage(subitemId));
       return;
     }
     setIsLoadingPushPreview(true);
@@ -1631,7 +1642,7 @@ export function SubitemsTable({
                   }`}
                   title={
                     !canEditSubitem(sub.id)
-                      ? "You can only edit items that are assigned to you"
+                      ? subitemEditBlockMessage(sub.id)
                       : wasPushed
                         ? "Already pushed. Edit shipment details from the Shipper view."
                         : "Push to shipper view"
@@ -2309,7 +2320,7 @@ export function SubitemsTable({
           className="fixed z-[10000] rounded-md bg-slate-800 px-3 py-2 text-xs font-medium text-white shadow-xl"
           style={permissionNotice}
         >
-          You can only edit items that are assigned to you
+          {permissionNotice.message}
         </div>
       )}
       <AlertDialog
@@ -2597,7 +2608,7 @@ export function SubitemsTable({
                               }}
                               title={
                                 !canEditSubitem(entry.subitemId ?? "")
-                                  ? "You can only edit items that are assigned to you"
+                                  ? subitemEditBlockMessage(entry.subitemId ?? "")
                                   : undoneActivityIds.has(entry.id)
                                     ? "The action has already been undone"
                                     : "Undo this action"
@@ -3009,7 +3020,7 @@ export function SubitemsTable({
                       !(event.target as HTMLElement).closest(
                         "[data-subitem-assignment-editor]",
                       )
-                        ? "You can only edit items that are assigned to you"
+                        ? subitemEditBlockMessage(sub.id)
                         : "";
                   }}
                   onClickCapture={(event) => {
@@ -3026,7 +3037,10 @@ export function SubitemsTable({
                     ) {
                       event.preventDefault();
                       event.stopPropagation();
-                      showPermissionNotice(target);
+                      showPermissionNotice(
+                        target,
+                        subitemEditBlockMessage(sub.id),
+                      );
                     }
                   }}
                   className={`relative group border-b border-r border-[#D0D4E4] hover:bg-blue-50/30 ${subitemDropMarker?.subitemId === sub.id ? (subitemDropMarker.edge === "top" ? "shadow-[inset_0_3px_0_#0f8da8]" : "shadow-[inset_0_-3px_0_#0f8da8]") : ""}`}

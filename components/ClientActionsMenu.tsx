@@ -6,6 +6,8 @@ import {
   ExternalLink,
   MoreHorizontal,
   MoveRight,
+  LockKeyhole,
+  LockKeyholeOpen,
   Search,
   Trash2,
 } from "lucide-react";
@@ -19,6 +21,9 @@ export function ClientActionsMenu({
   onDuplicate,
   onMove,
   onDelete,
+  canManageSubitemLock = false,
+  subitemsLocked = false,
+  onToggleSubitemsLock,
   className = "",
   triggerClassName = "",
   align = "right",
@@ -31,6 +36,9 @@ export function ClientActionsMenu({
   onDuplicate: () => void | Promise<void>;
   onMove: (groupId: string) => void | Promise<void>;
   onDelete: () => void;
+  canManageSubitemLock?: boolean;
+  subitemsLocked?: boolean;
+  onToggleSubitemsLock?: () => void;
   className?: string;
   triggerClassName?: string;
   align?: "left" | "right";
@@ -107,6 +115,25 @@ export function ClientActionsMenu({
               className="flex w-full items-center gap-2 rounded px-2 py-2 text-xs text-slate-700 hover:bg-slate-50"
             >
               <ExternalLink size={14} /> Open Client
+            </button>
+          )}
+          {canManageSubitemLock && onToggleSubitemsLock && (
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                onToggleSubitemsLock();
+              }}
+              className={`flex w-full items-center gap-2 rounded px-2 py-2 text-xs hover:bg-slate-50 ${
+                subitemsLocked ? "text-amber-700" : "text-slate-700"
+              }`}
+            >
+              {subitemsLocked ? (
+                <LockKeyholeOpen size={14} />
+              ) : (
+                <LockKeyhole size={14} />
+              )}
+              {subitemsLocked ? "Unlock Client's Subitems" : "Lock Client's Subitems"}
             </button>
           )}
           <button

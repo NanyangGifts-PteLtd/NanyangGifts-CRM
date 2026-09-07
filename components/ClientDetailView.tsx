@@ -106,6 +106,7 @@ export function ClientDetailView({
   onDuplicate,
   onMove,
   onDelete,
+  onToggleSubitemsLock,
   onClose,
   onNavigate,
   onUpdate,
@@ -131,6 +132,7 @@ export function ClientDetailView({
   onDuplicate: () => void | Promise<void>;
   onMove: (groupId: string) => void | Promise<void>;
   onDelete: () => void;
+  onToggleSubitemsLock?: (locked: boolean) => void;
   onClose: () => void;
   onNavigate: (client: Client) => void;
   onUpdate: (updates: Partial<Client>) => void;
@@ -145,6 +147,10 @@ export function ClientDetailView({
   initialTab?: Tab;
 }) {
   const [tab, setTab] = useState<Tab>(initialTab ?? "overview");
+  const canManageSubitemLock = ["director", "dev"].includes(
+    String(currentUserRole ?? "").trim().toLowerCase(),
+  );
+  const subitemsLocked = client.customFields?.subitemsLocked === "true";
   const [hoverName, setHoverName] = useState(false);
   const [permissionNotice, setPermissionNotice] = useState<{
     x: number;
@@ -479,6 +485,11 @@ export function ClientDetailView({
             onDuplicate={onDuplicate}
             onMove={onMove}
             onDelete={onDelete}
+            canManageSubitemLock={canManageSubitemLock}
+            subitemsLocked={subitemsLocked}
+            onToggleSubitemsLock={() =>
+              onToggleSubitemsLock?.(!subitemsLocked)
+            }
             className="shrink-0"
           />
           <button

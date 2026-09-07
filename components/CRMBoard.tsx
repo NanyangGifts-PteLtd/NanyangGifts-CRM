@@ -26,6 +26,8 @@ import {
   RotateCcw,
   ArrowUp,
   ArrowDown,
+  LockKeyhole,
+  LockKeyholeOpen,
 } from "lucide-react";
 import {
   Client,
@@ -537,11 +539,29 @@ export function CRMBoard({
       }),
     [canEditSubitemRecord, clients, selectedSubitemIds],
   );
+  const canManageSubitemLocks = ["director", "dev"].includes(
+    String(currentUserRole ?? "").trim().toLowerCase(),
+  );
+  const selectedClientsHaveLockedSubitems = useMemo(
+    () =>
+      selectedIds.size > 0 &&
+      [...selectedIds].every(
+        (clientId) =>
+          clients.find((client) => client.id === clientId)?.customFields
+            ?.subitemsLocked === "true",
+      ),
+    [clients, selectedIds],
+  );
 
   const showAssignmentPermissionError = useCallback(() => {
     toast.error("You can only edit items that are assigned to you");
   }, []);
   const [pendingDeleteSelected, setPendingDeleteSelected] = useState(false);
+  const [pendingSubitemLock, setPendingSubitemLock] = useState<{
+    clientIds: string[];
+    locked: boolean;
+  } | null>(null);
+  const [savingSubitemLock, setSavingSubitemLock] = useState(false);
 
   const [replyStatusEntries, setReplyStatusEntries] = useState<OptionEntry[]>(
     [],
@@ -4592,10 +4612,72 @@ export function CRMBoard({
     updateClient,
   ]);
 
+  const confirmSubitemLock = useCallback(async () => {
+    if (!pendingSubitemLock || !canManageSubitemLocks) return;
+    const targets = clients.filter((client) =>
+      pendingSubitemLock.clientIds.includes(client.id),
+    );
+    if (!targets.length) return;
+
+    const previousClients = clients;
+    setSavingSubitemLock(true);
+    setClients((current) =>
+      current.map((client) => {
+        if (!pendingSubitemLock.clientIds.includes(client.id)) return client;
+        return {
+          ...client,
+          customFields: {
+            ...(client.customFields ?? {}),
+            subitemsLocked: pendingSubitemLock.locked ? "true" : "false",
+          },
+        };
+      }),
+    );
+    try {
+      await Promise.all(
+        targets.map((client) =>
+          updateClientRow(client.id, {
+            customFields: {
+              ...(client.customFields ?? {}),
+              subitemsLocked: pendingSubitemLock.locked ? "true" : "false",
+            },
+          }),
+        ),
+      );
+      toast.success(
+        pendingSubitemLock.locked
+          ? "Client subitems locked"
+          : "Client subitems unlocked",
+        {
+          description:
+            pendingSubitemLock.clientIds.length === 1
+              ? "Subitem values are now protected for this client."
+              : `Subitem values were updated for ${pendingSubitemLock.clientIds.length} clients.`,
+        },
+      );
+      setPendingSubitemLock(null);
+    } catch (error) {
+      setClients(previousClients);
+      toast.error("Could not update the subitem lock", {
+        description:
+          error instanceof Error ? error.message : "Please try again.",
+      });
+    } finally {
+      setSavingSubitemLock(false);
+    }
+  }, [canManageSubitemLocks, clients, pendingSubitemLock, setClients]);
+
   const updateSubitem = useCallback(
     async (clientId: string, subitemId: string, updates: Partial<Subitem>) => {
       if (!canEditSubitemRecord(clientId, subitemId)) {
         showAssignmentPermissionError();
+        return;
+      }
+      if (
+        clients.find((client) => client.id === clientId)?.customFields
+          ?.subitemsLocked === "true"
+      ) {
+        toast.error("This client's subitems are locked. Check with the director if there are any changes");
         return;
       }
       setClients((prev) =>
@@ -5275,7 +5357,15 @@ export function CRMBoard({
               siblings={owner.subitems}
               profiles={profiles}
               assigneeIds={subitemAssignees[subitem.id] ?? []}
-              canEdit={canEditSubitemRecord(owner.id, subitem.id)}
+              canEdit={
+                owner.customFields?.subitemsLocked !== "true" &&
+                canEditSubitemRecord(owner.id, subitem.id)
+              }
+              readOnlyMessage={
+                !canEditSubitemRecord(owner.id, subitem.id)
+                  ? "You can only edit items that are assigned to you"
+                  : "This client's subitems are locked. Check with the director if there are any changes"
+              }
               onClose={() => setDetailSubitem(null)}
               onNavigate={(next) =>
                 setDetailSubitem({ clientId: owner.id, subitemId: next.id })
@@ -5349,6 +5439,12 @@ export function CRMBoard({
                 setDetailClientInitialTab(null);
                 setPendingDeleteClientId(detailClient.id);
               }}
+              onToggleSubitemsLock={(locked) =>
+                setPendingSubitemLock({
+                  clientIds: [detailClient.id],
+                  locked,
+                })
+              }
               onClose={() => {
                 setDetailClientId(null);
                 setDetailClientInitialTab(null);
@@ -5381,6 +5477,31 @@ export function CRMBoard({
             {selectedIds.size} Client{selectedIds.size === 1 ? "" : "s"}{" "}
             selected
           </div>
+          {canManageSubitemLocks && (
+            <button
+              type="button"
+              onClick={() =>
+                setPendingSubitemLock({
+                  clientIds: [...selectedIds],
+                  locked: !selectedClientsHaveLockedSubitems,
+                })
+              }
+              className={`flex items-center gap-1.5 rounded px-3 py-2 text-sm hover:bg-slate-50 ${
+                selectedClientsHaveLockedSubitems
+                  ? "text-amber-700"
+                  : "text-slate-600"
+              }`}
+            >
+              {selectedClientsHaveLockedSubitems ? (
+                <LockKeyholeOpen size={17} />
+              ) : (
+                <LockKeyhole size={17} />
+              )}
+              {selectedClientsHaveLockedSubitems
+                ? "Unlock Clients' Subitems"
+                : "Lock Clients' Subitems"}
+            </button>
+          )}
           <button
             type="button"
             disabled={isDuplicatingClients || !canEditSelectedClients}
@@ -6470,6 +6591,51 @@ export function CRMBoard({
               }}
             >
               Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={!!pendingSubitemLock}
+        onOpenChange={(open) => {
+          if (!open && !savingSubitemLock) setPendingSubitemLock(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {pendingSubitemLock?.locked
+                ? "Lock client subitems?"
+                : "Unlock client subitems?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingSubitemLock?.locked
+                ? `All subitem values for ${pendingSubitemLock.clientIds.length === 1 ? "this client" : `these ${pendingSubitemLock.clientIds.length} clients`} will become read-only for every user until unlocked.`
+                : `Subitem values for ${pendingSubitemLock?.clientIds.length === 1 ? "this client" : `these ${pendingSubitemLock?.clientIds.length} clients`} will become editable again for assigned users.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={savingSubitemLock}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={savingSubitemLock}
+              onClick={(event) => {
+                event.preventDefault();
+                void confirmSubitemLock();
+              }}
+              className={
+                pendingSubitemLock?.locked
+                  ? "bg-amber-600 hover:bg-amber-700"
+                  : "bg-slate-700 hover:bg-slate-800"
+              }
+            >
+              {savingSubitemLock
+                ? "Saving..."
+                : pendingSubitemLock?.locked
+                  ? "Lock subitems"
+                  : "Unlock subitems"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -7603,6 +7769,12 @@ export function CRMBoard({
                       onDuplicateClient={() => duplicateClientAction(client.id)}
                       onMoveClient={(groupId) =>
                         moveClientAction(client.id, groupId)
+                      }
+                      onToggleClientSubitemsLock={(clientId, locked) =>
+                        setPendingSubitemLock({
+                          clientIds: [clientId],
+                          locked,
+                        })
                       }
                       subitemMoveTargetGroups={groupedClients.map(
                         ({ group, clients: groupClients }) => ({

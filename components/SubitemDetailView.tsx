@@ -83,6 +83,7 @@ export function SubitemDetailView({
   profiles,
   assigneeIds,
   canEdit,
+  readOnlyMessage = "You can only edit items that are assigned to you",
   onClose,
   onNavigate,
   onUpdate,
@@ -102,6 +103,7 @@ export function SubitemDetailView({
   profiles: Profile[];
   assigneeIds: string[];
   canEdit: boolean;
+  readOnlyMessage?: string;
   onClose: () => void;
   onNavigate: (subitem: Subitem) => void;
   onUpdate: (updates: Partial<Subitem>) => void;
@@ -128,9 +130,11 @@ export function SubitemDetailView({
 }) {
   const [tab, setTab] = useState<Tab>("overview");
   const [hoverName, setHoverName] = useState(false);
-  const [notice, setNotice] = useState<{ left: number; top: number } | null>(
-    null,
-  );
+  const [notice, setNotice] = useState<{
+    left: number;
+    top: number;
+    message: string;
+  } | null>(null);
   const [pendingSingleFileChange, setPendingSingleFileChange] = useState<{
     type: "remove" | "replace";
     key: "artworkFile" | "ocfFinalArtworkFile";
@@ -156,6 +160,7 @@ export function SubitemDetailView({
     setNotice({
       left: Math.min(rect.left, window.innerWidth - 300),
       top: Math.min(rect.bottom + 8, window.innerHeight - 52),
+      message: readOnlyMessage,
     });
   };
   const lock = (event: React.MouseEvent<HTMLElement>) => {
@@ -798,7 +803,7 @@ export function SubitemDetailView({
                           onClick={() => void onUndo(entry)}
                           title={
                             !canEdit
-                              ? "You can only edit items that are assigned to you"
+                              ? readOnlyMessage
                               : "Undo this action"
                           }
                           className="shrink-0 rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] font-medium text-gray-600 disabled:cursor-not-allowed disabled:opacity-50"
@@ -825,7 +830,7 @@ export function SubitemDetailView({
           className="fixed z-[230] rounded bg-slate-800 px-3 py-2 text-xs text-white shadow-lg"
           style={notice}
         >
-          You can only edit items that are assigned to you
+          {notice.message}
         </button>
       )}
       <AlertDialog

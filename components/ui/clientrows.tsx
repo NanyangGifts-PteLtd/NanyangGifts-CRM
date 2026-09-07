@@ -333,6 +333,7 @@ export type ClientRowProps = {
   groups: Array<{ id: string; name: string }>;
   onDuplicateClient: () => void | Promise<void>;
   onMoveClient: (groupId: string) => void | Promise<void>;
+  onToggleClientSubitemsLock?: (clientId: string, locked: boolean) => void;
   subitemMoveTargetGroups: Array<{
     name: string;
     clients: Array<{ id: string; name: string }>;
@@ -444,6 +445,7 @@ export function ClientRow({
   groups,
   onDuplicateClient,
   onMoveClient,
+  onToggleClientSubitemsLock,
   subitemMoveTargetGroups,
   onDuplicateSubitemAction,
   onMoveSubitemAction,
@@ -479,6 +481,10 @@ export function ClientRow({
     ["admin", "director", "dev"].includes(
       String(currentUserRole ?? "").toLowerCase(),
     );
+  const canManageSubitemLock = ["director", "dev"].includes(
+    String(currentUserRole ?? "").trim().toLowerCase(),
+  );
+  const subitemsLocked = client.customFields?.subitemsLocked === "true";
   const [showCloseDialog, setShowCloseDialog] = useState(false);
   const [showMultipleInvoicesDialog, setShowMultipleInvoicesDialog] =
     useState(false);
@@ -2219,6 +2225,11 @@ export function ClientRow({
             onDuplicate={onDuplicateClient}
             onMove={onMoveClient}
             onDelete={onDelete}
+            canManageSubitemLock={canManageSubitemLock}
+            subitemsLocked={subitemsLocked}
+            onToggleSubitemsLock={() =>
+              onToggleClientSubitemsLock?.(client.id, !subitemsLocked)
+            }
             align="left"
             className="absolute -left-7 top-1/2 z-30 -translate-y-1/2"
             triggerClassName="opacity-0 transition-opacity group-hover/client-actions:opacity-100"
@@ -3431,6 +3442,7 @@ export function ClientRow({
       {!trackingMode && isExpanded && (
         <SubitemsTable
           clientId={client.id}
+          subitemsLocked={subitemsLocked}
           subitems={client.subitems}
           clientColor={"#7BCBD5"}
           onUpdateSubitem={onUpdateSubitem}
