@@ -18,7 +18,10 @@ export default function RootLayout({
 }) {
     return (
         <html lang="en" suppressHydrationWarning>
-            <body className="antialiased">{children}</body>
+            <body className="antialiased">
+                {children}
+                <div id="portal" />
+            </body>
         </html>
     );
 }

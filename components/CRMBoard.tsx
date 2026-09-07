@@ -3831,6 +3831,7 @@ export function CRMBoard({
       const result = await response.json();
       if (!response.ok)
         throw new Error(result.error || "Could not create shipment.");
+      window.localStorage.setItem("shipper-spreadsheet-refresh", `${Date.now()}-${Math.random()}`);
       setClients((current) =>
         current.map((client) => ({
           ...client,

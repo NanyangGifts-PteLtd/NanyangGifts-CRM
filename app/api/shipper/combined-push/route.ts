@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { createShipment, type ShipmentInput } from "@/lib/shipper/shipments";
+import { createCrmSpreadsheetRows } from "@/lib/shipper/spreadsheet";
 
 type PushValue = Record<string, string> & { subitemId: string };
 type Body = { subitemIds: string[]; values: PushValue[]; shared: Record<string, string>; existingMode?: "separate" | "repush"; amendShipmentIdBySubitemId?: Record<string, string> };
@@ -105,7 +106,48 @@ export async function POST(request: NextRequest) {
         }
         await Promise.all(ids.map((id) => supabaseAdmin.from("subitems").update({ cn_tracking: values.get(id)!.cn_tracking_no }).eq("id", id)));
         const actor = input.ic!;
+        const targetShipperName = shippers?.find((shipper) => shipper.id === input.shipperId)?.name ?? "Shipper";
+        const spreadsheetRows = await createCrmSpreadsheetRows({
+            shipperId: input.shipperId,
+            shipperName: targetShipperName,
+            createdBy: user.id,
+            rows: items.map((item) => ({
+                sourceSubitemId: item.subitemId!,
+                plannedFor: shared.info_provided_date,
+                values: {
+                    serial_number: shared.serial_number || null,
+                    waybill_date: shared.waybill_date || null,
+                    waybill_number: shared.waybill_number || null,
+                    pieces: shared.pieces || null,
+                    chargeable_weight_kg: shared.chargeable_weight_kg || null,
+                    destination: shared.destination || null,
+                    freight_unit_price: shared.freight_unit_price || null,
+                    freight_cost: null,
+                    gst: shared.gst || null,
+                    other_fees: shared.other_fees || null,
+                    total_cost: null,
+                    channel: shared.channel || null,
+                    logistics_remarks: shared.logistics_remarks || null,
+                    ic: actor,
+                    info_provided_date: shared.info_provided_date,
+                    cn_tracking_no: item.cnTrackingNo,
+                    cartons: item.cartons,
+                    item_name: item.displayName,
+                    delivery_info: shared.delivery_info,
+                    qty: item.quantity,
+                    up: item.unitPrice,
+                    value: item.declaredValue,
+                    sea_or_air: shared.sea_or_air,
+                    tax_refund: shared.tax_refund || null,
+                    shipper_remarks: item.remarks,
+                    samples_by_air: item.samplesByAir,
+                    samples_by_sea: item.samplesBySea,
+                    air_received: item.airReceived,
+                    sea_received: item.seaReceived,
+                },
+            })),
+        });
         await supabaseAdmin.from("activity_log").insert(items.map((item) => ({ client_id: item.clientId, subitem_id: item.subitemId, actor_name: actor, action: "shipper_pushed", subitem_name: item.displayName, title: amendments[item.subitemId!] ? "amended a previous shipment push" : "pushed as part of a combined shipment", meta: { shipmentId: amendments[item.subitemId!] ?? created?.shipment.id ?? null, combined: true, existingMode: amendments[item.subitemId!] ? "amend" : "separate" }, created_at: new Date().toISOString() })));
-        return NextResponse.json({ shipment: created?.shipment ?? null, items: created?.items ?? [], amendedSubitemIds: Object.keys(amendments) }, { status: 201 });
+        return NextResponse.json({ shipment: created?.shipment ?? null, items: created?.items ?? [], spreadsheetRowsCreated: spreadsheetRows.length, amendedSubitemIds: Object.keys(amendments) }, { status: 201 });
     } catch (error: any) { return NextResponse.json({ error: error?.message ?? "Could not create the combined shipment." }, { status: 400 }); }
 }

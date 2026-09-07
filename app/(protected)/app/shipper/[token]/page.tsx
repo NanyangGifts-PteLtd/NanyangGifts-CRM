@@ -2,7 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getShipperByToken } from "@/lib/shipper/get-shipper-by-token";
 import { getShipperShipments } from "@/lib/shipper/shipments";
-import { ShipmentGrid } from "../ShipmentGrid";
+import { ShipperWorkbookTabs } from "../ShipperWorkbookTabs";
 import ShipperAccountMenu from "./ShipperAccountMenu";
 
 export default async function ShipperPage({
@@ -35,7 +35,7 @@ export default async function ShipperPage({
                 <h1 className="text-lg font-semibold">{shipper.name}</h1>
                 <ShipperAccountMenu name={profile?.full_name ?? profile?.email ?? user.email} />
             </div>
-            <ShipmentGrid shipments={shipments} mode="shipper" />
+            <ShipperWorkbookTabs shipperId={shipper.id} shipments={shipments} />
         </main>
     );
 }

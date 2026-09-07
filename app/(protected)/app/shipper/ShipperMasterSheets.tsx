@@ -2,11 +2,17 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 import { ExternalLink } from "lucide-react";
 import ShipperGrid, { type ShipperRow } from "./[token]/ShipperGrid";
 import { ShipmentGrid, type ShipmentRecord } from "./ShipmentGrid";
 import { ShipperStagingTable } from "./ShipperStagingTable";
 import type { ShipperStagingRow } from "@/lib/shipper/get-shipper-staging-rows";
+
+const SpreadsheetPilot = dynamic(
+  () => import("./SpreadsheetPilot").then((module) => module.SpreadsheetPilot),
+  { ssr: false },
+);
 
 type Shipper = { id: string; name: string | null; website_url?: string | null };
 type Props = {
@@ -26,7 +32,7 @@ export function ShipperMasterSheets({
   const [activeShipperId, setActiveShipperId] = useState(shippers[0]?.id ?? "");
   const [gridRows, setGridRows] = useState(rows);
   const [stagedRows, setStagedRows] = useState(stagingRows);
-  const [view, setView] = useState<"shipments" | "legacy">("shipments");
+  const [view, setView] = useState<"shipments" | "legacy" | "spreadsheet">("shipments");
   const activeShipper =
     shippers.find((shipper) => shipper.id === activeShipperId) ?? shippers[0];
 
@@ -75,6 +81,12 @@ export function ShipperMasterSheets({
           >
             Legacy grid
           </button>
+          <button
+            onClick={() => setView("spreadsheet")}
+            className={`rounded px-2 py-1 text-xs ${view === "spreadsheet" ? "bg-sky-600 text-white" : "border text-slate-600"}`}
+          >
+            Spreadsheet pilot
+          </button>
           {activeShipper.website_url && (
             <a
               href={activeShipper.website_url}
@@ -88,8 +100,10 @@ export function ShipperMasterSheets({
           )}
         </div>
       </div>
-      <div className="min-h-0 flex-1 overflow-auto">
-        {view === "shipments" ? (
+      <div className={`min-h-0 flex-1 ${view === "spreadsheet" ? "overflow-hidden" : "overflow-auto"}`}>
+        {view === "spreadsheet" ? (
+          <SpreadsheetPilot shipperId={activeShipper.id} />
+        ) : view === "shipments" ? (
           <>
             <div className="p-4">
               <ShipmentGrid

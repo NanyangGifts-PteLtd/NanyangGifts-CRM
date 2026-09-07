@@ -1328,6 +1328,7 @@ export function SubitemsTable({
       }
 
       setPushedSubitemIds((previous) => new Set(previous).add(subitemId));
+      window.localStorage.setItem("shipper-spreadsheet-refresh", `${Date.now()}-${Math.random()}`);
 
       toast.success("Pushed to shipper view", {
         description: "The shipping record was created or updated successfully.",
@@ -1506,6 +1507,7 @@ export function SubitemsTable({
       onUpdateSubitem(pushPreview.subitemId, {
         cnTracking: pushPreview.cn_tracking_no,
       });
+      window.localStorage.setItem("shipper-spreadsheet-refresh", `${Date.now()}-${Math.random()}`);
       setPushedSubitemIds((previous) =>
         new Set(previous).add(pushPreview.subitemId),
       );
