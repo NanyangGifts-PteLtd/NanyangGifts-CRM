@@ -3269,7 +3269,9 @@ export function SubitemsTable({
                         ? "Adding subitem…"
                         : canCreateSubitems
                           ? "Add subitem"
-                          : "Assignment required to add subitems"
+                          : subitemsLocked
+                            ? "This client's subitems are locked"
+                            : "Assignment required to add subitems"
                     }
                     aria-label="New subitem name"
                     className="h-7 w-full rounded border border-transparent bg-transparent pl-7 pr-2 text-xs text-gray-700 outline-none transition group-hover/add-subitem:border-gray-500 group-hover/add-subitem:bg-white focus:border-[#3799b1] focus:bg-white focus:ring-2 focus:ring-[#7BCBD5]/25 disabled:cursor-not-allowed disabled:opacity-50"
