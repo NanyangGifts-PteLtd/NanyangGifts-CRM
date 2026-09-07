@@ -228,6 +228,14 @@ const TRACKING_HEADER_COLS: HeaderCol[] = [
     width: 190,
     minWidth: 7,
   },
+  { key: "trackingTotalPrice", label: "Total Price", width: 100, minWidth: 7 },
+  { key: "trackingInvoiceTotal", label: "Invoice Total", width: 110, minWidth: 7 },
+  {
+    key: "trackingPriceInvoiceMatch",
+    label: "Price and Invoice Match?",
+    width: 160,
+    minWidth: 7,
+  },
   { key: "empty", label: "", width: 44, minWidth: 44 },
 ];
 

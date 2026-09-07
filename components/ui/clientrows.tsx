@@ -60,6 +60,11 @@ const trackingMultipleInvoiceOptions: OptionEntry[] = [
   { value: "Yes", color: "#f59e0b" },
   { value: "No", color: "#64748b" },
 ];
+const trackingPriceInvoiceMatchOptions: OptionEntry[] = [
+  { value: "Yes", color: "#16a34a" },
+  { value: "ERROR - MISMATCH", color: "#dc2626" },
+  { value: "Partially Invoiced", color: "#f59e0b" },
+];
 const trackingPaymentStatusOptions: OptionEntry[] = [
   "Not Delivered",
   "30days Credit terms",
@@ -119,6 +124,21 @@ type AttachmentItem = {
 };
 
 type SampleArtworkUpload = { name: string; url: string; mimeType: string };
+
+const AWARDED_OR_LATER_SUBITEM_STATUSES = new Set([
+  "awarded",
+  "to verify at a later date",
+  "verified",
+  "[variation] cost difference",
+]);
+
+function contributesToAwardedTotals(subitem: Subitem) {
+  const status = subitem.status?.trim().toLowerCase() ?? "";
+  return (
+    AWARDED_OR_LATER_SUBITEM_STATUSES.has(status) ||
+    /cost difference$/i.test(status)
+  );
+}
 
 const quickBooksNumber = (value: unknown) => {
   const parsed = Number(String(value ?? "").replace(/,/g, "").trim());
@@ -473,6 +493,8 @@ export function ClientRow({
   >([]);
   const [isLoadingTrackingEstimates, setIsLoadingTrackingEstimates] =
     useState(false);
+  const [hasLoadedTrackingEstimates, setHasLoadedTrackingEstimates] =
+    useState(false);
   const [isPullingInvoices, setIsPullingInvoices] = useState(false);
   const [trackingInvoiceError, setTrackingInvoiceError] = useState<
     string | null
@@ -480,6 +502,19 @@ export function ClientRow({
   const [trackingInvoiceNotice, setTrackingInvoiceNotice] = useState<
     string | null
   >(null);
+  const [isTrackingInvoicesExpanded, setIsTrackingInvoicesExpanded] =
+    useState(false);
+  const [isLoadingTrackingInvoices, setIsLoadingTrackingInvoices] =
+    useState(false);
+  const [trackingInvoiceRows, setTrackingInvoiceRows] = useState<
+    Array<{
+      id: string;
+      quickbooks_invoice_doc_number: string | null;
+      invoice_date: string | null;
+      due_date: string | null;
+      subtotal: number | null;
+    }>
+  >([]);
   const [pendingStatus, setPendingStatus] = useState<ClientStatus | null>(null);
   const [closeFiles, setCloseFiles] = useState<File[]>([]);
   const [closeConfirmed, setCloseConfirmed] = useState(false);
@@ -581,7 +616,33 @@ export function ClientRow({
       if (!response.ok) {
         throw new Error(result?.error ?? "Could not load QuickBooks estimates");
       }
-      setTrackingEstimates(result.estimates ?? []);
+      const estimates = result.estimates ?? [];
+      setTrackingEstimates(estimates);
+      setHasLoadedTrackingEstimates(true);
+      const selectedGenerationId =
+        client.customFields?.trackingEstimateGenerationId ?? "";
+      if (
+        selectedGenerationId &&
+        !estimates.some((estimate: { id: string }) => estimate.id === selectedGenerationId)
+      ) {
+        setTrackingInvoiceRows([]);
+        setIsTrackingInvoicesExpanded(false);
+        onUpdate({
+          customFields: {
+            ...(client.customFields ?? {}),
+            trackingEstimateGenerationId: "",
+            trackingEstimateNumber: "",
+            trackingInvoiceNumber: "",
+            trackingMultipleInvoices: "",
+            trackingInvoiceTotal: "",
+            trackingPriceInvoiceMatch: "",
+          },
+        });
+        toast.error("QuickBooks estimate is unavailable", {
+          description:
+            "The previously selected estimate no longer exists in QuickBooks. Please choose another estimate.",
+        });
+      }
     } catch (error) {
       setTrackingInvoiceError(
         error instanceof Error
@@ -596,6 +657,8 @@ export function ClientRow({
     const estimate = trackingEstimates.find((item) => item.id === generationId);
     if (!estimate) return;
     setTrackingInvoiceError(null);
+    setTrackingInvoiceRows([]);
+    setIsTrackingInvoicesExpanded(false);
     onUpdate({
       customFields: {
         ...(client.customFields ?? {}),
@@ -603,8 +666,37 @@ export function ClientRow({
         trackingEstimateNumber: estimate.quickbooks_estimate_doc_number ?? "",
         trackingInvoiceNumber: "",
         trackingMultipleInvoices: "",
+        trackingInvoiceTotal: "",
+        trackingPriceInvoiceMatch: "",
       },
     });
+  };
+  const loadTrackingInvoices = async () => {
+    const estimateGenerationId =
+      client.customFields?.trackingEstimateGenerationId ?? "";
+    if (!estimateGenerationId) return;
+    setIsLoadingTrackingInvoices(true);
+    try {
+      const response = await fetch(
+        `/api/quickbooks/estimate-invoices?estimateGenerationId=${encodeURIComponent(estimateGenerationId)}`,
+      );
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result?.error ?? "Could not load linked invoices");
+      }
+      setTrackingInvoiceRows(result.invoices ?? []);
+    } catch (error) {
+      setTrackingInvoiceError(
+        error instanceof Error ? error.message : "Could not load linked invoices",
+      );
+    } finally {
+      setIsLoadingTrackingInvoices(false);
+    }
+  };
+  const toggleTrackingInvoices = () => {
+    const next = !isTrackingInvoicesExpanded;
+    setIsTrackingInvoicesExpanded(next);
+    if (next) void loadTrackingInvoices();
   };
   const pullTrackingInvoices = async () => {
     const estimateGenerationId =
@@ -620,6 +712,25 @@ export function ClientRow({
         body: JSON.stringify({ estimateGenerationId }),
       });
       const result = await response.json();
+      if (result?.estimateMissing) {
+        setTrackingInvoiceRows([]);
+        setIsTrackingInvoicesExpanded(false);
+        onUpdate({
+          customFields: {
+            ...(client.customFields ?? {}),
+            trackingEstimateGenerationId: "",
+            trackingEstimateNumber: "",
+            trackingInvoiceNumber: "",
+            trackingMultipleInvoices: "",
+            trackingInvoiceTotal: "",
+            trackingPriceInvoiceMatch: "",
+          },
+        });
+        toast.error("QuickBooks estimate is unavailable", {
+          description: result.error,
+        });
+        return;
+      }
       if (!response.ok) {
         throw new Error(
           result?.error ?? "Could not synchronize linked QuickBooks invoices",
@@ -628,6 +739,25 @@ export function ClientRow({
       const invoiceNumbers = (result.invoiceNumbers ?? [])
         .map((value: unknown) => String(value).trim())
         .filter(Boolean);
+      setTrackingInvoiceRows(result.invoices ?? []);
+      const invoiceSubtotal = (result.invoices ?? []).reduce(
+        (total: number, invoice: { subtotal?: number | string | null }) =>
+          total + Number(invoice.subtotal ?? 0),
+        0,
+      );
+      const totalPrice = client.subitems
+        .filter(contributesToAwardedTotals)
+        .reduce(
+          (total, subitem) =>
+            total + calculateSubitemFinancials(subitem).price,
+          0,
+        );
+      const priceDifference = Math.abs(totalPrice - invoiceSubtotal);
+      const priceInvoiceMatch = !invoiceNumbers.length
+        ? ""
+        : priceDifference < 0.005
+          ? "Yes"
+          : "ERROR - MISMATCH";
       if (!invoiceNumbers.length) {
         setTrackingInvoiceNotice("No invoices found");
         window.setTimeout(() => setTrackingInvoiceNotice(null), 4500);
@@ -644,6 +774,10 @@ export function ClientRow({
               ? "Yes"
               : "No"
             : "",
+          trackingInvoiceTotal: invoiceNumbers.length
+            ? invoiceSubtotal.toFixed(2)
+            : "",
+          trackingPriceInvoiceMatch: priceInvoiceMatch,
         },
       });
     } catch (error) {
@@ -1181,17 +1315,19 @@ export function ClientRow({
     setPendingAttachmentRemoval(null);
   };
 
-  const aggregateSubitemValues = client.subitems.reduce(
-    (totals, subitem) => {
-      const { price, markup } = calculateSubitemFinancials(subitem);
+  const aggregateSubitemValues = client.subitems
+    .filter(contributesToAwardedTotals)
+    .reduce(
+      (totals, subitem) => {
+        const { price, markup } = calculateSubitemFinancials(subitem);
 
-      return {
-        totalPrice: totals.totalPrice + price,
-        totalMarkup: totals.totalMarkup + markup,
-      };
-    },
-    { totalPrice: 0, totalMarkup: 0 },
-  );
+        return {
+          totalPrice: totals.totalPrice + price,
+          totalMarkup: totals.totalMarkup + markup,
+        };
+      },
+      { totalPrice: 0, totalMarkup: 0 },
+    );
 
   const clientCreationActivity = client.activityLog?.find(
     (entry) => entry.action === "client_added",
@@ -2119,6 +2255,38 @@ export function ClientRow({
               )}
             </button>
           )}
+          {trackingMode && (
+            <button
+              type="button"
+              data-selection-control
+              disabled={
+                !canManageClient ||
+                !client.customFields?.trackingEstimateGenerationId
+              }
+              onClick={(event) => {
+                event.stopPropagation();
+                toggleTrackingInvoices();
+              }}
+              title={
+                !client.customFields?.trackingEstimateGenerationId
+                  ? "Select a QuickBooks estimate first"
+                  : "Show linked invoices"
+              }
+              className="ml-1 text-gray-400 transition-colors hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {isTrackingInvoicesExpanded ? (
+                <ChevronDown
+                  size={14}
+                  className="transition transform active:scale-150 duration-100"
+                />
+              ) : (
+                <ChevronRight
+                  size={14}
+                  className="transition transform active:scale-150 duration-100"
+                />
+              )}
+            </button>
+          )}
         </div>
 
         <div
@@ -2152,6 +2320,7 @@ export function ClientRow({
           </div>
           <div className="ml-auto flex items-center justify-start gap-1 flex-shrink-0">
             {trackingMode && (
+              <>
               <button
                 type="button"
                 data-view-action
@@ -2179,6 +2348,7 @@ export function ClientRow({
                   ? "Pulling…"
                   : trackingInvoiceNotice ?? "Pull Invoice"}
               </button>
+              </>
             )}
             {!trackingMode && (
               <Tooltip.Provider>
@@ -2962,7 +3132,8 @@ export function ClientRow({
                     ? "Loading estimates…"
                     : "Select estimate"}
                 </option>
-                {client.customFields?.trackingEstimateGenerationId &&
+                {!hasLoadedTrackingEstimates &&
+                  client.customFields?.trackingEstimateGenerationId &&
                   !trackingEstimates.some(
                     (estimate) =>
                       estimate.id ===
@@ -3070,6 +3241,60 @@ export function ClientRow({
                 includeBlankOption={false}
               />
             </div>
+            <div
+              data-client-column="trackingTotalPrice"
+              className="tracking-client-cell overflow-hidden border-r border-[#D0D4E4] bg-amber-50 py-1"
+              style={{
+                height: 30,
+                minWidth: colWidth.trackingTotalPrice,
+                width: colWidth.trackingTotalPrice,
+                order: columnOrderMap.trackingTotalPrice,
+              }}
+              title="Total of awarded and later subitems"
+            >
+              <span className="block px-2 text-right text-[12.6px] font-medium text-amber-950">
+                {aggregateSubitemValues.totalPrice.toFixed(2)}
+              </span>
+            </div>
+            <div
+              data-client-column="trackingInvoiceTotal"
+              className="tracking-client-cell overflow-hidden border-r border-[#D0D4E4] bg-amber-50 py-1"
+              style={{
+                height: 30,
+                minWidth: colWidth.trackingInvoiceTotal,
+                width: colWidth.trackingInvoiceTotal,
+                order: columnOrderMap.trackingInvoiceTotal,
+              }}
+              title="Sum of linked QuickBooks invoice subtotals"
+            >
+              <span className="block px-2 text-right text-[12.6px] font-medium text-amber-950">
+                {client.customFields?.trackingInvoiceTotal ?? ""}
+              </span>
+            </div>
+            <div
+              data-client-column="trackingPriceInvoiceMatch"
+              className="tracking-client-cell overflow-hidden border-r border-[#D0D4E4] p-0"
+              style={{
+                height: 30,
+                minWidth: colWidth.trackingPriceInvoiceMatch,
+                width: colWidth.trackingPriceInvoiceMatch,
+                order: columnOrderMap.trackingPriceInvoiceMatch,
+              }}
+            >
+              <StatusBadge
+                value={client.customFields?.trackingPriceInvoiceMatch ?? ""}
+                onChange={(value) =>
+                  onUpdate({
+                    customFields: {
+                      ...(client.customFields ?? {}),
+                      trackingPriceInvoiceMatch: value,
+                    },
+                  })
+                }
+                options={trackingPriceInvoiceMatchOptions}
+                manageLabel="price and invoice match"
+              />
+            </div>
           </>
         )}
         <div
@@ -3160,6 +3385,48 @@ export function ClientRow({
           </button>
         </div>
       </div>
+
+      {trackingMode && isTrackingInvoicesExpanded && (
+        <div
+          className="box-border border-b border-r border-[#D0D4E4] bg-[#f7fbfc] px-10 py-2"
+          style={{ width: boardWidth, minWidth: boardWidth }}
+        >
+          <div className="max-w-[650px] overflow-hidden rounded border border-[#c8dce2] bg-white text-[12px] shadow-sm">
+            <div className="flex items-center border-b border-[#c8dce2] bg-[#eaf5f7] text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+              <div className="w-[32%] px-3 py-2">Invoice Number</div>
+              <div className="w-[23%] border-l border-[#d7e5e8] px-3 py-2">Invoice Date</div>
+              <div className="w-[23%] border-l border-[#d7e5e8] px-3 py-2">Due Date</div>
+              <div className="w-[22%] border-l border-[#d7e5e8] px-3 py-2 text-right">Subtotal</div>
+            </div>
+            {isLoadingTrackingInvoices ? (
+              <p className="px-3 py-3 text-slate-500">Loading linked invoices…</p>
+            ) : trackingInvoiceRows.length ? (
+              trackingInvoiceRows.map((invoice) => (
+                <div key={invoice.id} className="flex border-b border-[#e5eef0] last:border-b-0 text-slate-700">
+                  <div className="w-[32%] px-3 py-2 font-medium">
+                    {invoice.quickbooks_invoice_doc_number ?? "—"}
+                  </div>
+                  <div className="w-[23%] border-l border-[#eef4f5] px-3 py-2">
+                    {invoice.invoice_date ?? "—"}
+                  </div>
+                  <div className="w-[23%] border-l border-[#eef4f5] px-3 py-2">
+                    {invoice.due_date ?? "—"}
+                  </div>
+                  <div className="w-[22%] border-l border-[#eef4f5] px-3 py-2 text-right">
+                    {invoice.subtotal == null
+                      ? "—"
+                      : formatQuickBooksAmount(invoice.subtotal)}
+                  </div>
+                </div>
+              ))
+            ) : (
+              <p className="px-3 py-3 text-slate-500">
+                No invoices have been pulled for this estimate yet.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
 
       {!trackingMode && isExpanded && (
         <SubitemsTable

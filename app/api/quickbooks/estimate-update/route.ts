@@ -221,9 +221,15 @@ export async function GET(request: NextRequest) {
         `SELECT * FROM Estimate WHERE CustomerRef = '${esc(String(quickBooksCustomerId))}'`,
       );
       const quickBooksEstimates = quickBooksResult?.QueryResponse?.Estimate ?? [];
+      const storedByQuickBooksId = new Map(
+        estimates.map((estimate) => [String(estimate.quickbooks_estimate_id), estimate]),
+      );
+      const reconciledEstimates: typeof estimates = [];
       for (const quickBooksEstimate of quickBooksEstimates) {
         if (!quickBooksEstimate?.Id) continue;
-        if (estimates.some((estimate) => estimate.quickbooks_estimate_id === quickBooksEstimate.Id)) {
+        const existing = storedByQuickBooksId.get(String(quickBooksEstimate.Id));
+        if (existing) {
+          reconciledEstimates.push(existing);
           continue;
         }
         const { data: generation, error: generationError } = await supabase
@@ -237,8 +243,28 @@ export async function GET(request: NextRequest) {
           .select("id, quickbooks_customer_id, quickbooks_estimate_id, quickbooks_estimate_doc_number, created_at")
           .single();
         if (generationError) throw generationError;
-        if (generation) estimates.push(generation);
+        if (generation) reconciledEstimates.push(generation);
       }
+      // Estimates absent from this live customer query were deleted or made
+      // unavailable in QuickBooks, so they are deliberately omitted.
+      estimates.splice(0, estimates.length, ...reconciledEstimates);
+    } else if (estimates.length) {
+      // A legacy generation can be missing its customer ID. Validate those
+      // individual estimate IDs instead of presenting stale choices.
+      const validEstimates: typeof estimates = [];
+      for (const estimate of estimates) {
+        try {
+          await qboRequest(`/estimate/${estimate.quickbooks_estimate_id}`, {
+            method: "GET",
+          });
+          validEstimates.push(estimate);
+        } catch (error) {
+          if (!/"code":"610"/.test(error instanceof Error ? error.message : "")) {
+            throw error;
+          }
+        }
+      }
+      estimates.splice(0, estimates.length, ...validEstimates);
     }
     estimates.sort(
       (first, second) =>

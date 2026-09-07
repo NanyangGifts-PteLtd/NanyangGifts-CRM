@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { qboQuery } from "@/lib/quickbooks/api";
+import { qboQuery, qboRequest } from "@/lib/quickbooks/api";
 import { createClient } from "@/lib/supabase/server";
 
 type QuickBooksLink = {
@@ -42,6 +42,83 @@ function invoiceLinksToEstimate(
   );
 }
 
+function isMissingQuickBooksObject(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  try {
+    const payload = JSON.parse(message.slice(message.indexOf("{")));
+    return String(payload?.Fault?.Error?.[0]?.code) === "610";
+  } catch {
+    return false;
+  }
+}
+
+async function authorizeInvoiceAccess(
+  estimateGenerationId: string,
+) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Unauthorized");
+
+  const { data: generation, error: generationError } = await supabase
+    .from("estimate_generations")
+    .select("id, client_id, quickbooks_customer_id, quickbooks_estimate_id")
+    .eq("id", estimateGenerationId)
+    .maybeSingle();
+  if (generationError) throw generationError;
+  if (!generation?.quickbooks_estimate_id) throw new Error("QuickBooks estimate record not found");
+
+  const [{ data: profile, error: profileError }, { data: assignments, error: assignmentError }] =
+    await Promise.all([
+      supabase.from("profiles").select("role").eq("id", user.id).maybeSingle(),
+      supabase
+        .from("client_assignees")
+        .select("user_id")
+        .eq("client_id", generation.client_id)
+        .eq("user_id", user.id),
+    ]);
+  if (profileError || assignmentError) throw profileError ?? assignmentError;
+  const role = String(profile?.role ?? "").toLowerCase();
+  if (!["sales", "pm", "admin", "director", "dev"].includes(role)) {
+    throw new Error("Forbidden");
+  }
+  if (!["admin", "director", "dev"].includes(role) && !assignments?.length) {
+    throw new Error("You must be assigned to this client to view its invoices.");
+  }
+  return { supabase, generation };
+}
+
+export async function GET(request: NextRequest) {
+  try {
+    const estimateGenerationId = request.nextUrl.searchParams.get(
+      "estimateGenerationId",
+    );
+    if (!estimateGenerationId) {
+      return NextResponse.json(
+        { error: "Missing estimateGenerationId" },
+        { status: 400 },
+      );
+    }
+    const { supabase, generation } = await authorizeInvoiceAccess(
+      estimateGenerationId,
+    );
+    const { data: invoices, error } = await supabase
+      .from("quickbooks_estimate_invoices")
+      .select(
+        "id, quickbooks_invoice_doc_number, invoice_date, due_date, subtotal",
+      )
+      .eq("estimate_generation_id", generation.id)
+      .order("invoice_date", { ascending: true });
+    if (error) throw error;
+    return NextResponse.json({ invoices: invoices ?? [] });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Could not load invoices.";
+    const status = message === "Unauthorized" ? 401 : message === "Forbidden" ? 403 : 500;
+    return NextResponse.json({ error: message }, { status });
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const { estimateGenerationId } = await request.json();
@@ -52,56 +129,38 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const { supabase, generation } = await authorizeInvoiceAccess(
+      estimateGenerationId,
+    );
+
+    let estimate: any;
+    try {
+      const result = await qboRequest(
+        `/estimate/${generation.quickbooks_estimate_id}`,
+        { method: "GET" },
+      );
+      estimate = result.Estimate;
+    } catch (error) {
+      if (isMissingQuickBooksObject(error)) {
+        return NextResponse.json(
+          {
+            estimateMissing: true,
+            error:
+              "The selected QuickBooks estimate no longer exists. Choose another estimate.",
+          },
+          { status: 404 },
+        );
+      }
+      throw error;
     }
-
-    const { data: generation, error: generationError } = await supabase
-      .from("estimate_generations")
-      .select("id, client_id, quickbooks_customer_id, quickbooks_estimate_id")
-      .eq("id", estimateGenerationId)
-      .maybeSingle();
-
-    if (generationError) throw generationError;
-    if (!generation?.quickbooks_estimate_id || !generation.quickbooks_customer_id) {
+    const customerId = estimate?.CustomerRef?.value ?? generation.quickbooks_customer_id;
+    if (!customerId) {
       return NextResponse.json(
-        { error: "This estimate does not have QuickBooks identifiers to sync." },
+        { error: "This estimate does not have a QuickBooks customer to sync." },
         { status: 400 },
       );
     }
-
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .maybeSingle();
-    const role = String(profile?.role ?? "").toLowerCase();
-    const isInternal = ["sales", "pm", "admin", "director", "dev"].includes(
-      role,
-    );
-    if (!isInternal) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
-
-    const { data: assignments, error: assignmentError } = await supabase
-      .from("client_assignees")
-      .select("user_id")
-      .eq("client_id", generation.client_id)
-      .eq("user_id", user.id);
-    if (assignmentError) throw assignmentError;
-    const canManageAnyClient = ["admin", "director", "dev"].includes(role);
-    if (!canManageAnyClient && !assignments?.length) {
-      return NextResponse.json(
-        { error: "You must be assigned to this client to sync its invoices." },
-        { status: 403 },
-      );
-    }
-
-    const escapedCustomerId = String(generation.quickbooks_customer_id).replace(
+    const escapedCustomerId = String(customerId).replace(
       /'/g,
       "\\'",
     );
@@ -134,6 +193,26 @@ export async function POST(request: NextRequest) {
         };
       });
 
+    const { data: storedInvoices, error: storedInvoicesError } = await supabase
+      .from("quickbooks_estimate_invoices")
+      .select("quickbooks_invoice_id")
+      .eq("estimate_generation_id", generation.id);
+    if (storedInvoicesError) throw storedInvoicesError;
+    const linkedInvoiceIds = new Set(
+      rows.map((row) => row.quickbooks_invoice_id),
+    );
+    const staleInvoiceIds = (storedInvoices ?? [])
+      .map((invoice) => invoice.quickbooks_invoice_id)
+      .filter((invoiceId) => !linkedInvoiceIds.has(invoiceId));
+    if (staleInvoiceIds.length) {
+      const { error: staleDeleteError } = await supabase
+        .from("quickbooks_estimate_invoices")
+        .delete()
+        .eq("estimate_generation_id", generation.id)
+        .in("quickbooks_invoice_id", staleInvoiceIds);
+      if (staleDeleteError) throw staleDeleteError;
+    }
+
     if (rows.length) {
       const { error: upsertError } = await supabase
         .from("quickbooks_estimate_invoices")
@@ -149,6 +228,13 @@ export async function POST(request: NextRequest) {
       invoiceNumbers: rows
         .map((row) => row.quickbooks_invoice_doc_number ?? row.quickbooks_invoice_id)
         .filter(Boolean),
+      invoices: rows.map((row) => ({
+        id: row.quickbooks_invoice_id,
+        quickbooks_invoice_doc_number: row.quickbooks_invoice_doc_number,
+        invoice_date: row.invoice_date,
+        due_date: row.due_date,
+        subtotal: row.subtotal,
+      })),
       syncedAt: new Date().toISOString(),
     });
   } catch (error) {
