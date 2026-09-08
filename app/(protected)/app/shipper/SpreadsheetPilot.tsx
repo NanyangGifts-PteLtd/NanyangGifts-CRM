@@ -135,6 +135,7 @@ export function SpreadsheetPilot({ shipperId, mode = "internal" }: { shipperId: 
   const [viewportHeight, setViewportHeight] = useState(700);
   const [workbookId, setWorkbookId] = useState<string | null>(null);
   const [realtimeStatus, setRealtimeStatus] = useState<"connecting" | "connected" | "unavailable">("connecting");
+  const [realtimeAuth, setRealtimeAuth] = useState<"checking" | "authenticated" | "missing">("checking");
   const [lastRealtimeEvent, setLastRealtimeEvent] = useState<number | null>(null);
   const pendingSaves = useRef(new Map<string, { values: Record<string, unknown>; replaceValues: boolean }>());
   const saveTimer = useRef<number | null>(null);
@@ -159,26 +160,40 @@ export function SpreadsheetPilot({ shipperId, mode = "internal" }: { shipperId: 
     if (!workbookId) return;
     const supabase = createClient();
     setRealtimeStatus("connecting");
+    setRealtimeAuth("checking");
     let refreshTimer: number | null = null;
+    let disposed = false;
     const scheduleRefresh = () => {
       if (pendingSaves.current.size || savesInFlight.current) return;
       setLastRealtimeEvent(Date.now());
       if (refreshTimer !== null) window.clearTimeout(refreshTimer);
       refreshTimer = window.setTimeout(() => { refreshTimer = null; void load(); }, 200);
     };
-    const channel = supabase
-      .channel(`shipper-spreadsheet-${workbookId}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "shipper_spreadsheet_rows", filter: `workbook_id=eq.${workbookId}` }, scheduleRefresh)
-      .subscribe((status) => {
-        if (status === "SUBSCRIBED") {
-          setRealtimeStatus("connected");
-        } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
-          setRealtimeStatus("unavailable");
-        }
-      });
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    const startSubscription = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (disposed) return;
+      setRealtimeAuth(session ? "authenticated" : "missing");
+      // Realtime applies RLS using the token supplied to the WebSocket, not
+      // the server-side session used by our API routes. Set it explicitly so
+      // deployed builds cannot accidentally join the channel as anonymous.
+      if (session) supabase.realtime.setAuth(session.access_token);
+      channel = supabase
+        .channel(`shipper-spreadsheet-${workbookId}`)
+        .on("postgres_changes", { event: "*", schema: "public", table: "shipper_spreadsheet_rows", filter: `workbook_id=eq.${workbookId}` }, scheduleRefresh)
+        .subscribe((status) => {
+          if (status === "SUBSCRIBED") {
+            setRealtimeStatus("connected");
+          } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+            setRealtimeStatus("unavailable");
+          }
+        });
+    };
+    void startSubscription();
     return () => {
+      disposed = true;
       if (refreshTimer !== null) window.clearTimeout(refreshTimer);
-      supabase.removeChannel(channel);
+      if (channel) void supabase.removeChannel(channel);
     };
   }, [load, workbookId]);
   useEffect(() => {
@@ -316,5 +331,5 @@ export function SpreadsheetPilot({ shipperId, mode = "internal" }: { shipperId: 
   const height = useMemo(() => Math.max((rows.length + 12) * 34, viewportHeight - (mode === "internal" ? 190 : 155)), [mode, rows.length, viewportHeight]);
   const selected = rows.find((row) => row.id === selectedRowId);
   const deleteRow = async () => { if (!selected || !window.confirm("Delete the selected spreadsheet row?")) return; const response = await fetch(`/api/shipper/spreadsheet?shipperId=${shipperId}&rowId=${selected.id}`, { method: "DELETE" }); if (!response.ok) return setError("Could not delete row"); setRows((current) => current.filter((row) => row.id !== selected.id)); setSelectedRowId(null); };
-  return <section className="space-y-2 p-4"><div className="flex items-center gap-2"><button disabled={!selected} onClick={() => void deleteRow()} className="rounded border border-red-200 px-3 py-1.5 text-xs text-red-700 disabled:opacity-40">Delete row</button><span className={`text-xs ${realtimeStatus === "connected" ? "text-emerald-700" : realtimeStatus === "unavailable" ? "text-amber-700" : "text-slate-500"}`}>Live updates: {realtimeStatus === "connected" ? "connected" : realtimeStatus === "unavailable" ? "unavailable" : "connecting…"}{realtimeStatus === "connected" && (lastRealtimeEvent ? " · event received" : " · awaiting an event")}</span><span className="text-xs text-slate-400">Realtime project: {realtimeProjectHost}</span>{error && <span className="text-xs text-red-600">{error}</span>}</div><DataEditor width="100%" height={height} columns={columns} rows={rows.length + 12} getCellContent={getCellContent} onCellEdited={onCellEdited} onCellsEdited={onCellsEdited} onCellClicked={([col, row]) => { const record = rows[row]; setSelectedRowId(record?.id ?? null); if (col === 0 && record) void toggleRowLock(record); }} provideEditor={(cell) => cell.kind === GridCellKind.Text && cell.allowOverlay ? { editor: ArrowKeyTextEditor, disablePadding: true } : undefined} getCellsForSelection={true} rowMarkers="number" rangeSelect="rect" /></section>;
+  return <section className="space-y-2 p-4"><div className="flex items-center gap-2"><button disabled={!selected} onClick={() => void deleteRow()} className="rounded border border-red-200 px-3 py-1.5 text-xs text-red-700 disabled:opacity-40">Delete row</button><span className={`text-xs ${realtimeStatus === "connected" ? "text-emerald-700" : realtimeStatus === "unavailable" ? "text-amber-700" : "text-slate-500"}`}>Live updates: {realtimeStatus === "connected" ? "connected" : realtimeStatus === "unavailable" ? "unavailable" : "connecting…"}{realtimeStatus === "connected" && (lastRealtimeEvent ? " · event received" : " · awaiting an event")}</span><span className={`text-xs ${realtimeAuth === "authenticated" ? "text-emerald-700" : realtimeAuth === "missing" ? "text-red-600" : "text-slate-500"}`}>Realtime auth: {realtimeAuth}</span><span className="text-xs text-slate-400">Realtime project: {realtimeProjectHost}</span>{error && <span className="text-xs text-red-600">{error}</span>}</div><DataEditor width="100%" height={height} columns={columns} rows={rows.length + 12} getCellContent={getCellContent} onCellEdited={onCellEdited} onCellsEdited={onCellsEdited} onCellClicked={([col, row]) => { const record = rows[row]; setSelectedRowId(record?.id ?? null); if (col === 0 && record) void toggleRowLock(record); }} provideEditor={(cell) => cell.kind === GridCellKind.Text && cell.allowOverlay ? { editor: ArrowKeyTextEditor, disablePadding: true } : undefined} getCellsForSelection={true} rowMarkers="number" rangeSelect="rect" /></section>;
 }
