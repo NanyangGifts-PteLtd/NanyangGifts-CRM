@@ -11,6 +11,8 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 const INTERNAL_ROLES = new Set(["pm", "admin", "director", "dev"]);
 const SHIPPER_EDITABLE_FIELDS = new Set(["serial_number", "waybill_date", "waybill_number", "pieces", "chargeable_weight_kg", "destination", "freight_unit_price", "gst", "other_fees", "channel", "logistics_remarks", "air_received", "sea_received"]);
 const FORMULA_FIELDS = new Set(["freight_cost", "total_cost", "value"]);
+const SHIPMENT_FIELDS = new Set(["serial_number", "waybill_date", "waybill_number", "pieces", "chargeable_weight_kg", "freight_unit_price", "destination", "freight_cost", "gst", "other_fees", "total_cost", "channel", "logistics_remarks", "ic", "info_provided_date", "delivery_info", "sea_or_air", "tax_refund"]);
+const SHIPMENT_INPUT_FIELDS = [...SHIPMENT_FIELDS].filter((field) => !FORMULA_FIELDS.has(field));
 const NUMERIC_FIELDS = new Set(["pieces", "chargeable_weight_kg", "freight_unit_price", "gst", "other_fees", "cartons", "qty", "up"]);
 const DATE_FIELDS = new Set(["waybill_date", "info_provided_date"]);
 const SEA_OR_AIR_OPTIONS = new Set(["空运", "海运", "海运/小包"]);
@@ -180,10 +182,98 @@ export async function POST(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
-    const body = await request.json() as { shipperId?: string; rowId?: string; values?: Record<string, unknown>; cellFills?: Record<string, string>; replaceValues?: boolean; isLocked?: boolean; version?: number };
-    if (!body.shipperId || !body.rowId) throw new Error("shipperId and rowId are required");
+    const body = await request.json() as { shipperId?: string; rowId?: string; values?: Record<string, unknown>; cellFills?: Record<string, string>; replaceValues?: boolean; isLocked?: boolean; version?: number; operation?: "merge" | "unmerge" | "update-shared"; rowIds?: string[]; resolvedValues?: Record<string, unknown> };
+    if (!body.shipperId || (!body.rowId && !body.operation)) throw new Error("shipperId and rowId are required");
     const { role } = await authorize(body.shipperId);
     const workbook = await getOrCreateShipperWorkbook(body.shipperId, "Shipper");
+    if (body.operation) {
+      const rowIds = [...new Set(body.rowIds ?? [])];
+      if (rowIds.length < 2) throw new Error("Select at least two rows to change a shipment grouping");
+      const { data: allRows, error: rowsError } = await supabaseAdmin
+        .from("shipper_spreadsheet_rows")
+        .select("id, values, is_locked, shipment_group_id, sort_key")
+        .eq("workbook_id", workbook.id)
+        .order("sort_key", { ascending: true })
+        .order("id", { ascending: true });
+      if (rowsError) throw rowsError;
+      const ordered = allRows ?? [];
+      const selected = ordered.filter((row) => rowIds.includes(row.id));
+      if (selected.length !== rowIds.length) throw new Error("One or more spreadsheet rows could not be found");
+      if (selected.some((row) => row.is_locked)) throw new Error("Unlock every selected row before changing its shipment grouping");
+      const selectedIdSet = new Set(rowIds);
+      const selectedIndexes = ordered.map((row, index) => selectedIdSet.has(row.id) ? index : -1).filter((index) => index >= 0);
+      if (selectedIndexes.some((index, position) => position > 0 && index !== selectedIndexes[position - 1] + 1)) {
+        throw new Error("Shipment rows must be consecutive");
+      }
+      const existingGroupIds = new Set(selected.map((row) => row.shipment_group_id).filter((groupId): groupId is string => Boolean(groupId)));
+      if ([...existingGroupIds].some((groupId) => ordered.some((row) => row.shipment_group_id === groupId && !selectedIdSet.has(row.id)))) {
+        throw new Error("Select every row in an existing shipment before changing its grouping");
+      }
+      if (body.operation === "update-shared") {
+        if (existingGroupIds.size !== 1 || selected.some((row) => row.shipment_group_id !== [...existingGroupIds][0])) {
+          throw new Error("The selected rows are not one shipment");
+        }
+        const sharedUpdate = validateSpreadsheetValues(body.values ?? {});
+        if (!Object.keys(sharedUpdate).length || Object.keys(sharedUpdate).some((field) => !SHIPMENT_INPUT_FIELDS.includes(field))) {
+          throw new Error("Only editable shipment fields can be updated here");
+        }
+        const data = await Promise.all(selected.map(async (row) => {
+          const { data: updated, error } = await supabaseAdmin
+            .from("shipper_spreadsheet_rows")
+            .update({ values: calculateSpreadsheetFormulaValues({ ...(row.values ?? {}), ...sharedUpdate }) })
+            .eq("id", row.id)
+            .select()
+            .single();
+          if (error) throw error;
+          return updated;
+        }));
+        return NextResponse.json({ rows: data });
+      }
+      if (body.operation === "unmerge") {
+        if (existingGroupIds.size !== 1 || selected.some((row) => row.shipment_group_id !== [...existingGroupIds][0])) {
+          throw new Error("Select all rows in one shipment to unmerge it");
+        }
+        const { data, error } = await supabaseAdmin
+          .from("shipper_spreadsheet_rows")
+          .update({ shipment_group_id: null })
+          .in("id", rowIds)
+          .select();
+        if (error) throw error;
+        return NextResponse.json({ rows: data ?? [] });
+      }
+
+      const resolvedInput = validateSpreadsheetValues(body.resolvedValues ?? {});
+      if (Object.keys(resolvedInput).some((field) => !SHIPMENT_INPUT_FIELDS.includes(field))) {
+        throw new Error("Only shipment fields can be resolved while merging");
+      }
+      const sharedValues: Record<string, unknown> = {};
+      for (const field of SHIPMENT_INPUT_FIELDS) {
+        const values = [...new Set(selected.map((row) => row.values?.[field]).filter((value) => value !== null && value !== undefined && String(value).trim() !== ""))];
+        if (values.length > 1 && resolvedInput[field] === undefined) {
+          throw new Error(`Choose one ${field} value before merging`);
+        }
+        if (resolvedInput[field] !== undefined) {
+          if (values.length && !values.some((value) => String(value) === String(resolvedInput[field]))) {
+            throw new Error(`The selected ${field} value is not present in the rows being merged`);
+          }
+          sharedValues[field] = resolvedInput[field];
+        } else if (values.length === 1) {
+          sharedValues[field] = values[0];
+        }
+      }
+      const shipmentGroupId = crypto.randomUUID();
+      const updates = await Promise.all(selected.map(async (row) => {
+        const { data, error } = await supabaseAdmin
+          .from("shipper_spreadsheet_rows")
+          .update({ shipment_group_id: shipmentGroupId, values: calculateSpreadsheetFormulaValues({ ...(row.values ?? {}), ...sharedValues }) })
+          .eq("id", row.id)
+          .select()
+          .single();
+        if (error) throw error;
+        return data;
+      }));
+      return NextResponse.json({ rows: updates });
+    }
     const { data: existing, error: existingError } = await supabaseAdmin
       .from("shipper_spreadsheet_rows")
       .select("id, values, is_locked, cell_fills, version")
