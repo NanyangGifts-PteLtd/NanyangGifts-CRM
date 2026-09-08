@@ -110,18 +110,18 @@ export async function POST(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
-    const body = await request.json() as { shipperId?: string; rowId?: string; values?: Record<string, unknown>; replaceValues?: boolean; isLocked?: boolean; version?: number };
+    const body = await request.json() as { shipperId?: string; rowId?: string; values?: Record<string, unknown>; cellFills?: Record<string, string>; replaceValues?: boolean; isLocked?: boolean; version?: number };
     if (!body.shipperId || !body.rowId) throw new Error("shipperId and rowId are required");
     const { role } = await authorize(body.shipperId);
     const workbook = await getOrCreateShipperWorkbook(body.shipperId, "Shipper");
     const { data: existing, error: existingError } = await supabaseAdmin
       .from("shipper_spreadsheet_rows")
-      .select("id, values, is_locked, version")
+      .select("id, values, is_locked, cell_fills, version")
       .eq("id", body.rowId)
       .eq("workbook_id", workbook.id)
       .maybeSingle();
     if (existingError || !existing) throw new Error("Spreadsheet row not found");
-    if (existing.is_locked && body.values) throw new Error("This spreadsheet row is locked");
+    if (existing.is_locked && (body.values || body.cellFills)) throw new Error("This spreadsheet row is locked");
     if (body.values) {
       const fields = Object.keys(body.values);
       if (fields.some((field) => FORMULA_FIELDS.has(field))) throw new Error("Formula cells cannot be edited directly");
@@ -134,6 +134,16 @@ export async function PATCH(request: NextRequest) {
     if (body.values) {
       payload.values = calculateSpreadsheetFormulaValues(body.replaceValues ? body.values : { ...(existing.values ?? {}), ...body.values });
       if (hasSpreadsheetContent(payload.values as Record<string, unknown>)) payload.row_type = "item";
+    }
+    if (body.cellFills) {
+      const invalidFill = Object.entries(body.cellFills).some(([field, color]) =>
+        !field || typeof color !== "string" || !/^#[0-9a-f]{6}$/i.test(color),
+      );
+      if (invalidFill) throw new Error("Invalid spreadsheet cell fill");
+      if (role === "shipper" && Object.keys(body.cellFills).some((field) => !SHIPPER_EDITABLE_FIELDS.has(field))) {
+        throw new Error("You do not have permission to format one or more selected columns");
+      }
+      payload.cell_fills = body.cellFills;
     }
     if (body.isLocked !== undefined) payload.is_locked = body.isLocked;
     if (!Object.keys(payload).length) throw new Error("No changes supplied");

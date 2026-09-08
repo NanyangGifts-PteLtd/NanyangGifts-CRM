@@ -2,11 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
-import { DataEditor, GridCellKind, type GridCell, type GridColumn, type Item } from "@glideapps/glide-data-grid";
+import { DataEditor, GridCellKind, type GridCell, type GridColumn, type GridSelection, type Item } from "@glideapps/glide-data-grid";
+import { PaintBucket } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import "@glideapps/glide-data-grid/dist/index.css";
 
-type Row = { id: string; values: Record<string, unknown>; is_locked: boolean; version: number; row_type: "item" | "blank_spacer"; sort_key: number };
+type Row = { id: string; values: Record<string, unknown>; cell_fills: Record<string, string>; is_locked: boolean; version: number; row_type: "item" | "blank_spacer"; sort_key: number };
 const columns: GridColumn[] = [
   { id: "__lock", title: "", width: 48 },
   { id: "serial_number", title: "序号", width: 100 },
@@ -52,12 +53,7 @@ const selectOptions: Record<string, string[]> = {
   sea_or_air: seaOrAirOptions,
   tax_refund: ["\u9000", "X"],
 };
-// This is public configuration, not a secret. Showing the host lets us verify
-// that a local build and a deployed build are listening to the same Supabase
-// project while diagnosing Realtime delivery.
-const realtimeProjectHost = process.env.NEXT_PUBLIC_SUPABASE_URL
-  ? new URL(process.env.NEXT_PUBLIC_SUPABASE_URL).host
-  : "Supabase URL missing";
+const fillColors = ["#ffffff", "#f3f4f6", "#d1d5db", "#9ca3af", "#6b7280", "#374151", "#fff200", "#fde68a", "#fed7aa", "#fdba74", "#fb923c", "#f97316", "#fecdd3", "#fda4af", "#fb7185", "#f43f5e", "#e11d48", "#be123c", "#e9d5ff", "#ddd6fe", "#c4b5fd", "#a78bfa", "#8b5cf6", "#7c3aed", "#bae6fd"];
 
 function numberOrNull(value: unknown) {
   if (value === null || value === undefined || String(value).trim() === "") return null;
@@ -93,39 +89,10 @@ function hasRowContent(row: Row | undefined) {
   return Object.entries(row?.values ?? {}).some(([key, value]) => clearableFields.includes(key) && value !== null && value !== undefined && (typeof value !== "string" || value.trim().length > 0));
 }
 
-function ArrowKeyTextEditor({
-  value,
-  onChange,
-  onFinishedEditing,
-}: {
-  value: GridCell;
-  onChange: (next: GridCell) => void;
-  onFinishedEditing: (next?: GridCell, movement?: readonly [-1 | 0 | 1, -1 | 0 | 1]) => void;
-}) {
-  if (value.kind !== GridCellKind.Text) return null;
-  const field = (value as GridCell & { field?: string }).field ?? "";
-  const [draft, setDraft] = useState(value.data);
-  const draftRef = useRef(value.data);
-  const finished = useRef(false);
-  useEffect(() => { setDraft(value.data); draftRef.current = value.data; }, [value.data]);
-  const finishOnce = (next: string, movement: readonly [-1 | 0 | 1, -1 | 0 | 1] = [0, 0]) => {
-    if (finished.current) return;
-    finished.current = true;
-    onFinishedEditing({ ...value, data: next, displayData: next }, movement);
-  };
-  const finish = (movement: readonly [-1 | 0 | 1, -1 | 0 | 1] = [0, 0]) => {
-    finishOnce(draftRef.current, movement);
-  };
-  if (selectOptions[field]) {
-    return <select autoFocus value={draft} onChange={(event) => { const next = event.target.value; draftRef.current = next; setDraft(next); onChange({ ...value, data: next, displayData: next }); finishOnce(next); }} onBlur={() => finish()} className="h-full w-full border-0 bg-white px-2 outline-none"><option value="" />{selectOptions[field].map((option) => <option key={option} value={option}>{option}</option>)}</select>;
-  }
-  return <input autoFocus spellCheck={false} value={draft} onChange={(event) => { const next = event.target.value; draftRef.current = next; setDraft(next); onChange({ ...value, data: next, displayData: next }); }} onBlur={() => finish()} onKeyDown={(event) => {
-    const movement = event.key === "ArrowLeft" ? [-1, 0] as const : event.key === "ArrowRight" ? [1, 0] as const : event.key === "ArrowUp" ? [0, -1] as const : event.key === "ArrowDown" ? [0, 1] as const : undefined;
-    if (!movement) return;
-    event.preventDefault();
-    event.stopPropagation();
-    finishOnce(event.currentTarget.value, movement);
-  }} type={dateFields.has(field) ? "date" : numberFields.has(field) || currencyFields.has(field) ? "number" : "text"} step={numberFields.has(field) || currencyFields.has(field) ? "any" : undefined} className="h-full w-full border-0 bg-white px-2 outline-none" />;
+function fillTextColor(fill: string | undefined) {
+  if (!fill) return undefined;
+  const rgb = [fill.slice(1, 3), fill.slice(3, 5), fill.slice(5, 7)].map((part) => Number.parseInt(part, 16));
+  return (rgb[0] * 299 + rgb[1] * 587 + rgb[2] * 114) / 1000 < 145 ? "#ffffff" : "#1f2937";
 }
 
 export function SpreadsheetPilot({ shipperId, mode = "internal" }: { shipperId: string; mode?: "internal" | "shipper" }) {
@@ -134,9 +101,8 @@ export function SpreadsheetPilot({ shipperId, mode = "internal" }: { shipperId: 
   const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
   const [viewportHeight, setViewportHeight] = useState(700);
   const [workbookId, setWorkbookId] = useState<string | null>(null);
-  const [realtimeStatus, setRealtimeStatus] = useState<"connecting" | "connected" | "unavailable">("connecting");
-  const [realtimeAuth, setRealtimeAuth] = useState<"checking" | "authenticated" | "missing">("checking");
-  const [lastRealtimeEvent, setLastRealtimeEvent] = useState<number | null>(null);
+  const [gridSelection, setGridSelection] = useState<GridSelection | undefined>(undefined);
+  const [isFillPaletteOpen, setIsFillPaletteOpen] = useState(false);
   const pendingSaves = useRef(new Map<string, { values: Record<string, unknown>; replaceValues: boolean }>());
   const saveTimer = useRef<number | null>(null);
   const savesInFlight = useRef(0);
@@ -159,13 +125,10 @@ export function SpreadsheetPilot({ shipperId, mode = "internal" }: { shipperId: 
   useEffect(() => {
     if (!workbookId) return;
     const supabase = createClient();
-    setRealtimeStatus("connecting");
-    setRealtimeAuth("checking");
     let refreshTimer: number | null = null;
     let disposed = false;
     const scheduleRefresh = () => {
       if (pendingSaves.current.size || savesInFlight.current) return;
-      setLastRealtimeEvent(Date.now());
       if (refreshTimer !== null) window.clearTimeout(refreshTimer);
       refreshTimer = window.setTimeout(() => { refreshTimer = null; void load(); }, 200);
     };
@@ -173,7 +136,6 @@ export function SpreadsheetPilot({ shipperId, mode = "internal" }: { shipperId: 
     const startSubscription = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (disposed) return;
-      setRealtimeAuth(session ? "authenticated" : "missing");
       // Realtime applies RLS using the token supplied to the WebSocket, not
       // the server-side session used by our API routes. Set it explicitly so
       // deployed builds cannot accidentally join the channel as anonymous.
@@ -181,13 +143,7 @@ export function SpreadsheetPilot({ shipperId, mode = "internal" }: { shipperId: 
       channel = supabase
         .channel(`shipper-spreadsheet-${workbookId}`)
         .on("postgres_changes", { event: "*", schema: "public", table: "shipper_spreadsheet_rows", filter: `workbook_id=eq.${workbookId}` }, scheduleRefresh)
-        .subscribe((status) => {
-          if (status === "SUBSCRIBED") {
-            setRealtimeStatus("connected");
-          } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
-            setRealtimeStatus("unavailable");
-          }
-        });
+        .subscribe();
     };
     void startSubscription();
     return () => {
@@ -278,7 +234,11 @@ export function SpreadsheetPilot({ shipperId, mode = "internal" }: { shipperId: 
       allowOverlay: !readOnly,
       readonly: readOnly,
       contentAlign: numberFields.has(key) || currencyFields.has(key) ? "right" : dateFields.has(key) ? "center" : undefined,
-      themeOverride: formulaFields.has(key) ? { bgCell: "#fff7d6", textDark: "#7c4a03" } : undefined,
+      themeOverride: (() => {
+        const fill = record.cell_fills?.[key];
+        if (fill) return { bgCell: fill, textDark: fillTextColor(fill) };
+        return formulaFields.has(key) ? { bgCell: "#fff7d6", textDark: "#7c4a03" } : undefined;
+      })(),
       field: key,
     } as GridCell;
   }, [mode, rows]);
@@ -331,5 +291,41 @@ export function SpreadsheetPilot({ shipperId, mode = "internal" }: { shipperId: 
   const height = useMemo(() => Math.max((rows.length + 12) * 34, viewportHeight - (mode === "internal" ? 190 : 155)), [mode, rows.length, viewportHeight]);
   const selected = rows.find((row) => row.id === selectedRowId);
   const deleteRow = async () => { if (!selected || !window.confirm("Delete the selected spreadsheet row?")) return; const response = await fetch(`/api/shipper/spreadsheet?shipperId=${shipperId}&rowId=${selected.id}`, { method: "DELETE" }); if (!response.ok) return setError("Could not delete row"); setRows((current) => current.filter((row) => row.id !== selected.id)); setSelectedRowId(null); };
-  return <section className="space-y-2 p-4"><div className="flex items-center gap-2"><button disabled={!selected} onClick={() => void deleteRow()} className="rounded border border-red-200 px-3 py-1.5 text-xs text-red-700 disabled:opacity-40">Delete row</button><span className={`text-xs ${realtimeStatus === "connected" ? "text-emerald-700" : realtimeStatus === "unavailable" ? "text-amber-700" : "text-slate-500"}`}>Live updates: {realtimeStatus === "connected" ? "connected" : realtimeStatus === "unavailable" ? "unavailable" : "connecting…"}{realtimeStatus === "connected" && (lastRealtimeEvent ? " · event received" : " · awaiting an event")}</span><span className={`text-xs ${realtimeAuth === "authenticated" ? "text-emerald-700" : realtimeAuth === "missing" ? "text-red-600" : "text-slate-500"}`}>Realtime auth: {realtimeAuth}</span><span className="text-xs text-slate-400">Realtime project: {realtimeProjectHost}</span>{error && <span className="text-xs text-red-600">{error}</span>}</div><DataEditor width="100%" height={height} columns={columns} rows={rows.length + 12} getCellContent={getCellContent} onCellEdited={onCellEdited} onCellsEdited={onCellsEdited} onCellClicked={([col, row]) => { const record = rows[row]; setSelectedRowId(record?.id ?? null); if (col === 0 && record) void toggleRowLock(record); }} provideEditor={(cell) => cell.kind === GridCellKind.Text && cell.allowOverlay ? { editor: ArrowKeyTextEditor, disablePadding: true } : undefined} getCellsForSelection={true} rowMarkers="number" rangeSelect="rect" /></section>;
+  const fillSelection = async (color: string | null) => {
+    const range = gridSelection?.current?.range;
+    if (!range) return;
+    const fillsByRow = new Map<string, Record<string, string>>();
+    for (let rowIndex = range.y; rowIndex < range.y + range.height; rowIndex += 1) {
+      const row = rows[rowIndex];
+      if (!row || row.is_locked) continue;
+      for (let colIndex = range.x; colIndex < range.x + range.width; colIndex += 1) {
+        const field = String(columns[colIndex]?.id ?? "");
+        if (!field || field === "__lock" || (mode === "shipper" && !shipperEditableFields.has(field))) continue;
+        const fills = fillsByRow.get(row.id) ?? { ...(row.cell_fills ?? {}) };
+        if (color) fills[field] = color;
+        else delete fills[field];
+        fillsByRow.set(row.id, fills);
+      }
+    }
+    if (!fillsByRow.size) return;
+    setIsFillPaletteOpen(false);
+    flushSync(() => setRows((current) => current.map((row) => fillsByRow.has(row.id) ? { ...row, cell_fills: fillsByRow.get(row.id)! } : row)));
+    const results = await Promise.all([...fillsByRow].map(async ([rowId, cellFills]) => {
+      const response = await fetch("/api/shipper/spreadsheet", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ shipperId, rowId, cellFills }) });
+      return { response, result: await response.json() };
+    }));
+    if (results.some(({ response }) => !response.ok)) {
+      setError(results.find(({ response }) => !response.ok)?.result?.error ?? "Could not save cell fill");
+      void load();
+    }
+  };
+  return <section className="space-y-2 p-4">
+    <div className="flex items-center gap-2">
+      <button disabled={!selected} onClick={() => void deleteRow()} className="rounded border border-red-200 px-3 py-1.5 text-xs text-red-700 disabled:opacity-40">Delete row</button>
+      {gridSelection?.current && <button type="button" onClick={() => setIsFillPaletteOpen((open) => !open)} className="flex items-center gap-1 rounded border border-slate-300 px-2 py-1.5 text-xs text-slate-700"><PaintBucket size={15} />Fill colour</button>}
+      {gridSelection?.current && isFillPaletteOpen && <div className="flex flex-wrap gap-1 py-1">{fillColors.map((color) => <button key={color} type="button" onClick={() => void fillSelection(color)} className="h-5 w-5 rounded border border-slate-300" style={{ backgroundColor: color }} title="Fill selected cells" />)}<button type="button" onClick={() => void fillSelection(null)} className="rounded border border-slate-300 px-2 text-[10px] text-slate-600">Clear</button></div>}
+      {error && <span className="text-xs text-red-600">{error}</span>}
+    </div>
+    <DataEditor width="100%" height={height} columns={columns} rows={rows.length + 12} getCellContent={getCellContent} onCellEdited={onCellEdited} onCellsEdited={onCellsEdited} onCellClicked={([col, row]) => { const record = rows[row]; setSelectedRowId(record?.id ?? null); if (col === 0 && record) void toggleRowLock(record); }} gridSelection={gridSelection} onGridSelectionChange={setGridSelection} getCellsForSelection={true} onPaste={true} fillHandle keybindings={{ downFill: true, rightFill: true }} rowMarkers="number" rangeSelect="rect" />
+  </section>;
 }
