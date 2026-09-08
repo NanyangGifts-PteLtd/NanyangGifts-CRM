@@ -93,7 +93,11 @@ export async function getShipperSpreadsheetRows(shipperId: string, shipperName: 
     .from("shipper_spreadsheet_rows")
     .select("id, workbook_id, row_type, source_type, source_subitem_id, shipment_group_id, planned_for, sort_key, is_locked, values, version")
     .eq("workbook_id", workbook.id)
-    .order("sort_key", { ascending: true });
+    // Sort keys can be equal in older pilot data. The ID tie-breaker prevents
+    // an unrelated update (such as toggling a lock) from reshuffling those rows
+    // when the workbook is reloaded after a Realtime event.
+    .order("sort_key", { ascending: true })
+    .order("id", { ascending: true });
   if (error) throw error;
   // Empty rows are intentional spreadsheet space. They stay in their saved
   // position, but are never considered content for push placement.
@@ -119,7 +123,9 @@ export async function createCrmSpreadsheetRows(params: {
     .select("id, sort_key, values, row_type")
     .eq("workbook_id", workbook.id);
   if (lastError) throw lastError;
-  const orderedRows = [...(existingRows ?? [])].sort((left, right) => Number(left.sort_key) - Number(right.sort_key));
+  const orderedRows = [...(existingRows ?? [])].sort((left, right) => (
+    Number(left.sort_key) - Number(right.sort_key) || String(left.id).localeCompare(String(right.id))
+  ));
 
   // The lock control is only rendered for item rows that contain an actual
   // manual value. Use that exact same marker to decide where a CRM push goes.
