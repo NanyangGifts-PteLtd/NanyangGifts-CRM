@@ -71,13 +71,13 @@ export function ShipperMasterSheets({
         <div className="flex gap-2">
           <button
             onClick={() => setView("shipments")}
-            className={`rounded px-2 py-1 text-xs ${view === "shipments" ? "bg-sky-600 text-white" : "border text-slate-600"}`}
+            className={`rounded px-2 py-1 text-xs ${view === "shipments" ? "bg-sky-600 text-white" : "border border-slate-200 bg-slate-50 text-slate-400 hover:bg-slate-100 hover:text-slate-600"}`}
           >
             Shipments
           </button>
           <button
             onClick={() => setView("legacy")}
-            className={`rounded px-2 py-1 text-xs ${view === "legacy" ? "bg-sky-600 text-white" : "border text-slate-600"}`}
+            className={`rounded px-2 py-1 text-xs ${view === "legacy" ? "bg-sky-600 text-white" : "border border-slate-200 bg-slate-50 text-slate-400 hover:bg-slate-100 hover:text-slate-600"}`}
           >
             Legacy grid
           </button>

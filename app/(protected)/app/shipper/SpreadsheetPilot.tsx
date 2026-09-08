@@ -118,21 +118,23 @@ function validationMessage(field: string, value: unknown) {
   return null;
 }
 
-function DropdownEditor({ value, onFinishedEditing }: { value: GridCell; onFinishedEditing: (next?: GridCell) => void }) {
+type EditorMovement = readonly [-1 | 0 | 1, -1 | 0 | 1];
+
+function DropdownEditor({ value, onFinishedEditing }: { value: GridCell; onFinishedEditing: (next?: GridCell, movement?: EditorMovement) => void }) {
   if (value.kind !== GridCellKind.Text) return null;
   const field = (value as GridCell & { field?: string }).field ?? "";
   const options = selectOptions[field] ?? [];
   return <select autoFocus defaultValue={value.data} onChange={(event) => onFinishedEditing({ ...value, data: event.target.value, displayData: event.target.value })} className="h-full w-full border-0 bg-white px-2 outline-none"><option value="" />{options.map((option) => <option key={option} value={option}>{option}</option>)}</select>;
 }
 
-function DateEditor({ value, onFinishedEditing }: { value: GridCell; onFinishedEditing: (next?: GridCell) => void }) {
+function DateEditor({ value, onFinishedEditing }: { value: GridCell; onFinishedEditing: (next?: GridCell, movement?: EditorMovement) => void }) {
   if (value.kind !== GridCellKind.Text) return null;
-  return <input autoFocus type="date" defaultValue={value.data} onChange={(event) => onFinishedEditing({ ...value, data: event.target.value, displayData: event.target.value })} className="h-full w-full border-0 bg-white px-2 outline-none" />;
+  return <input autoFocus type="date" defaultValue={value.data} onChange={(event) => onFinishedEditing({ ...value, data: event.target.value, displayData: event.target.value })} onKeyDown={(event) => { const movement: Record<string, EditorMovement> = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0] }; const next = movement[event.key]; if (next) { event.preventDefault(); onFinishedEditing({ ...value, data: event.currentTarget.value, displayData: event.currentTarget.value }, next); } }} className="h-full w-full border-0 bg-white px-2 text-center outline-none" />;
 }
 
-function TextEditor({ value, onFinishedEditing }: { value: GridCell; onFinishedEditing: (next?: GridCell) => void }) {
+function TextEditor({ value, onFinishedEditing }: { value: GridCell; onFinishedEditing: (next?: GridCell, movement?: EditorMovement) => void }) {
   if (value.kind !== GridCellKind.Text) return null;
-  return <input autoFocus defaultValue={value.data} onBlur={(event) => onFinishedEditing({ ...value, data: event.currentTarget.value, displayData: event.currentTarget.value })} onKeyDown={(event) => { if (event.key === "Enter") onFinishedEditing({ ...value, data: event.currentTarget.value, displayData: event.currentTarget.value }); }} className="h-full w-full border-0 bg-white px-2 text-center outline-none" />;
+  return <input autoFocus defaultValue={value.data} onBlur={(event) => onFinishedEditing({ ...value, data: event.currentTarget.value, displayData: event.currentTarget.value })} onKeyDown={(event) => { const movement: Record<string, EditorMovement> = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0] }; const next = movement[event.key]; if (next) { event.preventDefault(); onFinishedEditing({ ...value, data: event.currentTarget.value, displayData: event.currentTarget.value }, next); return; } if (event.key === "Enter") onFinishedEditing({ ...value, data: event.currentTarget.value, displayData: event.currentTarget.value }); }} className="h-full w-full border-0 bg-white px-2 text-center outline-none" />;
 }
 
 export function SpreadsheetPilot({ shipperId, mode = "internal" }: { shipperId: string; mode?: "internal" | "shipper" }) {
@@ -263,7 +265,7 @@ export function SpreadsheetPilot({ shipperId, mode = "internal" }: { shipperId: 
     const key = String(columns[col].id);
     if (key === "__lock") {
       const symbol = hasRowContent(record) ? record!.is_locked ? "🔒" : "🔓" : "";
-      return { kind: GridCellKind.Text, data: symbol, displayData: symbol, allowOverlay: false, readonly: true, contentAlign: "center", cursor: symbol ? "pointer" : "default" };
+      return { kind: GridCellKind.Text, data: symbol, displayData: symbol, allowOverlay: false, readonly: true, contentAlign: "center", cursor: symbol ? "pointer" : "default", themeOverride: record?.is_locked ? { bgCell: "#e2e8f0", textDark: "#475569" } : undefined };
     }
     if (!record) {
       const readOnly = formulaFields.has(key) || (mode === "shipper" && !shipperEditableFields.has(key));
@@ -292,6 +294,7 @@ export function SpreadsheetPilot({ shipperId, mode = "internal" }: { shipperId: 
       themeOverride: (() => {
         const fill = record.cell_fills?.[key];
         if (fill) return { bgCell: fill, textDark: fillTextColor(fill) };
+        if (record.is_locked) return { bgCell: "#f1f5f9", textDark: "#475569" };
         return formulaFields.has(key) ? { bgCell: "#fff7d6", textDark: "#7c4a03" } : undefined;
       })(),
       field: key,
@@ -347,7 +350,8 @@ export function SpreadsheetPilot({ shipperId, mode = "internal" }: { shipperId: 
     if (args.row !== last) return;
     const leader = rows[first];
     const values: Record<string, unknown> = { ...leader.values, ...formulaValues(leader.values) };
-    const fill = leader.cell_fills?.[key] ?? (formulaFields.has(key) ? "#fff7d6" : args.theme.bgCell);
+    const groupIsLocked = rows.slice(first, last + 1).some((row) => row.is_locked);
+    const fill = groupIsLocked ? "#f1f5f9" : leader.cell_fills?.[key] ?? (formulaFields.has(key) ? "#fff7d6" : args.theme.bgCell);
     const height = Array.from({ length: last - first + 1 }, (_, index) => rowHeightForIndex(first + index)).reduce((sum, rowHeight) => sum + rowHeight, 0);
     const top = args.rect.y - Array.from({ length: args.row - first }, (_, index) => rowHeightForIndex(first + index)).reduce((sum, rowHeight) => sum + rowHeight, 0);
     const display = formattedValue(key, values[key]);
@@ -355,8 +359,6 @@ export function SpreadsheetPilot({ shipperId, mode = "internal" }: { shipperId: 
     ctx.save();
     ctx.fillStyle = fill;
     ctx.fillRect(args.rect.x + 1, top + 1, args.rect.width - 2, height - 2);
-    ctx.strokeStyle = args.theme.borderColor;
-    ctx.strokeRect(args.rect.x + 0.5, top + 0.5, args.rect.width - 1, height - 1);
     if (display) {
       ctx.font = args.theme.baseFontStyle;
       ctx.fillStyle = fillTextColor(fill) ?? args.theme.textDark;
@@ -715,7 +717,7 @@ export function SpreadsheetPilot({ shipperId, mode = "internal" }: { shipperId: 
       {error && <span className="text-xs text-red-600">{error}</span>}
     </div>
     <div ref={gridContainerRef} className="relative" onContextMenuCapture={(event) => { const bounds = event.currentTarget.getBoundingClientRect(); contextPointer.current = { x: event.clientX - bounds.left, y: event.clientY - bounds.top }; }}>
-      <DataEditor ref={gridRef} width="100%" height={height} rowHeight={rowHeightForIndex} columns={columns} rows={rows.length + 12} theme={{ borderColor: "#94a3b8", horizontalBorderColor: "#a8b4c1" }} getRowThemeOverride={mergedRowTheme} getCellContent={getCellContent} drawCell={drawMergedShipmentCell} drawHeader={drawCenteredHeader} drawFocusRing={false} onKeyDown={onGridKeyDown} onCellEdited={onCellEdited} onCellsEdited={onCellsEdited} validateCell={([col], next) => { if (next.kind !== GridCellKind.Text) return true; const message = validationMessage(String(columns[col]?.id ?? ""), next.data); if (message) toast.error("Invalid cell value", { description: message }); return !message; }} provideEditor={(cell) => { if (cell.kind !== GridCellKind.Text) return undefined; const field = (cell as GridCell & { field?: string }).field ?? ""; const styleOverride = mergedEditorHeight ? { height: `${mergedEditorHeight}px` } : undefined; if (dateFields.has(field)) return { editor: DateEditor, disablePadding: true, styleOverride }; if (selectOptions[field]) return { editor: DropdownEditor, disablePadding: true, styleOverride }; return mergedEditorHeight ? { editor: TextEditor, disablePadding: true, styleOverride } : undefined; }} onCellClicked={([col, row]) => { setContextMenu(null); const record = rows[row]; setSelectedRowId(record?.id ?? null); if (col === 0 && record) void toggleRowLock(record); }} onCellContextMenu={([col, row], event) => { event.preventDefault(); const current = gridSelection?.current?.range; const withinCurrentSelection = Boolean(gridSelection?.rows.hasIndex(row)) || Boolean(current && col >= current.x && col < current.x + current.width && row >= current.y && row < current.y + current.height); if (!withinCurrentSelection) setGridSelection({ current: { cell: [col, row], range: { x: col, y: row, width: 1, height: 1 }, rangeStack: [] }, columns: CompactSelection.empty(), rows: CompactSelection.empty() }); setSelectedRowId(rows[row]?.id ?? null); const pointer = contextPointer.current; setContextMenu({ x: pointer?.x ?? event.bounds.x, y: pointer?.y ?? event.bounds.y, row }); }} gridSelection={gridSelection} onGridSelectionChange={onGridSelectionChange} getCellsForSelection={true} onPaste={true} fillHandle keybindings={{ downFill: true, rightFill: true }} rowMarkers="clickable-number" rowSelect="multi" rangeSelect="rect" />
+      <DataEditor ref={gridRef} width="100%" height={height} rowHeight={rowHeightForIndex} columns={columns} rows={rows.length + 12} theme={{ borderColor: "#94a3b8", horizontalBorderColor: "#a8b4c1" }} getRowThemeOverride={mergedRowTheme} getCellContent={getCellContent} drawCell={drawMergedShipmentCell} drawHeader={drawCenteredHeader} drawFocusRing={false} onKeyDown={onGridKeyDown} onCellEdited={onCellEdited} onCellsEdited={onCellsEdited} validateCell={([col], next) => { if (next.kind !== GridCellKind.Text) return true; const message = validationMessage(String(columns[col]?.id ?? ""), next.data); if (message) toast.error("Invalid cell value", { description: message }); return !message; }} provideEditor={(cell) => { if (cell.kind !== GridCellKind.Text) return undefined; const field = (cell as GridCell & { field?: string }).field ?? ""; const styleOverride = mergedEditorHeight ? { height: `${mergedEditorHeight}px` } : undefined; if (dateFields.has(field)) return { editor: DateEditor, disablePadding: true, styleOverride }; if (selectOptions[field]) return { editor: DropdownEditor, disablePadding: true, styleOverride }; return { editor: TextEditor, disablePadding: true, styleOverride }; }} onCellClicked={([col, row]) => { setContextMenu(null); const record = rows[row]; setSelectedRowId(record?.id ?? null); if (col === 0 && record) void toggleRowLock(record); }} onCellContextMenu={([col, row], event) => { event.preventDefault(); const current = gridSelection?.current?.range; const withinCurrentSelection = Boolean(gridSelection?.rows.hasIndex(row)) || Boolean(current && col >= current.x && col < current.x + current.width && row >= current.y && row < current.y + current.height); if (!withinCurrentSelection) setGridSelection({ current: { cell: [col, row], range: { x: col, y: row, width: 1, height: 1 }, rangeStack: [] }, columns: CompactSelection.empty(), rows: CompactSelection.empty() }); setSelectedRowId(rows[row]?.id ?? null); const pointer = contextPointer.current; setContextMenu({ x: pointer?.x ?? event.bounds.x, y: pointer?.y ?? event.bounds.y, row }); }} gridSelection={gridSelection} onGridSelectionChange={onGridSelectionChange} getCellsForSelection={true} onPaste={true} fillHandle keybindings={{ downFill: true, rightFill: true }} rowMarkers="clickable-number" rowSelect="multi" rangeSelect="rect" />
       {contextMenu && <div className="absolute z-30 min-w-40 rounded-md border border-slate-200 bg-white py-1 shadow-lg" style={{ left: contextMenu.x, top: contextMenu.y }}>
         <button type="button" onClick={() => { copySelectedRows(); void gridRef.current?.emit("copy"); setContextMenu(null); }} className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-100">Copy</button>
         <button type="button" onClick={() => { void (async () => { copySelectedRows(); await gridRef.current?.emit("copy"); clearSelectionContents(); })(); setContextMenu(null); }} className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-100">Cut</button>
