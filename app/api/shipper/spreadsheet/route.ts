@@ -9,7 +9,10 @@ import {
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
 const INTERNAL_ROLES = new Set(["pm", "admin", "director", "dev"]);
-const SHIPPER_EDITABLE_FIELDS = new Set(["serial_number", "waybill_date", "waybill_number", "pieces", "chargeable_weight_kg", "destination", "freight_unit_price", "gst", "other_fees", "channel", "logistics_remarks", "air_received", "sea_received"]);
+const SHIPPER_EDITABLE_FIELDS = new Set(["serial_number", "waybill_date", "waybill_number", "pieces", "chargeable_weight_kg", "destination", "freight_unit_price", "gst", "other_fees", "channel", "logistics_remarks"]);
+// Receipt confirmations remain editable by internal staff even after the
+// rest of a completed shipment row has been locked.
+const ALWAYS_EDITABLE_AFTER_LOCK_FIELDS = new Set(["air_received", "sea_received"]);
 const FORMULA_FIELDS = new Set(["freight_cost", "total_cost", "value"]);
 const SHIPMENT_FIELDS = new Set(["serial_number", "waybill_date", "waybill_number", "pieces", "chargeable_weight_kg", "freight_unit_price", "destination", "freight_cost", "gst", "other_fees", "total_cost", "channel", "logistics_remarks", "ic", "info_provided_date", "delivery_info", "sea_or_air", "tax_refund"]);
 const SHIPMENT_INPUT_FIELDS = [...SHIPMENT_FIELDS].filter((field) => !FORMULA_FIELDS.has(field));
@@ -329,7 +332,9 @@ export async function PATCH(request: NextRequest) {
       .eq("workbook_id", workbook.id)
       .maybeSingle();
     if (existingError || !existing) throw new Error("Spreadsheet row not found");
-    if (existing.is_locked && (body.values || body.cellFills)) throw new Error("This spreadsheet row is locked");
+    const lockedValueFields = body.values ? Object.keys(body.values) : [];
+    const canEditLockedValues = lockedValueFields.length > 0 && lockedValueFields.every((field) => ALWAYS_EDITABLE_AFTER_LOCK_FIELDS.has(field));
+    if (existing.is_locked && ((body.values && !canEditLockedValues) || body.cellFills)) throw new Error("This spreadsheet row is locked");
     if (body.values) {
       const fields = Object.keys(body.values);
       if (fields.some((field) => FORMULA_FIELDS.has(field))) throw new Error("Formula cells cannot be edited directly");
