@@ -192,7 +192,6 @@ export function SpreadsheetPilot({ shipperId, mode = "internal" }: { shipperId: 
   const [remarkDialog, setRemarkDialog] = useState<{ rowId: string; field: string } | null>(null);
   const [attachmentTarget, setAttachmentTarget] = useState<{ rowId: string; field: string } | null>(null);
   const [uploadingAttachment, setUploadingAttachment] = useState(false);
-  const [dropTarget, setDropTarget] = useState<Item | null>(null);
   const pendingSaves = useRef(new Map<string, { values: Record<string, unknown>; replaceValues: boolean }>());
   const saveTimer = useRef<number | null>(null);
   const savesInFlight = useRef(0);
@@ -420,16 +419,6 @@ export function SpreadsheetPilot({ shipperId, mode = "internal" }: { shipperId: 
         }
       }
     }
-    if (dropTarget?.[0] === args.col && dropTarget?.[1] === args.row) {
-      args.ctx.save();
-      args.ctx.fillStyle = "rgba(14, 116, 144, 0.16)";
-      args.ctx.fillRect(args.rect.x + 1, args.rect.y + 1, args.rect.width - 2, args.rect.height - 2);
-      args.ctx.strokeStyle = "#0891b2"; args.ctx.lineWidth = 2;
-      args.ctx.strokeRect(args.rect.x + 1, args.rect.y + 1, args.rect.width - 2, args.rect.height - 2);
-      args.ctx.font = "bold 11px sans-serif"; args.ctx.fillStyle = "#0e7490"; args.ctx.textAlign = "center"; args.ctx.textBaseline = "middle";
-      args.ctx.fillText("Drop image to attach", args.rect.x + args.rect.width / 2, args.rect.y + args.rect.height / 2, Math.max(0, args.rect.width - 12));
-      args.ctx.restore();
-    }
     const selection = gridSelection?.current;
     const isNormallySelected = Boolean(selection && args.col >= selection.range.x && args.col < selection.range.x + selection.range.width && args.row >= selection.range.y && args.row < selection.range.y + selection.range.height);
     if ((!record?.shipment_group_id || !shipmentFields.has(key)) && isNormallySelected) {
@@ -497,7 +486,7 @@ export function SpreadsheetPilot({ shipperId, mode = "internal" }: { shipperId: 
       ctx.strokeRect(args.rect.x + 1, top + 1, args.rect.width - 2, height - 2);
     }
     ctx.restore();
-  }, [dropTarget, gridSelection, rowHeightForIndex, rows]);
+  }, [gridSelection, rowHeightForIndex, rows]);
   const mergedRowTheme = useCallback((row: number) => {
     // Grid lines are drawn after cell contents. Removing the line at the top
     // of each follower row gives the merged block a continuous canvas.
@@ -874,6 +863,23 @@ export function SpreadsheetPilot({ shipperId, mode = "internal" }: { shipperId: 
   const selectedRemarkRow = selectedCell ? rows[selectedCell[1]] : undefined;
   const isSelectedRemarkCell = Boolean(selectedRemarkRow && remarksFields.has(selectedRemarkField));
   const canAttachSelectedRemark = Boolean(isSelectedRemarkCell && selectedRemarkRow && !selectedRemarkRow.is_locked && (mode !== "shipper" || shipperEditableFields.has(selectedRemarkField)));
+  const eligibleDropTargetAt = (clientX: number, clientY: number, dataTransfer: DataTransfer | null) => {
+    const hasImage = [...(dataTransfer?.files ?? [])].some((file) => file.type.startsWith("image/")) || [...(dataTransfer?.items ?? [])].some((item) => item.kind === "file" && item.type.startsWith("image/"));
+    if (!hasImage) return null;
+    for (let row = 0; row < rows.length + 12; row += 1) {
+      for (let col = 0; col < columns.length; col += 1) {
+        const bounds = gridRef.current?.getBounds(col, row);
+        if (!bounds || clientX < bounds.x || clientX > bounds.x + bounds.width || clientY < bounds.y || clientY > bounds.y + bounds.height) continue;
+        const field = String(columns[col]?.id ?? "");
+        const record = rows[row];
+        return record && remarksFields.has(field) && !record.is_locked && (mode !== "shipper" || shipperEditableFields.has(field)) ? { row, col, record, field } : null;
+      }
+    }
+    return null;
+  };
+  // Glide still receives drag callbacks, but this is intentionally a no-op
+  // until we revisit a reliable in-cell hover treatment.
+  const showDropTarget = (next: Item | null) => { void next; };
   return <section className="space-y-2 p-4">
     <div className="flex items-center gap-2">
       {mode !== "shipper" && <button disabled={!selected} onClick={() => void deleteRow()} className="rounded border border-red-200 px-3 py-1.5 text-xs text-red-700 disabled:opacity-40">Delete row</button>}
@@ -882,9 +888,9 @@ export function SpreadsheetPilot({ shipperId, mode = "internal" }: { shipperId: 
       {gridSelection?.current && isFillPaletteOpen && <div className="flex flex-wrap gap-1 py-1">{fillColors.map((color) => <button key={color} type="button" onClick={() => void fillSelection(color)} className="h-5 w-5 rounded border border-slate-300" style={{ backgroundColor: color }} title="Fill selected cells" />)}<button type="button" onClick={() => void fillSelection(null)} className="rounded border border-slate-300 px-2 text-[10px] text-slate-600">Clear</button></div>}
       {error && <span className="text-xs text-red-600">{error}</span>}
     </div>
-    <div ref={gridContainerRef} className="relative" onContextMenuCapture={(event) => { const bounds = event.currentTarget.getBoundingClientRect(); contextPointer.current = { x: event.clientX - bounds.left, y: event.clientY - bounds.top }; }}>
+    <div ref={gridContainerRef} className="relative" onContextMenuCapture={(event) => { const bounds = event.currentTarget.getBoundingClientRect(); contextPointer.current = { x: event.clientX - bounds.left, y: event.clientY - bounds.top }; }} onDragOverCapture={(event) => { if (eligibleDropTargetAt(event.clientX, event.clientY, event.dataTransfer)) event.preventDefault(); }} onDropCapture={(event) => { const target = eligibleDropTargetAt(event.clientX, event.clientY, event.dataTransfer); if (!target) return; event.preventDefault(); event.stopPropagation(); const image = [...event.dataTransfer.files].find((file) => file.type.startsWith("image/")); if (image) void uploadRemarkImage(image, { rowId: target.record.id, field: target.field }); }}>
       <input ref={attachmentInputRef} type="file" accept="image/*" className="sr-only" onChange={(event) => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; if (file) void uploadRemarkImage(file); }} />
-      <DataEditor ref={gridRef} width="100%" height={height} rowHeight={rowHeightForIndex} columns={columns} rows={rows.length + 12} theme={{ borderColor: "#94a3b8", horizontalBorderColor: "#a8b4c1" }} getRowThemeOverride={mergedRowTheme} getCellContent={getCellContent} drawCell={drawMergedShipmentCell} drawHeader={drawCenteredHeader} drawFocusRing={false} onKeyDown={onGridKeyDown} onCellEdited={onCellEdited} onCellsEdited={onCellsEdited} validateCell={([col], next) => { if (next.kind !== GridCellKind.Text) return true; const message = validationMessage(String(columns[col]?.id ?? ""), next.data); if (message) toast.error("Invalid cell value", { description: message }); return !message; }} provideEditor={(cell) => { if (cell.kind !== GridCellKind.Text) return undefined; const field = (cell as GridCell & { field?: string }).field ?? ""; const styleOverride = mergedEditorHeight ? { height: `${mergedEditorHeight}px` } : undefined; if (remarksFields.has(field)) return { editor: RemarksEditor, disablePadding: true, styleOverride }; if (dateFields.has(field)) return { editor: DateEditor, disablePadding: true, styleOverride }; if (selectOptions[field]) return { editor: DropdownEditor, disablePadding: true, styleOverride }; return { editor: TextEditor, disablePadding: true, styleOverride }; }} onCellClicked={([col, row]) => { setContextMenu(null); const record = rows[row]; setSelectedRowId(record?.id ?? null); if (col === 0 && record) void toggleRowLock(record); }} onCellContextMenu={([col, row], event) => { event.preventDefault(); const current = gridSelection?.current?.range; const withinCurrentSelection = Boolean(gridSelection?.rows.hasIndex(row)) || Boolean(current && col >= current.x && col < current.x + current.width && row >= current.y && row < current.y + current.height); if (!withinCurrentSelection) setGridSelection({ current: { cell: [col, row], range: { x: col, y: row, width: 1, height: 1 }, rangeStack: [] }, columns: CompactSelection.empty(), rows: CompactSelection.empty() }); setSelectedRowId(rows[row]?.id ?? null); const pointer = contextPointer.current; setContextMenu({ x: pointer?.x ?? event.bounds.x, y: pointer?.y ?? event.bounds.y, row, col }); }} onDragOverCell={([col, row], dataTransfer) => { const field = String(columns[col]?.id ?? ""); const record = rows[row]; const hasImage = [...(dataTransfer?.files ?? [])].some((file) => file.type.startsWith("image/")); const editable = Boolean(record && remarksFields.has(field) && !record.is_locked && (mode !== "shipper" || shipperEditableFields.has(field))); setDropTarget(hasImage && editable ? [col, row] : null); }} onDragLeave={() => setDropTarget(null)} onDrop={([col, row], dataTransfer) => { setDropTarget(null); const field = String(columns[col]?.id ?? ""); const record = rows[row]; const image = [...(dataTransfer?.files ?? [])].find((file) => file.type.startsWith("image/")); if (!image || !record || !remarksFields.has(field) || record.is_locked || (mode === "shipper" && !shipperEditableFields.has(field))) return; void uploadRemarkImage(image, { rowId: record.id, field }); }} gridSelection={gridSelection} onGridSelectionChange={onGridSelectionChange} getCellsForSelection={true} onPaste={true} fillHandle keybindings={{ downFill: true, rightFill: true }} rowMarkers="clickable-number" rowSelect="multi" rangeSelect="rect" />
+      <DataEditor ref={gridRef} width="100%" height={height} rowHeight={rowHeightForIndex} columns={columns} rows={rows.length + 12} theme={{ borderColor: "#94a3b8", horizontalBorderColor: "#a8b4c1" }} getRowThemeOverride={mergedRowTheme} getCellContent={getCellContent} drawCell={drawMergedShipmentCell} drawHeader={drawCenteredHeader} drawFocusRing={false} onKeyDown={onGridKeyDown} onCellEdited={onCellEdited} onCellsEdited={onCellsEdited} validateCell={([col], next) => { if (next.kind !== GridCellKind.Text) return true; const message = validationMessage(String(columns[col]?.id ?? ""), next.data); if (message) toast.error("Invalid cell value", { description: message }); return !message; }} provideEditor={(cell) => { if (cell.kind !== GridCellKind.Text) return undefined; const field = (cell as GridCell & { field?: string }).field ?? ""; const styleOverride = mergedEditorHeight ? { height: `${mergedEditorHeight}px` } : undefined; if (remarksFields.has(field)) return { editor: RemarksEditor, disablePadding: true, styleOverride }; if (dateFields.has(field)) return { editor: DateEditor, disablePadding: true, styleOverride }; if (selectOptions[field]) return { editor: DropdownEditor, disablePadding: true, styleOverride }; return { editor: TextEditor, disablePadding: true, styleOverride }; }} onCellClicked={([col, row]) => { setContextMenu(null); const record = rows[row]; setSelectedRowId(record?.id ?? null); if (col === 0 && record) void toggleRowLock(record); }} onCellContextMenu={([col, row], event) => { event.preventDefault(); const current = gridSelection?.current?.range; const withinCurrentSelection = Boolean(gridSelection?.rows.hasIndex(row)) || Boolean(current && col >= current.x && col < current.x + current.width && row >= current.y && row < current.y + current.height); if (!withinCurrentSelection) setGridSelection({ current: { cell: [col, row], range: { x: col, y: row, width: 1, height: 1 }, rangeStack: [] }, columns: CompactSelection.empty(), rows: CompactSelection.empty() }); setSelectedRowId(rows[row]?.id ?? null); const pointer = contextPointer.current; setContextMenu({ x: pointer?.x ?? event.bounds.x, y: pointer?.y ?? event.bounds.y, row, col }); }} onDragOverCell={([col, row], dataTransfer) => { const field = String(columns[col]?.id ?? ""); const record = rows[row]; const hasImage = [...(dataTransfer?.files ?? [])].some((file) => file.type.startsWith("image/")); const editable = Boolean(record && remarksFields.has(field) && !record.is_locked && (mode !== "shipper" || shipperEditableFields.has(field))); showDropTarget(hasImage && editable ? [col, row] : null); }} onDragLeave={() => showDropTarget(null)} onDrop={([col, row], dataTransfer) => { showDropTarget(null); const field = String(columns[col]?.id ?? ""); const record = rows[row]; const image = [...(dataTransfer?.files ?? [])].find((file) => file.type.startsWith("image/")); if (!image || !record || !remarksFields.has(field) || record.is_locked || (mode === "shipper" && !shipperEditableFields.has(field))) return; void uploadRemarkImage(image, { rowId: record.id, field }); }} gridSelection={gridSelection} onGridSelectionChange={onGridSelectionChange} getCellsForSelection={true} onPaste={true} fillHandle keybindings={{ downFill: true, rightFill: true }} rowMarkers="clickable-number" rowSelect="multi" rangeSelect="rect" />
       {contextMenu && <div className="absolute z-30 min-w-40 rounded-md border border-slate-200 bg-white py-1 shadow-lg" style={{ left: contextMenu.x, top: contextMenu.y }}>
         <button type="button" onClick={() => { copySelectedRows(); void gridRef.current?.emit("copy"); setContextMenu(null); }} className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-100">Copy</button>
         <button type="button" onClick={() => { void (async () => { copySelectedRows(); await gridRef.current?.emit("copy"); clearSelectionContents(); })(); setContextMenu(null); }} className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-100">Cut</button>
