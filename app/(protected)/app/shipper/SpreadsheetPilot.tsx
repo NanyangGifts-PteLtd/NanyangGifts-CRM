@@ -52,6 +52,12 @@ const selectOptions: Record<string, string[]> = {
   sea_or_air: seaOrAirOptions,
   tax_refund: ["\u9000", "X"],
 };
+// This is public configuration, not a secret. Showing the host lets us verify
+// that a local build and a deployed build are listening to the same Supabase
+// project while diagnosing Realtime delivery.
+const realtimeProjectHost = process.env.NEXT_PUBLIC_SUPABASE_URL
+  ? new URL(process.env.NEXT_PUBLIC_SUPABASE_URL).host
+  : "Supabase URL missing";
 
 function numberOrNull(value: unknown) {
   if (value === null || value === undefined || String(value).trim() === "") return null;
@@ -310,5 +316,5 @@ export function SpreadsheetPilot({ shipperId, mode = "internal" }: { shipperId: 
   const height = useMemo(() => Math.max((rows.length + 12) * 34, viewportHeight - (mode === "internal" ? 190 : 155)), [mode, rows.length, viewportHeight]);
   const selected = rows.find((row) => row.id === selectedRowId);
   const deleteRow = async () => { if (!selected || !window.confirm("Delete the selected spreadsheet row?")) return; const response = await fetch(`/api/shipper/spreadsheet?shipperId=${shipperId}&rowId=${selected.id}`, { method: "DELETE" }); if (!response.ok) return setError("Could not delete row"); setRows((current) => current.filter((row) => row.id !== selected.id)); setSelectedRowId(null); };
-  return <section className="space-y-2 p-4"><div className="flex items-center gap-2"><button disabled={!selected} onClick={() => void deleteRow()} className="rounded border border-red-200 px-3 py-1.5 text-xs text-red-700 disabled:opacity-40">Delete row</button><span className={`text-xs ${realtimeStatus === "connected" ? "text-emerald-700" : realtimeStatus === "unavailable" ? "text-amber-700" : "text-slate-500"}`}>Live updates: {realtimeStatus === "connected" ? "connected" : realtimeStatus === "unavailable" ? "unavailable" : "connecting…"}{realtimeStatus === "connected" && (lastRealtimeEvent ? " · event received" : " · awaiting an event")}</span>{error && <span className="text-xs text-red-600">{error}</span>}</div><DataEditor width="100%" height={height} columns={columns} rows={rows.length + 12} getCellContent={getCellContent} onCellEdited={onCellEdited} onCellsEdited={onCellsEdited} onCellClicked={([col, row]) => { const record = rows[row]; setSelectedRowId(record?.id ?? null); if (col === 0 && record) void toggleRowLock(record); }} provideEditor={(cell) => cell.kind === GridCellKind.Text && cell.allowOverlay ? { editor: ArrowKeyTextEditor, disablePadding: true } : undefined} getCellsForSelection={true} rowMarkers="number" rangeSelect="rect" /></section>;
+  return <section className="space-y-2 p-4"><div className="flex items-center gap-2"><button disabled={!selected} onClick={() => void deleteRow()} className="rounded border border-red-200 px-3 py-1.5 text-xs text-red-700 disabled:opacity-40">Delete row</button><span className={`text-xs ${realtimeStatus === "connected" ? "text-emerald-700" : realtimeStatus === "unavailable" ? "text-amber-700" : "text-slate-500"}`}>Live updates: {realtimeStatus === "connected" ? "connected" : realtimeStatus === "unavailable" ? "unavailable" : "connecting…"}{realtimeStatus === "connected" && (lastRealtimeEvent ? " · event received" : " · awaiting an event")}</span><span className="text-xs text-slate-400">Realtime project: {realtimeProjectHost}</span>{error && <span className="text-xs text-red-600">{error}</span>}</div><DataEditor width="100%" height={height} columns={columns} rows={rows.length + 12} getCellContent={getCellContent} onCellEdited={onCellEdited} onCellsEdited={onCellsEdited} onCellClicked={([col, row]) => { const record = rows[row]; setSelectedRowId(record?.id ?? null); if (col === 0 && record) void toggleRowLock(record); }} provideEditor={(cell) => cell.kind === GridCellKind.Text && cell.allowOverlay ? { editor: ArrowKeyTextEditor, disablePadding: true } : undefined} getCellsForSelection={true} rowMarkers="number" rangeSelect="rect" /></section>;
 }
