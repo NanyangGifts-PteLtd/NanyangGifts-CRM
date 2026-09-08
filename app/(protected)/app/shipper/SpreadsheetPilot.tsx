@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { CompactSelection, DataEditor, GridCellKind, type DataEditorRef, type GridCell, type GridColumn, type GridSelection, type Item } from "@glideapps/glide-data-grid";
 import { PaintBucket } from "lucide-react";
+import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import "@glideapps/glide-data-grid/dist/index.css";
 
@@ -80,7 +81,7 @@ function formattedValue(key: string, value: unknown) {
     return `${day}/${month}/${year}`;
   }
   const number = numberOrNull(value);
-  if (number !== null && currencyFields.has(key)) return new Intl.NumberFormat("en-SG", { style: "currency", currency: "SGD", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(number);
+  if (number !== null && currencyFields.has(key)) return new Intl.NumberFormat("en-SG", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(number);
   if (number !== null && numberFields.has(key)) return new Intl.NumberFormat("en-SG", { maximumFractionDigits: 2 }).format(number);
   return String(value);
 }
@@ -93,6 +94,29 @@ function fillTextColor(fill: string | undefined) {
   if (!fill) return undefined;
   const rgb = [fill.slice(1, 3), fill.slice(3, 5), fill.slice(5, 7)].map((part) => Number.parseInt(part, 16));
   return (rgb[0] * 299 + rgb[1] * 587 + rgb[2] * 114) / 1000 < 145 ? "#ffffff" : "#1f2937";
+}
+
+function validationMessage(field: string, value: unknown) {
+  if (value === "" || value === null || value === undefined) return null;
+  if (numberFields.has(field) || currencyFields.has(field) && !formulaFields.has(field)) {
+    return Number.isFinite(Number(value)) ? null : "This cell must contain a number.";
+  }
+  if (dateFields.has(field)) return /^\d{4}-\d{2}-\d{2}$/.test(String(value)) ? null : "Dates must use YYYY-MM-DD.";
+  if (["channel", "sea_or_air"].includes(field)) return seaOrAirOptions.includes(String(value)) ? null : "Choose 空运, 海运, or 海运/小包.";
+  if (field === "tax_refund") return selectOptions.tax_refund.includes(String(value)) ? null : "Choose 退 or X.";
+  return null;
+}
+
+function DropdownEditor({ value, onFinishedEditing }: { value: GridCell; onFinishedEditing: (next?: GridCell) => void }) {
+  if (value.kind !== GridCellKind.Text) return null;
+  const field = (value as GridCell & { field?: string }).field ?? "";
+  const options = selectOptions[field] ?? [];
+  return <select autoFocus defaultValue={value.data} onChange={(event) => onFinishedEditing({ ...value, data: event.target.value, displayData: event.target.value })} className="h-full w-full border-0 bg-white px-2 outline-none"><option value="" />{options.map((option) => <option key={option} value={option}>{option}</option>)}</select>;
+}
+
+function DateEditor({ value, onFinishedEditing }: { value: GridCell; onFinishedEditing: (next?: GridCell) => void }) {
+  if (value.kind !== GridCellKind.Text) return null;
+  return <input autoFocus type="date" defaultValue={value.data} onChange={(event) => onFinishedEditing({ ...value, data: event.target.value, displayData: event.target.value })} className="h-full w-full border-0 bg-white px-2 outline-none" />;
 }
 
 export function SpreadsheetPilot({ shipperId, mode = "internal" }: { shipperId: string; mode?: "internal" | "shipper" }) {
@@ -226,7 +250,7 @@ export function SpreadsheetPilot({ shipperId, mode = "internal" }: { shipperId: 
     }
     if (!record) {
       const readOnly = formulaFields.has(key) || (mode === "shipper" && !shipperEditableFields.has(key));
-      return { kind: GridCellKind.Text, data: "", displayData: "", allowOverlay: !readOnly, readonly: readOnly };
+      return { kind: GridCellKind.Text, data: "", displayData: "", allowOverlay: !readOnly, readonly: readOnly, field: key } as GridCell;
     }
     const values: Record<string, unknown> = hasRowContent(record) ? { ...record.values, ...formulaValues(record.values) } : {};
     const rawValue = values[key];
@@ -253,6 +277,8 @@ export function SpreadsheetPilot({ shipperId, mode = "internal" }: { shipperId: 
     const key = String(columns[col].id);
     if (key === "__lock") return;
     const value = cell.data;
+    const validationError = validationMessage(key, value);
+    if (validationError) { setError(validationError); toast.error("Invalid cell value", { description: validationError }); return; }
     if (!record) {
       if (formulaFields.has(key) || (mode === "shipper" && !shipperEditableFields.has(key))) return;
       const response = await fetch("/api/shipper/spreadsheet", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ shipperId, rowType: "item", values: { [key]: value }, trailingBlankCount: Math.max(0, row - rows.length) }) });
@@ -275,6 +301,8 @@ export function SpreadsheetPilot({ shipperId, mode = "internal" }: { shipperId: 
       const record = rows[row];
       const key = String(columns[col].id);
       if (key === "__lock" || formulaFields.has(key)) continue;
+      const validationError = validationMessage(key, value.data);
+      if (validationError) { setError(validationError); toast.error("Invalid cell value", { description: validationError }); continue; }
       if (!record) { void onCellEdited([col, row], value); continue; }
       if (record.is_locked || (mode === "shipper" && !shipperEditableFields.has(key))) continue;
       updates.set(record.id, { ...(updates.get(record.id) ?? {}), [key]: value.data });
@@ -405,7 +433,7 @@ export function SpreadsheetPilot({ shipperId, mode = "internal" }: { shipperId: 
       {error && <span className="text-xs text-red-600">{error}</span>}
     </div>
     <div ref={gridContainerRef} className="relative" onContextMenuCapture={(event) => { const bounds = event.currentTarget.getBoundingClientRect(); contextPointer.current = { x: event.clientX - bounds.left, y: event.clientY - bounds.top }; }}>
-      <DataEditor ref={gridRef} width="100%" height={height} columns={columns} rows={rows.length + 12} getCellContent={getCellContent} onCellEdited={onCellEdited} onCellsEdited={onCellsEdited} onCellClicked={([col, row]) => { setContextMenu(null); const record = rows[row]; setSelectedRowId(record?.id ?? null); if (col === 0 && record) void toggleRowLock(record); }} onCellContextMenu={([col, row], event) => { event.preventDefault(); const current = gridSelection?.current?.range; const withinCurrentSelection = Boolean(gridSelection?.rows.hasIndex(row)) || Boolean(current && col >= current.x && col < current.x + current.width && row >= current.y && row < current.y + current.height); if (!withinCurrentSelection) setGridSelection({ current: { cell: [col, row], range: { x: col, y: row, width: 1, height: 1 }, rangeStack: [] }, columns: CompactSelection.empty(), rows: CompactSelection.empty() }); setSelectedRowId(rows[row]?.id ?? null); const pointer = contextPointer.current; setContextMenu({ x: pointer?.x ?? event.bounds.x, y: pointer?.y ?? event.bounds.y, row }); }} gridSelection={gridSelection} onGridSelectionChange={setGridSelection} getCellsForSelection={true} onPaste={true} fillHandle keybindings={{ downFill: true, rightFill: true }} rowMarkers="clickable-number" rowSelect="multi" rangeSelect="rect" />
+      <DataEditor ref={gridRef} width="100%" height={height} columns={columns} rows={rows.length + 12} getCellContent={getCellContent} onCellEdited={onCellEdited} onCellsEdited={onCellsEdited} validateCell={([col], next) => { if (next.kind !== GridCellKind.Text) return true; const message = validationMessage(String(columns[col]?.id ?? ""), next.data); if (message) toast.error("Invalid cell value", { description: message }); return !message; }} provideEditor={(cell) => { if (cell.kind !== GridCellKind.Text) return undefined; const field = (cell as GridCell & { field?: string }).field ?? ""; if (dateFields.has(field)) return { editor: DateEditor, disablePadding: true }; return selectOptions[field] ? { editor: DropdownEditor, disablePadding: true } : undefined; }} onCellClicked={([col, row]) => { setContextMenu(null); const record = rows[row]; setSelectedRowId(record?.id ?? null); if (col === 0 && record) void toggleRowLock(record); }} onCellContextMenu={([col, row], event) => { event.preventDefault(); const current = gridSelection?.current?.range; const withinCurrentSelection = Boolean(gridSelection?.rows.hasIndex(row)) || Boolean(current && col >= current.x && col < current.x + current.width && row >= current.y && row < current.y + current.height); if (!withinCurrentSelection) setGridSelection({ current: { cell: [col, row], range: { x: col, y: row, width: 1, height: 1 }, rangeStack: [] }, columns: CompactSelection.empty(), rows: CompactSelection.empty() }); setSelectedRowId(rows[row]?.id ?? null); const pointer = contextPointer.current; setContextMenu({ x: pointer?.x ?? event.bounds.x, y: pointer?.y ?? event.bounds.y, row }); }} gridSelection={gridSelection} onGridSelectionChange={setGridSelection} getCellsForSelection={true} onPaste={true} fillHandle keybindings={{ downFill: true, rightFill: true }} rowMarkers="clickable-number" rowSelect="multi" rangeSelect="rect" />
       {contextMenu && <div className="absolute z-30 min-w-40 rounded-md border border-slate-200 bg-white py-1 shadow-lg" style={{ left: contextMenu.x, top: contextMenu.y }}>
         <button type="button" onClick={() => { copySelectedRows(); void gridRef.current?.emit("copy"); setContextMenu(null); }} className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-100">Copy</button>
         <button type="button" onClick={() => { void (async () => { copySelectedRows(); await gridRef.current?.emit("copy"); clearSelectionContents(); })(); setContextMenu(null); }} className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-100">Cut</button>

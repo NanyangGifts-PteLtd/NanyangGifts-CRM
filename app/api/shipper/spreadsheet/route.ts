@@ -11,6 +11,26 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 const INTERNAL_ROLES = new Set(["pm", "admin", "director", "dev"]);
 const SHIPPER_EDITABLE_FIELDS = new Set(["serial_number", "waybill_date", "waybill_number", "pieces", "chargeable_weight_kg", "destination", "freight_unit_price", "gst", "other_fees", "channel", "logistics_remarks", "air_received", "sea_received"]);
 const FORMULA_FIELDS = new Set(["freight_cost", "total_cost", "value"]);
+const NUMERIC_FIELDS = new Set(["pieces", "chargeable_weight_kg", "freight_unit_price", "gst", "other_fees", "cartons", "qty", "up"]);
+const DATE_FIELDS = new Set(["waybill_date", "info_provided_date"]);
+const SEA_OR_AIR_OPTIONS = new Set(["空运", "海运", "海运/小包"]);
+const TAX_REFUND_OPTIONS = new Set(["退", "X"]);
+
+function validateSpreadsheetValues(values: Record<string, unknown>) {
+  return Object.fromEntries(Object.entries(values).map(([field, value]) => {
+    if (value === "" || value === null || value === undefined) return [field, null];
+    if (NUMERIC_FIELDS.has(field)) {
+      const parsed = Number(value);
+      if (!Number.isFinite(parsed)) throw new Error(`${field} must be a number`);
+      return [field, parsed];
+    }
+    const text = String(value);
+    if (DATE_FIELDS.has(field) && !/^\d{4}-\d{2}-\d{2}$/.test(text)) throw new Error(`${field} must use YYYY-MM-DD`);
+    if (["channel", "sea_or_air"].includes(field) && !SEA_OR_AIR_OPTIONS.has(text)) throw new Error(`${field} must be 空运, 海运, or 海运/小包`);
+    if (field === "tax_refund" && !TAX_REFUND_OPTIONS.has(text)) throw new Error("退税 must be 退 or X");
+    return [field, value];
+  }));
+}
 
 async function authorize(shipperId: string) {
   const supabase = await createClient();
@@ -108,7 +128,7 @@ export async function POST(request: NextRequest) {
             row_type: "item",
             source_type: "manual_draft",
             sort_key: firstSortKey + sortStep * index,
-            values: calculateSpreadsheetFormulaValues(row.values ?? {}),
+            values: calculateSpreadsheetFormulaValues(validateSpreadsheetValues(row.values ?? {})),
             cell_fills: row.cellFills ?? {},
             created_by: userId,
           })))
@@ -142,7 +162,7 @@ export async function POST(request: NextRequest) {
         row_type: body.rowType ?? "item",
         planned_for: body.plannedFor ?? null,
         sort_key: baseSortKey + (trailingBlankCount + 1) * 1000,
-        values: calculateSpreadsheetFormulaValues(body.values ?? {}),
+        values: calculateSpreadsheetFormulaValues(validateSpreadsheetValues(body.values ?? {})),
         created_by: userId,
       },
     ];
@@ -182,7 +202,7 @@ export async function PATCH(request: NextRequest) {
     if (body.version !== undefined && body.version !== existing.version) throw new Error("This row was changed by another user. Refresh and try again.");
     const payload: Record<string, unknown> = {};
     if (body.values) {
-      payload.values = calculateSpreadsheetFormulaValues(body.replaceValues ? body.values : { ...(existing.values ?? {}), ...body.values });
+      payload.values = calculateSpreadsheetFormulaValues(validateSpreadsheetValues(body.replaceValues ? body.values : { ...(existing.values ?? {}), ...body.values }));
       if (hasSpreadsheetContent(payload.values as Record<string, unknown>)) payload.row_type = "item";
     }
     if (body.cellFills) {
