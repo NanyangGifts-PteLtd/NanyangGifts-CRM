@@ -17,6 +17,33 @@ const NUMERIC_FIELDS = new Set(["pieces", "chargeable_weight_kg", "freight_unit_
 const DATE_FIELDS = new Set(["waybill_date", "info_provided_date"]);
 const SEA_OR_AIR_OPTIONS = new Set(["空运", "海运", "海运/小包"]);
 const TAX_REFUND_OPTIONS = new Set(["退", "X"]);
+// Mirrors the previous Shipment view: receipt confirmations and remarks are
+// not shipment-completion requirements and must not block its auto-lock.
+const AUTO_LOCK_FIELDS = ["serial_number", "waybill_date", "waybill_number", "pieces", "chargeable_weight_kg", "destination", "freight_unit_price", "gst", "other_fees", "channel"];
+const AUTO_LOCK_DELAY_MS = 10 * 60 * 1000;
+
+function hasValue(value: unknown) {
+  return value !== null && value !== undefined && (typeof value !== "string" || value.trim().length > 0);
+}
+
+function shouldAutoLock(values: Record<string, unknown>) {
+  return AUTO_LOCK_FIELDS.every((field) => hasValue(values[field]));
+}
+
+function autoLockAt(values: Record<string, unknown>, existingAutoLockAt?: string | null) {
+  return shouldAutoLock(values) ? existingAutoLockAt ?? new Date(Date.now() + AUTO_LOCK_DELAY_MS).toISOString() : null;
+}
+
+async function lockExpiredRows(workbookId: string) {
+  const { error } = await supabaseAdmin
+    .from("shipper_spreadsheet_rows")
+    .update({ is_locked: true, auto_lock_at: null })
+    .eq("workbook_id", workbookId)
+    .eq("is_locked", false)
+    .not("auto_lock_at", "is", null)
+    .lte("auto_lock_at", new Date().toISOString());
+  if (error) throw error;
+}
 
 function validateSpreadsheetValues(values: Record<string, unknown>) {
   return Object.fromEntries(Object.entries(values).map(([field, value]) => {
@@ -67,6 +94,8 @@ export async function GET(request: NextRequest) {
     const shipperId = request.nextUrl.searchParams.get("shipperId");
     if (!shipperId) throw new Error("shipperId is required");
     const { shipper } = await authorize(shipperId);
+    const spreadsheet = await getShipperSpreadsheetRows(shipperId, shipper.name ?? "Shipper");
+    await lockExpiredRows(spreadsheet.workbook.id);
     return NextResponse.json(await getShipperSpreadsheetRows(shipperId, shipper.name ?? "Shipper"));
   } catch (error) {
     return failure(error);
@@ -125,15 +154,19 @@ export async function POST(request: NextRequest) {
           : 1000;
         const { data, error } = await supabaseAdmin
           .from("shipper_spreadsheet_rows")
-          .insert(copiedRows.map((row, index) => ({
-            workbook_id: workbook.id,
-            row_type: "item",
-            source_type: "manual_draft",
-            sort_key: firstSortKey + sortStep * index,
-            values: calculateSpreadsheetFormulaValues(validateSpreadsheetValues(row.values ?? {})),
-            cell_fills: row.cellFills ?? {},
-            created_by: userId,
-          })))
+          .insert(copiedRows.map((row, index) => {
+            const values = calculateSpreadsheetFormulaValues(validateSpreadsheetValues(row.values ?? {}));
+            return {
+              workbook_id: workbook.id,
+              row_type: "item",
+              source_type: "manual_draft",
+              sort_key: firstSortKey + sortStep * index,
+              values,
+              auto_lock_at: autoLockAt(values),
+              cell_fills: row.cellFills ?? {},
+              created_by: userId,
+            };
+          }))
           .select()
           .order("sort_key", { ascending: true });
         if (error) throw error;
@@ -159,14 +192,17 @@ export async function POST(request: NextRequest) {
         sort_key: baseSortKey + (index + 1) * 1000,
         created_by: userId,
       })),
-      {
+      (() => {
+        const values = calculateSpreadsheetFormulaValues(validateSpreadsheetValues(body.values ?? {}));
+        return {
         workbook_id: workbook.id,
         row_type: body.rowType ?? "item",
         planned_for: body.plannedFor ?? null,
         sort_key: baseSortKey + (trailingBlankCount + 1) * 1000,
-        values: calculateSpreadsheetFormulaValues(validateSpreadsheetValues(body.values ?? {})),
+        values,
+        auto_lock_at: autoLockAt(values),
         created_by: userId,
-      },
+      }; })(),
     ];
     const { data, error } = await supabaseAdmin
       .from("shipper_spreadsheet_rows")
@@ -186,6 +222,7 @@ export async function PATCH(request: NextRequest) {
     if (!body.shipperId || (!body.rowId && !body.operation)) throw new Error("shipperId and rowId are required");
     const { role } = await authorize(body.shipperId);
     const workbook = await getOrCreateShipperWorkbook(body.shipperId, "Shipper");
+    await lockExpiredRows(workbook.id);
     if (body.operation) {
       // A shipper may update only the explicitly shipper-editable fields. Row
       // grouping changes, ungrouping, and conflict resolution can rewrite
@@ -197,7 +234,7 @@ export async function PATCH(request: NextRequest) {
       if (rowIds.length < 2) throw new Error("Select at least two rows to change a shipment grouping");
       const { data: allRows, error: rowsError } = await supabaseAdmin
         .from("shipper_spreadsheet_rows")
-        .select("id, values, is_locked, shipment_group_id, sort_key")
+        .select("id, values, is_locked, auto_lock_at, shipment_group_id, sort_key")
         .eq("workbook_id", workbook.id)
         .order("sort_key", { ascending: true })
         .order("id", { ascending: true });
@@ -227,9 +264,10 @@ export async function PATCH(request: NextRequest) {
           throw new Error("You do not have permission to edit one or more selected columns");
         }
         const data = await Promise.all(selected.map(async (row) => {
+          const values = calculateSpreadsheetFormulaValues({ ...(row.values ?? {}), ...sharedUpdate });
           const { data: updated, error } = await supabaseAdmin
             .from("shipper_spreadsheet_rows")
-            .update({ values: calculateSpreadsheetFormulaValues({ ...(row.values ?? {}), ...sharedUpdate }) })
+            .update({ values, auto_lock_at: autoLockAt(values, row.auto_lock_at) })
             .eq("id", row.id)
             .select()
             .single();
@@ -272,9 +310,10 @@ export async function PATCH(request: NextRequest) {
       }
       const shipmentGroupId = crypto.randomUUID();
       const updates = await Promise.all(selected.map(async (row) => {
+        const values = calculateSpreadsheetFormulaValues({ ...(row.values ?? {}), ...sharedValues });
         const { data, error } = await supabaseAdmin
           .from("shipper_spreadsheet_rows")
-          .update({ shipment_group_id: shipmentGroupId, values: calculateSpreadsheetFormulaValues({ ...(row.values ?? {}), ...sharedValues }) })
+          .update({ shipment_group_id: shipmentGroupId, values, auto_lock_at: autoLockAt(values, row.auto_lock_at) })
           .eq("id", row.id)
           .select()
           .single();
@@ -285,7 +324,7 @@ export async function PATCH(request: NextRequest) {
     }
     const { data: existing, error: existingError } = await supabaseAdmin
       .from("shipper_spreadsheet_rows")
-      .select("id, values, is_locked, cell_fills, version")
+      .select("id, values, is_locked, auto_lock_at, cell_fills, version")
       .eq("id", body.rowId)
       .eq("workbook_id", workbook.id)
       .maybeSingle();
@@ -303,6 +342,10 @@ export async function PATCH(request: NextRequest) {
     if (body.values) {
       payload.values = calculateSpreadsheetFormulaValues(validateSpreadsheetValues(body.replaceValues ? body.values : { ...(existing.values ?? {}), ...body.values }));
       if (hasSpreadsheetContent(payload.values as Record<string, unknown>)) payload.row_type = "item";
+      const changedRequiredField = Object.keys(body.values).some((field) => AUTO_LOCK_FIELDS.includes(field));
+      if (changedRequiredField) {
+        payload.auto_lock_at = autoLockAt(payload.values as Record<string, unknown>, existing.auto_lock_at);
+      }
     }
     if (body.cellFills) {
       const invalidFill = Object.entries(body.cellFills).some(([field, color]) =>
@@ -314,7 +357,12 @@ export async function PATCH(request: NextRequest) {
       }
       payload.cell_fills = body.cellFills;
     }
-    if (body.isLocked !== undefined) payload.is_locked = body.isLocked;
+    if (body.isLocked !== undefined) {
+      payload.is_locked = body.isLocked;
+      payload.auto_lock_at = body.isLocked
+        ? null
+        : autoLockAt((payload.values as Record<string, unknown> | undefined) ?? (existing.values ?? {}));
+    }
     if (!Object.keys(payload).length) throw new Error("No changes supplied");
     const { data, error } = await supabaseAdmin
       .from("shipper_spreadsheet_rows")

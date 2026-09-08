@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import "@glideapps/glide-data-grid/dist/index.css";
 
-type Row = { id: string; values: Record<string, unknown>; cell_fills: Record<string, string>; is_locked: boolean; version: number; row_type: "item" | "blank_spacer"; sort_key: number; shipment_group_id: string | null };
+type Row = { id: string; values: Record<string, unknown>; cell_fills: Record<string, string>; is_locked: boolean; auto_lock_at: string | null; version: number; row_type: "item" | "blank_spacer"; sort_key: number; shipment_group_id: string | null };
 const columns: GridColumn[] = [
   { id: "__lock", title: "", width: 48 },
   { id: "serial_number", title: "序号", width: 100 },
@@ -208,6 +208,20 @@ export function SpreadsheetPilot({ shipperId, mode = "internal" }: { shipperId: 
     return () => window.removeEventListener("storage", refreshFromCrmPush);
   }, [load]);
   useEffect(() => {
+    const nextDue = rows
+      .filter((row) => !row.is_locked && row.auto_lock_at)
+      .sort((left, right) => new Date(left.auto_lock_at!).getTime() - new Date(right.auto_lock_at!).getTime())[0];
+    if (!nextDue?.auto_lock_at) return;
+    const delay = Math.max(0, new Date(nextDue.auto_lock_at).getTime() - Date.now());
+    const timer = window.setTimeout(async () => {
+      const response = await fetch("/api/shipper/spreadsheet", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ shipperId, rowId: nextDue.id, isLocked: true }) });
+      const result = await response.json();
+      if (!response.ok) { void load(); return; }
+      setRows((current) => current.map((row) => row.id === nextDue.id ? { ...row, is_locked: true, auto_lock_at: null, version: result.row.version } : row));
+    }, delay + 50);
+    return () => window.clearTimeout(timer);
+  }, [load, rows, shipperId]);
+  useEffect(() => {
     const updateViewportHeight = () => setViewportHeight(window.innerHeight);
     updateViewportHeight();
     window.addEventListener("resize", updateViewportHeight);
@@ -221,7 +235,7 @@ export function SpreadsheetPilot({ shipperId, mode = "internal" }: { shipperId: 
     // Keep the client-side ordering intact. The server response is only the
     // updated row; it has no reason to alter the surrounding row sequence.
     setRows((current) => current.map((row) => row.id === record.id
-      ? { ...row, is_locked: result.row.is_locked, version: result.row.version }
+      ? { ...row, is_locked: result.row.is_locked, auto_lock_at: result.row.auto_lock_at, version: result.row.version }
       : row));
   }, [shipperId]);
   const flushPendingSaves = useCallback(async () => {
@@ -239,6 +253,11 @@ export function SpreadsheetPilot({ shipperId, mode = "internal" }: { shipperId: 
       if (results.some(({ response }) => !response.ok)) {
         failed = true;
         setError(results.find(({ response }) => !response.ok)?.result?.error ?? "Could not save one or more cells");
+      } else {
+        const savedRows = new Map<string, { auto_lock_at: string | null; version: number }>(results.map(({ result }) => [result.row.id, result.row]));
+        setRows((current) => current.map((row) => savedRows.has(row.id)
+          ? { ...row, auto_lock_at: savedRows.get(row.id)!.auto_lock_at, version: savedRows.get(row.id)!.version }
+          : row));
       }
     } catch {
       failed = true;
@@ -264,7 +283,8 @@ export function SpreadsheetPilot({ shipperId, mode = "internal" }: { shipperId: 
     const record = rows[row];
     const key = String(columns[col].id);
     if (key === "__lock") {
-      const symbol = hasRowContent(record) ? record!.is_locked ? "🔒" : "🔓" : "";
+      const autoLockPending = Boolean(record?.auto_lock_at && new Date(record.auto_lock_at).getTime() > Date.now());
+      const symbol = hasRowContent(record) ? record!.is_locked ? "🔒" : autoLockPending ? "⏳" : "🔓" : "";
       return { kind: GridCellKind.Text, data: symbol, displayData: symbol, allowOverlay: false, readonly: true, contentAlign: "center", cursor: symbol ? "pointer" : "default", themeOverride: record?.is_locked ? { bgCell: "#e2e8f0", textDark: "#475569" } : undefined };
     }
     if (!record) {

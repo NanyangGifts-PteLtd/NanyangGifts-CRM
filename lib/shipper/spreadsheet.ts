@@ -12,6 +12,7 @@ export type SpreadsheetRow = {
   planned_for: string | null;
   sort_key: number;
   is_locked: boolean;
+  auto_lock_at: string | null;
   cell_fills: Record<string, string>;
   values: Record<string, unknown>;
   version: number;
@@ -92,7 +93,7 @@ export async function getShipperSpreadsheetRows(shipperId: string, shipperName: 
   const workbook = await getOrCreateShipperWorkbook(shipperId, shipperName);
   const { data, error } = await supabaseAdmin
     .from("shipper_spreadsheet_rows")
-    .select("id, workbook_id, row_type, source_type, source_subitem_id, shipment_group_id, planned_for, sort_key, is_locked, cell_fills, values, version")
+    .select("id, workbook_id, row_type, source_type, source_subitem_id, shipment_group_id, planned_for, sort_key, is_locked, auto_lock_at, cell_fills, values, version")
     .eq("workbook_id", workbook.id)
     // Sort keys can be equal in older pilot data. The ID tie-breaker prevents
     // an unrelated update (such as toggling a lock) from reshuffling those rows
