@@ -32,7 +32,7 @@ export function ShipperMasterSheets({
   const [activeShipperId, setActiveShipperId] = useState(shippers[0]?.id ?? "");
   const [gridRows, setGridRows] = useState(rows);
   const [stagedRows, setStagedRows] = useState(stagingRows);
-  const [view, setView] = useState<"shipments" | "legacy" | "spreadsheet">("shipments");
+  const [view, setView] = useState<"shipments" | "legacy" | "spreadsheet">("spreadsheet");
   const activeShipper =
     shippers.find((shipper) => shipper.id === activeShipperId) ?? shippers[0];
 
@@ -85,7 +85,7 @@ export function ShipperMasterSheets({
             onClick={() => setView("spreadsheet")}
             className={`rounded px-2 py-1 text-xs ${view === "spreadsheet" ? "bg-sky-600 text-white" : "border text-slate-600"}`}
           >
-            Spreadsheet pilot
+            Workbook
           </button>
           {activeShipper.website_url && (
             <a

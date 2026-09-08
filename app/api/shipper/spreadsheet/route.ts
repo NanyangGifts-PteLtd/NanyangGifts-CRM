@@ -187,6 +187,12 @@ export async function PATCH(request: NextRequest) {
     const { role } = await authorize(body.shipperId);
     const workbook = await getOrCreateShipperWorkbook(body.shipperId, "Shipper");
     if (body.operation) {
+      // A shipper may update only the explicitly shipper-editable fields. Row
+      // grouping changes, ungrouping, and conflict resolution can rewrite
+      // internal shipment fields, so they remain internal-staff actions.
+      if (role === "shipper" && body.operation !== "update-shared") {
+        throw new Error("Only internal staff can merge or unmerge shipment rows");
+      }
       const rowIds = [...new Set(body.rowIds ?? [])];
       if (rowIds.length < 2) throw new Error("Select at least two rows to change a shipment grouping");
       const { data: allRows, error: rowsError } = await supabaseAdmin
@@ -216,6 +222,9 @@ export async function PATCH(request: NextRequest) {
         const sharedUpdate = validateSpreadsheetValues(body.values ?? {});
         if (!Object.keys(sharedUpdate).length || Object.keys(sharedUpdate).some((field) => !SHIPMENT_INPUT_FIELDS.includes(field))) {
           throw new Error("Only editable shipment fields can be updated here");
+        }
+        if (role === "shipper" && Object.keys(sharedUpdate).some((field) => !SHIPPER_EDITABLE_FIELDS.has(field))) {
+          throw new Error("You do not have permission to edit one or more selected columns");
         }
         const data = await Promise.all(selected.map(async (row) => {
           const { data: updated, error } = await supabaseAdmin
@@ -325,7 +334,8 @@ export async function DELETE(request: NextRequest) {
     const shipperId = request.nextUrl.searchParams.get("shipperId");
     const rowId = request.nextUrl.searchParams.get("rowId");
     if (!shipperId || !rowId) throw new Error("shipperId and rowId are required");
-    await authorize(shipperId);
+    const { role } = await authorize(shipperId);
+    if (role === "shipper") throw new Error("Only internal staff can delete spreadsheet rows");
     const workbook = await getOrCreateShipperWorkbook(shipperId, "Shipper");
     const { error } = await supabaseAdmin
       .from("shipper_spreadsheet_rows")

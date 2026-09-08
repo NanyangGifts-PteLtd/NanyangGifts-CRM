@@ -44,6 +44,7 @@ const columns: GridColumn[] = [
 
 const shipperEditableFields = new Set(["serial_number", "waybill_date", "waybill_number", "pieces", "chargeable_weight_kg", "destination", "freight_unit_price", "gst", "other_fees", "channel", "logistics_remarks", "air_received", "sea_received"]);
 const formulaFields = new Set(["freight_cost", "total_cost", "value"]);
+const shipperFormulaFields = new Set(["freight_cost", "total_cost"]);
 // These are the shipment-scoped columns in the existing Shipment view. A
 // merged spreadsheet shipment shares exactly these fields; item columns remain
 // independently editable for each participating row.
@@ -440,12 +441,17 @@ export function SpreadsheetPilot({ shipperId, mode = "internal" }: { shipperId: 
   }, [gridSelection, rows]);
   const drawCenteredHeader = useCallback((args: { ctx: CanvasRenderingContext2D; column: GridColumn; theme: { bgHeader: string; textHeader: string; headerFontStyle: string }; rect: { x: number; y: number; width: number; height: number } }) => {
     const { ctx, rect, theme } = args;
+    const field = String(args.column.id ?? "");
+    const isShipperColumn = shipperEditableFields.has(field) || shipperFormulaFields.has(field);
     ctx.save();
-    ctx.fillStyle = theme.bgHeader;
+    // Blue identifies fields the assigned shipper can work in; grey identifies
+    // internal-only and calculated fields. This stays the same in both views
+    // so internal staff can immediately see the shipper editing boundary.
+    ctx.fillStyle = isShipperColumn ? "#dbeafe" : "#e2e8f0";
     ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
     if (args.column.title) {
       ctx.font = theme.headerFontStyle;
-      ctx.fillStyle = theme.textHeader;
+      ctx.fillStyle = isShipperColumn ? "#1e3a8a" : theme.textHeader;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText(args.column.title, rect.x + rect.width / 2, rect.y + rect.height / 2, Math.max(0, rect.width - 12));
@@ -521,7 +527,7 @@ export function SpreadsheetPilot({ shipperId, mode = "internal" }: { shipperId: 
   }, [mode, onCellEdited, queueSave, rows]);
   const height = useMemo(() => Math.max((rows.length + 12) * 34, viewportHeight - (mode === "internal" ? 190 : 155)), [mode, rows.length, viewportHeight]);
   const selected = rows.find((row) => row.id === selectedRowId);
-  const deleteRow = async () => { if (!selected || !window.confirm("Delete the selected spreadsheet row?")) return; const response = await fetch(`/api/shipper/spreadsheet?shipperId=${shipperId}&rowId=${selected.id}`, { method: "DELETE" }); if (!response.ok) return setError("Could not delete row"); setRows((current) => current.filter((row) => row.id !== selected.id)); setSelectedRowId(null); };
+  const deleteRow = async () => { if (mode === "shipper" || !selected || !window.confirm("Delete the selected spreadsheet row?")) return; const response = await fetch(`/api/shipper/spreadsheet?shipperId=${shipperId}&rowId=${selected.id}`, { method: "DELETE" }); if (!response.ok) return setError("Could not delete row"); setRows((current) => current.filter((row) => row.id !== selected.id)); setSelectedRowId(null); };
   const fillSelection = async (color: string | null) => {
     const range = gridSelection?.current?.range;
     const selectedRows = gridSelection?.rows.toArray() ?? [];
@@ -617,6 +623,7 @@ export function SpreadsheetPilot({ shipperId, mode = "internal" }: { shipperId: 
     setRows((current) => [...current.slice(0, insertionIndex), ...(result.rows ?? []), ...current.slice(insertionIndex)]);
   };
   const deleteContextRow = async () => {
+    if (mode === "shipper") return;
     const target = contextMenu ? rows[contextMenu.row] : undefined;
     if (!target || !window.confirm("Delete this spreadsheet row?")) return;
     const response = await fetch(`/api/shipper/spreadsheet?shipperId=${shipperId}&rowId=${target.id}`, { method: "DELETE" });
@@ -702,7 +709,7 @@ export function SpreadsheetPilot({ shipperId, mode = "internal" }: { shipperId: 
   })();
   return <section className="space-y-2 p-4">
     <div className="flex items-center gap-2">
-      <button disabled={!selected} onClick={() => void deleteRow()} className="rounded border border-red-200 px-3 py-1.5 text-xs text-red-700 disabled:opacity-40">Delete row</button>
+      {mode !== "shipper" && <button disabled={!selected} onClick={() => void deleteRow()} className="rounded border border-red-200 px-3 py-1.5 text-xs text-red-700 disabled:opacity-40">Delete row</button>}
       {gridSelection?.current && <button type="button" onClick={() => setIsFillPaletteOpen((open) => !open)} className="flex items-center gap-1 rounded border border-slate-300 px-2 py-1.5 text-xs text-slate-700"><PaintBucket size={15} />Fill colour</button>}
       {gridSelection?.current && isFillPaletteOpen && <div className="flex flex-wrap gap-1 py-1">{fillColors.map((color) => <button key={color} type="button" onClick={() => void fillSelection(color)} className="h-5 w-5 rounded border border-slate-300" style={{ backgroundColor: color }} title="Fill selected cells" />)}<button type="button" onClick={() => void fillSelection(null)} className="rounded border border-slate-300 px-2 text-[10px] text-slate-600">Clear</button></div>}
       {error && <span className="text-xs text-red-600">{error}</span>}
@@ -713,16 +720,16 @@ export function SpreadsheetPilot({ shipperId, mode = "internal" }: { shipperId: 
         <button type="button" onClick={() => { copySelectedRows(); void gridRef.current?.emit("copy"); setContextMenu(null); }} className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-100">Copy</button>
         <button type="button" onClick={() => { void (async () => { copySelectedRows(); await gridRef.current?.emit("copy"); clearSelectionContents(); })(); setContextMenu(null); }} className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-100">Cut</button>
         <button type="button" onClick={() => { void pasteFromClipboard(); setContextMenu(null); }} className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-100">Paste</button>
-        <div className="my-1 border-t border-slate-200" />
+        {mode !== "shipper" && <><div className="my-1 border-t border-slate-200" />
         <button type="button" onClick={() => { void insertRow("above"); setContextMenu(null); }} className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-100">Insert row above</button>
         <button type="button" onClick={() => { void insertRow("below"); setContextMenu(null); }} className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-100">Insert row below</button>
         <button type="button" disabled={!copiedRows.length} onClick={() => { void insertCopiedRows(); setContextMenu(null); }} className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-100 disabled:text-slate-300">Insert copied</button>
-        <button type="button" onClick={() => { void deleteContextRow(); setContextMenu(null); }} className="block w-full px-3 py-1.5 text-left text-xs text-red-700 hover:bg-red-50">Delete row</button>
+        <button type="button" onClick={() => { void deleteContextRow(); setContextMenu(null); }} className="block w-full px-3 py-1.5 text-left text-xs text-red-700 hover:bg-red-50">Delete row</button></>}
         <div className="my-1 border-t border-slate-200" />
         <button type="button" onClick={() => { clearSelectionContents(); setContextMenu(null); }} className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-100">Clear contents</button>
         <button type="button" onClick={() => { setIsFillPaletteOpen(true); setContextMenu(null); }} className="flex w-full items-center gap-1 px-3 py-1.5 text-left text-xs hover:bg-slate-100"><PaintBucket size={14} />Colour fill</button>
-        {mergeableSelection && <button type="button" disabled={selectionAlreadyMerged} onClick={() => { beginMerge(); setContextMenu(null); }} className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-100 disabled:text-slate-300 disabled:hover:bg-transparent">Merge selected rows</button>}
-        {unmergeableSelection && <button type="button" onClick={() => { void beginUnmerge(); setContextMenu(null); }} className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-100">Unmerge selected shipment</button>}
+        {mode !== "shipper" && mergeableSelection && <button type="button" disabled={selectionAlreadyMerged} onClick={() => { beginMerge(); setContextMenu(null); }} className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-100 disabled:text-slate-300 disabled:hover:bg-transparent">Merge selected rows</button>}
+        {mode !== "shipper" && unmergeableSelection && <button type="button" onClick={() => { void beginUnmerge(); setContextMenu(null); }} className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-100">Unmerge selected shipment</button>}
         {rows[contextMenu.row] && <button type="button" disabled={!hasRowContent(rows[contextMenu.row])} onClick={() => { void toggleRowLock(rows[contextMenu.row]); setContextMenu(null); }} className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-100 disabled:text-slate-300">{rows[contextMenu.row].is_locked ? "Unlock row" : "Lock row"}</button>}
       </div>}
       {mergeDialog && <div className="absolute inset-0 z-40 flex items-start justify-center bg-slate-900/20 pt-12">
