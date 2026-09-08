@@ -59,10 +59,14 @@ export async function POST(request: NextRequest) {
       plannedFor?: string | null;
       values?: Record<string, unknown>;
       trailingBlankCount?: number;
+      referenceRowId?: string;
+      placement?: "above" | "below";
+      copiedRows?: Array<{ values: Record<string, unknown>; cellFills?: Record<string, string> }>;
     };
     if (!body.shipperId) throw new Error("shipperId is required");
     const { userId, role, shipper } = await authorize(body.shipperId);
-    const fields = Object.keys(body.values ?? {});
+    const copiedRows = body.copiedRows ?? [];
+    const fields = [...Object.keys(body.values ?? {}), ...copiedRows.flatMap((row) => Object.keys(row.values ?? {}))];
     if (fields.some((field) => FORMULA_FIELDS.has(field))) {
       throw new Error("Formula cells cannot be edited directly");
     }
@@ -72,9 +76,55 @@ export async function POST(request: NextRequest) {
     const workbook = await getOrCreateShipperWorkbook(body.shipperId, shipper.name ?? "Shipper");
     const { data: existingRows, error: rowsError } = await supabaseAdmin
       .from("shipper_spreadsheet_rows")
-      .select("sort_key")
+      .select("id, sort_key")
       .eq("workbook_id", workbook.id);
     if (rowsError) throw rowsError;
+    if (body.referenceRowId && body.placement) {
+      const ordered = [...(existingRows ?? [])].sort((left, right) => (
+        Number(left.sort_key) - Number(right.sort_key) || String(left.id).localeCompare(String(right.id))
+      ));
+      const referenceIndex = ordered.findIndex((row) => row.id === body.referenceRowId);
+      if (referenceIndex < 0) throw new Error("Spreadsheet row not found");
+      const insertionIndex = body.placement === "above" ? referenceIndex : referenceIndex + 1;
+      const before = ordered[insertionIndex - 1];
+      const after = ordered[insertionIndex];
+      const rowCount = Math.max(1, copiedRows.length);
+      const firstSortKey = before && after
+        ? Number(before.sort_key) + (Number(after.sort_key) - Number(before.sort_key)) / (rowCount + 1)
+        : before
+          ? Number(before.sort_key) + 1000
+          : Number(after?.sort_key ?? 1000) - 1000 * rowCount;
+      if (copiedRows.length) {
+        if (role === "shipper" && copiedRows.some((row) => Object.keys(row.cellFills ?? {}).some((field) => !SHIPPER_EDITABLE_FIELDS.has(field)))) {
+          throw new Error("You do not have permission to format one or more copied columns");
+        }
+        const sortStep = before && after
+          ? (Number(after.sort_key) - Number(before.sort_key)) / (rowCount + 1)
+          : 1000;
+        const { data, error } = await supabaseAdmin
+          .from("shipper_spreadsheet_rows")
+          .insert(copiedRows.map((row, index) => ({
+            workbook_id: workbook.id,
+            row_type: "item",
+            source_type: "manual_draft",
+            sort_key: firstSortKey + sortStep * index,
+            values: calculateSpreadsheetFormulaValues(row.values ?? {}),
+            cell_fills: row.cellFills ?? {},
+            created_by: userId,
+          })))
+          .select()
+          .order("sort_key", { ascending: true });
+        if (error) throw error;
+        return NextResponse.json({ row: data?.[0], rows: data ?? [] }, { status: 201 });
+      }
+      const { data, error } = await supabaseAdmin
+        .from("shipper_spreadsheet_rows")
+        .insert({ workbook_id: workbook.id, row_type: "blank_spacer", sort_key: firstSortKey, values: {}, created_by: userId })
+        .select()
+        .single();
+      if (error) throw error;
+      return NextResponse.json({ row: data, rows: [data] }, { status: 201 });
+    }
     const baseSortKey = Math.max(
       Date.now(),
       ...(existingRows ?? []).map((row) => Number(row.sort_key ?? 0) + 1000),

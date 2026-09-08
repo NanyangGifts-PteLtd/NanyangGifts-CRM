@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
-import { DataEditor, GridCellKind, type GridCell, type GridColumn, type GridSelection, type Item } from "@glideapps/glide-data-grid";
+import { CompactSelection, DataEditor, GridCellKind, type DataEditorRef, type GridCell, type GridColumn, type GridSelection, type Item } from "@glideapps/glide-data-grid";
 import { PaintBucket } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import "@glideapps/glide-data-grid/dist/index.css";
@@ -103,11 +103,16 @@ export function SpreadsheetPilot({ shipperId, mode = "internal" }: { shipperId: 
   const [workbookId, setWorkbookId] = useState<string | null>(null);
   const [gridSelection, setGridSelection] = useState<GridSelection | undefined>(undefined);
   const [isFillPaletteOpen, setIsFillPaletteOpen] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; row: number } | null>(null);
+  const [copiedRows, setCopiedRows] = useState<Array<{ values: Record<string, unknown>; cellFills: Record<string, string> }>>([]);
   const pendingSaves = useRef(new Map<string, { values: Record<string, unknown>; replaceValues: boolean }>());
   const saveTimer = useRef<number | null>(null);
   const savesInFlight = useRef(0);
   const localEditRevision = useRef(0);
   const latestLoadRequest = useRef(0);
+  const gridRef = useRef<DataEditorRef | null>(null);
+  const gridContainerRef = useRef<HTMLDivElement | null>(null);
+  const contextPointer = useRef<{ x: number; y: number } | null>(null);
   const load = useCallback(async () => {
     if (pendingSaves.current.size || savesInFlight.current) return;
     const requestId = ++latestLoadRequest.current;
@@ -293,12 +298,15 @@ export function SpreadsheetPilot({ shipperId, mode = "internal" }: { shipperId: 
   const deleteRow = async () => { if (!selected || !window.confirm("Delete the selected spreadsheet row?")) return; const response = await fetch(`/api/shipper/spreadsheet?shipperId=${shipperId}&rowId=${selected.id}`, { method: "DELETE" }); if (!response.ok) return setError("Could not delete row"); setRows((current) => current.filter((row) => row.id !== selected.id)); setSelectedRowId(null); };
   const fillSelection = async (color: string | null) => {
     const range = gridSelection?.current?.range;
-    if (!range) return;
+    const selectedRows = gridSelection?.rows.toArray() ?? [];
+    if (!range && !selectedRows.length) return;
     const fillsByRow = new Map<string, Record<string, string>>();
-    for (let rowIndex = range.y; rowIndex < range.y + range.height; rowIndex += 1) {
+    const rowIndexes = selectedRows.length ? selectedRows : Array.from({ length: range!.height }, (_, index) => range!.y + index);
+    const columnIndexes = selectedRows.length ? columns.map((_, index) => index) : Array.from({ length: range!.width }, (_, index) => range!.x + index);
+    for (const rowIndex of rowIndexes) {
       const row = rows[rowIndex];
       if (!row || row.is_locked) continue;
-      for (let colIndex = range.x; colIndex < range.x + range.width; colIndex += 1) {
+      for (const colIndex of columnIndexes) {
         const field = String(columns[colIndex]?.id ?? "");
         if (!field || field === "__lock" || (mode === "shipper" && !shipperEditableFields.has(field))) continue;
         const fills = fillsByRow.get(row.id) ?? { ...(row.cell_fills ?? {}) };
@@ -319,6 +327,76 @@ export function SpreadsheetPilot({ shipperId, mode = "internal" }: { shipperId: 
       void load();
     }
   };
+  const clearSelectionContents = () => {
+    const range = gridSelection?.current?.range;
+    const selectedRows = gridSelection?.rows.toArray() ?? [];
+    if (!range && !selectedRows.length) return;
+    const edits: Array<{ location: Item; value: GridCell }> = [];
+    const rowIndexes = selectedRows.length ? selectedRows : Array.from({ length: range!.height }, (_, index) => range!.y + index);
+    const columnIndexes = selectedRows.length ? columns.map((_, index) => index) : Array.from({ length: range!.width }, (_, index) => range!.x + index);
+    for (const row of rowIndexes) {
+      for (const col of columnIndexes) {
+        const key = String(columns[col]?.id ?? "");
+        const record = rows[row];
+        if (!record || key === "__lock" || formulaFields.has(key) || record.is_locked || (mode === "shipper" && !shipperEditableFields.has(key))) continue;
+        edits.push({ location: [col, row], value: { kind: GridCellKind.Text, data: "", displayData: "", allowOverlay: true } });
+      }
+    }
+    if (edits.length) onCellsEdited(edits);
+  };
+  const pasteFromClipboard = async () => {
+    const target = gridSelection?.current?.cell;
+    if (!target) return;
+    try {
+      const clipboard = await navigator.clipboard.readText();
+      if (!clipboard) return;
+      const edits: Array<{ location: Item; value: GridCell }> = [];
+      clipboard.replace(/\r/g, "").split("\n").forEach((line, rowOffset) => {
+        line.split("\t").forEach((value, colOffset) => {
+          const col = target[0] + colOffset;
+          const row = target[1] + rowOffset;
+          if (col >= columns.length || row >= rows.length + 12) return;
+          edits.push({ location: [col, row], value: { kind: GridCellKind.Text, data: value, displayData: value, allowOverlay: true } });
+        });
+      });
+      if (edits.length) onCellsEdited(edits);
+    } catch {
+      setError("Could not read the clipboard. Allow clipboard access, then try again.");
+    }
+  };
+  const insertRow = async (placement: "above" | "below") => {
+    const target = contextMenu ? rows[contextMenu.row] : undefined;
+    if (!target) return;
+    const response = await fetch("/api/shipper/spreadsheet", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ shipperId, referenceRowId: target.id, placement }) });
+    const result = await response.json();
+    if (!response.ok) return setError(result.error ?? "Could not insert row");
+    const insertionIndex = rows.findIndex((row) => row.id === target.id) + (placement === "below" ? 1 : 0);
+    setRows((current) => [...current.slice(0, insertionIndex), result.row, ...current.slice(insertionIndex)]);
+  };
+  const copySelectedRows = () => {
+    const rowIndexes = gridSelection?.rows.toArray() ?? [];
+    const copies = rowIndexes.map((rowIndex) => rows[rowIndex]).filter((row): row is Row => Boolean(row)).map((row) => ({
+      values: Object.fromEntries(Object.entries(row.values).filter(([field]) => !formulaFields.has(field))),
+      cellFills: { ...(row.cell_fills ?? {}) },
+    }));
+    if (copies.length) setCopiedRows(copies);
+  };
+  const insertCopiedRows = async () => {
+    const target = contextMenu ? rows[contextMenu.row] : undefined;
+    if (!target || !copiedRows.length) return;
+    const response = await fetch("/api/shipper/spreadsheet", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ shipperId, referenceRowId: target.id, placement: "below", copiedRows }) });
+    const result = await response.json();
+    if (!response.ok) return setError(result.error ?? "Could not insert copied rows");
+    const insertionIndex = rows.findIndex((row) => row.id === target.id) + 1;
+    setRows((current) => [...current.slice(0, insertionIndex), ...(result.rows ?? []), ...current.slice(insertionIndex)]);
+  };
+  const deleteContextRow = async () => {
+    const target = contextMenu ? rows[contextMenu.row] : undefined;
+    if (!target || !window.confirm("Delete this spreadsheet row?")) return;
+    const response = await fetch(`/api/shipper/spreadsheet?shipperId=${shipperId}&rowId=${target.id}`, { method: "DELETE" });
+    if (!response.ok) return setError("Could not delete row");
+    setRows((current) => current.filter((row) => row.id !== target.id));
+  };
   return <section className="space-y-2 p-4">
     <div className="flex items-center gap-2">
       <button disabled={!selected} onClick={() => void deleteRow()} className="rounded border border-red-200 px-3 py-1.5 text-xs text-red-700 disabled:opacity-40">Delete row</button>
@@ -326,6 +404,22 @@ export function SpreadsheetPilot({ shipperId, mode = "internal" }: { shipperId: 
       {gridSelection?.current && isFillPaletteOpen && <div className="flex flex-wrap gap-1 py-1">{fillColors.map((color) => <button key={color} type="button" onClick={() => void fillSelection(color)} className="h-5 w-5 rounded border border-slate-300" style={{ backgroundColor: color }} title="Fill selected cells" />)}<button type="button" onClick={() => void fillSelection(null)} className="rounded border border-slate-300 px-2 text-[10px] text-slate-600">Clear</button></div>}
       {error && <span className="text-xs text-red-600">{error}</span>}
     </div>
-    <DataEditor width="100%" height={height} columns={columns} rows={rows.length + 12} getCellContent={getCellContent} onCellEdited={onCellEdited} onCellsEdited={onCellsEdited} onCellClicked={([col, row]) => { const record = rows[row]; setSelectedRowId(record?.id ?? null); if (col === 0 && record) void toggleRowLock(record); }} gridSelection={gridSelection} onGridSelectionChange={setGridSelection} getCellsForSelection={true} onPaste={true} fillHandle keybindings={{ downFill: true, rightFill: true }} rowMarkers="number" rangeSelect="rect" />
+    <div ref={gridContainerRef} className="relative" onContextMenuCapture={(event) => { const bounds = event.currentTarget.getBoundingClientRect(); contextPointer.current = { x: event.clientX - bounds.left, y: event.clientY - bounds.top }; }}>
+      <DataEditor ref={gridRef} width="100%" height={height} columns={columns} rows={rows.length + 12} getCellContent={getCellContent} onCellEdited={onCellEdited} onCellsEdited={onCellsEdited} onCellClicked={([col, row]) => { setContextMenu(null); const record = rows[row]; setSelectedRowId(record?.id ?? null); if (col === 0 && record) void toggleRowLock(record); }} onCellContextMenu={([col, row], event) => { event.preventDefault(); const current = gridSelection?.current?.range; const withinCurrentSelection = Boolean(gridSelection?.rows.hasIndex(row)) || Boolean(current && col >= current.x && col < current.x + current.width && row >= current.y && row < current.y + current.height); if (!withinCurrentSelection) setGridSelection({ current: { cell: [col, row], range: { x: col, y: row, width: 1, height: 1 }, rangeStack: [] }, columns: CompactSelection.empty(), rows: CompactSelection.empty() }); setSelectedRowId(rows[row]?.id ?? null); const pointer = contextPointer.current; setContextMenu({ x: pointer?.x ?? event.bounds.x, y: pointer?.y ?? event.bounds.y, row }); }} gridSelection={gridSelection} onGridSelectionChange={setGridSelection} getCellsForSelection={true} onPaste={true} fillHandle keybindings={{ downFill: true, rightFill: true }} rowMarkers="clickable-number" rowSelect="multi" rangeSelect="rect" />
+      {contextMenu && <div className="absolute z-30 min-w-40 rounded-md border border-slate-200 bg-white py-1 shadow-lg" style={{ left: contextMenu.x, top: contextMenu.y }}>
+        <button type="button" onClick={() => { copySelectedRows(); void gridRef.current?.emit("copy"); setContextMenu(null); }} className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-100">Copy</button>
+        <button type="button" onClick={() => { void (async () => { copySelectedRows(); await gridRef.current?.emit("copy"); clearSelectionContents(); })(); setContextMenu(null); }} className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-100">Cut</button>
+        <button type="button" onClick={() => { void pasteFromClipboard(); setContextMenu(null); }} className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-100">Paste</button>
+        <div className="my-1 border-t border-slate-200" />
+        <button type="button" onClick={() => { void insertRow("above"); setContextMenu(null); }} className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-100">Insert row above</button>
+        <button type="button" onClick={() => { void insertRow("below"); setContextMenu(null); }} className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-100">Insert row below</button>
+        <button type="button" disabled={!copiedRows.length} onClick={() => { void insertCopiedRows(); setContextMenu(null); }} className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-100 disabled:text-slate-300">Insert copied</button>
+        <button type="button" onClick={() => { void deleteContextRow(); setContextMenu(null); }} className="block w-full px-3 py-1.5 text-left text-xs text-red-700 hover:bg-red-50">Delete row</button>
+        <div className="my-1 border-t border-slate-200" />
+        <button type="button" onClick={() => { clearSelectionContents(); setContextMenu(null); }} className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-100">Clear contents</button>
+        <button type="button" onClick={() => { setIsFillPaletteOpen(true); setContextMenu(null); }} className="flex w-full items-center gap-1 px-3 py-1.5 text-left text-xs hover:bg-slate-100"><PaintBucket size={14} />Colour fill</button>
+        {rows[contextMenu.row] && <button type="button" disabled={!hasRowContent(rows[contextMenu.row])} onClick={() => { void toggleRowLock(rows[contextMenu.row]); setContextMenu(null); }} className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-100 disabled:text-slate-300">{rows[contextMenu.row].is_locked ? "Unlock row" : "Lock row"}</button>}
+      </div>}
+    </div>
   </section>;
 }
