@@ -80,7 +80,6 @@ import {
   deleteCustomColumn,
   type CustomColumn,
 } from "@/lib/custom-columns";
-import ClientsLiveRefresh from "./RealtimeRefresh";
 import { toast } from "sonner";
 import type { SearchResult } from "../app/types";
 import {
@@ -1839,40 +1838,6 @@ export function CRMBoard({
     if (error) throw error;
     return data ?? [];
   }
-
-  useEffect(() => {
-    const supabase = createSupabaseClient();
-
-    const clientsChannel = supabase
-      .channel("crmboard-clients-live")
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "clients" },
-        async (payload) => {
-          console.log("Realtime client insert:", payload);
-        },
-      )
-      .subscribe((status) => {
-        console.log("Realtime status:", status);
-      });
-
-    const assigneesChannel = supabase
-      .channel("crmboard-clients-assignees-live")
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "client_assignees" },
-        async (payload) => {
-          console.log("Realtime assignee insert:", payload);
-          await reloadClients();
-        },
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(clientsChannel);
-      supabase.removeChannel(assigneesChannel);
-    };
-  }, [reloadClients]);
 
   useEffect(() => {
     const loadAssignments = async () => {
@@ -8134,7 +8099,6 @@ export function CRMBoard({
           </div>
         </div>
       )}
-      <ClientsLiveRefresh onRefresh={reloadClients} />
     </div>
   );
 }

@@ -16,6 +16,7 @@ import { fetchAllSubitemAssignees } from '@/components/CRMBoard';
 import { TeamPanel } from '@/components/TeamPanel';
 import { UserAdminPanel } from '@/components/UserAdminPanel';
 import { CustomerProfilesPanel } from '@/components/CustomerProfilesPanel';
+import { AppLiveRefresh } from '@/components/AppLiveRefresh';
 
 export default function Page() {
   const [clients, setClients] = useState<Client[]>([]);
@@ -33,6 +34,8 @@ export default function Page() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [searchTarget, setSearchTarget] = useState<SearchResult | null>(null);
   const [profileLeadClientId, setProfileLeadClientId] = useState<string | null>(null);
+  const [crmMetadataVersion, setCrmMetadataVersion] = useState(0);
+  const [roundRobinVersion, setRoundRobinVersion] = useState(0);
 
   const selectSearchResult = useCallback((result: SearchResult) => {
     // currently setting to CRM panel since only CRM panel has search results, change in the future when other panels have search results
@@ -174,6 +177,40 @@ export default function Page() {
     void loadProfiles();
   }, []);
 
+  const reloadProfiles = useCallback(async () => {
+    const supabase = createSupabaseClient();
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('id, full_name, email, role, avatar_url')
+      .order('full_name', { ascending: true, nullsFirst: true });
+    if (error) {
+      console.error('Failed to refresh profiles', error);
+      return;
+    }
+    setProfiles((data ?? []) as Profile[]);
+  }, []);
+
+  const reloadGroups = useCallback(async () => {
+    const supabase = createSupabaseClient();
+    const { data, error } = await supabase
+      .from('crm_groups')
+      .select('id, name, color, sort_order')
+      .order('sort_order', { ascending: true });
+    if (error) {
+      console.error('Failed to refresh CRM groups', error);
+      return;
+    }
+    setGroups((data ?? []) as CRMGroup[]);
+  }, []);
+
+  const refreshBoardMetadata = useCallback(() => {
+    setCrmMetadataVersion((version) => version + 1);
+  }, []);
+
+  const refreshRoundRobin = useCallback(() => {
+    setRoundRobinVersion((version) => version + 1);
+  }, []);
+
   useEffect(() => {
     const loadGroups = async () => {
       const supabase = createSupabaseClient();
@@ -198,6 +235,7 @@ export default function Page() {
       case 'crm':
         return (
           <CRMBoard
+            key={crmMetadataVersion}
             clients={clients}
             expandedIds={expandedClientIds}
             setExpandedIds={setExpandedClientIds}
@@ -241,7 +279,7 @@ export default function Page() {
       case 'roundrobin':
         return (
           <div className="flex h-full items-center justify-center text-sm text-gray-500">
-            <RoundRobinAdminPanel profiles={profiles} currentUserRole={currentUserRole} />
+            <RoundRobinAdminPanel key={roundRobinVersion} profiles={profiles} currentUserRole={currentUserRole} />
           </div>
         );
 
@@ -263,6 +301,14 @@ export default function Page() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-[#f8fafc]">
+      <AppLiveRefresh
+        onRecordsRefresh={reloadClients}
+        onProfilesRefresh={reloadProfiles}
+        onGroupsRefresh={reloadGroups}
+        onNotificationsRefresh={loadNotifications}
+        onBoardMetadataRefresh={refreshBoardMetadata}
+        onRoundRobinRefresh={refreshRoundRobin}
+      />
       <Sidebar
         activePanel={activePanel}
         onChangePanel={setActivePanel}
