@@ -7,6 +7,7 @@ import React, {
   useCallback,
   useMemo,
 } from "react";
+import { createPortal } from "react-dom";
 import {
   ChevronDown,
   Plus,
@@ -104,6 +105,7 @@ type PendingOptionDeletion = {
   usageCount: number;
   setEntries: React.Dispatch<React.SetStateAction<OptionEntry[]>>;
 };
+type FloatingMenuPosition = { left: number; bottom: number };
 const BOARD_OPTION_GROUP_CODES = [
   "reply_status",
   "client_status",
@@ -450,6 +452,10 @@ export function CRMBoard({
   const [isDuplicatingSubitems, setIsDuplicatingSubitems] = useState(false);
   const [showClientMoveMenu, setShowClientMoveMenu] = useState(false);
   const [clientMoveSearch, setClientMoveSearch] = useState("");
+  const [clientMoveMenuPosition, setClientMoveMenuPosition] =
+    useState<FloatingMenuPosition | null>(null);
+  const [subitemMoveMenuPosition, setSubitemMoveMenuPosition] =
+    useState<FloatingMenuPosition | null>(null);
   const [isMovingClients, setIsMovingClients] = useState(false);
   const [isDuplicatingClients, setIsDuplicatingClients] = useState(false);
   const [detailClientId, setDetailClientId] = useState<string | null>(null);
@@ -5463,6 +5469,31 @@ export function CRMBoard({
     setSubitemMoveSearch("");
   }, []);
 
+  const toggleMoveMenu = (
+    event: React.MouseEvent<HTMLButtonElement>,
+    kind: "client" | "subitem",
+  ) => {
+    const isOpen = kind === "client" ? showClientMoveMenu : showSubitemMoveMenu;
+    if (isOpen) {
+      if (kind === "client") setShowClientMoveMenu(false);
+      else setShowSubitemMoveMenu(false);
+      return;
+    }
+    const rect = event.currentTarget.getBoundingClientRect();
+    const width = kind === "client" ? 288 : 320;
+    const position = {
+      left: Math.min(Math.max(8, rect.left), window.innerWidth - width - 8),
+      bottom: Math.max(8, window.innerHeight - rect.top + 8),
+    };
+    if (kind === "client") {
+      setClientMoveMenuPosition(position);
+      setShowClientMoveMenu(true);
+    } else {
+      setSubitemMoveMenuPosition(position);
+      setShowSubitemMoveMenu(true);
+    }
+  };
+
   return (
     <div className="crm-board flex flex-col h-full bg-white">
       {detailSubitem &&
@@ -5646,7 +5677,7 @@ export function CRMBoard({
             <button
               type="button"
               disabled={isMovingClients || !canEditSelectedClients}
-              onClick={() => setShowClientMoveMenu((open) => !open)}
+              onClick={(event) => toggleMoveMenu(event, "client")}
               title={
                 !canEditSelectedClients
                   ? "You can only edit items that are assigned to you"
@@ -5656,8 +5687,12 @@ export function CRMBoard({
             >
               <MoveRight size={17} /> {isMovingClients ? "Moving..." : "Move"}
             </button>
-            {showClientMoveMenu && !isMovingClients && (
-              <div className="absolute bottom-full left-0 mb-2 max-h-96 w-72 overflow-y-auto rounded-xl border border-slate-200 bg-white p-3 shadow-2xl">
+            {showClientMoveMenu && !isMovingClients && clientMoveMenuPosition &&
+              createPortal(
+              <div
+                style={{ left: clientMoveMenuPosition.left, bottom: clientMoveMenuPosition.bottom }}
+                className="fixed z-[1000] max-h-96 w-72 overflow-y-auto rounded-xl border border-slate-200 bg-white p-3 shadow-2xl"
+              >
                 <div className="mb-3 text-base font-medium text-slate-800">
                   Move to group
                 </div>
@@ -5701,7 +5736,8 @@ export function CRMBoard({
                     No groups found.
                   </div>
                 )}
-              </div>
+              </div>,
+              document.body,
             )}
           </div>
           <button
@@ -5808,7 +5844,7 @@ export function CRMBoard({
             <button
               type="button"
               disabled={isMovingSubitems || !canEditSelectedSubitems}
-              onClick={() => setShowSubitemMoveMenu((open) => !open)}
+              onClick={(event) => toggleMoveMenu(event, "subitem")}
               title={
                 !canEditSelectedSubitems
                   ? "You can only edit items that are assigned to you"
@@ -5818,8 +5854,12 @@ export function CRMBoard({
             >
               <MoveRight size={17} /> {isMovingSubitems ? "Moving..." : "Move"}
             </button>
-            {showSubitemMoveMenu && !isMovingSubitems && (
-              <div className="absolute bottom-full left-0 mb-2 max-h-96 w-80 overflow-y-auto rounded-xl border border-slate-200 bg-white p-3 shadow-2xl">
+            {showSubitemMoveMenu && !isMovingSubitems && subitemMoveMenuPosition &&
+              createPortal(
+              <div
+                style={{ left: subitemMoveMenuPosition.left, bottom: subitemMoveMenuPosition.bottom }}
+                className="fixed z-[1000] max-h-96 w-80 overflow-y-auto rounded-xl border border-slate-200 bg-white p-3 shadow-2xl"
+              >
                 <div className="mb-3 text-base font-medium text-slate-800">
                   Choose a new parent
                 </div>
@@ -5867,7 +5907,8 @@ export function CRMBoard({
                     No clients found.
                   </div>
                 )}
-              </div>
+              </div>,
+              document.body,
             )}
           </div>
           <button
