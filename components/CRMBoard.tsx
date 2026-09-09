@@ -264,6 +264,17 @@ export async function fetchAllSubitemAssignees(): Promise<SubitemAssigneeMap> {
   }, {} as SubitemAssigneeMap);
 }
 
+function groupAccentColor(group: CRMGroup) {
+  const name = group.name.trim().toLowerCase();
+  if (name.startsWith("closed leads")) return "#ef3f5a";
+  if (name === "new leads") return "#4f8dff";
+  if (name === "follow up") return "#7c45e8";
+  if (name === "future projects") return "#008fca";
+  if (name === "shortlisted") return "#58bdf2";
+  if (name === "unqualified lead") return "#a84be6";
+  return group.color || "#7BCBD5";
+}
+
 export function CRMBoard({
   clients,
   expandedIds,
@@ -7210,7 +7221,8 @@ export function CRMBoard({
                   event.preventDefault();
                   setOpenGroupMenu(group.id);
                 }}
-                className={`group relative flex min-h-[58px] cursor-grab items-center gap-3 px-3 py-2 text-sm border-y border-gray-100 bg-gray-50 active:cursor-grabbing ${groupDragOverId === group.id || dragOverGroupId === group.id ? "ring-2 ring-inset ring-[#0f8da8]/50 bg-sky-50" : ""}`}
+                className={`group relative flex min-h-[60px] cursor-grab items-center gap-3 border border-slate-300 border-l-[5px] bg-white px-3 py-2 text-sm shadow-[0_1px_0_rgba(15,23,42,0.03)] active:cursor-grabbing ${groupDragOverId === group.id || dragOverGroupId === group.id ? "ring-2 ring-inset ring-[#0f8da8]/50 bg-sky-50" : ""}`}
+                style={{ borderLeftColor: groupAccentColor(group) }}
               >
                 <button
                   type="button"
@@ -7258,16 +7270,16 @@ export function CRMBoard({
                 )}
                 <button
                   onClick={() => toggleGroup(group.id)}
-                  className="text-base text-gray-500"
+                  className="text-base"
+                  style={{ color: groupAccentColor(group) }}
                 >
                   {collapsedGroups[group.id] ? "▷" : "▼"}
                 </button>
-                <div className="h-8 w-1.5 rounded bg-[#7BCBD5]" />
                 <div>
-                  <div className="crm-group-name text-lg leading-6 text-slate-700">
+                  <div className="crm-group-name text-lg leading-6" style={{ color: groupAccentColor(group) }}>
                     {group.name}
                   </div>
-                  <div className="text-[13px] italic font-normal text-slate-500">
+                  <div className="text-[13px] font-normal text-slate-500">
                     {groupClients.length}{" "}
                     {groupClients.length === 1 ? "Client" : "Clients"} /{" "}
                     {trackingView
