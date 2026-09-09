@@ -307,6 +307,7 @@ export type ClientRowProps = {
     oldName: string,
     newName: string,
   ) => void | Promise<void>;
+  onReorderOptions?: (code: string, values: string[]) => void | Promise<void>;
   onFilterColumn?: (column: string) => void;
   onSortColumn?: (
     category: "subitem" | "payment",
@@ -427,6 +428,7 @@ export function ClientRow({
   onDeleteModeOfPayment,
   onUpdateOptionColor,
   onRenameOption,
+  onReorderOptions,
   onFilterColumn,
   onSortColumn,
   clientCustomCols,
@@ -2684,6 +2686,7 @@ export function ClientRow({
             onRenameOption={(oldName, newName) =>
               onRenameOption?.("reply_status", oldName, newName)
             }
+            onReorderOptions={(values) => onReorderOptions?.("reply_status", values)}
           />
         </div>
 
@@ -2729,6 +2732,7 @@ export function ClientRow({
             onRenameOption={(oldName, newName) =>
               onRenameOption?.("client_status", oldName, newName)
             }
+            onReorderOptions={(values) => onReorderOptions?.("client_status", values)}
           />
 
           <AlertDialog open={showCloseDialog} onOpenChange={setShowCloseDialog}>
@@ -2874,6 +2878,7 @@ export function ClientRow({
             onRenameOption={(oldName, newName) =>
               onRenameOption?.("channel", oldName, newName)
             }
+            onReorderOptions={(values) => onReorderOptions?.("channel", values)}
           />
         </div>
 
@@ -2899,6 +2904,7 @@ export function ClientRow({
             onRenameOption={(oldName, newName) =>
               onRenameOption?.("importance", oldName, newName)
             }
+            onReorderOptions={(values) => onReorderOptions?.("importance", values)}
           />
         </div>
 
@@ -3085,6 +3091,7 @@ export function ClientRow({
             onRenameOption={(oldName, newName) =>
               onRenameOption?.("progress", oldName, newName)
             }
+            onReorderOptions={(values) => onReorderOptions?.("progress", values)}
           />
         </div>
         {trackingMode && (
@@ -3493,6 +3500,7 @@ export function ClientRow({
           currentUserId={currentUserId}
           onUpdateOptionColor={onUpdateOptionColor}
           onRenameOption={onRenameOption}
+          onReorderOptions={onReorderOptions}
           onFilterColumn={onFilterColumn}
           onSortColumn={onSortColumn}
           hiddenColumnKeys={hiddenColumnKeys}

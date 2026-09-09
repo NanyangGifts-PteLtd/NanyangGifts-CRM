@@ -118,6 +118,7 @@ export function TimelineSection({
   onDeleteTimelineProgress,
   onUpdateOptionColor,
   onRenameOption,
+  onReorderOptions,
   readOnly = false,
 }: {
   rows: TimelineRow[];
@@ -127,6 +128,7 @@ export function TimelineSection({
   onDeleteTimelineProgress?: (name: string) => void | Promise<void>;
   onUpdateOptionColor?: (name: string, color: string) => void | Promise<void>;
   onRenameOption?: (oldName: string, newName: string) => void | Promise<void>;
+  onReorderOptions?: (values: string[]) => void | Promise<void>;
   readOnly?: boolean;
 }) {
   const [permissionNotice, setPermissionNotice] = useState<{
@@ -376,6 +378,7 @@ export function TimelineSection({
                       manageLabel="timeline progress"
                       onUpdateOptionColor={onUpdateOptionColor}
                       onRenameOption={onRenameOption}
+                      onReorderOptions={onReorderOptions}
                       small
                     />
                   </td>

@@ -35,6 +35,7 @@ export default function Page() {
   const [searchTarget, setSearchTarget] = useState<SearchResult | null>(null);
   const [profileLeadClientId, setProfileLeadClientId] = useState<string | null>(null);
   const [crmMetadataVersion, setCrmMetadataVersion] = useState(0);
+  const [labelOptionsVersion, setLabelOptionsVersion] = useState(0);
   const [roundRobinVersion, setRoundRobinVersion] = useState(0);
 
   const selectSearchResult = useCallback((result: SearchResult) => {
@@ -207,6 +208,10 @@ export default function Page() {
     setCrmMetadataVersion((version) => version + 1);
   }, []);
 
+  const refreshLabelOptions = useCallback(() => {
+    setLabelOptionsVersion((version) => version + 1);
+  }, []);
+
   const refreshRoundRobin = useCallback(() => {
     setRoundRobinVersion((version) => version + 1);
   }, []);
@@ -252,6 +257,7 @@ export default function Page() {
             searchTarget={searchTarget}
             openClientId={profileLeadClientId}
             onOpenClientHandled={() => setProfileLeadClientId(null)}
+            labelOptionsVersion={labelOptionsVersion}
           />
         );
 
@@ -307,6 +313,7 @@ export default function Page() {
         onGroupsRefresh={reloadGroups}
         onNotificationsRefresh={loadNotifications}
         onBoardMetadataRefresh={refreshBoardMetadata}
+        onLabelOptionsRefresh={refreshLabelOptions}
         onRoundRobinRefresh={refreshRoundRobin}
       />
       <Sidebar

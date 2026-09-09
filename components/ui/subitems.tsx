@@ -279,6 +279,7 @@ type SubitemProps = {
     oldName: string,
     newName: string,
   ) => void | Promise<void>;
+  onReorderOptions?: (code: string, values: string[]) => void | Promise<void>;
   onFilterColumn?: (column: string) => void;
   onSortColumn?: (
     category: "subitem" | "payment",
@@ -395,6 +396,7 @@ export function SubitemsTable({
   onDeleteModeOfPayment,
   onUpdateOptionColor,
   onRenameOption,
+  onReorderOptions,
   onFilterColumn,
   onSortColumn,
   subitemCustomCols,
@@ -1732,6 +1734,7 @@ export function SubitemsTable({
               onRenameOption={(oldName, newName) =>
                 onRenameOption?.("local_overseas", oldName, newName)
               }
+              onReorderOptions={(values) => onReorderOptions?.("local_overseas", values)}
               small
             />
           </div>
@@ -1752,6 +1755,7 @@ export function SubitemsTable({
               onRenameOption={(oldName, newName) =>
                 onRenameOption?.("subitem_status", oldName, newName)
               }
+              onReorderOptions={(values) => onReorderOptions?.("subitem_status", values)}
               small
             />
           </div>
@@ -1798,6 +1802,7 @@ export function SubitemsTable({
               onRenameOption={(oldName, newName) =>
                 onRenameOption?.("shipper", oldName, newName)
               }
+              onReorderOptions={(values) => onReorderOptions?.("shipper", values)}
               small
             />
           </div>
@@ -1834,6 +1839,7 @@ export function SubitemsTable({
               onRenameOption={(oldName, newName) =>
                 onRenameOption?.("currency", oldName, newName)
               }
+              onReorderOptions={(values) => onReorderOptions?.("currency", values)}
               readOnly={costLocked}
               small
             />
@@ -2009,6 +2015,7 @@ export function SubitemsTable({
               onRenameOption={(oldName, newName) =>
                 onRenameOption?.("payment", oldName, newName)
               }
+              onReorderOptions={(values) => onReorderOptions?.("payment", values)}
               small
             />
           </div>
@@ -2029,6 +2036,7 @@ export function SubitemsTable({
               onRenameOption={(oldName, newName) =>
                 onRenameOption?.("subitem_status", oldName, newName)
               }
+              onReorderOptions={(values) => onReorderOptions?.("subitem_status", values)}
               small
             />
           </div>
@@ -2049,6 +2057,7 @@ export function SubitemsTable({
               onRenameOption={(oldName, newName) =>
                 onRenameOption?.("payment_status", oldName, newName)
               }
+              onReorderOptions={(values) => onReorderOptions?.("payment_status", values)}
               small
             />
           </div>
@@ -2069,6 +2078,7 @@ export function SubitemsTable({
               onRenameOption={(oldName, newName) =>
                 onRenameOption?.("shipper", oldName, newName)
               }
+              onReorderOptions={(values) => onReorderOptions?.("shipper", values)}
               small
             />
           </div>
@@ -2105,6 +2115,7 @@ export function SubitemsTable({
               onRenameOption={(oldName, newName) =>
                 onRenameOption?.("currency", oldName, newName)
               }
+              onReorderOptions={(values) => onReorderOptions?.("currency", values)}
               readOnly={costLocked}
               small
             />
@@ -2168,6 +2179,7 @@ export function SubitemsTable({
               onRenameOption={(oldName, newName) =>
                 onRenameOption?.("mode_of_payment", oldName, newName)
               }
+              onReorderOptions={(values) => onReorderOptions?.("mode_of_payment", values)}
               small
             />
           </div>
@@ -3179,6 +3191,7 @@ export function SubitemsTable({
                           newName,
                         )
                       }
+                      onReorderOptions={(values) => onReorderOptions?.("subitem_subprogress", values)}
                       readOnly={!canEditSubitem(sub.id)}
                     />
                   </ExpandedRow>

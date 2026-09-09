@@ -257,6 +257,7 @@ interface CRMBoardProps {
   searchTarget?: SearchResult | null;
   openClientId?: string | null;
   onOpenClientHandled?: () => void;
+  labelOptionsVersion?: number;
 }
 
 export async function fetchAllSubitemAssignees(): Promise<SubitemAssigneeMap> {
@@ -296,6 +297,7 @@ export function CRMBoard({
   subitemAssignees,
   setSubitemAssignees,
   searchTarget,
+  labelOptionsVersion = 0,
   openClientId,
   onOpenClientHandled,
 }: CRMBoardProps) {
@@ -1836,7 +1838,7 @@ export function CRMBoard({
     return () => {
       active = false;
     };
-  }, []);
+  }, [labelOptionsVersion]);
 
   async function fetchGroups(): Promise<CRMGroup[]> {
     const supabase = createSupabaseClient();
@@ -2136,6 +2138,80 @@ export function CRMBoard({
       );
     },
     [getOptionGroupId, notifyChange],
+  );
+
+  const reorderOptionValues = useCallback(
+    async (code: string, values: string[]) => {
+      const setters: Record<
+        string,
+        React.Dispatch<React.SetStateAction<OptionEntry[]>>
+      > = {
+        reply_status: setReplyStatusEntries,
+        client_status: setClientStatusEntries,
+        channel: setChannelEntries,
+        importance: setImportanceEntries,
+        progress: setProgressEntries,
+        payment: setPaymentEntries,
+        payment_status: setPaymentStatusEntries,
+        mode_of_payment: setModeOfPaymentEntries,
+        shipper: setShipperEntries,
+        local_overseas: setLocalOverseasEntries,
+        subitem_status: setSubitemStatusEntries,
+        currency: setCurrencyEntries,
+        subitem_subprogress: setSubitemSubprogressEntries,
+      };
+      const setEntries = setters[code];
+      if (!setEntries) return;
+      const currentEntries: Record<string, OptionEntry[]> = {
+        reply_status: replyStatusEntries,
+        client_status: clientStatusEntries,
+        channel: channelEntries,
+        importance: importanceEntries,
+        progress: progressEntries,
+        payment: paymentEntries,
+        payment_status: paymentStatusEntries,
+        mode_of_payment: modeOfPaymentEntries,
+        shipper: shipperEntries,
+        local_overseas: localOverseasEntries,
+        subitem_status: subitemStatusEntries,
+        currency: currencyEntries,
+        subitem_subprogress: subitemSubprogressEntries,
+      };
+      const previous = currentEntries[code] ?? [];
+      const byValue = new Map(previous.map((entry) => [entry.value, entry]));
+      setEntries(values.map((value) => byValue.get(value)).filter(Boolean) as OptionEntry[]);
+
+      const response = await fetch("/api/options/reorder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code, values }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setEntries(previous);
+        toast.error("Label order could not be saved", {
+          description: result.error ?? "Please try again.",
+        });
+        return;
+      }
+      notifyChange("Label order updated", `The ${code.replaceAll("_", " ")} labels were reordered.`);
+    },
+    [
+      channelEntries,
+      clientStatusEntries,
+      currencyEntries,
+      importanceEntries,
+      localOverseasEntries,
+      modeOfPaymentEntries,
+      notifyChange,
+      paymentEntries,
+      paymentStatusEntries,
+      progressEntries,
+      replyStatusEntries,
+      shipperEntries,
+      subitemStatusEntries,
+      subitemSubprogressEntries,
+    ],
   );
 
   const renameOptionValue = useCallback(
@@ -7811,6 +7887,7 @@ export function CRMBoard({
                       }}
                       onUpdateOptionColor={updateOptionColor}
                       onRenameOption={renameOptionValue}
+                      onReorderOptions={reorderOptionValues}
                       onFilterColumn={openColumnFilter}
                       onSortColumn={(category, column, direction) =>
                         setBoardSort({ category, column, direction })

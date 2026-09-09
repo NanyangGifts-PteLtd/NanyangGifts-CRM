@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Check, PaintBucket, Pencil, Plus, Trash2 } from "lucide-react";
+import { Check, GripVertical, PaintBucket, Pencil, Plus, Trash2 } from "lucide-react";
 
 const MENU_WIDTH = 540;
 const LABEL_COLORS = [
@@ -62,6 +62,7 @@ export function StatusBadge({
   canDeleteOption,
   onUpdateOptionColor,
   onRenameOption,
+  onReorderOptions,
   manageLabel = "option",
   readOnly = false,
   includeBlankOption = true,
@@ -75,6 +76,7 @@ export function StatusBadge({
   canDeleteOption?: (name: string) => boolean;
   onUpdateOptionColor?: (name: string, color: string) => void | Promise<void>;
   onRenameOption?: (oldName: string, newName: string) => void | Promise<void>;
+  onReorderOptions?: (values: string[]) => void | Promise<void>;
   manageLabel?: string;
   readOnly?: boolean;
   includeBlankOption?: boolean;
@@ -84,6 +86,7 @@ export function StatusBadge({
   const [newOption, setNewOption] = useState("");
   const [colorEditor, setColorEditor] = useState<string | null>(null);
   const [draftNames, setDraftNames] = useState<Record<string, string>>({});
+  const [draggedOption, setDraggedOption] = useState<string | null>(null);
   const [menuStyle, setMenuStyle] = useState<React.CSSProperties>({});
   const btnRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -103,6 +106,7 @@ export function StatusBadge({
     setColorEditor(null);
     setDraftNames({});
     setNewOption("");
+    setDraggedOption(null);
   };
 
   const closeMenu = () => {
@@ -161,6 +165,18 @@ export function StatusBadge({
       await onRenameOption?.(oldName, nextName);
   };
 
+  const moveOption = async (targetName: string) => {
+    if (draggedOption === null || draggedOption === targetName) return;
+    const values = configuredOptions.map((option) => option.value);
+    const fromIndex = values.indexOf(draggedOption);
+    const targetIndex = values.indexOf(targetName);
+    if (fromIndex < 0 || targetIndex < 0) return;
+    values.splice(fromIndex, 1);
+    values.splice(targetIndex, 0, draggedOption);
+    setDraggedOption(null);
+    await onReorderOptions?.(values);
+  };
+
   const menu =
     open &&
     createPortal(
@@ -178,7 +194,23 @@ export function StatusBadge({
             return (
               <div
                 key={option.value || "__empty__"}
-                className="relative min-w-0"
+                draggable={editingLabels && Boolean(onReorderOptions)}
+                onDragStart={(event) => {
+                  if (!editingLabels) return;
+                  event.dataTransfer.effectAllowed = "move";
+                  event.dataTransfer.setData("text/plain", option.value);
+                  setDraggedOption(option.value);
+                }}
+                onDragOver={(event) => {
+                  if (editingLabels && draggedOption !== null) event.preventDefault();
+                }}
+                onDrop={(event) => {
+                  if (!editingLabels) return;
+                  event.preventDefault();
+                  void moveOption(option.value);
+                }}
+                onDragEnd={() => setDraggedOption(null)}
+                className={`relative min-w-0 ${editingLabels && onReorderOptions ? "cursor-grab active:cursor-grabbing" : ""} ${draggedOption === option.value ? "opacity-40" : ""}`}
               >
                 {!editingLabels ? (
                   <button
@@ -198,11 +230,38 @@ export function StatusBadge({
                     )}
                   </button>
                 ) : option.value === "" ? (
-                  <div className="flex h-9 items-center rounded-md border border-gray-200 bg-gray-50 px-3 text-xs text-gray-500">
-                    Blank label
+                  <div className="flex h-9 items-center gap-1 rounded-md border border-gray-200 bg-gray-50 p-1 text-xs text-gray-500">
+                    {onReorderOptions && (
+                      <span
+                        className="flex h-7 w-4 shrink-0 cursor-grab items-center justify-center text-[#0f8da8] active:cursor-grabbing"
+                        title="Drag to reorder"
+                      >
+                        <GripVertical size={15} />
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setColorEditor(colorEditor === option.value ? null : option.value)
+                      }
+                      className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-white"
+                      style={{ background: optionColor }}
+                      title="Change blank label color"
+                    >
+                      <PaintBucket size={14} />
+                    </button>
+                    <span className="px-1">Blank label</span>
                   </div>
                 ) : (
                   <div className="flex h-9 items-center gap-1 rounded-md border border-gray-200 bg-white p-1">
+                    {onReorderOptions && (
+                      <span
+                        className="flex h-7 w-4 shrink-0 cursor-grab items-center justify-center text-[#0f8da8] active:cursor-grabbing"
+                        title="Drag to reorder"
+                      >
+                        <GripVertical size={15} />
+                      </span>
+                    )}
                     <button
                       type="button"
                       onClick={() =>

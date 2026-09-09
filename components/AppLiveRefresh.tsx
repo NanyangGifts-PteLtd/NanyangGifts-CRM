@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 
-type RefreshKind = "records" | "profiles" | "groups" | "notifications" | "boardMetadata" | "roundRobin";
+type RefreshKind = "records" | "profiles" | "groups" | "notifications" | "boardMetadata" | "labelOptions" | "roundRobin";
 
 export function AppLiveRefresh({
   onRecordsRefresh,
@@ -11,6 +11,7 @@ export function AppLiveRefresh({
   onGroupsRefresh,
   onNotificationsRefresh,
   onBoardMetadataRefresh,
+  onLabelOptionsRefresh,
   onRoundRobinRefresh,
 }: {
   onRecordsRefresh: () => void | Promise<void>;
@@ -18,6 +19,7 @@ export function AppLiveRefresh({
   onGroupsRefresh: () => void | Promise<void>;
   onNotificationsRefresh: () => void | Promise<void>;
   onBoardMetadataRefresh: () => void;
+  onLabelOptionsRefresh: () => void;
   onRoundRobinRefresh: () => void;
 }) {
   const timers = useRef<Partial<Record<RefreshKind, number>>>({});
@@ -36,6 +38,7 @@ export function AppLiveRefresh({
         if (kind === "groups") void onGroupsRefresh();
         if (kind === "notifications") void onNotificationsRefresh();
         if (kind === "boardMetadata") onBoardMetadataRefresh();
+        if (kind === "labelOptions") onLabelOptionsRefresh();
         if (kind === "roundRobin") onRoundRobinRefresh();
       }, 300);
     };
@@ -54,7 +57,7 @@ export function AppLiveRefresh({
         .on("postgres_changes", { event: "*", schema: "public", table: "subitem_assignees" }, () => schedule("records"))
         .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, () => schedule("profiles"))
         .on("postgres_changes", { event: "*", schema: "public", table: "crm_groups" }, () => { schedule("groups"); schedule("boardMetadata"); })
-        .on("postgres_changes", { event: "*", schema: "public", table: "option_values" }, () => schedule("boardMetadata"))
+        .on("postgres_changes", { event: "*", schema: "public", table: "option_values" }, () => schedule("labelOptions"))
         .on("postgres_changes", { event: "*", schema: "public", table: "custom_columns" }, () => schedule("boardMetadata"))
         .on("postgres_changes", { event: "*", schema: "public", table: "notifications" }, () => schedule("notifications"))
         .on("postgres_changes", { event: "*", schema: "public", table: "sales_round_robin_pool" }, () => schedule("roundRobin"))
@@ -68,7 +71,7 @@ export function AppLiveRefresh({
       timers.current = {};
       if (channel) supabase.removeChannel(channel);
     };
-  }, [onBoardMetadataRefresh, onGroupsRefresh, onNotificationsRefresh, onProfilesRefresh, onRecordsRefresh, onRoundRobinRefresh]);
+  }, [onBoardMetadataRefresh, onGroupsRefresh, onLabelOptionsRefresh, onNotificationsRefresh, onProfilesRefresh, onRecordsRefresh, onRoundRobinRefresh]);
 
   return null;
 }
