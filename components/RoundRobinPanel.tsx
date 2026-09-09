@@ -53,38 +53,56 @@ export function RoundRobinAdminPanel({
   const [draggedUser, setDraggedUser] = useState<string | null>(null);
   const [draggingPointer, setDraggingPointer] = useState(false);
   const [pointer, setPointer] = useState(0);
+  const [serverCanEdit, setServerCanEdit] = useState<boolean | null>(null);
+  const [serverMembers, setServerMembers] = useState<Profile[] | null>(null);
   const [over, setOver] = useState<{ list: ListName; id?: string } | null>(
     null,
   );
-  const editable = ["director", "admin", "dev"].includes(
-    (currentUserRole ?? "").toLowerCase(),
-  );
+  // The route verifies the authenticated user with the service-role client.
+  // Prefer that result because the browser's profiles read may be restricted
+  // by RLS even for an authorised Dev account.
+  const editable =
+    serverCanEdit ??
+    ["director", "admin", "dev"].includes(
+      (currentUserRole ?? "").trim().toLowerCase(),
+    );
+  const roundRobinProfiles = serverMembers ?? profiles;
   const users = useMemo(
     () =>
-      profiles
-        .filter((p) => p.role?.toLowerCase() === "sales")
-        .map((p, index) => ({
-          user_id: p.id,
-          full_name: p.full_name,
-          email: p.email,
-          position: index + 10000,
-          is_active: false,
-          is_current: false,
-          list_name: "out" as ListName,
-          ...rows.find((row) => row.user_id === p.id),
-        }))
+      roundRobinProfiles
+        .filter((p) => {
+          const role = p.role?.trim().toLowerCase();
+          return role === "sales" || role === "director";
+        })
+        .map((p, index) => {
+          const stored = rows.find((row) => row.user_id === p.id);
+          const isDirector = p.role?.trim().toLowerCase() === "director";
+          const baseName = p.full_name?.trim() || p.email || "Director";
+          return {
+            user_id: p.id,
+            email: p.email,
+            position: index + 10000,
+            is_active: false,
+            is_current: false,
+            list_name: "out" as ListName,
+            ...stored,
+            full_name: isDirector ? `${baseName} (Director)` : (stored?.full_name ?? p.full_name),
+          };
+        })
         .sort((a, b) => a.position - b.position),
-    [profiles, rows],
+    [roundRobinProfiles, rows],
   );
 
   const load = async () => {
     setLoading(true);
     try {
-      const [queue, position] = await Promise.all([
+      const [queueResponse, position] = await Promise.all([
         getSalesRoundRobinQueue(),
         getSalesRoundRobinPointer(),
       ]);
-      setRows(queue);
+      setRows(queueResponse.queue);
+      setServerCanEdit(queueResponse.canEdit);
+      setServerMembers(queueResponse.members);
       setPointer(position);
     } finally {
       setLoading(false);
@@ -103,7 +121,15 @@ export function RoundRobinAdminPanel({
         list_name: (row.list_name ?? "out") as ListName,
         position: row.position,
       })),
-    ).catch(() => void load());
+    ).catch((error) => {
+      toast.error("Round robin could not be saved", {
+        description:
+          error instanceof Error
+            ? error.message
+            : "The previous layout has been restored.",
+      });
+      void load();
+    });
   };
   const setPointerPosition = (position: number) => {
     if (!editable) return;
@@ -111,7 +137,15 @@ export function RoundRobinAdminPanel({
     setDraggingPointer(false);
     void setSalesRoundRobinPointer(position)
       .then(() => toast.success("Round robin pointer moved"))
-      .catch(() => void load());
+      .catch((error) => {
+        toast.error("Round robin pointer could not be moved", {
+          description:
+            error instanceof Error
+              ? error.message
+              : "The previous position has been restored.",
+        });
+        void load();
+      });
   };
   const place = (list: ListName, before?: string) => {
     if (!editable) return;

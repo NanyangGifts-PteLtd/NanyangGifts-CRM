@@ -3178,6 +3178,10 @@ export function CRMBoard({
       const targetGroup = groups.find((g) => g.id === groupId);
       const draggedClient = clients.find((c) => c.id === localDraggedId);
       if (!targetGroup || !draggedClient) return;
+      if (!canEditClientRecord(localDraggedId)) {
+        showAssignmentPermissionError();
+        return;
+      }
       const matchingStatus = clientStatuses.find(
         (s) => s.toLowerCase() === targetGroup.name.toLowerCase(),
       ) as ClientStatus | undefined;
@@ -3208,9 +3212,23 @@ export function CRMBoard({
       } catch (err) {
         setClients(clients);
         console.error("Failed to move client to group", err);
+        toast.error("Client could not be moved", {
+          description:
+            err instanceof Error
+              ? err.message
+              : "You do not have permission to move this client.",
+        });
       }
     },
-    [draggedClientId, clients, groups, clientStatuses, setClients],
+    [
+      draggedClientId,
+      clients,
+      groups,
+      clientStatuses,
+      canEditClientRecord,
+      setClients,
+      showAssignmentPermissionError,
+    ],
   );
 
   const advancedColumns = useMemo<AdvancedFilterColumn[]>(() => {
@@ -4505,13 +4523,22 @@ export function CRMBoard({
             },
           );
         }
+        return true;
       } catch (error: any) {
         setClients(clients);
         console.error("Failed to update client", error);
+        const isRlsError =
+          error?.code === "42501" ||
+          /row-level security|permission denied/i.test(
+            String(error?.message ?? ""),
+          );
         toast.error("Client update failed", {
           description:
-            error?.message || "The client change could not be saved.",
+            isRlsError
+              ? "You do not have permission to make this change."
+              : error?.message || "The client change could not be saved.",
         });
+        return false;
       }
     },
     [
@@ -5068,7 +5095,8 @@ export function CRMBoard({
         showAssignmentPermissionError();
         return;
       }
-      await updateClient(clientId, { groupId: targetGroupId });
+      const moved = await updateClient(clientId, { groupId: targetGroupId });
+      if (!moved) return;
       toast.success("Client moved", {
         description: "The client was moved to the selected group.",
       });

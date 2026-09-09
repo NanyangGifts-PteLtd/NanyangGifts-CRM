@@ -39,6 +39,18 @@ export type RoundRobinQueueRow = {
     list_name?: 'sales' | 'whatsapp' | 'out';
 }
 
+export type RoundRobinQueueResponse = {
+    queue: RoundRobinQueueRow[];
+    canEdit: boolean;
+    members: Array<{
+        id: string;
+        full_name: string | null;
+        email: string | null;
+        avatar_url?: string | null;
+        role?: string | null;
+    }>;
+}
+
 export async function saveSalesRoundRobinLayout(rows: Array<{ user_id: string; list_name: 'sales' | 'whatsapp' | 'out'; position: number }>) {
     const response = await fetch('/api/round-robin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'save-layout', layout: rows }) });
     if (!response.ok) throw new Error((await response.json()).error ?? 'Could not save round robin layout.');
@@ -60,7 +72,11 @@ export async function getSalesRoundRobinQueue() {
     const response = await fetch('/api/round-robin');
     const result = await response.json();
     if (!response.ok) throw new Error(result.error ?? 'Could not load round robin.');
-    return (result.queue ?? []) as RoundRobinQueueRow[];
+    return {
+        queue: (result.queue ?? []) as RoundRobinQueueRow[],
+        canEdit: result.canEdit === true,
+        members: result.members ?? [],
+    } satisfies RoundRobinQueueResponse;
 }
 
 export async function getNextSalesAssignee() {
