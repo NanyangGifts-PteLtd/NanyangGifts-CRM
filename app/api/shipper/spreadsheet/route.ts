@@ -37,6 +37,34 @@ function autoLockAt(values: Record<string, unknown>, existingAutoLockAt?: string
   return shouldAutoLock(values) ? existingAutoLockAt ?? new Date(Date.now() + AUTO_LOCK_DELAY_MS).toISOString() : null;
 }
 
+function splitCnTrackingNumbers(value: unknown) {
+  if (typeof value !== "string") return [];
+  return [
+    ...new Set(
+      value
+        .split(/[\r\n,;，；]+/)
+        .map((tracking) => tracking.trim())
+        .filter(Boolean),
+    ),
+  ];
+}
+
+// The spreadsheet is the shipping-side source of truth for a waybill. When it
+// changes, mirror it back to every CRM subitem identified by this row's CN
+// tracking value(s). Multiple CN values are supported as a temporary format
+// while subitems still store one tracking field each.
+async function syncSgTrackingFromWaybill(values: Record<string, unknown>) {
+  const cnTrackingNumbers = splitCnTrackingNumbers(values.cn_tracking_no);
+  if (!cnTrackingNumbers.length) return;
+
+  const sgTracking = values.waybill_number == null ? "" : String(values.waybill_number).trim();
+  const { error } = await supabaseAdmin
+    .from("subitems")
+    .update({ sg_tracking: sgTracking })
+    .in("cn_tracking", cnTrackingNumbers);
+  if (error) throw error;
+}
+
 async function lockExpiredRows(workbookId: string) {
   const { error } = await supabaseAdmin
     .from("shipper_spreadsheet_rows")
@@ -277,6 +305,13 @@ export async function PATCH(request: NextRequest) {
           if (error) throw error;
           return updated;
         }));
+        if (Object.prototype.hasOwnProperty.call(sharedUpdate, "waybill_number")) {
+          await Promise.all(
+            data.map((row) =>
+              syncSgTrackingFromWaybill(row.values ?? {}),
+            ),
+          );
+        }
         return NextResponse.json({ rows: data });
       }
       if (body.operation === "unmerge") {
@@ -376,6 +411,12 @@ export async function PATCH(request: NextRequest) {
       .select()
       .single();
     if (error) throw error;
+    if (
+      body.values &&
+      Object.prototype.hasOwnProperty.call(body.values, "waybill_number")
+    ) {
+      await syncSgTrackingFromWaybill(data.values ?? {});
+    }
     return NextResponse.json({ row: data, role });
   } catch (error) {
     return failure(error);
