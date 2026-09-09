@@ -93,6 +93,7 @@ export async function deliverMakeOutboxEvent(id: string) {
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${secret}`,
+        "X-Make-Apikey": secret,
         "X-CRM-Event-ID": row.id,
       },
       body: JSON.stringify({
