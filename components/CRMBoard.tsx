@@ -97,6 +97,13 @@ import { uploadCrmFiles } from "@/lib/crm-files";
 import { CombinedPushPreviewModal } from "./shipper/CombinedPushPreviewModal";
 
 type OptionEntry = { value: string; color: string };
+type PendingOptionDeletion = {
+  code: string;
+  name: string;
+  optionId: string;
+  usageCount: number;
+  setEntries: React.Dispatch<React.SetStateAction<OptionEntry[]>>;
+};
 const BOARD_OPTION_GROUP_CODES = [
   "reply_status",
   "client_status",
@@ -590,6 +597,9 @@ export function CRMBoard({
   const [subitemSubprogressEntries, setSubitemSubprogressEntries] = useState<
     OptionEntry[]
   >([]);
+  const [pendingOptionDeletion, setPendingOptionDeletion] =
+    useState<PendingOptionDeletion | null>(null);
+  const [isDeletingOption, setIsDeletingOption] = useState(false);
 
   const replyStatuses = replyStatusEntries.map((e) => e.value);
   const clientStatuses = clientStatusEntries.map((e) => e.value);
@@ -1991,37 +2001,86 @@ export function CRMBoard({
       name: string,
       setEntries: React.Dispatch<React.SetStateAction<OptionEntry[]>>,
     ) => {
-      const groupId = await getOptionGroupId(code);
-      if (!groupId) {
+      const response = await fetch("/api/options/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "preview", code, name }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result.optionId) {
         toast.error("Option could not be deleted", {
-          description: `The ${code.replaceAll("_", " ")} option group was not found.`,
+          description: result.error ?? "The label option was not found.",
         });
         return;
       }
 
-      const supabase = createSupabaseClient();
-      const { error } = await supabase
-        .from("option_values")
-        .delete()
-        .eq("group_id", groupId)
-        .eq("value", name);
-
-      if (error) {
-        console.error(`Failed to delete option from ${code}`, error);
+      if ((result.usageCount ?? 0) > 0) {
+        setPendingOptionDeletion({
+          code,
+          name,
+          optionId: result.optionId,
+          usageCount: result.usageCount,
+          setEntries,
+        });
+        return;
+      }
+      const deleteResponse = await fetch("/api/options/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "delete", code, name, optionId: result.optionId }),
+      });
+      const deleteResult = await deleteResponse.json().catch(() => ({}));
+      if (!deleteResponse.ok) {
         toast.error("Option could not be deleted", {
-          description: error.message,
+          description: deleteResult.error ?? "The label option could not be deleted.",
         });
         return;
       }
 
       setEntries((prev) => prev.filter((e) => e.value !== name));
+      await reloadClients();
       notifyChange(
         "Option deleted",
         `${name} was removed from the ${code.replaceAll("_", " ")} list.`,
       );
     },
-    [getOptionGroupId, notifyChange],
+    [notifyChange, reloadClients],
   );
+
+  const confirmOptionDeletion = useCallback(async () => {
+    const pending = pendingOptionDeletion;
+    if (!pending) return;
+
+    setIsDeletingOption(true);
+    const response = await fetch("/api/options/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "delete",
+        code: pending.code,
+        name: pending.name,
+        optionId: pending.optionId,
+      }),
+    });
+    const result = await response.json().catch(() => ({}));
+    setIsDeletingOption(false);
+    if (!response.ok) {
+      toast.error("Option could not be deleted", {
+        description: result.error ?? "The label option could not be deleted.",
+      });
+      return;
+    }
+
+    pending.setEntries((entries) =>
+      entries.filter((entry) => entry.value !== pending.name),
+    );
+    setPendingOptionDeletion(null);
+    await reloadClients();
+    notifyChange(
+      "Option deleted",
+      `${pending.name} was removed and cleared from ${pending.usageCount} ${pending.usageCount === 1 ? "cell" : "cells"}.`,
+    );
+  }, [notifyChange, pendingOptionDeletion, reloadClients]);
 
   const updateOptionColor = useCallback(
     async (code: string, name: string, color: string) => {
@@ -2387,22 +2446,9 @@ export function CRMBoard({
 
   const handleDeleteReplyStatus = useCallback(
     async (name: string) => {
-      const supabase = createSupabaseClient();
-      const { error } = await supabase
-        .from("option_values")
-        .delete()
-        .eq("value", name);
-      if (error) {
-        console.error(error);
-        toast.error("Reply status could not be deleted", {
-          description: error.message,
-        });
-        return;
-      }
-      setReplyStatusEntries((prev) => prev.filter((e) => e.value !== name));
-      notifyChange("Option deleted", `${name} was removed from Reply Status.`);
+      await deleteOptionValue("reply_status", name, setReplyStatusEntries);
     },
-    [notifyChange],
+    [deleteOptionValue],
   );
 
   const handleAddStatus = useCallback(
@@ -2441,22 +2487,9 @@ export function CRMBoard({
 
   const handleDeleteStatus = useCallback(
     async (name: string) => {
-      const supabase = createSupabaseClient();
-      const { error } = await supabase
-        .from("option_values")
-        .delete()
-        .eq("value", name);
-      if (error) {
-        console.error(error);
-        toast.error("Status could not be deleted", {
-          description: error.message,
-        });
-        return;
-      }
-      setClientStatusEntries((prev) => prev.filter((e) => e.value !== name));
-      notifyChange("Option deleted", `${name} was removed from Status.`);
+      await deleteOptionValue("client_status", name, setClientStatusEntries);
     },
-    [notifyChange],
+    [deleteOptionValue],
   );
 
   const handleAddChannel = useCallback(
@@ -2495,22 +2528,9 @@ export function CRMBoard({
 
   const handleDeleteChannel = useCallback(
     async (name: string) => {
-      const supabase = createSupabaseClient();
-      const { error } = await supabase
-        .from("option_values")
-        .delete()
-        .eq("value", name);
-      if (error) {
-        console.error(error);
-        toast.error("Channel could not be deleted", {
-          description: error.message,
-        });
-        return;
-      }
-      setChannelEntries((prev) => prev.filter((e) => e.value !== name));
-      notifyChange("Option deleted", `${name} was removed from Channel.`);
+      await deleteOptionValue("channel", name, setChannelEntries);
     },
-    [notifyChange],
+    [deleteOptionValue],
   );
 
   const handleAddImportance = useCallback(
@@ -2549,22 +2569,9 @@ export function CRMBoard({
 
   const handleDeleteImportance = useCallback(
     async (name: string) => {
-      const supabase = createSupabaseClient();
-      const { error } = await supabase
-        .from("option_values")
-        .delete()
-        .eq("value", name);
-      if (error) {
-        console.error(error);
-        toast.error("Importance could not be deleted", {
-          description: error.message,
-        });
-        return;
-      }
-      setImportanceEntries((prev) => prev.filter((e) => e.value !== name));
-      notifyChange("Option deleted", `${name} was removed from Importance.`);
+      await deleteOptionValue("importance", name, setImportanceEntries);
     },
-    [notifyChange],
+    [deleteOptionValue],
   );
 
   const handleAddProgress = useCallback(
@@ -6378,6 +6385,39 @@ export function CRMBoard({
 
         <div className="flex-1" />
       </div>
+
+      <AlertDialog
+        open={!!pendingOptionDeletion}
+        onOpenChange={(open) => {
+          if (!open && !isDeletingOption) setPendingOptionDeletion(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete label currently in use?</AlertDialogTitle>
+            <AlertDialogDescription>
+              <span className="font-semibold text-gray-700">
+                {pendingOptionDeletion?.name}
+              </span>{" "}
+              is currently used in {pendingOptionDeletion?.usageCount ?? 0}{" "}
+              {(pendingOptionDeletion?.usageCount ?? 0) === 1 ? "cell" : "cells"}.
+              Deleting it will change those cells to the blank label option.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeletingOption}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={isDeletingOption}
+              onClick={(event) => {
+                event.preventDefault();
+                void confirmOptionDeletion();
+              }}
+            >
+              {isDeletingOption ? "Deleting…" : "Delete and clear cells"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog
         open={!!customerMatchPending}
