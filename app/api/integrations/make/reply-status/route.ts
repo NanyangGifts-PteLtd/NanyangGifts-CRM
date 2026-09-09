@@ -7,15 +7,27 @@ type ReplyDetectedBody = {
   eventId?: string;
   eventType?: string;
   clientId?: string;
+  clientEmail?: string;
   assigneeId?: string;
   assigneeEmail?: string;
   messageId?: string;
   sentAt?: string;
   subject?: string;
   from?: string;
-  to?: string[];
-  cc?: string[];
+  to?: Array<string | { email?: string; Email?: string }>;
+  cc?: Array<string | { email?: string; Email?: string }>;
 };
+
+function recipientEmails(value: ReplyDetectedBody["to"]) {
+  return (Array.isArray(value) ? value : [])
+    .map((recipient) => typeof recipient === "string" ? recipient : recipient?.email ?? recipient?.Email ?? "")
+    .map((email) => email.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function escapedIlike(value: string) {
+  return value.replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll("_", "\\_");
+}
 
 function authorized(request: NextRequest) {
   const secret = process.env.MAKE_INTEGRATION_SECRET?.trim() ?? "";
@@ -49,9 +61,17 @@ export async function POST(request: NextRequest) {
   }
 
   const eventId = body.eventId?.trim() || body.messageId?.trim() || "";
-  const clientId = body.clientId?.trim() || "";
-  if (!eventId || !clientId) {
-    return NextResponse.json({ error: "eventId (or messageId) and clientId are required." }, { status: 400 });
+  const requestedClientId = body.clientId?.trim() || "";
+  const clientEmail = body.clientEmail?.trim().toLowerCase() || "";
+  const assigneeEmail = body.assigneeEmail?.trim().toLowerCase() || "";
+  const recipientCandidates = [...new Set([
+    ...recipientEmails(body.to),
+    ...recipientEmails(body.cc),
+  ].filter((email) => email !== assigneeEmail))];
+  if (!eventId || (!requestedClientId && !clientEmail && recipientCandidates.length === 0)) {
+    return NextResponse.json({
+      error: "eventId (or messageId) and either clientId, clientEmail, or To/CC recipients are required.",
+    }, { status: 400 });
   }
 
   const eventType = body.eventType?.trim() || "client.reply_detected";
@@ -85,13 +105,6 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const { data: client, error: clientError } = await supabaseAdmin
-      .from("clients")
-      .select("id, name, reply_status")
-      .eq("id", clientId)
-      .single();
-    if (clientError || !client) throw new Error(clientError?.message ?? "Client was not found.");
-
     let assignee: { id: string; full_name: string | null; email: string | null } | null = null;
     if (body.assigneeId?.trim() || body.assigneeEmail?.trim()) {
       let query = supabaseAdmin.from("profiles").select("id, full_name, email");
@@ -101,16 +114,56 @@ export async function POST(request: NextRequest) {
       const { data, error } = await query.maybeSingle();
       if (error || !data) throw new Error(error?.message ?? "The replying assignee was not found.");
       assignee = data;
+    }
 
-      const { data: assignment, error: assignmentError } = await supabaseAdmin
+    let clientCandidates: Array<{ id: string; name: string; email: string | null; reply_status: string | null; created_at: string }> = [];
+    if (requestedClientId) {
+      const { data, error } = await supabaseAdmin
+        .from("clients")
+        .select("id, name, email, reply_status, created_at")
+        .eq("id", requestedClientId)
+        .maybeSingle();
+      if (error) throw new Error(error.message);
+      if (data) clientCandidates = [data];
+    } else {
+      const lookupEmails = clientEmail ? [clientEmail] : recipientCandidates;
+      const matches = await Promise.all(lookupEmails.map(async (email) => {
+        const { data, error } = await supabaseAdmin
+          .from("clients")
+          .select("id, name, email, reply_status, created_at")
+          .ilike("email", escapedIlike(email))
+          .order("created_at", { ascending: false });
+        if (error) throw new Error(error.message);
+        return data ?? [];
+      }));
+      const uniqueMatches = new Map(matches.flat().map((candidate) => [candidate.id, candidate]));
+      clientCandidates = [...uniqueMatches.values()].sort(
+        (left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime(),
+      );
+    }
+    if (!clientCandidates.length) {
+      throw new Error(`No CRM client was found for ${requestedClientId ? "that client ID" : clientEmail || "the To/CC recipients"}.`);
+    }
+
+    if (assignee) {
+      const candidateIds = clientCandidates.map((candidate) => candidate.id);
+      const { data: assignments, error: assignmentError } = await supabaseAdmin
         .from("client_assignees")
         .select("client_id")
-        .eq("client_id", clientId)
         .eq("user_id", assignee.id)
-        .maybeSingle();
+        .in("client_id", candidateIds);
       if (assignmentError) throw new Error(assignmentError.message);
-      if (!assignment) throw new Error("The replying user is not assigned to this client.");
+      const assignedIds = new Set((assignments ?? []).map((assignment) => assignment.client_id));
+      clientCandidates = clientCandidates.filter((candidate) => assignedIds.has(candidate.id));
+      if (!clientCandidates.length) {
+        throw new Error("The replying user is not assigned to a client with that email address.");
+      }
     }
+
+    // Email is only a temporary correlation key. If it matches repeat leads,
+    // use the newest lead (after narrowing to the sender's assignments).
+    const client = clientCandidates[0];
+    const clientId = client.id;
 
     const oldStatus = client.reply_status ?? "";
     let repliedOptionId: string | null = null;
@@ -159,6 +212,8 @@ export async function POST(request: NextRequest) {
         meta: {
           provider: "make",
           eventId,
+          clientEmail: client.email?.trim().toLowerCase() || clientEmail || null,
+          emailMatchCount: clientCandidates.length,
           messageId: body.messageId ?? null,
           from: body.from ?? null,
           to: body.to ?? [],
@@ -170,7 +225,13 @@ export async function POST(request: NextRequest) {
       if (activityError) throw new Error(activityError.message);
     }
 
-    const result = { clientId, replyStatus: "Replied", alreadyReplied: oldStatus === "Replied" };
+    const result = {
+      clientId,
+      matchedBy: requestedClientId ? "clientId" : clientEmail ? "clientEmail" : "recipients",
+      clientEmail: client.email?.trim().toLowerCase() || clientEmail || null,
+      replyStatus: "Replied",
+      alreadyReplied: oldStatus === "Replied",
+    };
     await setInboundEvent(eventId, {
       status: "completed",
       result,
