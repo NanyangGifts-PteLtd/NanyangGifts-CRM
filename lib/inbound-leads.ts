@@ -2,6 +2,7 @@ import "server-only";
 
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { ensureCustomerProfilesForLead } from "@/lib/customer-profile-links";
+import { queueLeadAssignedMakeEvent } from "@/lib/make-integration";
 
 export type InboundSubitem = { name: string; qty: string };
 
@@ -274,6 +275,32 @@ export async function ingestLead(lead: NormalizedInboundLead): Promise<InboundRe
         if (error) throw new InboundLeadError(error.message);
       }
       ingestion = await updateIngestion(ingestion.id, { notification_sent: true });
+    }
+
+    // Email delivery is an external side effect. Queue it durably, but never
+    // roll back an otherwise successful lead ingestion when Make is offline.
+    try {
+      await queueLeadAssignedMakeEvent({
+        ingestionId: ingestion.id,
+        clientId,
+        assignedUserId,
+        source: lead.source,
+        externalId: lead.externalId,
+        submissionType: lead.submissionType,
+        customerName: lead.customerName,
+        companyName: lead.companyName,
+        clientEmail: lead.email,
+        clientPhone: lead.phone,
+        requirements: lead.notes,
+        nbd: lead.nbd,
+        billingAddress: lead.billingAddress,
+        orderNumber: lead.orderNumber,
+        orderTotal: lead.orderTotal,
+        currency: lead.currency,
+        subitems: lead.subitems,
+      });
+    } catch (error) {
+      console.error("Could not queue Make lead assignment event", error);
     }
 
     const { error: completionError } = await supabaseAdmin.from("lead_ingestions").update({ status: "completed", last_error: null, completed_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", ingestion.id);
