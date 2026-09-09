@@ -56,7 +56,7 @@ export function AppLiveRefresh({
         .on("postgres_changes", { event: "*", schema: "public", table: "client_assignees" }, () => schedule("records"))
         .on("postgres_changes", { event: "*", schema: "public", table: "subitem_assignees" }, () => schedule("records"))
         .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, () => schedule("profiles"))
-        .on("postgres_changes", { event: "*", schema: "public", table: "crm_groups" }, () => { schedule("groups"); schedule("boardMetadata"); })
+        .on("postgres_changes", { event: "*", schema: "public", table: "crm_groups" }, () => schedule("groups"))
         .on("postgres_changes", { event: "*", schema: "public", table: "option_values" }, () => schedule("labelOptions"))
         .on("postgres_changes", { event: "*", schema: "public", table: "custom_columns" }, () => schedule("boardMetadata"))
         .on("postgres_changes", { event: "*", schema: "public", table: "notifications" }, () => schedule("notifications"))

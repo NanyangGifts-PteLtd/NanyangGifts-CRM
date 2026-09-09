@@ -258,6 +258,7 @@ interface CRMBoardProps {
   openClientId?: string | null;
   onOpenClientHandled?: () => void;
   labelOptionsVersion?: number;
+  groupVersion?: number;
 }
 
 export async function fetchAllSubitemAssignees(): Promise<SubitemAssigneeMap> {
@@ -298,6 +299,7 @@ export function CRMBoard({
   setSubitemAssignees,
   searchTarget,
   labelOptionsVersion = 0,
+  groupVersion = 0,
   openClientId,
   onOpenClientHandled,
 }: CRMBoardProps) {
@@ -1891,6 +1893,27 @@ export function CRMBoard({
     };
     void loadAssignments();
   }, []);
+
+  useEffect(() => {
+    if (groupVersion === 0) return;
+    let active = true;
+    void fetchGroups()
+      .then((groupsData) => {
+        if (!active) return;
+        setGroups(groupsData);
+        // Preserve each user's existing collapsed/expanded choices. A newly
+        // created group starts collapsed rather than expanding the Board.
+        setCollapsedGroups((previous) =>
+          Object.fromEntries(
+            groupsData.map((group) => [group.id, previous[group.id] ?? true]),
+          ),
+        );
+      })
+      .catch((error) => console.error("Failed to refresh CRM groups", error));
+    return () => {
+      active = false;
+    };
+  }, [groupVersion]);
 
   useEffect(() => {
     if (!showFilter) return;

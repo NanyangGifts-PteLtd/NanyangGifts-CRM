@@ -36,6 +36,7 @@ export default function Page() {
   const [profileLeadClientId, setProfileLeadClientId] = useState<string | null>(null);
   const [crmMetadataVersion, setCrmMetadataVersion] = useState(0);
   const [labelOptionsVersion, setLabelOptionsVersion] = useState(0);
+  const [groupVersion, setGroupVersion] = useState(0);
   const [roundRobinVersion, setRoundRobinVersion] = useState(0);
 
   const selectSearchResult = useCallback((result: SearchResult) => {
@@ -212,6 +213,11 @@ export default function Page() {
     setLabelOptionsVersion((version) => version + 1);
   }, []);
 
+  const refreshGroupsInPlace = useCallback(() => {
+    void reloadGroups();
+    setGroupVersion((version) => version + 1);
+  }, [reloadGroups]);
+
   const refreshRoundRobin = useCallback(() => {
     setRoundRobinVersion((version) => version + 1);
   }, []);
@@ -258,6 +264,7 @@ export default function Page() {
             openClientId={profileLeadClientId}
             onOpenClientHandled={() => setProfileLeadClientId(null)}
             labelOptionsVersion={labelOptionsVersion}
+            groupVersion={groupVersion}
           />
         );
 
@@ -310,7 +317,7 @@ export default function Page() {
       <AppLiveRefresh
         onRecordsRefresh={reloadClients}
         onProfilesRefresh={reloadProfiles}
-        onGroupsRefresh={reloadGroups}
+        onGroupsRefresh={refreshGroupsInPlace}
         onNotificationsRefresh={loadNotifications}
         onBoardMetadataRefresh={refreshBoardMetadata}
         onLabelOptionsRefresh={refreshLabelOptions}
