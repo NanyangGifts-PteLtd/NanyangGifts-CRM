@@ -1300,6 +1300,7 @@ export function SubitemsTable({
     }
     try {
       setPushingSubitemId(subitemId);
+      let pushResult: { spreadsheetPushes?: Array<{ workbookName?: string; rowNumbers?: number[] }> } | undefined;
 
       if (onPushToShipperView) {
         await onPushToShipperView(subitemId);
@@ -1325,19 +1326,20 @@ export function SubitemsTable({
         if (!response.ok) {
           throw new Error(result?.error || "Failed to push to shipper view.");
         }
+        pushResult = result;
       }
 
       setPushedSubitemIds((previous) => new Set(previous).add(subitemId));
       window.localStorage.setItem("shipper-spreadsheet-refresh", `${Date.now()}-${Math.random()}`);
 
-      toast.success("Pushed to shipper view", {
-        description: "The shipping record was created or updated successfully.",
+      const destinations = (pushResult?.spreadsheetPushes ?? []).map((push) => `${push.workbookName ?? "Shipper workbook"}: row${(push.rowNumbers?.length ?? 0) === 1 ? "" : "s"} ${(push.rowNumbers ?? []).join(", ")}`).join(" · ");
+      toast.success("Pushed to shipper workbook", {
+        description: destinations || "The shipping record was added to the shipper workbook.",
         action: {
           label: "Details",
           onClick: () =>
             toast("Push details", {
-              description:
-                "The subitem was matched to its configured shipper and its shipper-view fields were updated.",
+              description: destinations || "The CRM record was added as a new workbook row.",
             }),
         },
       });
@@ -1514,8 +1516,9 @@ export function SubitemsTable({
       setPushPreview(null);
       setPushPreviewShipperName("");
       setPushPreviewHistory(null);
-      toast.success("Pushed to shipper view", {
-        description: "The reviewed shipping record was saved successfully.",
+      const destinations = (result?.spreadsheetPushes ?? []).map((push: { workbookName?: string; rowNumbers?: number[] }) => `${push.workbookName ?? "Shipper workbook"}: row${(push.rowNumbers?.length ?? 0) === 1 ? "" : "s"} ${(push.rowNumbers ?? []).join(", ")}`).join(" · ");
+      toast.success("Pushed to shipper workbook", {
+        description: destinations || "The reviewed shipping record was added as a new workbook row.",
       });
     } catch (error: any) {
       toast.error("Push to shipper view failed", {
@@ -2333,8 +2336,8 @@ export function SubitemsTable({
           <AlertDialogHeader>
             <AlertDialogTitle>Push this subitem again?</AlertDialogTitle>
             <AlertDialogDescription>
-              This subitem has been pushed before. Pushing it again will
-              overwrite the existing information on the shipper view.
+              This subitem has been pushed before. It was previously sent to
+              its shipper workbook; confirming will add a new row.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -2347,7 +2350,7 @@ export function SubitemsTable({
                 await handlePushToShipperView(subitemId, true);
               }}
             >
-              Overwrite and push
+              Push again
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -2406,19 +2409,11 @@ export function SubitemsTable({
                     <>
                       It was previously pushed to{" "}
                       <strong>{pushPreviewHistory.previousShipperName}</strong>.
-                      Confirming this push will move its linked shipper row to{" "}
-                      <strong>
-                        {pushPreviewShipperName || "the selected shipper"}
-                      </strong>
-                      , so it will no longer appear under the previous shipper.
+                      It was previously sent to <strong>{pushPreviewHistory.previousShipperName}</strong>.
                     </>
                   ) : (
                     <>
-                      Confirming will overwrite its existing information in{" "}
-                      <strong>
-                        {pushPreviewShipperName || "the selected shipper"}
-                      </strong>
-                      .
+                      It was previously sent to <strong>{pushPreviewHistory.previousShipperName}</strong>.
                     </>
                   )}
                 </p>

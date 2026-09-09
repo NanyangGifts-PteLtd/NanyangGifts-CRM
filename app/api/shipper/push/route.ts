@@ -307,17 +307,10 @@ export async function POST(req: NextRequest) {
         if (existingRowsError) return NextResponse.json({ error: existingRowsError.message }, { status: 500 });
         const existingBySubitemId = new Map((existingRows ?? []).map((row) => [row.subitem_id, row]));
 
-        const previews: Array<Record<string, any>> = defaults.map((defaultsRow) => {
-            const existing = existingBySubitemId.get(defaultsRow.subitem_id);
-            // Existing shipper data takes precedence so a re-push can be reviewed without losing prior work.
-            if (!existing) return defaultsRow;
-            const merged = { ...defaultsRow, ...existing } as Record<string, unknown>;
-            // The original direct-push rows have several null fields. Retain useful source defaults for those.
-            for (const field of PREVIEW_FIELDS) {
-                if (merged[field] === null || merged[field] === undefined) merged[field] = defaultsRow[field];
-            }
-            return { ...merged, shipper_id: defaultsRow.shipper_id, value: Number(merged.qty ?? 0) * Number(merged.up ?? 0) };
-        });
+        // A spreadsheet push is append-only. Previous legacy shipper rows are
+        // used only to identify that the CRM item was pushed before; they must
+        // never supply values or alter a fresh push preview.
+        const previews: Array<Record<string, any>> = defaults;
 
         if (body.preview) return NextResponse.json({
             ok: true,
@@ -407,14 +400,25 @@ export async function POST(req: NextRequest) {
             entries.push({ sourceSubitemId: String(sourceRow.subitem_id), plannedFor: String(sourceRow.info_provided_date), values });
             spreadsheetRowsByShipper.set(shipperId, entries);
         }
-        const spreadsheetRows = await Promise.all([...spreadsheetRowsByShipper].map(([shipperId, rows]) =>
-            createCrmSpreadsheetRows({
+        const spreadsheetPushes = await Promise.all([...spreadsheetRowsByShipper].map(async ([shipperId, rows]) => {
+            const createdRows = await createCrmSpreadsheetRows({
                 shipperId,
                 shipperName: shipperNameById.get(shipperId) ?? "Shipper",
                 createdBy: user.id,
                 rows,
-            }),
-        ));
+            });
+            const workbookId = createdRows[0]?.workbook_id;
+            const { data: workbookRows, error: workbookRowsError } = workbookId
+                ? await supabaseAdmin.from("shipper_spreadsheet_rows").select("id, sort_key").eq("workbook_id", workbookId).order("sort_key", { ascending: true }).order("id", { ascending: true })
+                : { data: [], error: null };
+            if (workbookRowsError) throw workbookRowsError;
+            const positions = new Map((workbookRows ?? []).map((row, index) => [row.id, index + 1]));
+            return {
+                shipperId,
+                workbookName: `${shipperNameById.get(shipperId) ?? "Shipper"} workbook`,
+                rowNumbers: createdRows.map((row) => positions.get(row.id)).filter((row): row is number => typeof row === "number"),
+            };
+        }));
 
         const activityRows = rowsToUpsert
             .filter((row) => typeof row.client_id === "string" && typeof row.subitem_id === "string")
@@ -446,7 +450,8 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({
             ok: true,
             count: pushedRows?.length ?? 0,
-            spreadsheetRowsCreated: spreadsheetRows.flat().length,
+            spreadsheetRowsCreated: spreadsheetPushes.reduce((count, workbook) => count + workbook.rowNumbers.length, 0),
+            spreadsheetPushes,
             rows: pushedRows ?? [],
         });
     } catch (error: any) {

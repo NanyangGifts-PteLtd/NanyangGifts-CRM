@@ -50,13 +50,13 @@ function CombinedShipmentInfo({
           </div>
         </div>
         <label className="text-xs">
-          ???
+          退税?
           <select
             value={preview.shared.tax_refund ?? ""}
             onChange={(e) => set("tax_refund", e.target.value)}
             className="mt-1 w-full rounded border px-3 py-2"
           >
-            <option value="?">?</option>
+            <option value="退">退</option>
             <option value="X">X</option>
           </select>
         </label>
@@ -68,9 +68,9 @@ function CombinedShipmentInfo({
             className="mt-1 w-full rounded border px-3 py-2"
           >
             <option value="" />
-            <option value="??">??</option>
-            <option value="??">??</option>
-            <option value="??/??">??/??</option>
+            <option value="空运">空运</option>
+            <option value="海运">海运</option>
+            <option value="海运/小包">海运/小包</option>
           </select>
         </label>
         <label className="text-xs md:col-span-2">
@@ -161,8 +161,8 @@ export function CombinedPushPreviewModal({
         <main className="flex-1 overflow-y-auto p-5">
           {item.alreadyPushed && (
             <div className="mb-4 rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
-              This subitem was pushed before. Its selected previous-shipment
-              choice is applied when you confirm.
+              This subitem was previously pushed to {item.previousShipperName || preview.shipperName}.
+              Confirming adds a new grouped workbook row.
             </div>
           )}
           <label className="block text-xs font-medium text-slate-700">

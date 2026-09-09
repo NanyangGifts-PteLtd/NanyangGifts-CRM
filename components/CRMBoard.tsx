@@ -95,7 +95,6 @@ import {
   type AdvancedFilterRule,
 } from "./AdvancedFilters";
 import { uploadCrmFiles } from "@/lib/crm-files";
-import { PreviousShipmentChoicesDialog } from "./shipper/PreviousShipmentChoicesDialog";
 import { CombinedPushPreviewModal } from "./shipper/CombinedPushPreviewModal";
 
 type OptionEntry = { value: string; color: string };
@@ -158,12 +157,6 @@ type CombinedPushPreview = {
   shared: Record<string, string>;
   existingMode: "separate" | "repush";
   amendShipmentIdBySubitemId?: Record<string, string>;
-};
-type ShipmentHistory = {
-  id: string;
-  cn_tracking_no?: string | null;
-  date_of_submission?: string | null;
-  shippers?: { name?: string | null } | null;
 };
 const CLIENT_HEADER_COLS: HeaderCol[] = [
   { key: "selectCheckbox", label: "", width: 60, minWidth: 7 },
@@ -428,10 +421,7 @@ export function CRMBoard({
   const [selectedSubitemIds, setSelectedSubitemIds] = useState<string[]>([]);
   const [combinedPushPreview, setCombinedPushPreview] =
     useState<CombinedPushPreview | null>(null);
-  const [shipmentChoiceDialog, setShipmentChoiceDialog] = useState<{
-    preview: CombinedPushPreview;
-    history: Record<string, ShipmentHistory[]>;
-  } | null>(null);
+  const [workbookPushSuccess, setWorkbookPushSuccess] = useState<{ workbookName: string; rowNumbers: number[] } | null>(null);
   const [loadingCombinedPush, setLoadingCombinedPush] = useState(false);
   const [showSubitemMoveMenu, setShowSubitemMoveMenu] = useState(false);
   const [subitemMoveSearch, setSubitemMoveSearch] = useState("");
@@ -3718,7 +3708,13 @@ export function CRMBoard({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ subitemIds: orderedSelectedIds, preview: true }),
       });
-      const result = await response.json();
+      const responseText = await response.text();
+      let result: Record<string, any>;
+      try {
+        result = JSON.parse(responseText);
+      } catch {
+        throw new Error("The server returned an unexpected response. Ensure the latest deployment is running, then try the grouped push again.");
+      }
       if (!response.ok)
         throw new Error(result.error || "Could not prepare the shipment.");
       const rows = [...(result.rows ?? [])].sort(
@@ -3729,16 +3725,9 @@ export function CRMBoard({
       const shipperIds = new Set(
         rows.map((row: any) => row.shipper_id).filter(Boolean),
       );
-      const modes = new Set(
-        rows.map((row: any) => row.sea_or_air).filter(Boolean),
-      );
       if (shipperIds.size !== 1)
         throw new Error(
           "Combined shipments require all selected subitems to have the same shipper.",
-        );
-      if (modes.size !== 1)
-        throw new Error(
-          "Combined shipments require the same Sea/Air mode for every selected subitem.",
         );
       const today = new Date(Date.now() + 8 * 60 * 60 * 1000)
         .toISOString()
@@ -3752,6 +3741,7 @@ export function CRMBoard({
           subitemId: String(row.subitem_id),
           name: String(row.item_name || "Unnamed subitem"),
           alreadyPushed: Boolean(row.already_pushed),
+          previousShipperName: String(row.previous_shipper_name || ""),
           cn_tracking_no: String(row.cn_tracking_no || ""),
           qty: String(row.qty ?? ""),
           up: String(row.up ?? ""),
@@ -3789,22 +3779,7 @@ export function CRMBoard({
         },
         amendShipmentIdBySubitemId: {},
       };
-      const historyResponse = await fetch(
-        `/api/shipper/shipments/history?subitemIds=${encodeURIComponent(orderedSelectedIds.join(","))}`,
-      );
-      const historyResult = await historyResponse.json();
-      if (!historyResponse.ok)
-        throw new Error(
-          historyResult.error || "Could not load previous shipments.",
-        );
-      const history = historyResult.shipmentsBySubitemId ?? {};
-      if (
-        Object.values(history).some(
-          (shipments: any) => Array.isArray(shipments) && shipments.length,
-        )
-      )
-        setShipmentChoiceDialog({ preview, history });
-      else setCombinedPushPreview(preview);
+      setCombinedPushPreview(preview);
     } catch (error: any) {
       toast.error("Could not create combined shipment", {
         description: error?.message,
@@ -3828,7 +3803,13 @@ export function CRMBoard({
             combinedPushPreview.amendShipmentIdBySubitemId,
         }),
       });
-      const result = await response.json();
+      const responseText = await response.text();
+      let result: { error?: string; spreadsheetPushes?: Array<{ workbookName?: string; rowNumbers?: number[] }> };
+      try {
+        result = JSON.parse(responseText);
+      } catch {
+        throw new Error("The server returned an unexpected response. Ensure the latest deployment is running, then try the grouped push again.");
+      }
       if (!response.ok)
         throw new Error(result.error || "Could not create shipment.");
       window.localStorage.setItem("shipper-spreadsheet-refresh", `${Date.now()}-${Math.random()}`);
@@ -3845,9 +3826,12 @@ export function CRMBoard({
           }),
         })),
       );
-      toast.success("Combined shipment created", {
-        description: `${combinedPushPreview.rows.length} subitems were grouped into one shipment.`,
+      const destinations = (result.spreadsheetPushes ?? []).map((push: { workbookName?: string; rowNumbers?: number[] }) => `${push.workbookName ?? "Shipper workbook"}: row${(push.rowNumbers?.length ?? 0) === 1 ? "" : "s"} ${(push.rowNumbers ?? []).join(", ")}`).join(" · ");
+      toast.success("Grouped spreadsheet push completed", {
+        description: destinations || `${combinedPushPreview.rows.length} rows were added to the shipper workbook.`,
       });
+      const firstDestination = result.spreadsheetPushes?.[0];
+      if (firstDestination) setWorkbookPushSuccess({ workbookName: firstDestination.workbookName ?? "Shipper workbook", rowNumbers: firstDestination.rowNumbers ?? [] });
       setCombinedPushPreview(null);
       setSelectedSubitemIds([]);
     } catch (error: any) {
@@ -5794,24 +5778,6 @@ export function CRMBoard({
           </button>
         </div>
       )}
-      {shipmentChoiceDialog && (
-        <PreviousShipmentChoicesDialog
-          preview={shipmentChoiceDialog.preview}
-          history={shipmentChoiceDialog.history}
-          onChange={(preview) =>
-            setShipmentChoiceDialog((current) =>
-              current
-                ? { ...current, preview: preview as CombinedPushPreview }
-                : current,
-            )
-          }
-          onCancel={() => setShipmentChoiceDialog(null)}
-          onContinue={() => {
-            setCombinedPushPreview(shipmentChoiceDialog.preview);
-            setShipmentChoiceDialog(null);
-          }}
-        />
-      )}
       {combinedPushPreview && (
         <CombinedPushPreviewModal
           preview={combinedPushPreview}
@@ -5821,6 +5787,17 @@ export function CRMBoard({
           onConfirm={() => void confirmCombinedPush()}
         />
       )}
+      <AlertDialog open={!!workbookPushSuccess} onOpenChange={(open) => !open && setWorkbookPushSuccess(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Push completed</AlertDialogTitle>
+            <AlertDialogDescription>
+              The grouped push was added to <strong>{workbookPushSuccess?.workbookName}</strong> at row{(workbookPushSuccess?.rowNumbers.length ?? 0) === 1 ? "" : "s"} {workbookPushSuccess?.rowNumbers.join(", ")}.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter><AlertDialogAction onClick={() => setWorkbookPushSuccess(null)}>Done</AlertDialogAction></AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <div className="flex items-center gap-2 px-2 py-1 border-b border-gray-200 bg-white flex-shrink-0">
         <button
           onClick={addClient}
