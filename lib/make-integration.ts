@@ -80,6 +80,12 @@ export async function deliverMakeOutboxEvent(id: string) {
   if (!data) return { id, skipped: true };
 
   const row = data as OutboxRow;
+  const client = row.payload.client && typeof row.payload.client === "object"
+    ? row.payload.client as Record<string, unknown>
+    : {};
+  const assignee = row.payload.assignee && typeof row.payload.assignee === "object"
+    ? row.payload.assignee as Record<string, unknown>
+    : {};
   const webhookUrl = process.env.MAKE_LEAD_ASSIGNED_WEBHOOK_URL?.trim();
   const secret = process.env.MAKE_INTEGRATION_SECRET?.trim();
   const nextAttemptCount = row.attempt_count + 1;
@@ -102,6 +108,17 @@ export async function deliverMakeOutboxEvent(id: string) {
         eventType: row.event_type,
         schemaVersion: 1,
         occurredAt: row.created_at,
+        // Frequently mapped fields are duplicated at the top level because
+        // Make occasionally keeps JSONB collections collapsed in its mapper.
+        clientId: client.id ?? "",
+        clientName: client.name ?? "",
+        clientEmail: client.email ?? "",
+        clientPhone: client.phone ?? "",
+        clientRequirements: client.requirements ?? "",
+        clientBoardUrl: client.boardUrl ?? "",
+        assigneeId: assignee.id ?? "",
+        assigneeName: assignee.name ?? "",
+        assigneeEmail: assignee.email ?? "",
         data: row.payload,
       }),
       signal: AbortSignal.timeout(10_000),
