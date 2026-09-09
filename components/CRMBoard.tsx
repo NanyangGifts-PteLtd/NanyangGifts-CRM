@@ -647,6 +647,12 @@ export function CRMBoard({
     groups.length > 0 && groups.every((group) => collapsedGroups[group.id]);
   const [groupToDelete, setGroupToDelete] = useState<CRMGroup | null>(null);
   const [isDeletingGroup, setIsDeletingGroup] = useState(false);
+  const [addingClientGroupId, setAddingClientGroupId] = useState<string | null>(
+    null,
+  );
+  const [newClientName, setNewClientName] = useState("");
+  const [isAddingClient, setIsAddingClient] = useState(false);
+  const isSubmittingNewClient = useRef(false);
   const [draggedClientId, setDraggedClientId] = useState<string | null>(null);
   const [draggedSubitem, setDraggedSubitem] = useState<{
     id: string;
@@ -4809,12 +4815,13 @@ export function CRMBoard({
     ],
   );
 
-  const addClient = useCallback(async () => {
+  const addClient = useCallback(async (groupId?: string | null, name?: string) => {
     try {
-      const defaultGroupId = groups[0]?.id ?? null;
+      const defaultGroupId = groupId ?? groups[0]?.id ?? null;
       const createdClient = await createClientRow(
         currentUserId ?? null,
         defaultGroupId,
+        name,
       );
       const newClient: Client = {
         id: createdClient.id,
@@ -4855,11 +4862,13 @@ export function CRMBoard({
           setClientPmAssignees(maps.pm);
         })
         .catch((e) => console.error("Failed to refresh assignees", e));
+      return true;
     } catch (error: any) {
       console.error("Failed to add client", error);
       toast.error("Client could not be added", {
         description: error?.message || "The client was not saved.",
       });
+      return false;
     }
   }, [
     currentUserId,
@@ -4870,6 +4879,28 @@ export function CRMBoard({
     setExpandedIds,
     notifyChange,
   ]);
+
+  const submitNewClient = useCallback(async () => {
+    const groupId = addingClientGroupId;
+    const name = newClientName.trim();
+    if (!groupId || isSubmittingNewClient.current) return;
+    if (!name) {
+      setAddingClientGroupId(null);
+      setNewClientName("");
+      return;
+    }
+
+    isSubmittingNewClient.current = true;
+    setIsAddingClient(true);
+    const created = await addClient(groupId, name);
+    isSubmittingNewClient.current = false;
+    setIsAddingClient(false);
+
+    if (created) {
+      setAddingClientGroupId(null);
+      setNewClientName("");
+    }
+  }, [addClient, addingClientGroupId, newClientName]);
 
   const deleteClient = useCallback(
     async (clientId: string) => {
@@ -5811,7 +5842,7 @@ export function CRMBoard({
       </AlertDialog>
       <div className="flex items-center gap-2 px-2 py-1 border-b border-gray-200 bg-white flex-shrink-0">
         <button
-          onClick={addClient}
+          onClick={() => void addClient()}
           className="flex items-center gap-1 px-2 py-1 bg-[#43adc4] hover:bg-[#0f8da8] text-white rounded-md text-[10px] font-medium transition-colors transition transform active:scale-95 duration-150"
         >
           <Plus size={12} /> Add Client
@@ -7607,6 +7638,11 @@ export function CRMBoard({
                   className="relative"
                   style={{ minWidth: totalMinWidth }}
                 >
+                  <div
+                    aria-hidden="true"
+                    className="pointer-events-none absolute inset-y-0 left-0 z-50 w-[5px]"
+                    style={{ backgroundColor: groupAccentColor(group) }}
+                  />
                   {groupClients.map((client) => (
                     <ClientRow
                       key={client.id}
@@ -7782,6 +7818,48 @@ export function CRMBoard({
                       }
                     />
                   ))}
+                  <div className="group/add-client min-h-[34px] border border-[#D0D4E4] border-t-0 bg-white px-2 py-1 hover:bg-[#f5fbff] focus-within:bg-[#f5fbff]">
+                    <div
+                      className="relative max-w-sm"
+                      style={{ marginLeft: activeClientHeaderCols.find((column) => column.key === "selectCheckbox")?.width ?? 34 }}
+                    >
+                      <Plus
+                        size={13}
+                        className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500"
+                      />
+                      <input
+                        value={addingClientGroupId === group.id ? newClientName : ""}
+                        disabled={isAddingClient}
+                        onFocus={() => {
+                          if (addingClientGroupId !== group.id) {
+                            setAddingClientGroupId(group.id);
+                            setNewClientName("");
+                          }
+                        }}
+                        onChange={(event) => setNewClientName(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            void submitNewClient();
+                          }
+                          if (event.key === "Escape") {
+                            event.preventDefault();
+                            setAddingClientGroupId(null);
+                            setNewClientName("");
+                            event.currentTarget.blur();
+                          }
+                        }}
+                        onBlur={() => void submitNewClient()}
+                        placeholder={
+                          isAddingClient && addingClientGroupId === group.id
+                            ? "Adding client…"
+                            : "Add client"
+                        }
+                        aria-label={`New client name for ${group.name}`}
+                        className="h-7 w-full rounded border border-transparent bg-transparent pl-7 pr-2 text-xs text-gray-700 outline-none transition group-hover/add-client:border-gray-500 group-hover/add-client:bg-white focus:border-[#3799b1] focus:bg-white focus:ring-2 focus:ring-[#7BCBD5]/25 disabled:cursor-not-allowed disabled:opacity-50"
+                      />
+                    </div>
+                  </div>
                 </div>
               )}
 

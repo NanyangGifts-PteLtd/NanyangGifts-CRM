@@ -533,11 +533,15 @@ export async function fetchClientsWithSubitems() {
     );
 }
 
-export async function createClientRow(currentUserId?: string | null, groupId?: string | null) {
+export async function createClientRow(
+    currentUserId?: string | null,
+    groupId?: string | null,
+    name?: string | null,
+) {
     const { data, error } = await supabase
         .from('clients')
         .insert({
-            name: 'New Client',
+            name: name?.trim() || 'New Client',
             people: '',
             reply_status: 'Waiting...',
             follow_up: '',
