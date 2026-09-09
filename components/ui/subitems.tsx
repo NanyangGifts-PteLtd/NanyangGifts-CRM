@@ -558,7 +558,8 @@ export function SubitemsTable({
   );
   const hasSubitemEditPermission = (subitemId: string) =>
     !!currentUserId &&
-    (clientAssignedIds.includes(currentUserId) ||
+    (String(currentUserRole ?? "").trim().toLowerCase() === "director" ||
+      clientAssignedIds.includes(currentUserId) ||
       clientPmAssignedIds.includes(currentUserId) ||
       (subitemAssigneeMap[subitemId] ?? []).includes(currentUserId));
   const canEditSubitem = (subitemId: string) =>

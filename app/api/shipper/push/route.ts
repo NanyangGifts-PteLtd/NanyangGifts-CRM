@@ -190,7 +190,10 @@ export async function POST(req: NextRequest) {
         const assignedSubitemIds = new Set((assignedSubitems ?? []).map((row) => row.subitem_id));
         const assignedClientIds = new Set((assignedClients ?? []).map((row) => row.client_id));
         const pmClientIds = new Set((permissionClients ?? []).filter((client) => { try { const ids = JSON.parse(client.custom_fields?.pmAssigneeIds ?? "[]"); return Array.isArray(ids) && ids.includes(user.id); } catch { return false; } }).map((client) => client.id));
-        const forbiddenSubitems = (rawSubitems ?? []).filter((item) => !assignedSubitemIds.has(item.id) && (!item.client_id || (!assignedClientIds.has(item.client_id) && !pmClientIds.has(item.client_id))));
+        const isDirector = (profile.role ?? "").trim().toLowerCase() === "director";
+        const forbiddenSubitems = isDirector
+            ? []
+            : (rawSubitems ?? []).filter((item) => !assignedSubitemIds.has(item.id) && (!item.client_id || (!assignedClientIds.has(item.client_id) && !pmClientIds.has(item.client_id))));
         if (forbiddenSubitems.length) return NextResponse.json({ error: "You can only edit items that are assigned to you" }, { status: 403 });
 
         const targetShipper = body.targetShipperId ? (allShippers ?? []).find((shipper) => shipper.id === body.targetShipperId) : null;

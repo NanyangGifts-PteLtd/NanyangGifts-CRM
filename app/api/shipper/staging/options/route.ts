@@ -15,7 +15,8 @@ export async function GET(request: NextRequest) {
   const assignedClientIds = new Set((clientAssignments ?? []).filter((row) => row.assignment_type === "people").map((row) => row.client_id));
   const assignedSubitemIds = new Set((subitemAssignments ?? []).map((row) => row.subitem_id));
   const pmClientIds = new Set((clientAssignments ?? []).filter((row) => row.assignment_type === "pm").map((row) => row.client_id));
-  const withPermission = (item: { id: string; name: string; client_id: string | null; cn_tracking: string | null }) => ({ ...item, canPush: assignedSubitemIds.has(item.id) || (!!item.client_id && (assignedClientIds.has(item.client_id) || pmClientIds.has(item.client_id))) });
+  const isDirector = profile.role.toLowerCase() === "director";
+  const withPermission = (item: { id: string; name: string; client_id: string | null; cn_tracking: string | null }) => ({ ...item, canPush: isDirector || assignedSubitemIds.has(item.id) || (!!item.client_id && (assignedClientIds.has(item.client_id) || pmClientIds.has(item.client_id))) });
   const groupIds = [...new Set((clients ?? []).map((client) => client.group_id).filter(Boolean))];
   const { data: groups } = groupIds.length ? await supabaseAdmin.from("crm_groups").select("id, name, sort_order").in("id", groupIds).order("sort_order") : { data: [] };
   const priority = (name: string) => {

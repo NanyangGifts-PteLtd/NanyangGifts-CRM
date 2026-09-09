@@ -521,6 +521,8 @@ export function CRMBoard({
   const canEditClientRecord = useCallback(
     (clientId: string) => {
       if (!currentUserId) return false;
+      if (String(currentUserRole ?? "").trim().toLowerCase() === "director")
+        return true;
       const client = clients.find((item) => item.id === clientId);
       return (
         !!client &&
@@ -528,7 +530,13 @@ export function CRMBoard({
           clientPmAssigneeIds(client).includes(currentUserId))
       );
     },
-    [clientAssignees, clientPmAssigneeIds, clients, currentUserId],
+    [
+      clientAssignees,
+      clientPmAssigneeIds,
+      clients,
+      currentUserId,
+      currentUserRole,
+    ],
   );
 
   const canEditSubitemRecord = useCallback(
