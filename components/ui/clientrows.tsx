@@ -628,9 +628,9 @@ export function ClientRow({
       customer?: string;
       total: number;
       paymentTerm: string;
-      lines: Array<{ name: string; description: string; qty: number; unitPrice: number; amount: number; taxCode: string }>;
+      lines: Array<{ id?: string; name: string; description: string; qty: number; unitPrice: number; amount: number; taxCode: string }>;
     };
-    incoming: { total: number; lines: Array<{ name: string; description: string; qty: number; unitPrice: number; amount: number; taxCode: string }> };
+    incoming: { total: number; lines: Array<{ id: string; name: string; description: string; qty: number; unitPrice: number; amount: number; taxCode: string }> };
     isInvoiced: boolean;
     invoiceDocNumbers: string[];
   } | null>(null);
@@ -643,6 +643,13 @@ export function ClientRow({
     paymentTermSource: string | null;
   } | null>(null);
   const [quickBooksPaymentTerm, setQuickBooksPaymentTerm] = useState("");
+  const [quickBooksSalesperson, setQuickBooksSalesperson] = useState("");
+  const [quickBooksCompanyName, setQuickBooksCompanyName] = useState(
+    client.company ?? "",
+  );
+  const [quoteDeliveryBySubitem, setQuoteDeliveryBySubitem] = useState<
+    Record<string, "singapore" | "other" | "">
+  >({});
   const [quickBooksDefaultsLoading, setQuickBooksDefaultsLoading] =
     useState(false);
   const [estimateResult, setEstimateResult] = useState<{
@@ -686,7 +693,7 @@ export function ClientRow({
       );
       const result = await response.json();
       if (!response.ok) {
-        throw new Error(result?.error ?? "Could not load QuickBooks estimates");
+        throw new Error(result?.error ?? "Could not load QuickBooks quotes");
       }
       const estimates = result.estimates ?? [];
       setTrackingEstimates(estimates);
@@ -710,16 +717,16 @@ export function ClientRow({
             trackingPriceInvoiceMatch: "",
           },
         });
-        toast.error("QuickBooks estimate is unavailable", {
+        toast.error("QuickBooks quote is unavailable", {
           description:
-            "The previously selected estimate no longer exists in QuickBooks. Please choose another estimate.",
+            "The previously selected quote no longer exists in QuickBooks. Please choose another quote.",
         });
       }
     } catch (error) {
       setTrackingInvoiceError(
         error instanceof Error
           ? error.message
-          : "Could not load QuickBooks estimates",
+          : "Could not load QuickBooks quotes",
       );
     } finally {
       setIsLoadingTrackingEstimates(false);
@@ -798,7 +805,7 @@ export function ClientRow({
             trackingPriceInvoiceMatch: "",
           },
         });
-        toast.error("QuickBooks estimate is unavailable", {
+        toast.error("QuickBooks quote is unavailable", {
           description: result.error,
         });
         return;
@@ -834,7 +841,7 @@ export function ClientRow({
         setTrackingInvoiceNotice("No invoices found");
         window.setTimeout(() => setTrackingInvoiceNotice(null), 4500);
         toast("No invoices found", {
-          description: "QuickBooks has no invoices linked to the selected estimate.",
+          description: "QuickBooks has no invoices linked to the selected quote.",
         });
       }
       onUpdate({
@@ -884,8 +891,7 @@ export function ClientRow({
           quickBooksNumber(subitem.up) ||
           (qty > 0 ? quickBooksNumber(subitem.price) / qty : 0);
         const amount = qty * unitPrice;
-        const isOverseas =
-          subitem.localOverseas.trim().toLowerCase() === "overseas";
+        const delivery = quoteDeliveryBySubitem[subitem.id] ?? "";
         return {
           id: subitem.id,
           name: subitem.name || "Unnamed item",
@@ -893,14 +899,20 @@ export function ClientRow({
           qty,
           unitPrice,
           amount,
-          taxCode: isOverseas ? "GST free (overseas)" : "GST 9% (local)",
-          estimatedTax: isOverseas ? 0 : amount * 0.09,
+          delivery,
+          taxCode:
+            delivery === "singapore"
+              ? "GST 9%"
+              : delivery === "other"
+                ? "GST free"
+                : "",
+          estimatedTax: delivery === "singapore" ? amount * 0.09 : 0,
         };
       });
     const subtotal = lines.reduce((total, line) => total + line.amount, 0);
     const tax = lines.reduce((total, line) => total + line.estimatedTax, 0);
     return { lines, subtotal, tax, total: subtotal + tax };
-  }, [estimateEligibleSubitems]);
+  }, [estimateEligibleSubitems, quoteDeliveryBySubitem]);
   const sampleEstimateArtwork = estimateEligibleSubitems.map((subitem) => ({
     subitem,
     artwork:
@@ -917,28 +929,53 @@ export function ClientRow({
         `/api/quickbooks/estimate-defaults?clientId=${encodeURIComponent(client.id)}`,
       );
       const result = await response.json();
-      if (!response.ok) throw new Error(result?.error || "Could not load estimate defaults");
+      if (!response.ok) throw new Error(result?.error || "Could not load quote defaults");
       setQuickBooksDefaults({
         salesperson: String(result.salesperson ?? "CRM user"),
         paymentTermSource: result.paymentTermSource ?? null,
       });
+      setQuickBooksSalesperson(String(result.salesperson ?? "CRM user"));
+      setQuickBooksCompanyName(client.company ?? "");
       setQuickBooksPaymentTerm(String(result.paymentTerm ?? ""));
     } catch (error) {
       setQuickBooksDefaults({ salesperson: "CRM user", paymentTermSource: null });
+      setQuickBooksSalesperson("CRM user");
       setQuickBooksPaymentTerm("");
     } finally {
       setQuickBooksDefaultsLoading(false);
     }
   };
   const generateEstimate = async () => {
-    if (quickBooksPaymentTerm === customPaymentTermOption) {
-      toast.error("Please specify the custom payment terms.");
+    if (!quickBooksCompanyName.trim()) {
+      toast.error("Company name is required for the QuickBooks quote.");
+      return;
+    }
+    if (
+      !quickBooksPaymentTerm.trim() ||
+      quickBooksPaymentTerm === customPaymentTermOption
+    ) {
+      toast.error("Payment terms are required for the QuickBooks quote.");
+      return;
+    }
+    const missingDelivery = estimateEligibleSubitems.some(
+      (subitem) => !quoteDeliveryBySubitem[subitem.id],
+    );
+    if (missingDelivery) {
+      toast.error("Choose a delivery destination for every quote line.");
       return;
     }
     try {
       const result = (await handleGenerateEstimate(
         client.id,
+        quickBooksCompanyName.trim(),
+        quickBooksSalesperson,
         quickBooksPaymentTerm,
+        Object.fromEntries(
+          estimateEligibleSubitems.map((subitem) => [
+            subitem.id,
+            quoteDeliveryBySubitem[subitem.id] as "singapore" | "other",
+          ]),
+        ),
       )) as {
         estimateId?: string | null;
         docNumber?: string | null;
@@ -957,16 +994,17 @@ export function ClientRow({
         `/api/quickbooks/estimate-update?clientId=${encodeURIComponent(client.id)}`,
       );
       const result = await response.json();
-      if (!response.ok) throw new Error(result?.error || "Could not load estimates");
+      if (!response.ok) throw new Error(result?.error || "Could not load quotes");
       setUpdateEstimates(result.estimates ?? []);
     } catch (error) {
-      setUpdateEstimateError(error instanceof Error ? error.message : "Could not load estimates");
+      setUpdateEstimateError(error instanceof Error ? error.message : "Could not load quotes");
     } finally {
       setIsLoadingUpdateEstimates(false);
     }
   };
   const loadUpdatePreview = async (generationId: string) => {
     setSelectedEstimateGenerationId(generationId);
+    setQuoteDeliveryBySubitem({});
     setUpdateEstimatePreview(null);
     setUpdateEstimateError(null);
     if (!generationId) return;
@@ -975,7 +1013,7 @@ export function ClientRow({
         `/api/quickbooks/estimate-update?generationId=${encodeURIComponent(generationId)}`,
       );
       const result = await response.json();
-      if (!response.ok) throw new Error(result?.error || "Could not load estimate preview");
+      if (!response.ok) throw new Error(result?.error || "Could not load quote preview");
       setUpdateEstimatePreview({
         current: result.current,
         incoming: result.incoming,
@@ -983,13 +1021,16 @@ export function ClientRow({
         invoiceDocNumbers: result.invoiceDocNumbers ?? [],
       });
     } catch (error) {
-      setUpdateEstimateError(error instanceof Error ? error.message : "Could not load estimate preview");
+      setUpdateEstimateError(error instanceof Error ? error.message : "Could not load quote preview");
     }
   };
   const updateQuickBooksEstimate = async () => {
     if (!selectedEstimateGenerationId) return;
-    if (quickBooksPaymentTerm === customPaymentTermOption) {
-      setUpdateEstimateError("Please specify the custom payment terms.");
+    if (
+      !quickBooksPaymentTerm.trim() ||
+      quickBooksPaymentTerm === customPaymentTermOption
+    ) {
+      setUpdateEstimateError("Payment terms are required for the QuickBooks quote.");
       return;
     }
     setIsUpdatingEstimate(true);
@@ -1001,13 +1042,19 @@ export function ClientRow({
         body: JSON.stringify({
           estimateGenerationId: selectedEstimateGenerationId,
           paymentTerm: quickBooksPaymentTerm,
+          deliveryBySubitem: Object.fromEntries(
+            (updateEstimatePreview?.incoming.lines ?? []).map((line) => [
+              line.id,
+              quoteDeliveryBySubitem[line.id],
+            ]),
+          ),
         }),
       });
       const result = await response.json();
-      if (!response.ok) throw new Error(result?.error || "Could not update estimate");
+      if (!response.ok) throw new Error(result?.error || "Could not update quote");
       setUpdateEstimateResult(result);
     } catch (error) {
-      setUpdateEstimateError(error instanceof Error ? error.message : "Could not update estimate");
+      setUpdateEstimateError(error instanceof Error ? error.message : "Could not update quote");
     } finally {
       setIsUpdatingEstimate(false);
     }
@@ -1032,7 +1079,7 @@ export function ClientRow({
       });
       const result = await response.json();
       if (!response.ok)
-        throw new Error(result?.error || "Could not generate sample estimate");
+        throw new Error(result?.error || "Could not generate sample quote");
       const attachment: AttachmentItem = {
         id: crypto.randomUUID(),
         kind: "file",
@@ -1077,7 +1124,7 @@ export function ClientRow({
       setSampleEstimateError(
         error instanceof Error
           ? error.message
-          : "Could not generate sample estimate",
+          : "Could not generate sample quote",
       );
     } finally {
       setIsGeneratingSample(false);
@@ -1577,6 +1624,9 @@ export function ClientRow({
             setSampleArtworkUploads({});
             setQuickBooksDefaults(null);
             setQuickBooksPaymentTerm("");
+            setQuickBooksSalesperson("");
+            setQuickBooksCompanyName(client.company ?? "");
+            setQuoteDeliveryBySubitem({});
             setUpdateEstimates([]);
             setSelectedEstimateGenerationId("");
             setUpdateEstimatePreview(null);
@@ -1599,30 +1649,30 @@ export function ClientRow({
           <AlertDialogHeader>
             <AlertDialogTitle>
               {estimateMode === "choice"
-                ? "Generate estimate"
+                ? "Generate quote"
                 : estimateMode === "sample"
                   ? sampleEstimate
-                    ? "Sample estimate created"
+                    ? "Sample quote created"
                     : sampleEstimateError
-                      ? "Could not create sample estimate"
-                      : "Generate sample estimate?"
+                      ? "Could not create sample quote"
+                      : "Generate sample quote?"
                   : estimateMode === "update"
                     ? updateEstimateResult
-                      ? "QuickBooks estimate updated"
-                      : "Update QuickBooks estimate"
+                      ? "QuickBooks quote updated"
+                      : "Update QuickBooks quote"
                   : estimateResult
-                    ? "QuickBooks estimate created"
+                    ? "QuickBooks quote created"
                     : estimateError
-                      ? "Could not create QuickBooks estimate"
-                      : "Generate QuickBooks estimate?"}
+                      ? "Could not create QuickBooks quote"
+                      : "Generate QuickBooks quote?"}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {estimateMode === "choice" ? (
-                "Choose whether to create a PDF preview or send an estimate to QuickBooks."
+                "Choose whether to create a PDF preview or send a quote to QuickBooks."
               ) : estimateMode === "sample" ? (
                 sampleEstimate ? (
                   <>
-                    The PDF sample estimate was saved under this client’s
+                    The PDF sample quote was saved under this client’s
                     Miscellaneous files.
                   </>
                 ) : sampleEstimateError ? (
@@ -1636,7 +1686,7 @@ export function ClientRow({
               ) : estimateMode === "update" ? (
                 updateEstimateResult ? (
                   <>
-                    QuickBooks estimate
+                    QuickBooks quote
                     {updateEstimateResult.docNumber ? (
                       <>
                         {" "}<strong>{updateEstimateResult.docNumber}</strong>
@@ -1645,13 +1695,13 @@ export function ClientRow({
                     was updated with the current CRM subitem details.
                   </>
                 ) : updateEstimateError ? (
-                  "The selected estimate could not be loaded or updated. You can choose a different estimate or try again."
+                  "The selected quote could not be loaded or updated. You can choose a different quote or try again."
                 ) : (
-                  "Choose a previously generated QuickBooks estimate, then review its live details beside the current CRM details before updating it."
+                  "Choose a previously generated QuickBooks quote, then review its live details beside the current CRM details before updating it."
                 )
               ) : estimateResult ? (
                 <>
-                  An estimate has been created for{" "}
+                  A quote has been created for{" "}
                   <strong>{client.company || client.name}</strong>
                   {estimateResult.docNumber ? (
                     <>
@@ -1670,7 +1720,7 @@ export function ClientRow({
                 <>
                   This will find or create the QuickBooks customer for{" "}
                   <strong>{client.company || "this client"}</strong> and create
-                  an estimate using the {estimateEligibleSubitems.length}{" "}
+                  a quote using the {estimateEligibleSubitems.length}{" "}
                   eligible subitem
                   {estimateEligibleSubitems.length === 1 ? "" : "s"}.
                 </>
@@ -1706,7 +1756,7 @@ export function ClientRow({
                             readArtwork(subitem.customFields?.artworkFile) &&
                             !sampleArtworkUploads[subitem.id] &&
                             !window.confirm(
-                              "This will replace the saved Artwork for this subitem after the sample estimate is created. Continue?",
+                              "This will replace the saved Artwork for this subitem after the sample quote is created. Continue?",
                             )
                           )
                             return;
@@ -1733,7 +1783,7 @@ export function ClientRow({
             <div className="space-y-4 rounded-lg border border-amber-200 bg-amber-50/40 p-4 text-xs text-slate-700">
               <div>
                 <label className="grid gap-1 text-[11px] font-medium text-slate-600">
-                  QuickBooks estimate to update
+                  QuickBooks quote to update
                   <select
                     value={selectedEstimateGenerationId}
                     disabled={isLoadingUpdateEstimates || isUpdatingEstimate}
@@ -1741,11 +1791,11 @@ export function ClientRow({
                     className="h-9 rounded border border-slate-200 bg-white px-2 text-sm text-slate-700 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
                   >
                     <option value="">
-                      {isLoadingUpdateEstimates ? "Loading estimates…" : "Select an estimate"}
+                      {isLoadingUpdateEstimates ? "Loading quotes…" : "Select a quote"}
                     </option>
                     {updateEstimates.map((estimate) => (
                       <option key={estimate.id} value={estimate.id}>
-                        Estimate {estimate.quickbooks_estimate_doc_number ?? "(no document number)"} · {new Date(estimate.created_at).toLocaleDateString("en-GB")}
+                        Quote {estimate.quickbooks_estimate_doc_number ?? "(no document number)"} · {new Date(estimate.created_at).toLocaleDateString("en-GB")}
                       </option>
                     ))}
                   </select>
@@ -1753,7 +1803,7 @@ export function ClientRow({
               </div>
               {!isLoadingUpdateEstimates && !updateEstimates.length && !updateEstimateError && (
                 <p className="rounded border border-amber-200 bg-white p-3 text-amber-800">
-                  No QuickBooks estimates previously generated from this client were found.
+                  No QuickBooks quotes previously generated from this client were found.
                 </p>
               )}
               {updateEstimateError && (
@@ -1762,12 +1812,12 @@ export function ClientRow({
                 </p>
               )}
               {selectedEstimateGenerationId && !updateEstimatePreview && !updateEstimateError && (
-                <p className="text-slate-500">Loading the current QuickBooks estimate…</p>
+                <p className="text-slate-500">Loading the current QuickBooks quote…</p>
               )}
               {updateEstimatePreview && (
                 updateEstimatePreview.isInvoiced ? (
                   <p className="rounded border border-red-200 bg-red-50 p-3 font-medium text-red-700">
-                    This estimate already has invoice
+                    This quote already has invoice
                     {updateEstimatePreview.invoiceDocNumbers.length === 1 ? " " : "s "}
                     {updateEstimatePreview.invoiceDocNumbers.join(", ") || "linked"}.
                     It cannot be updated from the CRM.
@@ -1777,17 +1827,29 @@ export function ClientRow({
               {updateEstimatePreview && (
                 <div className="grid gap-4 lg:grid-cols-2">
                   {[
-                    ["Current QuickBooks estimate", updateEstimatePreview.current, "border-slate-200 bg-white"],
+                    ["Current QuickBooks quote", updateEstimatePreview.current, "border-slate-200 bg-white"],
                     ["New CRM details", updateEstimatePreview.incoming, "border-emerald-200 bg-emerald-50/30"],
                   ].map(([title, preview, className]) => {
                     const details = preview as typeof updateEstimatePreview.current;
+                    const isIncoming = title === "New CRM details";
+                    const displayedTotal = isIncoming
+                      ? details.lines.reduce(
+                          (total, line) =>
+                            total +
+                            line.amount *
+                              (line.id && quoteDeliveryBySubitem[line.id] === "singapore"
+                                ? 1.09
+                                : 1),
+                          0,
+                        )
+                      : details.total;
                     return (
                       <section key={title as string} className={`overflow-hidden rounded border ${className as string}`}>
                         <div className="flex items-center justify-between border-b border-inherit px-3 py-2">
                           <p className="font-semibold text-slate-900">{title as string}</p>
-                          <p className="font-semibold text-slate-900">{formatQuickBooksAmount(details.total)}</p>
+                          <p className="font-semibold text-slate-900">{formatQuickBooksAmount(displayedTotal)}</p>
                         </div>
-                        {title === "Current QuickBooks estimate" ? (
+                        {title === "Current QuickBooks quote" ? (
                           <div className="border-b border-slate-100 px-3 py-2">
                             <p className="text-[10px] font-medium uppercase tracking-wide text-slate-500">Payment Terms</p>
                             <p className="mt-1 text-sm text-slate-800">
@@ -1820,6 +1882,7 @@ export function ClientRow({
                                 <th className="px-2 py-2 text-right">Qty</th>
                                 <th className="px-2 py-2 text-right">Rate</th>
                                 <th className="px-3 py-2 text-right">Amount</th>
+                                <th className="w-[28%] px-3 py-2">Tax</th>
                               </tr>
                             </thead>
                             <tbody>
@@ -1832,6 +1895,30 @@ export function ClientRow({
                                   <td className="px-2 py-2 text-right">{line.qty}</td>
                                   <td className="px-2 py-2 text-right">{formatQuickBooksAmount(line.unitPrice)}</td>
                                   <td className="px-3 py-2 text-right font-medium">{formatQuickBooksAmount(line.amount)}</td>
+                                  <td className="px-3 py-2">
+                                    {isIncoming && line.id ? (
+                                      <select
+                                        value={quoteDeliveryBySubitem[line.id] ?? ""}
+                                        onChange={(event) =>
+                                          setQuoteDeliveryBySubitem((current) => ({
+                                            ...current,
+                                            [line.id as string]: event.target.value as
+                                              | "singapore"
+                                              | "other",
+                                          }))
+                                        }
+                                        className="w-full rounded border border-slate-200 bg-white px-1 py-1 text-[10px] text-slate-700"
+                                      >
+                                        <option value="">Select destination</option>
+                                        <option value="singapore">Deliver to Singapore</option>
+                                        <option value="other">Deliver to other countries</option>
+                                      </select>
+                                    ) : line.taxCode === "59" ? (
+                                      "GST 9%"
+                                    ) : (
+                                      "GST free"
+                                    )}
+                                  </td>
                                 </tr>
                               ))}
                             </tbody>
@@ -1844,7 +1931,7 @@ export function ClientRow({
               )}
               {updateEstimatePreview && (
                 <p className="text-[11px] text-slate-500">
-                  Updating replaces the estimate&apos;s item lines with the current eligible CRM subitems. QuickBooks tax and totals are recalculated there.
+                  Updating replaces the quote&apos;s item lines with the current eligible CRM subitems. QuickBooks tax and totals are recalculated there.
                 </p>
               )}
             </div>
@@ -1854,7 +1941,7 @@ export function ClientRow({
             !sampleEstimateError && (
               <div className="max-h-72 space-y-2 overflow-y-auto rounded-md border border-sky-100 bg-sky-50 p-3 text-xs text-slate-600">
                 <p className="font-medium text-slate-800">
-                  Artwork included in this sample estimate
+                  Artwork included in this sample quote
                 </p>
                 {sampleEstimateArtwork.map(({ subitem, artwork }) => (
                   <div
@@ -1902,35 +1989,58 @@ export function ClientRow({
             !estimateResult &&
             !estimateError && (
               <div className="rounded-lg border border-emerald-200 bg-emerald-50/40 text-xs text-slate-700">
-                <div className="border-b border-emerald-100 bg-white px-4 py-3">
-                  <p className="font-semibold text-slate-900">
-                    QuickBooks customer
-                  </p>
-                  <p className="mt-1 text-sm font-medium text-slate-800">
-                    {client.company || "Company name required"}
-                  </p>
-                  <p className="mt-1 text-slate-500">
-                    {[client.email, client.phone, client.billingAddress]
-                      .filter(Boolean)
-                      .join(" · ") ||
-                      "No email, phone, or billing address will be sent."}
-                  </p>
-                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                    <label className="grid gap-1 text-[11px] font-medium text-slate-600">
+                <div className="grid gap-5 border-b border-emerald-100 bg-white px-4 py-3 sm:grid-cols-2">
+                  <div className="contents">
+                    <div className="sm:order-1">
+                      <p className="font-semibold text-slate-900">Client information</p>
+                      <div className="mt-2 space-y-1.5 text-slate-600">
+                        <p><span className="font-medium text-slate-800">Client:</span> {client.name || "Not set"}</p>
+                        <p><span className="font-medium text-slate-800">Email:</span> {client.email || "Not set"}</p>
+                        <p><span className="font-medium text-slate-800">Phone:</span> {client.phone || "Not set"}</p>
+                        <p><span className="font-medium text-slate-800">Billing address:</span> {client.billingAddress || "Not set"}</p>
+                      </div>
+                    </div>
+                    <label className="grid gap-1 text-[11px] font-medium text-slate-600 sm:order-3">
                       Salesperson
+                      <select
+                        value={quickBooksSalesperson}
+                        disabled={quickBooksDefaultsLoading}
+                        onChange={(event) => setQuickBooksSalesperson(event.target.value)}
+                        className="h-9 rounded border border-slate-200 bg-white px-2 text-sm text-slate-700 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
+                      >
+                        {quickBooksSalesperson &&
+                          !profiles.some(
+                            (profile) =>
+                              (profile.full_name?.trim() || profile.email || "") ===
+                              quickBooksSalesperson,
+                          ) && (
+                            <option value={quickBooksSalesperson}>{quickBooksSalesperson}</option>
+                          )}
+                        {profiles
+                          .filter(
+                            (profile) =>
+                              profile.id && profile.role?.toLowerCase() !== "shipper",
+                          )
+                          .map((profile) => {
+                            const name = profile.full_name?.trim() || profile.email || "Unnamed user";
+                            return <option key={profile.id} value={name}>{name}</option>;
+                          })}
+                      </select>
+                    </label>
+                  </div>
+                  <div className="contents">
+                    <label className="grid content-start gap-1 text-[11px] font-medium text-slate-600 sm:order-2">
+                      Company Name *
                       <input
-                        readOnly
-                        value={
-                          quickBooksDefaultsLoading
-                            ? "Loading…"
-                            : quickBooksDefaults?.salesperson || "CRM user"
-                        }
-                        className="h-9 rounded border border-slate-200 bg-slate-50 px-2 text-sm text-slate-700 outline-none"
+                        value={quickBooksCompanyName}
+                        onChange={(event) => setQuickBooksCompanyName(event.target.value)}
+                        placeholder="Enter company name"
+                        className="h-9 rounded border border-slate-200 bg-white px-2 text-sm text-slate-700 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
                       />
                     </label>
-                    <label className="grid gap-1 text-[11px] font-medium text-slate-600">
+                    <label className="grid gap-1 text-[11px] font-medium text-slate-600 sm:order-4">
                       <span>
-                        Payment Terms
+                        Payment Terms *
                         {quickBooksDefaults?.paymentTermSource && (
                           <span className="ml-1 font-normal text-emerald-700">
                             ({quickBooksDefaults.paymentTermSource})
@@ -1943,16 +2053,11 @@ export function ClientRow({
                       />
                     </label>
                   </div>
-                  <p className="mt-2 text-[11px] text-slate-500">
-                    Payment Terms is sent to QuickBooks custom field 2. The
-                    salesperson is temporarily sent to legacy custom field 3,
-                    where it can be copied into the adjacent Salesperson field.
-                  </p>
                 </div>
                 <div className="p-4">
                   <div className="mb-2 flex items-end justify-between gap-3">
                     <p className="font-semibold text-slate-900">
-                      Estimate lines
+                      Quote lines
                     </p>
                     <p className="text-slate-500">
                       {quickBooksEstimatePreview.lines.length} item(s)
@@ -1995,7 +2100,23 @@ export function ClientRow({
                               {formatQuickBooksAmount(line.amount)}
                             </td>
                             <td className="px-3 py-2">
-                              {line.taxCode}
+                              <select
+                                value={line.delivery}
+                                onChange={(event) =>
+                                  setQuoteDeliveryBySubitem((current) => ({
+                                    ...current,
+                                    [line.id]: event.target.value as
+                                      | "singapore"
+                                      | "other",
+                                  }))
+                                }
+                                className="w-full rounded border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-700 outline-none focus:border-emerald-400"
+                                aria-label={`Tax destination for ${line.name}`}
+                              >
+                                <option value="">Select destination</option>
+                                <option value="singapore">Deliver to Singapore</option>
+                                <option value="other">Deliver to other countries</option>
+                              </select>
                             </td>
                           </tr>
                         ))}
@@ -2007,12 +2128,12 @@ export function ClientRow({
                     <span className="text-right">
                       {formatQuickBooksAmount(quickBooksEstimatePreview.subtotal)}
                     </span>
-                    <span className="text-slate-500">Estimated GST</span>
+                    <span className="text-slate-500">GST</span>
                     <span className="text-right">
                       {formatQuickBooksAmount(quickBooksEstimatePreview.tax)}
                     </span>
                     <span className="border-t border-slate-300 pt-1 font-semibold text-slate-900">
-                      Estimated total
+                      Total including GST
                     </span>
                     <span className="border-t border-slate-300 pt-1 text-right font-semibold text-slate-900">
                       {formatQuickBooksAmount(quickBooksEstimatePreview.total)}
@@ -2033,7 +2154,7 @@ export function ClientRow({
                 className="min-h-56 rounded-xl border-2 border-sky-200 bg-sky-50 p-7 text-left transition-colors hover:border-sky-400"
               >
                 <strong className="block text-center text-xl leading-snug text-sky-800">
-                  Generate sample estimate
+                  Generate sample quote
                 </strong>
                 <span className="mt-4 block text-[11px] leading-relaxed text-slate-500">
                   Create and save a PDF preview. Nothing is sent to QuickBooks.
@@ -2048,10 +2169,10 @@ export function ClientRow({
                 className="min-h-56 rounded-xl border-2 border-emerald-200 bg-emerald-50 p-7 text-left transition-colors hover:border-emerald-400"
               >
                 <strong className="block text-center text-xl leading-snug text-emerald-800">
-                  Generate QuickBooks estimate
+                  Generate QuickBooks quote
                 </strong>
                 <span className="mt-4 block text-[11px] leading-relaxed text-slate-500">
-                  Create the customer/items if needed, then send the estimate to
+                  Create the customer/items if needed, then send the quote to
                   QuickBooks.
                 </span>
               </button>
@@ -2065,10 +2186,10 @@ export function ClientRow({
                 className="min-h-56 rounded-xl border-2 border-amber-200 bg-amber-50 p-7 text-left transition-colors hover:border-amber-400"
               >
                 <strong className="block text-center text-xl leading-snug text-amber-800">
-                  Update QuickBooks estimate
+                  Update QuickBooks quote
                 </strong>
                 <span className="mt-4 block text-[11px] leading-relaxed text-slate-500">
-                  Compare a prior QuickBooks estimate with current CRM details, then update it.
+                  Compare a prior QuickBooks quote with current CRM details, then update it.
                 </span>
               </button>
             </div>
@@ -2087,9 +2208,11 @@ export function ClientRow({
                     </li>
                   ))}
                 </ul>
-                {!client.company.trim() && (
+                {!(estimateMode === "quickbooks"
+                  ? quickBooksCompanyName.trim()
+                  : client.company.trim()) && (
                   <p className="mt-2 text-red-600">
-                    A Company name is required before generating an estimate.
+                    A Company name is required before generating a quote.
                   </p>
                 )}
                 {!estimateEligibleSubitems.length && (
@@ -2156,7 +2279,12 @@ export function ClientRow({
                       isUpdatingEstimate ||
                       !selectedEstimateGenerationId ||
                       !updateEstimatePreview ||
-                      updateEstimatePreview.isInvoiced
+                      updateEstimatePreview.isInvoiced ||
+                      !quickBooksPaymentTerm.trim() ||
+                      quickBooksPaymentTerm === customPaymentTermOption ||
+                      updateEstimatePreview.incoming.lines.some(
+                        (line) => !quoteDeliveryBySubitem[line.id],
+                      )
                     }
                     onClick={(event) => {
                       event.preventDefault();
@@ -2179,8 +2307,13 @@ export function ClientRow({
                 <AlertDialogAction
                   disabled={
                     isGeneratingEstimate ||
-                    !client.company.trim() ||
-                    !estimateEligibleSubitems.length
+                    !quickBooksCompanyName.trim() ||
+                    !quickBooksPaymentTerm.trim() ||
+                    quickBooksPaymentTerm === customPaymentTermOption ||
+                    !estimateEligibleSubitems.length ||
+                    estimateEligibleSubitems.some(
+                      (subitem) => !quoteDeliveryBySubitem[subitem.id],
+                    )
                   }
                   onClick={(event) => {
                     event.preventDefault();
@@ -2337,7 +2470,7 @@ export function ClientRow({
               }}
               title={
                 !client.customFields?.trackingEstimateGenerationId
-                  ? "Select a QuickBooks estimate first"
+                  ? "Select a QuickBooks quote first"
                   : "Show linked invoices"
               }
               className="ml-1 text-gray-400 transition-colors hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-40"
@@ -2407,8 +2540,8 @@ export function ClientRow({
                   (!canManageClient
                     ? "You do not have permission to update this client"
                     : !client.customFields?.trackingEstimateGenerationId
-                    ? "Select a QuickBooks estimate first"
-                    : "Pull invoices linked to this QuickBooks estimate")
+                    ? "Select a QuickBooks quote first"
+                    : "Pull invoices linked to this QuickBooks quote")
                 }
                 className="rounded border border-sky-300 bg-sky-50 px-2 py-1 text-[10px] font-semibold text-sky-700 hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-50"
               >
@@ -2563,8 +2696,11 @@ export function ClientRow({
                                   {entry.action === "estimate_created" ||
                                   String(
                                     entry.meta?.fileName ?? "",
-                                  ).startsWith("Sample Estimate")
-                                    ? "Open Estimate"
+                                  ).startsWith("Sample Estimate") ||
+                                  String(
+                                    entry.meta?.fileName ?? "",
+                                  ).startsWith("Sample Quote")
+                                    ? "Open Quote"
                                     : "Open OCF"}
                                 </a>
                               ) : null}
@@ -2638,7 +2774,7 @@ export function ClientRow({
                         setShowEstimateDialog(true);
                       }}
                       className="px-2 py-2 text-[10px] font-medium text-teal-500"
-                      aria-label="Generate sample estimate or QuickBooks estimate"
+                      aria-label="Generate sample quote or QuickBooks quote"
                     >
                       <ReceiptText
                         size={15}
@@ -2649,7 +2785,7 @@ export function ClientRow({
                   </Tooltip.Trigger>
                   <Tooltip.Portal>
                     <Tooltip.Content className="TooltipContent">
-                      Generate sample / QuickBooks estimate
+                      Generate sample / QuickBooks quote
                       <Tooltip.Arrow className="TooltipArrow" />
                     </Tooltip.Content>
                   </Tooltip.Portal>
@@ -3198,13 +3334,13 @@ export function ClientRow({
                 className="h-full w-full bg-transparent px-1 text-[11px] text-slate-700 outline-none focus:bg-white disabled:cursor-default"
                 title={
                   trackingInvoiceError ??
-                  "Choose one of this client's QuickBooks estimates"
+                  "Choose one of this client's QuickBooks quotes"
                 }
               >
                 <option value="">
                   {isLoadingTrackingEstimates
-                    ? "Loading estimates…"
-                    : "Select estimate"}
+                    ? "Loading quotes…"
+                    : "Select quote"}
                 </option>
                 {!hasLoadedTrackingEstimates &&
                   client.customFields?.trackingEstimateGenerationId &&
@@ -3217,19 +3353,19 @@ export function ClientRow({
                       value={client.customFields.trackingEstimateGenerationId}
                     >
                       {client.customFields.trackingEstimateNumber ||
-                        "Selected estimate"}
+                        "Selected quote"}
                     </option>
                   )}
                 {trackingEstimates.map((estimate) => (
                   <option key={estimate.id} value={estimate.id}>
-                    Estimate {estimate.quickbooks_estimate_doc_number ?? "(no document number)"}
+                    Quote {estimate.quickbooks_estimate_doc_number ?? "(no document number)"}
                   </option>
                 ))}
               </select>
               {!client.customFields?.trackingEstimateGenerationId &&
                 canManageClient && (
                 <span className="pointer-events-none absolute inset-0 flex items-center justify-between bg-white px-1 text-[11px] text-transparent transition-colors group-hover/estimate:text-slate-400 group-focus-within/estimate:text-slate-400">
-                  <span>Select estimate</span>
+                  <span>Select quote</span>
                   <ChevronDown size={13} aria-hidden="true" />
                 </span>
               )}
@@ -3495,7 +3631,7 @@ export function ClientRow({
               ))
             ) : (
               <p className="px-3 py-3 text-slate-500">
-                No invoices have been pulled for this estimate yet.
+                No invoices have been pulled for this quote yet.
               </p>
             )}
           </div>

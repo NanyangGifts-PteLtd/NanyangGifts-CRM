@@ -767,10 +767,10 @@ export function SubitemDetailView({
                             className="ml-4 inline-flex rounded-md bg-teal-100 px-2 py-1 text-xs font-medium text-teal-600"
                           >
                             {entry.action === "estimate_created" ||
-                            String(entry.meta?.fileName ?? "").startsWith(
-                              "Sample Estimate",
+                            ["Sample Estimate", "Sample Quote"].some((prefix) =>
+                              String(entry.meta?.fileName ?? "").startsWith(prefix),
                             )
-                              ? "Open Estimate"
+                              ? "Open Quote"
                               : "Open OCF"}
                           </a>
                         )}
@@ -903,7 +903,7 @@ function SingleFileSlot({
 }) {
   const linkedNote =
     title === "Artwork"
-      ? " Linked to estimate generation."
+      ? " Linked to quote generation."
       : " Linked to OCF generation.";
   return (
     <FileDropTarget

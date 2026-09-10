@@ -206,11 +206,11 @@ export async function POST(req: NextRequest) {
         new_value: null,
         subitem_name: null,
         link: url,
-        title: "generated a sample estimate",
+        title: "generated a sample quote",
         description: filename,
         meta: { kind: "sample", quotationNumber: number, storagePath, subitemIds: subitems.map((item: any) => item.id) },
         created_at: new Date().toISOString(),
     });
-    if (activityError) return NextResponse.json({ error: `Estimate generated, but the activity log could not be updated: ${activityError.message}` }, { status: 500 });
+    if (activityError) return NextResponse.json({ error: `Quote generated, but the activity log could not be updated: ${activityError.message}` }, { status: 500 });
     return NextResponse.json({ ok: true, quotationNumber: number, filename, storagePath, url, createdAt: new Date().toISOString(), createdBy });
 }

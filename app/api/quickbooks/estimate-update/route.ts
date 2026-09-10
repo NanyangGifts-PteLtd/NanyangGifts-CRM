@@ -16,11 +16,11 @@ function quickBooksErrorMessage(error: unknown) {
     const parsed = JSON.parse(raw.slice(raw.indexOf("{")));
     const fault = parsed?.Fault?.Error?.[0];
     if (String(fault?.code) === "610") {
-      return "QuickBooks could not find this estimate. It may have been deleted or made inactive in QuickBooks.";
+      return "QuickBooks could not find this quote. It may have been deleted or made inactive in QuickBooks.";
     }
     return fault?.Detail || fault?.Message || raw;
   } catch {
-    return raw || "Could not load QuickBooks estimate";
+    return raw || "Could not load QuickBooks quote";
   }
 }
 
@@ -83,7 +83,10 @@ const customFields = (existingFields: any[], salesperson: string, paymentTerm: s
   { DefinitionId: "3", Type: "StringType", StringValue: salesperson },
 ];
 
-function incomingPreview(client: any) {
+function incomingPreview(
+  client: any,
+  deliveryBySubitem: Record<string, "singapore" | "other"> = {},
+) {
   const lines = (client.subitems ?? [])
     .filter((item: any) => ELIGIBLE.has(String(item.status ?? "").trim()))
     .sort((a: any, b: any) => Number(a.position ?? Number.MAX_SAFE_INTEGER) - Number(b.position ?? Number.MAX_SAFE_INTEGER))
@@ -91,12 +94,18 @@ function incomingPreview(client: any) {
       const qty = numberValue(item.qty) || 1;
       const unitPrice = numberValue(item.up) || numberValue(item.price) / qty;
       return {
+        id: item.id,
         name: item.name || "Unnamed item",
         description: item.description || item.name || "Unnamed item",
         qty,
         unitPrice,
         amount: qty * unitPrice,
-        taxCode: String(item.local_overseas ?? "").trim().toLowerCase() === "overseas" ? "21" : "59",
+        taxCode:
+          deliveryBySubitem[item.id] === "singapore"
+            ? "59"
+            : deliveryBySubitem[item.id] === "other"
+              ? "21"
+              : "",
       };
     });
   const subtotal = lines.reduce((sum: number, line: any) => sum + line.amount, 0);
@@ -131,9 +140,9 @@ async function authorisedGeneration(
     .select("id, client_id, quickbooks_estimate_id, quickbooks_estimate_doc_number, created_at")
     .eq("id", generationId)
     .maybeSingle();
-  if (error || !generation?.quickbooks_estimate_id) throw new Error("QuickBooks estimate record not found");
+  if (error || !generation?.quickbooks_estimate_id) throw new Error("QuickBooks quote record not found");
   if (!(await canEditClient(supabase, generation.client_id, userId))) {
-    throw new Error("You must be assigned to this client to update its QuickBooks estimates");
+    throw new Error("You must be assigned to this client to update its QuickBooks quotes");
   }
   const { data: client } = await supabase
     .from("clients")
@@ -278,15 +287,23 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { estimateGenerationId, paymentTerm: suppliedPaymentTerm } = await request.json();
-    if (!estimateGenerationId) return NextResponse.json({ error: "Missing estimateGenerationId" }, { status: 400 });
+    const {
+      estimateGenerationId,
+      paymentTerm: suppliedPaymentTerm,
+      deliveryBySubitem = {},
+    } = await request.json() as {
+      estimateGenerationId?: string;
+      paymentTerm?: string;
+      deliveryBySubitem?: Record<string, "singapore" | "other">;
+    };
+    if (!estimateGenerationId) return NextResponse.json({ error: "Missing quote selection" }, { status: 400 });
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const { generation, client } = await authorisedGeneration(supabase, estimateGenerationId, user.id);
     const currentResult = await qboRequest(`/estimate/${generation.quickbooks_estimate_id}`, { method: "GET" });
     const current = currentResult.Estimate;
-    if (!current?.SyncToken) throw new Error("QuickBooks estimate is missing its update token");
+    if (!current?.SyncToken) throw new Error("QuickBooks quote is missing its update token");
     const linkedInvoices = await linkedInvoicesForEstimate(current);
     if (linkedInvoices.length) {
       const invoiceNumbers = linkedInvoices
@@ -294,16 +311,22 @@ export async function POST(request: NextRequest) {
         .filter(Boolean)
         .join(", ");
       throw new Error(
-        `This QuickBooks estimate already has an invoice (${invoiceNumbers}). It cannot be updated from the CRM.`,
+        `This QuickBooks quote already has an invoice (${invoiceNumbers}). It cannot be updated from the CRM.`,
       );
     }
-    const preview = incomingPreview(client);
+    const preview = incomingPreview(client, deliveryBySubitem);
     if (!preview.lines.length) throw new Error("No eligible subitems with Quoted, Shortlisted, or Awarded status");
+    if (preview.lines.some((line: { taxCode: string }) => !line.taxCode)) {
+      return NextResponse.json(
+        { error: "Choose a delivery destination for every quote line." },
+        { status: 400 },
+      );
+    }
     const { data: profile } = await supabase.from("profiles").select("full_name, email").eq("id", user.id).maybeSingle();
     const salesperson = profile?.full_name?.trim() || profile?.email || user.email || "CRM user";
     const paymentTerm = String(suppliedPaymentTerm ?? "").trim().slice(0, 200);
-    if (paymentTerm === "Others (specify)") {
-      return NextResponse.json({ error: "Please specify the custom payment terms." }, { status: 400 });
+    if (!paymentTerm || paymentTerm === "Others (specify)") {
+      return NextResponse.json({ error: "Payment terms are required for the QuickBooks quote." }, { status: 400 });
     }
     const lines = await Promise.all(preview.lines.map(async (line: any, index: number) => {
       const item = await getOrCreateItem({ name: line.name });
@@ -354,14 +377,14 @@ export async function POST(request: NextRequest) {
       new_value: null,
       subitem_name: null,
       link: null,
-      title: "updated a QuickBooks estimate",
-      description: updated?.DocNumber ? `QuickBooks estimate ${updated.DocNumber}` : "QuickBooks estimate updated",
+      title: "updated a QuickBooks quote",
+      description: updated?.DocNumber ? `QuickBooks quote ${updated.DocNumber}` : "QuickBooks quote updated",
       meta: { kind: "quickbooks", estimateGenerationId, quickbooksEstimateId: current.Id },
       created_at: new Date().toISOString(),
     });
     return NextResponse.json({ success: true, estimateId: updated?.Id, docNumber: updated?.DocNumber ?? current.DocNumber });
   } catch (error: any) {
-    console.error("QuickBooks estimate update failed", error);
+    console.error("QuickBooks quote update failed", error);
     return NextResponse.json({ error: quickBooksErrorMessage(error) }, { status: 500 });
   }
 }

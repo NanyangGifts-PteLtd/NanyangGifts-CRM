@@ -174,7 +174,7 @@ export function TrackingView({
                       "People",
                       "Summary",
                       "Channel",
-                      "Estimate Number",
+                      "Quote Number",
                       "Invoice Number",
                       "Multiple Invoices?",
                       "Payment Status",

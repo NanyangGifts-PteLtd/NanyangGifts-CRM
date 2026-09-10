@@ -67,7 +67,7 @@ async function authorizeInvoiceAccess(
     .eq("id", estimateGenerationId)
     .maybeSingle();
   if (generationError) throw generationError;
-  if (!generation?.quickbooks_estimate_id) throw new Error("QuickBooks estimate record not found");
+  if (!generation?.quickbooks_estimate_id) throw new Error("QuickBooks quote record not found");
 
   const [{ data: profile, error: profileError }, { data: assignments, error: assignmentError }] =
     await Promise.all([
@@ -146,7 +146,7 @@ export async function POST(request: NextRequest) {
           {
             estimateMissing: true,
             error:
-              "The selected QuickBooks estimate no longer exists. Choose another estimate.",
+              "The selected QuickBooks quote no longer exists. Choose another quote.",
           },
           { status: 404 },
         );
@@ -156,7 +156,7 @@ export async function POST(request: NextRequest) {
     const customerId = estimate?.CustomerRef?.value ?? generation.quickbooks_customer_id;
     if (!customerId) {
       return NextResponse.json(
-        { error: "This estimate does not have a QuickBooks customer to sync." },
+        { error: "This quote does not have a QuickBooks customer to sync." },
         { status: 400 },
       );
     }
@@ -238,7 +238,7 @@ export async function POST(request: NextRequest) {
       syncedAt: new Date().toISOString(),
     });
   } catch (error) {
-    console.error("QuickBooks estimate invoice sync failed:", error);
+    console.error("QuickBooks quote invoice sync failed:", error);
     return NextResponse.json(
       { error: "Could not synchronize linked QuickBooks invoices." },
       { status: 500 },

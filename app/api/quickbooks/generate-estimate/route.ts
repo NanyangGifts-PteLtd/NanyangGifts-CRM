@@ -90,7 +90,19 @@ async function getOrCreateItem(subitem: any) {
 
 export async function POST(req: NextRequest) {
     try {
-        const { clientId, paymentTerm: suppliedPaymentTerm } = await req.json();
+        const {
+            clientId,
+            companyName: suppliedCompanyName,
+            salesperson: suppliedSalesperson,
+            paymentTerm: suppliedPaymentTerm,
+            deliveryBySubitem,
+        } = await req.json() as {
+            clientId?: string;
+            companyName?: string;
+            salesperson?: string;
+            paymentTerm?: string;
+            deliveryBySubitem?: Record<string, "singapore" | "other">;
+        };
         if (!clientId) {
             return NextResponse.json({ error: 'Missing clientId' }, { status: 400 });
         }
@@ -100,8 +112,16 @@ export async function POST(req: NextRequest) {
         if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
         const paymentTerm = String(suppliedPaymentTerm ?? '').trim().slice(0, 200);
-        if (paymentTerm === "Others (specify)") {
-            return NextResponse.json({ error: "Please specify the custom payment terms." }, { status: 400 });
+        const companyName = String(suppliedCompanyName ?? '').trim().slice(0, 200);
+        const salesperson = String(suppliedSalesperson ?? '').trim().slice(0, 200);
+        if (!companyName) {
+            return NextResponse.json({ error: "Company name is required for the QuickBooks quote." }, { status: 400 });
+        }
+        if (!paymentTerm || paymentTerm === "Others (specify)") {
+            return NextResponse.json({ error: "Payment terms are required for the QuickBooks quote." }, { status: 400 });
+        }
+        if (!salesperson) {
+            return NextResponse.json({ error: "Salesperson is required for the QuickBooks quote." }, { status: 400 });
         }
         const { data: profile } = await supabase
             .from('profiles')
@@ -133,8 +153,20 @@ export async function POST(req: NextRequest) {
                 { status: 400 }
             );
         }
+        const invalidDeliverySubitem = subitems.find(
+            (subitem: { id: string }) =>
+                !["singapore", "other"].includes(
+                    String(deliveryBySubitem?.[subitem.id] ?? ""),
+                ),
+        );
+        if (invalidDeliverySubitem) {
+            return NextResponse.json(
+                { error: "Choose a delivery destination for every quote line." },
+                { status: 400 },
+            );
+        }
 
-        const customer = await getOrCreateCustomer(client);
+        const customer = await getOrCreateCustomer({ ...client, company: companyName });
 
         const lines = [];
         for (let i = 0; i < subitems.length; i += 1) {
@@ -145,9 +177,7 @@ export async function POST(req: NextRequest) {
             const qty = numberValue(subitem.qty) || 1;
             const unitPrice = numberValue(subitem.up) || (qty > 0 ? numberValue(subitem.price) / qty : 0);
             const amount = qty * unitPrice;
-            const localOverseas = (subitem.local_overseas ?? '').trim().toLowerCase();
-            const taxCodeValue =
-                localOverseas === 'overseas'
+            const taxCodeValue = deliveryBySubitem?.[subitem.id] === 'other'
                 ? '21'
                 : '59';
 
@@ -171,7 +201,7 @@ export async function POST(req: NextRequest) {
         }
 
         const customFields = estimateMetadataFields({
-            salesperson: actorName,
+            salesperson,
             paymentTerm,
         });
         const estimateRes = await qboRequest('/estimate', {
@@ -212,8 +242,8 @@ export async function POST(req: NextRequest) {
             new_value: null,
             subitem_name: null,
             link: null,
-            title: 'generated a QuickBooks estimate',
-            description: estimate?.DocNumber ? `QuickBooks estimate ${estimate.DocNumber}` : 'QuickBooks estimate generated',
+            title: 'generated a QuickBooks quote',
+            description: estimate?.DocNumber ? `QuickBooks quote ${estimate.DocNumber}` : 'QuickBooks quote generated',
             meta: { kind: 'quickbooks', estimateGenerationId: generation.id, quickbooksEstimateId: estimate?.Id ?? null, docNumber: estimate?.DocNumber ?? null, subitemIds: subitems.map((item: { id: string }) => item.id) },
             created_at: new Date().toISOString(),
         });
@@ -226,9 +256,9 @@ export async function POST(req: NextRequest) {
             docNumber: estimate?.DocNumber ?? null,
         });
     } catch (error: any) {
-        console.error('Generate estimate failed:', error);
+        console.error('Generate quote failed:', error);
         return NextResponse.json(
-            { error: error?.message ?? 'Failed to generate estimate' },
+            { error: error?.message ?? 'Failed to generate quote' },
             { status: 500 }
         );
     }

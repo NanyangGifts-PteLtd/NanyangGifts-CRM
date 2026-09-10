@@ -209,7 +209,7 @@ const TRACKING_HEADER_COLS: HeaderCol[] = [
   { key: "channel", label: "Channel", width: 110, minWidth: 7 },
   {
     key: "trackingEstimateNumber",
-    label: "Estimate Number",
+    label: "Quote Number",
     width: 160,
     minWidth: 7,
   },

@@ -103,7 +103,6 @@ type ColumnDef = {
 export const SUBITEM_COLS: ColumnDef[] = [
   { key: "name", label: "Subitem", width: 290, minWidth: 170 },
   { key: "people", label: "People", width: 82, minWidth: 7 },
-  { key: "localOverseas", label: "Local/Overseas", width: 100, minWidth: 7 },
   { key: "status", label: "Status", width: 80, minWidth: 7 },
   { key: "qty", label: "Qty", width: 80, minWidth: 7 },
   { key: "description", label: "Description", width: 80, minWidth: 7 },
