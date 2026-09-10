@@ -11,6 +11,35 @@ function duplicateValues(row: Record<string, unknown>, omit: string[]) {
   return copy;
 }
 
+function withoutFileCustomFields(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .filter(([key]) => {
+        const tokens = key.replace(/([a-z])([A-Z])/g, "$1_$2").toLowerCase().split(/[^a-z0-9]+/);
+        return !tokens.some((token) => ["file", "files", "attachment", "attachments", "artwork"].includes(token));
+      }),
+  );
+}
+
+async function newLeadOptionId() {
+  const { data: group, error: groupError } = await supabaseAdmin
+    .from("option_groups")
+    .select("id")
+    .eq("code", "client_status")
+    .maybeSingle();
+  if (groupError) throw groupError;
+  if (!group) return null;
+  const { data: option, error: optionError } = await supabaseAdmin
+    .from("option_values")
+    .select("id")
+    .eq("group_id", group.id)
+    .ilike("value", "New Lead")
+    .maybeSingle();
+  if (optionError) throw optionError;
+  return option?.id ?? null;
+}
+
 async function removeIncompleteDuplicate(clientId: string) {
   // This is compensating cleanup for any failure after the client row has
   // been inserted. The endpoint never leaves a partial duplicate behind.
@@ -34,9 +63,15 @@ export async function POST(request: NextRequest) {
   let duplicateId: string | null = null;
 
   try {
-    const { clientId } = await request.json();
+    const { clientId, includeSubitems = true } = await request.json() as {
+      clientId?: string;
+      includeSubitems?: boolean;
+    };
     if (!clientId || typeof clientId !== "string") {
       return NextResponse.json({ error: "Missing clientId" }, { status: 400 });
+    }
+    if (typeof includeSubitems !== "boolean") {
+      return NextResponse.json({ error: "includeSubitems must be a boolean" }, { status: 400 });
     }
 
     const session = await createClient();
@@ -91,11 +126,15 @@ export async function POST(request: NextRequest) {
       "activity_log",
       "deletion_owner_id",
     ]);
+    const statusOptionId = await newLeadOptionId();
     const { data: duplicate, error: duplicateError } = await supabaseAdmin
       .from("clients")
       .insert({
         ...clientCopy,
         name: `${sourceClientResult.data.name ?? "New Client"} (Copy)`,
+        status: "New Lead",
+        status_option_id: statusOptionId,
+        custom_fields: withoutFileCustomFields(sourceClientResult.data.custom_fields),
         activity_log: [],
       })
       .select("id, name")
@@ -126,7 +165,7 @@ export async function POST(request: NextRequest) {
       .insert([...copiedAssignments.values()]);
     if (assignmentInsertError) throw assignmentInsertError;
 
-    for (const sourceSubitem of sourceSubitemsResult.data ?? []) {
+    for (const sourceSubitem of includeSubitems ? sourceSubitemsResult.data ?? [] : []) {
       const subitemCopy = duplicateValues(sourceSubitem, [
         "id",
         "client_id",
@@ -145,7 +184,12 @@ export async function POST(request: NextRequest) {
         : [];
       const { data: duplicateSubitem, error: subitemInsertError } = await supabaseAdmin
         .from("subitems")
-        .insert({ ...subitemCopy, client_id: duplicate.id, timeline_rows: timelineRows })
+        .insert({
+          ...subitemCopy,
+          client_id: duplicate.id,
+          timeline_rows: timelineRows,
+          custom_fields: withoutFileCustomFields(sourceSubitem.custom_fields),
+        })
         .select("id")
         .single();
       if (subitemInsertError || !duplicateSubitem) {
@@ -184,7 +228,7 @@ export async function POST(request: NextRequest) {
       link: null,
       title: "duplicated this client",
       description: null,
-      meta: { sourceClientId: clientId },
+      meta: { sourceClientId: clientId, includedSubitems: includeSubitems },
       created_at: new Date().toISOString(),
     });
     if (activityError) throw activityError;

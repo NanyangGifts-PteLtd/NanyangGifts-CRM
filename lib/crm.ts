@@ -830,6 +830,15 @@ export async function duplicateSubitemRow(subitemId: string) {
     delete copy.id;
     delete copy.created_at;
     delete copy.waiting_started_at;
+    if (copy.custom_fields && typeof copy.custom_fields === 'object' && !Array.isArray(copy.custom_fields)) {
+        copy.custom_fields = Object.fromEntries(
+            Object.entries(copy.custom_fields as Record<string, unknown>)
+                .filter(([key]) => {
+                    const tokens = key.replace(/([a-z])([A-Z])/g, '$1_$2').toLowerCase().split(/[^a-z0-9]+/);
+                    return !tokens.some((token) => ['file', 'files', 'attachment', 'attachments', 'artwork'].includes(token));
+                }),
+        );
+    }
     const duplicateTimelineRows = Array.isArray(copy.timeline_rows)
         ? copy.timeline_rows.map((row: TimelineRow) => ({ ...row, id: crypto.randomUUID() }))
         : [];
@@ -1161,11 +1170,11 @@ export async function reorderSubitemRows(clientId: string, orderedSubitemIds: st
     if (error) throw error;
 }
 
-export async function duplicateClientRow(clientId: string) {
+export async function duplicateClientRow(clientId: string, includeSubitems: boolean) {
     const response = await fetch('/api/clients/duplicate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ clientId }),
+        body: JSON.stringify({ clientId, includeSubitems }),
     });
     const result = await response.json();
     if (!response.ok) throw new Error(result?.error ?? 'Could not duplicate client');

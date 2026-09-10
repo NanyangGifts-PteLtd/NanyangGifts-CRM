@@ -458,6 +458,10 @@ export function CRMBoard({
     useState<FloatingMenuPosition | null>(null);
   const [isMovingClients, setIsMovingClients] = useState(false);
   const [isDuplicatingClients, setIsDuplicatingClients] = useState(false);
+  const [pendingClientDuplication, setPendingClientDuplication] = useState<{
+    clientIds: string[];
+    selection: boolean;
+  } | null>(null);
   const [detailClientId, setDetailClientId] = useState<string | null>(null);
   const [detailClientInitialTab, setDetailClientInitialTab] = useState<
     "files" | null
@@ -5098,7 +5102,7 @@ export function CRMBoard({
     showAssignmentPermissionError,
   ]);
 
-  const duplicateSelectedClients = useCallback(async () => {
+  const duplicateSelectedClients = useCallback(async (includeSubitems: boolean) => {
     if ([...selectedIds].some((clientId) => !canEditClientRecord(clientId))) {
       showAssignmentPermissionError();
       return;
@@ -5106,7 +5110,7 @@ export function CRMBoard({
     setIsDuplicatingClients(true);
     try {
       await Promise.all(
-        [...selectedIds].map((clientId) => duplicateClientRow(clientId)),
+        [...selectedIds].map((clientId) => duplicateClientRow(clientId, includeSubitems)),
       );
       await reloadClients();
       const [nextClientAssignmentMaps, nextSubitemAssignees] = await Promise.all([
@@ -5117,7 +5121,7 @@ export function CRMBoard({
       setClientPmAssignees(nextClientAssignmentMaps.pm);
       setSubitemAssignees(nextSubitemAssignees);
       toast.success("Clients duplicated", {
-        description: `${selectedIds.size} selected client${selectedIds.size === 1 ? "" : "s"} were copied with their subitems.`,
+        description: `${selectedIds.size} selected client${selectedIds.size === 1 ? "" : "s"} were copied ${includeSubitems ? "with" : "without"} their subitems.`,
       });
       setSelectedIds(new Set());
     } catch (error) {
@@ -5142,13 +5146,14 @@ export function CRMBoard({
   ]);
 
   const duplicateClientAction = useCallback(
-    async (clientId: string) => {
+    async (clientId: string, includeSubitems: boolean) => {
       if (!canEditClientRecord(clientId)) {
         showAssignmentPermissionError();
         return;
       }
+      setIsDuplicatingClients(true);
       try {
-        await duplicateClientRow(clientId);
+        await duplicateClientRow(clientId, includeSubitems);
         await reloadClients();
         const [nextClientAssignmentMaps, nextSubitemAssignees] = await Promise.all([
           fetchClientAssignmentMaps(),
@@ -5157,11 +5162,15 @@ export function CRMBoard({
         setClientAssignees(nextClientAssignmentMaps.people);
         setClientPmAssignees(nextClientAssignmentMaps.pm);
         setSubitemAssignees(nextSubitemAssignees);
-        toast.success("Client duplicated");
+        toast.success("Client duplicated", {
+          description: `The client was copied ${includeSubitems ? "with" : "without"} its subitems.`,
+        });
       } catch (error: any) {
         toast.error("Client could not be duplicated", {
           description: error?.message || "Please try again.",
         });
+      } finally {
+        setIsDuplicatingClients(false);
       }
     },
     [
@@ -5173,6 +5182,25 @@ export function CRMBoard({
       showAssignmentPermissionError,
     ],
   );
+
+  const requestClientDuplication = useCallback((clientId: string) => {
+    if (!canEditClientRecord(clientId)) {
+      showAssignmentPermissionError();
+      return;
+    }
+    setPendingClientDuplication({ clientIds: [clientId], selection: false });
+  }, [canEditClientRecord, showAssignmentPermissionError]);
+
+  const confirmClientDuplication = useCallback(async (includeSubitems: boolean) => {
+    const pending = pendingClientDuplication;
+    if (!pending) return;
+    if (pending.selection) {
+      await duplicateSelectedClients(includeSubitems);
+    } else if (pending.clientIds[0]) {
+      await duplicateClientAction(pending.clientIds[0], includeSubitems);
+    }
+    setPendingClientDuplication(null);
+  }, [duplicateClientAction, duplicateSelectedClients, pendingClientDuplication]);
 
   const moveClientAction = useCallback(
     async (clientId: string, targetGroupId: string) => {
@@ -5597,7 +5625,7 @@ export function CRMBoard({
               currentUserRole={currentUserRole}
               groups={groups}
               initialTab={detailClientInitialTab ?? undefined}
-              onDuplicate={() => duplicateClientAction(detailClient.id)}
+              onDuplicate={() => requestClientDuplication(detailClient.id)}
               onMove={(groupId) => moveClientAction(detailClient.id, groupId)}
               onDelete={() => {
                 setDetailClientId(null);
@@ -5675,7 +5703,13 @@ export function CRMBoard({
                 ? "You can only edit items that are assigned to you"
                 : "Duplicate selected clients"
             }
-            onClick={() => void duplicateSelectedClients()}
+            onClick={() => {
+              if ([...selectedIds].some((clientId) => !canEditClientRecord(clientId))) {
+                showAssignmentPermissionError();
+                return;
+              }
+              setPendingClientDuplication({ clientIds: [...selectedIds], selection: true });
+            }}
             className="flex items-center gap-1.5 rounded px-3 py-2 text-sm text-slate-500 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <Copy size={17} />{" "}
@@ -6767,6 +6801,47 @@ export function CRMBoard({
             <AlertDialogCancel disabled={savingCustomerMatch}>
               Cancel edit
             </AlertDialogCancel>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={!!pendingClientDuplication}
+        onOpenChange={(open) => {
+          if (!open && !isDuplicatingClients) setPendingClientDuplication(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Duplicate {pendingClientDuplication?.clientIds.length === 1 ? "client" : "clients"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Choose whether the duplicate should include the client&apos;s subitems.
+              Files and attachments are never copied, and every duplicated client starts with Status set to New Lead.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDuplicatingClients}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={isDuplicatingClients}
+              onClick={(event) => {
+                event.preventDefault();
+                void confirmClientDuplication(false);
+              }}
+              className="bg-slate-600 hover:bg-slate-700"
+            >
+              {isDuplicatingClients ? "Duplicating..." : "Without subitems"}
+            </AlertDialogAction>
+            <AlertDialogAction
+              disabled={isDuplicatingClients}
+              onClick={(event) => {
+                event.preventDefault();
+                void confirmClientDuplication(true);
+              }}
+            >
+              {isDuplicatingClients ? "Duplicating..." : "With subitems"}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -7974,7 +8049,7 @@ export function CRMBoard({
                         groups.map((group) => [group.id, group.name]),
                       )}
                       groups={groups}
-                      onDuplicateClient={() => duplicateClientAction(client.id)}
+                      onDuplicateClient={() => requestClientDuplication(client.id)}
                       onMoveClient={(groupId) =>
                         moveClientAction(client.id, groupId)
                       }
