@@ -152,15 +152,64 @@ const formatQuickBooksAmount = (value: number) =>
     minimumFractionDigits: 2,
   }).format(value);
 
+const customPaymentTermOption = "Others (specify)";
 const quickBooksPaymentTerms = [
-  "Net 30",
-  "Net 60",
-  "Net 90",
-  "Due on Receipt",
-  "End of Month (EOM)",
-  "Cash on Delivery (COD)",
-  "Payment in Advance (PIA)",
+  "100% upfront",
+  "50% deposit, 50% before delivery",
+  "50% deposit, 50% after delivery",
+  "30 days credit",
+  "60 days credit",
+  customPaymentTermOption,
 ];
+const standardQuickBooksPaymentTerms = quickBooksPaymentTerms.filter(
+  (term) => term !== customPaymentTermOption,
+);
+
+function QuickBooksPaymentTermField({
+  value,
+  onChange,
+  disabled = false,
+  accent = "emerald",
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  disabled?: boolean;
+  accent?: "amber" | "emerald";
+}) {
+  const isCustom = Boolean(value) && !standardQuickBooksPaymentTerms.includes(value);
+  const selectedValue = isCustom ? customPaymentTermOption : value;
+  const customValue = value === customPaymentTermOption ? "" : value;
+  const focusClass = accent === "amber"
+    ? "focus:border-amber-400 focus:ring-amber-100"
+    : "focus:border-emerald-400 focus:ring-emerald-100";
+  const controlClassName = `h-9 rounded border border-slate-200 bg-white px-2 text-sm font-normal normal-case text-slate-700 outline-none focus:ring-2 ${focusClass}`;
+
+  return (
+    <div className="grid gap-2">
+      <select
+        value={selectedValue}
+        onChange={(event) => onChange(event.target.value)}
+        disabled={disabled}
+        className={controlClassName}
+      >
+        <option value="">Select payment terms</option>
+        {quickBooksPaymentTerms.map((term) => (
+          <option key={term} value={term}>{term}</option>
+        ))}
+      </select>
+      {selectedValue === customPaymentTermOption && (
+        <input
+          value={customValue}
+          onChange={(event) => onChange(event.target.value || customPaymentTermOption)}
+          disabled={disabled}
+          placeholder="Specify payment terms"
+          aria-label="Custom payment terms"
+          className={controlClassName}
+        />
+      )}
+    </div>
+  );
+}
 
 function imageFileToArtwork(file: File): Promise<SampleArtworkUpload> {
   return new Promise((resolve, reject) => {
@@ -882,6 +931,10 @@ export function ClientRow({
     }
   };
   const generateEstimate = async () => {
+    if (quickBooksPaymentTerm === customPaymentTermOption) {
+      toast.error("Please specify the custom payment terms.");
+      return;
+    }
     try {
       const result = (await handleGenerateEstimate(
         client.id,
@@ -935,6 +988,10 @@ export function ClientRow({
   };
   const updateQuickBooksEstimate = async () => {
     if (!selectedEstimateGenerationId) return;
+    if (quickBooksPaymentTerm === customPaymentTermOption) {
+      setUpdateEstimateError("Please specify the custom payment terms.");
+      return;
+    }
     setIsUpdatingEstimate(true);
     setUpdateEstimateError(null);
     try {
@@ -1747,19 +1804,12 @@ export function ClientRow({
                                 </span>
                               ) : null}
                             </span>
-                            <input
-                              list={`quickbooks-payment-terms-${client.id}`}
+                            <QuickBooksPaymentTermField
                               value={quickBooksPaymentTerm}
-                              onChange={(event) => setQuickBooksPaymentTerm(event.target.value)}
+                              onChange={setQuickBooksPaymentTerm}
                               disabled={isUpdatingEstimate}
-                              placeholder="Select or enter payment terms"
-                              className="h-9 rounded border border-slate-200 bg-white px-2 text-sm font-normal normal-case text-slate-700 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
+                              accent="amber"
                             />
-                            <datalist id={`quickbooks-payment-terms-${client.id}`}>
-                              {quickBooksPaymentTerms.map((term) => (
-                                <option key={term} value={term} />
-                              ))}
-                            </datalist>
                           </label>
                         )}
                         <div className="max-h-80 overflow-y-auto">
@@ -1887,20 +1937,10 @@ export function ClientRow({
                           </span>
                         )}
                       </span>
-                      <input
-                        list={`quickbooks-payment-terms-${client.id}`}
+                      <QuickBooksPaymentTermField
                         value={quickBooksPaymentTerm}
-                        onChange={(event) =>
-                          setQuickBooksPaymentTerm(event.target.value)
-                        }
-                        placeholder="Select or enter payment terms"
-                        className="h-9 rounded border border-slate-200 bg-white px-2 text-sm text-slate-700 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
+                        onChange={setQuickBooksPaymentTerm}
                       />
-                      <datalist id={`quickbooks-payment-terms-${client.id}`}>
-                        {quickBooksPaymentTerms.map((term) => (
-                          <option key={term} value={term} />
-                        ))}
-                      </datalist>
                     </label>
                   </div>
                   <p className="mt-2 text-[11px] text-slate-500">

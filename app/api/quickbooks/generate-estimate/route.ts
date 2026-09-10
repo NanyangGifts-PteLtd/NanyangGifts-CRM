@@ -100,6 +100,9 @@ export async function POST(req: NextRequest) {
         if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
         const paymentTerm = String(suppliedPaymentTerm ?? '').trim().slice(0, 200);
+        if (paymentTerm === "Others (specify)") {
+            return NextResponse.json({ error: "Please specify the custom payment terms." }, { status: 400 });
+        }
         const { data: profile } = await supabase
             .from('profiles')
             .select('full_name, email')

@@ -302,6 +302,9 @@ export async function POST(request: NextRequest) {
     const { data: profile } = await supabase.from("profiles").select("full_name, email").eq("id", user.id).maybeSingle();
     const salesperson = profile?.full_name?.trim() || profile?.email || user.email || "CRM user";
     const paymentTerm = String(suppliedPaymentTerm ?? "").trim().slice(0, 200);
+    if (paymentTerm === "Others (specify)") {
+      return NextResponse.json({ error: "Please specify the custom payment terms." }, { status: 400 });
+    }
     const lines = await Promise.all(preview.lines.map(async (line: any, index: number) => {
       const item = await getOrCreateItem({ name: line.name });
       return {

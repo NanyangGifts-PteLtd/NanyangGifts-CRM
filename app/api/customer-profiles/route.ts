@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
-const PAYMENT_TERMS = ["Net 30", "Net 60", "Net 90", "Due on Receipt", "End of Month (EOM)", "Cash on Delivery (COD)", "Payment in Advance (PIA)"];
+const CUSTOM_PAYMENT_TERM_OPTION = "Others (specify)";
 const COMPANY_SELECT = "id, name, payment_term, industry, industry_option_id, industry_custom_text, industry_source, organization_type, remarks, created_at, industry_option:industry_options!customer_company_profiles_industry_option_id_fkey(id, code, name, section_code, section_name)";
 const CLIENT_SELECT = "id, phone_number, name, remarks, is_blacklisted, blacklisted_at, created_at, phone_numbers:customer_client_profile_phone_numbers(id, phone_number, is_primary)";
 
@@ -122,7 +122,7 @@ export async function POST(request: NextRequest) {
     const paymentTerm = String(body.paymentTerm ?? "").trim();
     if (!name) return NextResponse.json({ error: "Company name is required." }, { status: 400 });
     if (organizationType && !["Government", "Semi", "Private"].includes(organizationType)) return NextResponse.json({ error: "Invalid organization type." }, { status: 400 });
-    if (paymentTerm && !PAYMENT_TERMS.includes(paymentTerm)) return NextResponse.json({ error: "Invalid payment term." }, { status: 400 });
+    if (paymentTerm === CUSTOM_PAYMENT_TERM_OPTION || paymentTerm.length > 200) return NextResponse.json({ error: "Please specify a valid custom payment term." }, { status: 400 });
     const industry = await resolveIndustry(body);
     if (industry.error) return NextResponse.json({ error: industry.error }, { status: 400 });
     const { data, error } = await supabaseAdmin.from("customer_company_profiles").insert({ name, payment_term: paymentTerm || null, ...industry.values, organization_type: organizationType || null, created_by: user.id }).select(COMPANY_SELECT).single();
@@ -171,7 +171,7 @@ export async function PATCH(request: NextRequest) {
   const paymentTerm = String(body.paymentTerm ?? "").trim();
   const organizationType = String(body.organizationType ?? "").trim();
   if (!name) return NextResponse.json({ error: "Company name is required." }, { status: 400 });
-  if (paymentTerm && !PAYMENT_TERMS.includes(paymentTerm)) return NextResponse.json({ error: "Invalid payment term." }, { status: 400 });
+  if (paymentTerm === CUSTOM_PAYMENT_TERM_OPTION || paymentTerm.length > 200) return NextResponse.json({ error: "Please specify a valid custom payment term." }, { status: 400 });
   if (organizationType && !["Government", "Semi", "Private"].includes(organizationType)) return NextResponse.json({ error: "Invalid organization type." }, { status: 400 });
   const industry = await resolveIndustry(body);
   if (industry.error) return NextResponse.json({ error: industry.error }, { status: 400 });

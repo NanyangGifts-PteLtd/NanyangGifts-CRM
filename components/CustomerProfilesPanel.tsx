@@ -76,15 +76,58 @@ let companyProfileIdByNameSnapshot = new Map<string, string>();
 
 const inputClass =
   "h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-800 outline-none focus:border-[#16a5c4] focus:ring-2 focus:ring-[#16a5c4]/15";
+const customPaymentTermOption = "Others (specify)";
 const paymentTerms = [
-  "Net 30",
-  "Net 60",
-  "Net 90",
-  "Due on Receipt",
-  "End of Month (EOM)",
-  "Cash on Delivery (COD)",
-  "Payment in Advance (PIA)",
+  "100% upfront",
+  "50% deposit, 50% before delivery",
+  "50% deposit, 50% after delivery",
+  "30 days credit",
+  "60 days credit",
+  customPaymentTermOption,
 ];
+const standardPaymentTerms = paymentTerms.filter(
+  (term) => term !== customPaymentTermOption,
+);
+
+function PaymentTermField({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const isCustom = Boolean(value) && !standardPaymentTerms.includes(value);
+  const selectedValue = isCustom ? customPaymentTermOption : value;
+  const customValue = value === customPaymentTermOption ? "" : value;
+
+  return (
+    <div className="grid gap-2">
+      <select
+        value={selectedValue}
+        onChange={(event) => onChange(event.target.value)}
+        className={inputClass}
+      >
+        <option value="">Select payment term</option>
+        {paymentTerms.map((term) => (
+          <option key={term} value={term}>
+            {term}
+          </option>
+        ))}
+      </select>
+      {selectedValue === customPaymentTermOption && (
+        <input
+          value={customValue}
+          onChange={(event) =>
+            onChange(event.target.value || customPaymentTermOption)
+          }
+          placeholder="Specify payment term"
+          aria-label="Custom payment term"
+          className={inputClass}
+        />
+      )}
+    </div>
+  );
+}
 
 function ProfileEditField({
   label,
@@ -1115,6 +1158,10 @@ export function CustomerProfilesPanel({
 
   const addCompany = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (companyForm.paymentTerm === customPaymentTermOption) {
+      toast.error("Please specify the custom payment term.");
+      return;
+    }
     setSaving(true);
     try {
       const response = await fetch("/api/customer-profiles", {
@@ -1471,7 +1518,9 @@ export function CustomerProfilesPanel({
     const originalCompany = companies.find((item) => item.id === company.id);
     const validationError = !company.name.trim()
       ? "Company name is required."
-      : null;
+      : company.payment_term === customPaymentTermOption
+        ? "Please specify the custom payment term."
+        : null;
     const hasChanges = Boolean(
       originalCompany &&
       companyProfileFingerprint(company) !==
@@ -1548,26 +1597,18 @@ export function CustomerProfilesPanel({
                 label="Payment Term"
                 icon={<CreditCard size={15} />}
               >
-                <select
+                <PaymentTermField
                   value={company.payment_term ?? ""}
-                  onChange={(event) =>
+                  onChange={(value) =>
                     setSelectedProfile({
                       type: "company",
                       profile: {
                         ...company,
-                        payment_term: event.target.value || null,
+                        payment_term: value || null,
                       },
                     })
                   }
-                  className={inputClass}
-                >
-                  <option value="">Select payment term</option>
-                  {paymentTerms.map((term) => (
-                    <option key={term} value={term}>
-                      {term}
-                    </option>
-                  ))}
-                </select>
+                />
               </ProfileEditField>
               <ProfileEditField label="Industry" icon={<Factory size={15} />}>
                 <IndustryCombobox
@@ -1863,23 +1904,15 @@ export function CustomerProfilesPanel({
                   </label>
                   <label className="grid gap-1.5 text-xs font-medium text-slate-600">
                     Payment Term
-                    <select
+                    <PaymentTermField
                       value={companyForm.paymentTerm}
-                      onChange={(event) =>
+                      onChange={(value) =>
                         setCompanyForm((current) => ({
                           ...current,
-                          paymentTerm: event.target.value,
+                          paymentTerm: value,
                         }))
                       }
-                      className={inputClass}
-                    >
-                      <option value="">Select payment term</option>
-                      {paymentTerms.map((term) => (
-                        <option key={term} value={term}>
-                          {term}
-                        </option>
-                      ))}
-                    </select>
+                    />
                   </label>
                   <div className="grid gap-1.5 text-xs font-medium text-slate-600">
                     Industry
