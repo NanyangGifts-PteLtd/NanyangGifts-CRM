@@ -15,7 +15,7 @@ type LeadAssignedEvent = {
   ingestionId: string;
   clientId: string;
   assignedUserId: string;
-  source: "wpforms" | "woocommerce";
+  source: "wpforms" | "woocommerce" | "email";
   externalId: string;
   submissionType: string;
   customerName: string;
@@ -86,6 +86,9 @@ export async function deliverMakeOutboxEvent(id: string) {
   const assignee = row.payload.assignee && typeof row.payload.assignee === "object"
     ? row.payload.assignee as Record<string, unknown>
     : {};
+  const previousAssignee = row.payload.previousAssignee && typeof row.payload.previousAssignee === "object"
+    ? row.payload.previousAssignee as Record<string, unknown>
+    : {};
   const webhookUrl = process.env.MAKE_LEAD_ASSIGNED_WEBHOOK_URL?.trim();
   const secret = process.env.MAKE_INTEGRATION_SECRET?.trim();
   const nextAttemptCount = row.attempt_count + 1;
@@ -108,6 +111,8 @@ export async function deliverMakeOutboxEvent(id: string) {
         eventType: row.event_type,
         schemaVersion: 1,
         occurredAt: row.created_at,
+        source: row.payload.source ?? "",
+        submissionType: row.payload.submissionType ?? "",
         // Frequently mapped fields are duplicated at the top level because
         // Make occasionally keeps JSONB collections collapsed in its mapper.
         clientId: client.id ?? "",
@@ -116,9 +121,16 @@ export async function deliverMakeOutboxEvent(id: string) {
         clientPhone: client.phone ?? "",
         clientRequirements: client.requirements ?? "",
         clientBoardUrl: client.boardUrl ?? "",
+        clientSubitems: client.subitems ?? [],
         assigneeId: assignee.id ?? "",
         assigneeName: assignee.name ?? "",
         assigneeEmail: assignee.email ?? "",
+        assignmentType: row.payload.assignmentType ?? "initial",
+        isReassignment: row.payload.isReassignment ?? false,
+        notifyClient: row.payload.notifyClient ?? true,
+        previousAssigneeId: previousAssignee.id ?? "",
+        previousAssigneeName: previousAssignee.name ?? "",
+        previousAssigneeEmail: previousAssignee.email ?? "",
         data: row.payload,
       }),
       signal: AbortSignal.timeout(10_000),
@@ -190,6 +202,9 @@ export async function queueLeadAssignedMakeEvent(input: LeadAssignedEvent) {
     "lead.assigned",
     `lead.assigned:${input.ingestionId}`,
     {
+      assignmentType: "initial",
+      isReassignment: false,
+      notifyClient: true,
       ingestionId: input.ingestionId,
       source: input.source,
       externalId: input.externalId,
@@ -217,5 +232,72 @@ export async function queueLeadAssignedMakeEvent(input: LeadAssignedEvent) {
       },
     },
   );
+  return deliverMakeOutboxEvent(row.id);
+}
+
+export async function queueLeadReassignedMakeEvent(input: {
+  clientId: string;
+  previousAssigneeId: string;
+  assignedUserId: string;
+  reassignedAt: string;
+}) {
+  const [{ data: client, error: clientError }, { data: assignees, error: assigneeError }] = await Promise.all([
+    supabaseAdmin
+      .from("clients")
+      .select("id, name, email, phone, requirements, nbd, billing_address, total_price, custom_fields, subitems(name, qty)")
+      .eq("id", input.clientId)
+      .single(),
+    supabaseAdmin
+      .from("profiles")
+      .select("id, full_name, email")
+      .in("id", [input.previousAssigneeId, input.assignedUserId]),
+  ]);
+  if (clientError || !client) throw new Error(clientError?.message ?? "Reassigned client was not found");
+  if (assigneeError) throw new Error(assigneeError.message);
+
+  const assignee = (assignees ?? []).find((profile) => profile.id === input.assignedUserId);
+  const previousAssignee = (assignees ?? []).find((profile) => profile.id === input.previousAssigneeId);
+  if (!assignee) throw new Error("New reassignment assignee was not found");
+
+  const customFields = client.custom_fields && typeof client.custom_fields === "object" && !Array.isArray(client.custom_fields)
+    ? client.custom_fields as Record<string, unknown>
+    : {};
+  const source = typeof customFields.source === "string" ? customFields.source : "unknown";
+  const dedupeKey = `lead.reassigned:${input.clientId}:${input.assignedUserId}:${input.reassignedAt}`;
+  const row = await enqueueMakeEvent("lead.assigned", dedupeKey, {
+    assignmentType: "reassignment",
+    isReassignment: true,
+    notifyClient: false,
+    reassignedAt: input.reassignedAt,
+    source,
+    externalId: typeof customFields.external_id === "string" ? customFields.external_id : "",
+    submissionType: typeof customFields.submissionType === "string" ? customFields.submissionType : "",
+    client: {
+      id: client.id,
+      name: client.name,
+      customerName: client.name,
+      companyName: "",
+      email: client.email ?? "",
+      phone: client.phone ?? "",
+      requirements: client.requirements ?? "",
+      nbd: client.nbd ?? "",
+      billingAddress: client.billing_address ?? "",
+      orderNumber: typeof customFields.orderNumber === "string" ? customFields.orderNumber : "",
+      orderTotal: client.total_price ?? "",
+      currency: typeof customFields.currency === "string" ? customFields.currency : "SGD",
+      subitems: client.subitems ?? [],
+      boardUrl: appBaseUrl() ? `${appBaseUrl()}/app?clientId=${encodeURIComponent(client.id)}` : "",
+    },
+    assignee: {
+      id: assignee.id,
+      name: assignee.full_name?.trim() || assignee.email,
+      email: assignee.email,
+    },
+    previousAssignee: previousAssignee ? {
+      id: previousAssignee.id,
+      name: previousAssignee.full_name?.trim() || previousAssignee.email,
+      email: previousAssignee.email,
+    } : null,
+  });
   return deliverMakeOutboxEvent(row.id);
 }

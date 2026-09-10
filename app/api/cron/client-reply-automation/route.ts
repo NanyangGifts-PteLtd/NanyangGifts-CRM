@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { queueLeadReassignedMakeEvent } from "@/lib/make-integration";
 
 const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -130,6 +131,19 @@ export async function GET(request: NextRequest) {
             ? await supabase.from("notifications").insert(notificationsToInsert).select("id")
             : { data: [], error: null };
         if (notificationError) throw notificationError;
+
+        try {
+            await queueLeadReassignedMakeEvent({
+                clientId: client.id,
+                previousAssigneeId: oldAssigneeId,
+                assignedUserId: newAssigneeId,
+                reassignedAt: now.toISOString(),
+            });
+        } catch (makeError) {
+            // A Make outage must not roll back the CRM reassignment. The
+            // durable outbox will retry any event that was successfully queued.
+            console.error("Could not queue Make reassignment event", makeError);
+        }
 
         reassigned += 1;
         notificationsCreated += inserted?.length ?? 0;
