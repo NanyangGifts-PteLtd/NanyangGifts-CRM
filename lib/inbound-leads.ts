@@ -7,7 +7,7 @@ import { queueLeadAssignedMakeEvent } from "@/lib/make-integration";
 export type InboundSubitem = { name: string; qty: string };
 
 export type NormalizedInboundLead = {
-  source: "wpforms" | "woocommerce";
+  source: "wpforms" | "woocommerce" | "email";
   submissionType: string;
   externalId: string;
   customerName: string;
@@ -16,7 +16,7 @@ export type NormalizedInboundLead = {
   phone: string;
   notes: string;
   nbd: string;
-  channel: "Forms" | "E-comm";
+  channel: "Forms" | "E-comm" | "Email";
   orderNumber: string;
   currency: string;
   orderTotal: string;
@@ -135,6 +135,12 @@ function safePayload(lead: NormalizedInboundLead) {
     qty: lead.qty,
     subitems: lead.subitems,
   };
+}
+
+function inboundSourceLabel(source: NormalizedInboundLead["source"]) {
+  if (source === "woocommerce") return "WooCommerce";
+  if (source === "email") return "Email";
+  return "WPForms";
 }
 
 async function reserveIngestion(lead: NormalizedInboundLead): Promise<{ row: IngestionRow; earlyResult?: InboundResult }> {
@@ -256,7 +262,7 @@ export async function ingestLead(lead: NormalizedInboundLead): Promise<InboundRe
     }
 
     if (!ingestion.activity_logged) {
-      const sourceLabel = lead.source === "woocommerce" ? "WooCommerce" : "WPForms";
+      const sourceLabel = inboundSourceLabel(lead.source);
       const { data: existingActivity, error: activityReadError } = await supabaseAdmin.from("activity_log").select("id").eq("client_id", clientId).contains("meta", { ingestionId: ingestion.id }).eq("action", "client_added").limit(1);
       if (activityReadError) throw new InboundLeadError(activityReadError.message);
       if (!existingActivity?.length) {
@@ -312,7 +318,7 @@ export async function ingestLead(lead: NormalizedInboundLead): Promise<InboundRe
       const { data: existingNotification, error: notificationReadError } = await supabaseAdmin.from("notifications").select("id").eq("dedupe_key", dedupeKey).maybeSingle();
       if (notificationReadError) throw new InboundLeadError(notificationReadError.message);
       if (!existingNotification) {
-        const { error } = await supabaseAdmin.from("notifications").insert({ user_id: assignedUserId, client_id: clientId, type: "info", message: `${lead.customerName || lead.companyName} was assigned to you as a new ${lead.source === "woocommerce" ? "WooCommerce" : "WPForms"} lead.`, read: false, dedupe_key: dedupeKey });
+        const { error } = await supabaseAdmin.from("notifications").insert({ user_id: assignedUserId, client_id: clientId, type: "info", message: `${lead.customerName || lead.companyName} was assigned to you as a new ${inboundSourceLabel(lead.source)} lead.`, read: false, dedupe_key: dedupeKey });
         if (error) throw new InboundLeadError(error.message);
       }
       ingestion = await updateIngestion(ingestion.id, { notification_sent: true });
@@ -346,7 +352,7 @@ export async function ingestLead(lead: NormalizedInboundLead): Promise<InboundRe
 
     const { error: completionError } = await supabaseAdmin.from("lead_ingestions").update({ status: "completed", last_error: null, completed_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", ingestion.id);
     if (completionError) throw new InboundLeadError(completionError.message);
-    return { ok: true, clientId, assignedUserId, subitemsInserted, statusCode: 201, message: `${lead.source === "woocommerce" ? "WooCommerce" : "WPForms"} lead created successfully` };
+    return { ok: true, clientId, assignedUserId, subitemsInserted, statusCode: 201, message: `${inboundSourceLabel(lead.source)} lead created successfully` };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Inbound lead processing failed";
     await supabaseAdmin.from("lead_ingestions").update({ status: "failed", last_error: message.slice(0, 2000), updated_at: new Date().toISOString() }).eq("id", ingestion.id);
