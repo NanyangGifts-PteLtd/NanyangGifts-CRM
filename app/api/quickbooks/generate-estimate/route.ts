@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { qboQuery, qboRequest } from '@/lib/quickbooks/api';
 
 const ELIGIBLE = new Set(['Quoted', 'Shortlisted', 'Awarded']);
+const isFreightLine = (name: unknown) => /\bfreight\b/i.test(String(name ?? ""));
 
 function esc(value: string) {
     return value.replace(/'/g, "\\'");
@@ -155,6 +156,7 @@ export async function POST(req: NextRequest) {
         }
         const invalidDeliverySubitem = subitems.find(
             (subitem: { id: string }) =>
+                !isFreightLine((subitem as { name?: string }).name) &&
                 !["singapore", "other"].includes(
                     String(deliveryBySubitem?.[subitem.id] ?? ""),
                 ),
@@ -177,7 +179,8 @@ export async function POST(req: NextRequest) {
             const qty = numberValue(subitem.qty) || 1;
             const unitPrice = numberValue(subitem.up) || (qty > 0 ? numberValue(subitem.price) / qty : 0);
             const amount = qty * unitPrice;
-            const taxCodeValue = deliveryBySubitem?.[subitem.id] === 'other'
+            const taxCodeValue = isFreightLine(subitem.name) ||
+                deliveryBySubitem?.[subitem.id] === 'other'
                 ? '21'
                 : '59';
 

@@ -145,6 +145,9 @@ const quickBooksNumber = (value: unknown) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
+const isFreightLine = (name: string | null | undefined) =>
+  /\bfreight\b/i.test(name ?? "");
+
 const formatQuickBooksAmount = (value: number) =>
   new Intl.NumberFormat("en-SG", {
     style: "currency",
@@ -891,7 +894,10 @@ export function ClientRow({
           quickBooksNumber(subitem.up) ||
           (qty > 0 ? quickBooksNumber(subitem.price) / qty : 0);
         const amount = qty * unitPrice;
-        const delivery = quoteDeliveryBySubitem[subitem.id] ?? "";
+        const freight = isFreightLine(subitem.name);
+        const delivery = freight
+          ? "other"
+          : quoteDeliveryBySubitem[subitem.id] ?? "";
         return {
           id: subitem.id,
           name: subitem.name || "Unnamed item",
@@ -899,6 +905,7 @@ export function ClientRow({
           qty,
           unitPrice,
           amount,
+          freight,
           delivery,
           taxCode:
             delivery === "singapore"
@@ -958,7 +965,8 @@ export function ClientRow({
       return;
     }
     const missingDelivery = estimateEligibleSubitems.some(
-      (subitem) => !quoteDeliveryBySubitem[subitem.id],
+      (subitem) =>
+        !isFreightLine(subitem.name) && !quoteDeliveryBySubitem[subitem.id],
     );
     if (missingDelivery) {
       toast.error("Choose a delivery destination for every quote line.");
@@ -973,7 +981,9 @@ export function ClientRow({
         Object.fromEntries(
           estimateEligibleSubitems.map((subitem) => [
             subitem.id,
-            quoteDeliveryBySubitem[subitem.id] as "singapore" | "other",
+            isFreightLine(subitem.name)
+              ? "other"
+              : quoteDeliveryBySubitem[subitem.id] as "singapore" | "other",
           ]),
         ),
       )) as {
@@ -1045,7 +1055,9 @@ export function ClientRow({
           deliveryBySubitem: Object.fromEntries(
             (updateEstimatePreview?.incoming.lines ?? []).map((line) => [
               line.id,
-              quoteDeliveryBySubitem[line.id],
+              isFreightLine(line.name)
+                ? "other"
+                : quoteDeliveryBySubitem[line.id],
             ]),
           ),
         }),
@@ -1837,7 +1849,9 @@ export function ClientRow({
                           (total, line) =>
                             total +
                             line.amount *
-                              (line.id && quoteDeliveryBySubitem[line.id] === "singapore"
+                              (line.id &&
+                              !isFreightLine(line.name) &&
+                              quoteDeliveryBySubitem[line.id] === "singapore"
                                 ? 1.09
                                 : 1),
                           0,
@@ -1878,11 +1892,11 @@ export function ClientRow({
                           <table className="w-full table-fixed text-left">
                             <thead className="bg-slate-100/80 text-[10px] uppercase tracking-wide text-slate-500">
                               <tr>
-                                <th className="w-[48%] px-3 py-2">Item</th>
+                                <th className="w-[36%] px-3 py-2">Item</th>
                                 <th className="px-2 py-2 text-right">Qty</th>
                                 <th className="px-2 py-2 text-right">Rate</th>
                                 <th className="px-3 py-2 text-right">Amount</th>
-                                <th className="w-[28%] px-3 py-2">Tax</th>
+                                <th className="w-[36%] px-3 py-2">Tax</th>
                               </tr>
                             </thead>
                             <tbody>
@@ -1898,7 +1912,12 @@ export function ClientRow({
                                   <td className="px-3 py-2">
                                     {isIncoming && line.id ? (
                                       <select
-                                        value={quoteDeliveryBySubitem[line.id] ?? ""}
+                                        value={
+                                          isFreightLine(line.name)
+                                            ? "other"
+                                            : quoteDeliveryBySubitem[line.id] ?? ""
+                                        }
+                                        disabled={isFreightLine(line.name)}
                                         onChange={(event) =>
                                           setQuoteDeliveryBySubitem((current) => ({
                                             ...current,
@@ -1910,8 +1929,8 @@ export function ClientRow({
                                         className="w-full rounded border border-slate-200 bg-white px-1 py-1 text-[10px] text-slate-700"
                                       >
                                         <option value="">Select destination</option>
-                                        <option value="singapore">Deliver to Singapore</option>
-                                        <option value="other">Deliver to other countries</option>
+                                        <option value="singapore">GST 9% — Deliver to Singapore</option>
+                                        <option value="other">GST Free — Deliver to other countries</option>
                                       </select>
                                     ) : line.taxCode === "59" ? (
                                       "GST 9%"
@@ -2067,11 +2086,11 @@ export function ClientRow({
                     <table className="w-full table-fixed text-left">
                       <thead className="bg-slate-100 text-[10px] uppercase tracking-wide text-slate-500">
                         <tr>
-                          <th className="w-[42%] px-3 py-2">Item / description</th>
+                          <th className="w-[34%] px-3 py-2">Item / description</th>
                           <th className="px-2 py-2 text-right">Qty</th>
                           <th className="px-2 py-2 text-right">Unit price</th>
                           <th className="px-2 py-2 text-right">Amount</th>
-                          <th className="w-[16%] px-3 py-2">Tax</th>
+                          <th className="w-[28%] px-3 py-2">Tax</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -2102,6 +2121,7 @@ export function ClientRow({
                             <td className="px-3 py-2">
                               <select
                                 value={line.delivery}
+                                disabled={line.freight}
                                 onChange={(event) =>
                                   setQuoteDeliveryBySubitem((current) => ({
                                     ...current,
@@ -2114,8 +2134,8 @@ export function ClientRow({
                                 aria-label={`Tax destination for ${line.name}`}
                               >
                                 <option value="">Select destination</option>
-                                <option value="singapore">Deliver to Singapore</option>
-                                <option value="other">Deliver to other countries</option>
+                                <option value="singapore">GST 9% — Deliver to Singapore</option>
+                                <option value="other">GST Free — Deliver to other countries</option>
                               </select>
                             </td>
                           </tr>
@@ -2283,7 +2303,9 @@ export function ClientRow({
                       !quickBooksPaymentTerm.trim() ||
                       quickBooksPaymentTerm === customPaymentTermOption ||
                       updateEstimatePreview.incoming.lines.some(
-                        (line) => !quoteDeliveryBySubitem[line.id],
+                        (line) =>
+                          !isFreightLine(line.name) &&
+                          !quoteDeliveryBySubitem[line.id],
                       )
                     }
                     onClick={(event) => {
@@ -2312,7 +2334,9 @@ export function ClientRow({
                     quickBooksPaymentTerm === customPaymentTermOption ||
                     !estimateEligibleSubitems.length ||
                     estimateEligibleSubitems.some(
-                      (subitem) => !quoteDeliveryBySubitem[subitem.id],
+                      (subitem) =>
+                        !isFreightLine(subitem.name) &&
+                        !quoteDeliveryBySubitem[subitem.id],
                     )
                   }
                   onClick={(event) => {
