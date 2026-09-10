@@ -15,12 +15,15 @@ export default function OcfConfigurationSettingsModal({
     currentUserRole,
 }: OcfConfigurationSettingsModalProps) {
     const [importantNotes, setImportantNotes] = useState("");
+    const [strictNeedByWarning, setStrictNeedByWarning] = useState("");
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [message, setMessage] = useState<string | null>(null);
 
-    const canEdit = currentUserRole === "director" || "dev";
+    const canEdit = ["director", "dev"].includes(
+        String(currentUserRole ?? "").trim().toLowerCase()
+    );
 
     useEffect(() => {
         if (!open) return;
@@ -42,6 +45,7 @@ export default function OcfConfigurationSettingsModal({
                 }
 
                 setImportantNotes(data.importantNotes ?? "");
+                setStrictNeedByWarning(data.strictNeedByWarning ?? "");
             } catch (err: any) {
                 setError(err.message || "Failed to load OCF settings.");
             } finally {
@@ -67,6 +71,7 @@ export default function OcfConfigurationSettingsModal({
                 },
                 body: JSON.stringify({
                     importantNotes,
+                    strictNeedByWarning,
                 }),
             });
 
@@ -76,7 +81,7 @@ export default function OcfConfigurationSettingsModal({
                 throw new Error(data.error || "Failed to save OCF settings.");
             }
 
-            setMessage("Important notes saved successfully.");
+            setMessage("OCF configuration saved successfully.");
         } catch (err: any) {
             setError(err.message || "Failed to save OCF settings.");
         } finally {
@@ -95,7 +100,7 @@ export default function OcfConfigurationSettingsModal({
                             OCF Configuration Settings
                         </h2>
                         <p className="text-xs text-gray-500">
-                            Edit the default Important Notes section shown on generated OCFs.
+                            Edit the default Important Notes and strict Need by Date warning shown on generated OCFs.
                         </p>
                     </div>
 
@@ -125,9 +130,21 @@ export default function OcfConfigurationSettingsModal({
                                 placeholder="Default OCF important notes"
                             />
 
+                            <label className="mb-2 mt-5 block text-xs font-medium text-gray-700">
+                                Strict Need by Date warning
+                            </label>
+                            <textarea
+                                value={strictNeedByWarning}
+                                onChange={(e) => setStrictNeedByWarning(e.target.value)}
+                                rows={5}
+                                disabled={!canEdit}
+                                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-[#7BCBD5] disabled:bg-gray-100 disabled:text-gray-500"
+                                placeholder="Warning shown when the client selects a strict Need by Date"
+                            />
+
                             {!canEdit ? (
                                 <p className="mt-2 text-xs text-gray-500">
-                                    Only directors can edit this setting.
+                                    Only directors and developers can edit these settings.
                                 </p>
                             ) : null}
 

@@ -5,6 +5,7 @@ import { useMemo, useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import logo from "./nanyanggifts-gifts-and-merch.png";
 import { DEFAULT_IMPORTANT_NOTES } from "@/components/Important-Notes";
+import OcfImportantNotes from "@/components/OcfImportantNotes";
 
 type OcfItem = {
     id: string;
@@ -30,6 +31,11 @@ type Ocf = {
     estimated_delivery_notes: string | null;
     same_address_for_all_items: boolean | null;
     important_notes: string | null;
+    strict_need_by_warning: string | null;
+    strict_need_by_date: boolean | null;
+    terms_read: boolean | null;
+    terms_agreed: boolean | null;
+    artwork_confirmed_item_ids: string[] | null;
     client_name_snapshot: string | null;
     company_snapshot: string | null;
     salesperson_name: string | null;
@@ -96,15 +102,6 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
         if (!clientUrl) return;
         await navigator.clipboard.writeText(clientUrl);
         alert("Client link copied");
-    }
-
-    async function goBack() {
-        if (window.history.length > 1) {
-            router.back();
-            return;
-        }
-
-        router.push("/app");
     }
 
     function updateItemRemarks(itemId: string, value: string) {
@@ -188,7 +185,7 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
     return (
         <main className="min-h-screen bg-[#f3f4f6] ">
             <div className="mx-auto max-w-5xl bg-white p-6 shadow-lg">
-                <div className="mb-4 flex items-start justify-between gap-4 border-b border-black pb-4">
+                <div className="relative mb-4 flex min-h-28 items-start justify-between gap-4 border-b border-black pb-14">
                     <div>
                         <Image src={logo} alt="Nanyang Gifts Logo" loading="eager" className="h-14 w-auto object-contain" />
                         <p className="mt-2 text-sm font-semibold text-gray-800">NANYANGGIFTS PTE. LTD.</p>
@@ -200,6 +197,23 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
                             <span className="font-semibold">Date:</span>{" "}
                             {ocf.generated_at ? new Date(ocf.generated_at).toLocaleDateString('en-SG') : "-"}
                         </p>
+                    </div>
+                    <div className="absolute bottom-3 left-1/2 flex -translate-x-1/2 flex-wrap justify-center gap-3 print:hidden">
+                        <button
+                            type="button"
+                            onClick={saveInternalEdits}
+                            disabled={saving}
+                            className="whitespace-nowrap rounded bg-[#7BCBD5] px-4 py-2 text-sm font-medium text-white hover:bg-teal-400 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                            {saving ? "Saving..." : "Save Changes"}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={copyClientLink}
+                            className="whitespace-nowrap rounded bg-blue-400 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500"
+                        >
+                            Copy Client Link
+                        </button>
                     </div>
                 </div>
 
@@ -215,12 +229,6 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
                             <tr>
                                 <td className="py-1 font-semibold text-black">Client&apos;s Company Name:</td>
                                 <td className="py-1 text-black"><input value={companySnapshot} onChange={(event) => setCompanySnapshot(event.target.value)} className="w-full rounded border border-gray-300 px-2 py-1" aria-label="Client company name" /></td>
-                                <td className="py-1 font-semibold text-black">Contact Number:</td>
-                                <td className="py-1 text-left text-black">{ocf.salesperson_contact_number || "-"}</td>
-                            </tr>
-                            <tr>
-                                <td className="py-1 font-semibold text-black"></td>
-                                <td className="py-1 text-black"></td>
                                 <td className="py-1 font-semibold text-black">Email:</td>
                                 <td className="py-1 text-left break-all text-black">{ocf.salesperson_email || "-"}</td>
                             </tr>
@@ -278,6 +286,15 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
                                             {item.image_url ? (
                                                 <div className="text-xs text-red-600">Click image to enlarge</div>
                                             ) : null}
+                                            <label className="flex w-full items-start gap-2 rounded border border-gray-200 bg-gray-50 px-2 py-2 text-[10px] font-medium">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={ocf.artwork_confirmed_item_ids?.includes(item.id) ?? false}
+                                                    readOnly
+                                                    className="mt-0.5 h-4 w-4 shrink-0 accent-[#7BCBD5]"
+                                                />
+                                                <span>I have confirmed the artwork/image.</span>
+                                            </label>
                                         </div>
                                     </td>
                                     <td className="border border-black px-2 py-3">{item.qty || "-"}</td>
@@ -330,11 +347,38 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
                         </tr>
                         </tbody>
 </table>
+
+                <div className="mt-4 border border-gray-300 text-[11px]">
+                    <label className="flex w-full items-center justify-center gap-3 bg-[#eef2ff] px-4 py-3 font-semibold text-black">
+                        <input
+                            type="checkbox"
+                            checked={Boolean(ocf.strict_need_by_date)}
+                            readOnly
+                            className="h-4 w-4 shrink-0 accent-[#7BCBD5]"
+                        />
+                        <span>I have a compulsory/strict Need by Date for the item(s).</span>
+                    </label>
+                    {ocf.strict_need_by_date ? (
+                        <p className="border-t border-amber-300 bg-amber-50 px-4 py-3 text-amber-900">
+                            {ocf.strict_need_by_warning}
+                        </p>
+                    ) : null}
+                </div>
                         
                 <div className="mt-10 break-before-page print:break-before-page max-w-5xl">
                     <span className="flex bg-[#eef2ff] px-1 rounded-sm py-3 text-black items-center justify-center text-[11px]">𝐈𝐦𝐩𝐨𝐫𝐭𝐚𝐧𝐭 𝐧𝐨𝐭𝐞𝐬, 𝐩𝐥𝐞𝐚𝐬𝐞 𝐫𝐞𝐚𝐝 𝐜𝐚𝐫𝐞𝐟𝐮𝐥𝐥𝐲: </span>
 
-                    <div className="px-3 py-2 whitespace-pre-wrap text-[11px]">{importantNotes}</div>
+                    <OcfImportantNotes notes={importantNotes} className="px-3 py-2 text-[11px]" />
+                    <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <label className="flex min-h-12 w-full items-center justify-center gap-3 rounded border bg-gray-50 px-4 py-3 text-[11px] font-semibold">
+                            <input type="checkbox" checked={Boolean(ocf.terms_read)} readOnly className="h-4 w-4 shrink-0 accent-[#7BCBD5]" />
+                            <span>I have read the above terms.</span>
+                        </label>
+                        <label className="flex min-h-12 w-full items-center justify-center gap-3 rounded border bg-gray-50 px-4 py-3 text-[11px] font-semibold">
+                            <input type="checkbox" checked={Boolean(ocf.terms_agreed)} readOnly className="h-4 w-4 shrink-0 accent-[#7BCBD5]" />
+                            <span>I agree with the above terms.</span>
+                        </label>
+                    </div>
                 </div>
 
                 {ocf.client_signature_url ? (
@@ -354,33 +398,6 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
 
                 {saveError ? <p className="mt-4 text-sm text-red-600">{saveError}</p> : null}
                 {saveMessage ? <p className="mt-4 text-sm text-green-600">{saveMessage}</p> : null}
-
-                <div className="mt-6 flex flex-wrap gap-3">
-                    <button
-                        type="button"
-                        onClick={saveInternalEdits}
-                        disabled={saving}
-                        className="rounded bg-[#7BCBD5] px-4 py-2 text-sm font-medium text-white hover:bg-teal-400 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                        {saving ? "Saving..." : "Save Changes"}
-                    </button>
-
-                    <button
-                        type="button"
-                        onClick={copyClientLink}
-                        className="rounded bg-blue-400 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500"
-                    >
-                        Copy Client Link
-                    </button>
-
-                    <button
-                        type="button"
-                        onClick={goBack}
-                        className="rounded border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-                    >
-                        Back
-                    </button>
-                </div>
 
                 <div className="mt-6 border-t border-gray-200 pt-4 text-sm text-gray-700">
                     <p><span className="font-semibold">Signed at:</span> {ocf.client_signed_at ? new Date(ocf.client_signed_at).toLocaleString('en-SG') : "-"}</p>

@@ -22,6 +22,11 @@ export default async function OrderConfirmationPage({ params }: PageProps) {
         same_address_for_all_items,
         
         important_notes,
+        strict_need_by_warning,
+        strict_need_by_date,
+        terms_read,
+        terms_agreed,
+        artwork_confirmed_item_ids,
         client_name_snapshot,
         company_snapshot,
         client_signature_path,

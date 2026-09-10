@@ -376,6 +376,10 @@ export function GenerateOcfModal({
       return;
     }
 
+    // Reserve the tab while this click still counts as a direct user gesture.
+    // Waiting for artwork uploads before calling window.open allows popup
+    // blockers to reject an otherwise successful OCF creation.
+    const ocfWindow = window.open("about:blank", "_blank");
     setCreating(true);
 
     try {
@@ -415,6 +419,20 @@ export function GenerateOcfModal({
         throw new Error(data.error || "Failed to generate OCF");
       }
 
+      if (ocfWindow && !ocfWindow.closed) {
+        const internalHref = new URL(
+          data.internalUrl,
+          window.location.origin,
+        ).href;
+        try {
+          ocfWindow.location.replace(internalHref);
+        } catch {
+          window.location.assign(internalHref);
+        }
+      } else {
+        window.location.assign(data.internalUrl);
+      }
+
       onCreated?.({
         ocfId: data.ocfId,
         internalUrl: data.internalUrl,
@@ -423,6 +441,7 @@ export function GenerateOcfModal({
 
       onClose();
     } catch (err: any) {
+      ocfWindow?.close();
       setFormError(err?.message || "Failed to generate OCF");
     } finally {
       setCreating(false);

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { DEFAULT_IMPORTANT_NOTES } from "@/components/Important-Notes";
+import { DEFAULT_IMPORTANT_NOTES, DEFAULT_STRICT_NEED_BY_WARNING } from "@/components/Important-Notes";
 
 type CreateOcfBody = {
     clientId: string;
@@ -92,17 +92,18 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        const { data: importantNotesSetting, error: importantNotesError } = await supabase
+        const { data: ocfSettings, error: importantNotesError } = await supabase
             .from("app_settings")
-            .select("value")
-            .eq("key", "ocf_important_notes")
-            .maybeSingle();
+            .select("key, value")
+            .in("key", ["ocf_important_notes", "ocf_strict_need_by_warning"]);
 
         if (importantNotesError) {
             return NextResponse.json({ error: importantNotesError.message }, { status: 500 });
         }
 
-        const importantNotes = importantNotesSetting?.value?.trim() || DEFAULT_IMPORTANT_NOTES;
+        const ocfSettingMap = new Map((ocfSettings ?? []).map((setting) => [setting.key, setting.value]));
+        const importantNotes = ocfSettingMap.get("ocf_important_notes")?.trim() || DEFAULT_IMPORTANT_NOTES;
+        const strictNeedByWarning = ocfSettingMap.get("ocf_strict_need_by_warning")?.trim() || DEFAULT_STRICT_NEED_BY_WARNING;
 
         const assignees =
             client.client_assignees?.map((row: any) => row.profiles).filter(Boolean) ?? [];
@@ -145,6 +146,8 @@ export async function POST(req: NextRequest) {
                 salesperson_contact_number: defaultSalesperson?.contact_number ?? "",
                 estimated_delivery_notes: estimatedDeliveryNotes ?? null,
                 important_notes: importantNotes,
+                strict_need_by_warning: strictNeedByWarning,
+                strict_need_by_date: false,
                 status: "draft",
             })
             .select()
@@ -170,6 +173,20 @@ export async function POST(req: NextRequest) {
         const internalUrl = `/app/order-confirmations/${ocf.id}`;
         const clientUrl = `/ocf/${ocf.client_token}`;
 
+        const { error: itemsError } = await supabase
+            .from("order_confirmation_items")
+            .insert(itemRows);
+
+        if (itemsError) {
+            await supabase.from("order_confirmations").delete().eq("id", ocf.id);
+
+            return NextResponse.json(
+                { error: itemsError.message ?? "Failed to create OCF items" },
+                { status: 500 }
+            );
+        }
+
+        const warnings: string[] = [];
         const { error: activityLogError } = await supabase
             .from("activity_log")
             .insert({
@@ -188,24 +205,7 @@ export async function POST(req: NextRequest) {
 
         if (activityLogError) {
             console.error("Activity log insert failed:", activityLogError);
-
-            return NextResponse.json(
-                { error: `Failed to create activity log: ${activityLogError.message}` },
-                { status: 500 }
-            );
-        }
-
-        const { error: itemsError } = await supabase
-            .from("order_confirmation_items")
-            .insert(itemRows);
-
-        if (itemsError) {
-            await supabase.from("order_confirmations").delete().eq("id", ocf.id);
-
-            return NextResponse.json(
-                { error: itemsError.message ?? "Failed to create OCF items" },
-                { status: 500 }
-            );
+            warnings.push(`Activity log could not be updated: ${activityLogError.message}`);
         }
 
         const timelineUpdates = await Promise.all(itemUploads.map(async (upload) => {
@@ -226,7 +226,8 @@ export async function POST(req: NextRequest) {
         }));
         const timelineError = timelineUpdates.find((result) => result?.error)?.error;
         if (timelineError) {
-            return NextResponse.json({ error: `OCF was created, but the NBD timeline could not be updated: ${timelineError.message}` }, { status: 500 });
+            console.error("OCF NBD timeline update failed:", timelineError);
+            warnings.push(`NBD timeline could not be updated: ${timelineError.message}`);
         }
 
         return NextResponse.json({
@@ -234,6 +235,7 @@ export async function POST(req: NextRequest) {
             ocfId: ocf.id,
             internalUrl,
             clientUrl,
+            warnings,
         });
     } catch (error: any) {
         return NextResponse.json(

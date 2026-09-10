@@ -7,6 +7,11 @@ type Props = {
     clientToken: string;
     company: string;
     sameAddressForAllItems: boolean;
+    strictNeedByDate: boolean;
+    termsRead: boolean;
+    termsAgreed: boolean;
+    artworkConfirmedItemIds: string[];
+    confirmationsComplete: boolean;
     items: {
         id: string;
         delivery_name?: string | null;
@@ -23,6 +28,11 @@ export default function SignatureForm({
     clientToken,
     company,
     sameAddressForAllItems,
+    strictNeedByDate,
+    termsRead,
+    termsAgreed,
+    artworkConfirmedItemIds,
+    confirmationsComplete,
     items,
 }: Props) {
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -117,7 +127,7 @@ export default function SignatureForm({
     }
 
     function startDrawing(e: React.PointerEvent<HTMLCanvasElement>) {
-        if (signatureMode !== "draw") return;
+        if (!confirmationsComplete || signatureMode !== "draw") return;
 
         const ctx = getCtx();
         const point = getPoint(e);
@@ -185,6 +195,10 @@ export default function SignatureForm({
     }, [typedInitials]);
 
     async function submitSignature() {
+        if (!confirmationsComplete) {
+            setError("Please confirm every artwork and accept both terms before signing and submitting.");
+            return;
+        }
         const canvas = canvasRef.current;
         if (!canvas) return;
 
@@ -217,6 +231,10 @@ export default function SignatureForm({
                     typedInitials: typedInitials.trim() || null,
                     company,
                     sameAddressForAllItems,
+                    strictNeedByDate,
+                    termsRead,
+                    termsAgreed,
+                    artworkConfirmedItemIds,
                     items,
                 }),
             });
@@ -238,13 +256,19 @@ export default function SignatureForm({
     if (done) {
         return (
             <div className="mt-3 rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-700">
-                Signature submitted successfully. This form is now locked.
+                Signature submitted successfully. Thank you!
             </div>
         );
     }
 
     return (
         <div className="mt-3">
+            {!confirmationsComplete ? (
+                <p className="mb-3 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                    Confirm every artwork and complete both terms checkboxes before signing.
+                </p>
+            ) : null}
+            <fieldset disabled={!confirmationsComplete || submitting} className="disabled:opacity-50">
             <label className="mb-2 block text-sm font-medium text-gray-700">
                 Client signature
             </label>
@@ -327,12 +351,13 @@ export default function SignatureForm({
                 <button
                     type="button"
                     onClick={submitSignature}
-                    disabled={submitting}
+                    disabled={submitting || !confirmationsComplete}
                     className="rounded-lg bg-teal-400 px-4 py-2 text-sm font-medium text-white hover:bg-teal-500 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                     {submitting ? "Submitting..." : "Submit"}
                 </button>
             </div>
+            </fieldset>
         </div>
     );
 }

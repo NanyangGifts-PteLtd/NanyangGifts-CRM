@@ -32,3 +32,6 @@ Additional Delivery Requests: Changes to original delivery instructions, like ad
 Storage: We deliver the gifts as soon as they are ready. If delivery is requested for a later date, storage fees may apply.
  
 Please speak with your sales representative if you require any clarifications.`;
+
+export const DEFAULT_STRICT_NEED_BY_WARNING =
+  "By confirming a compulsory or strict Need by Date, the client acknowledges and accepts the risk of delay arising from unforeseen circumstances beyond Nanyang Gifts' reasonable control.";

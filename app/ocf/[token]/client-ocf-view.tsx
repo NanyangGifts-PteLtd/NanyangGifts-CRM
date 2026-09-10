@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import SignatureForm from "./signature-form";
 import logo from "./nanyanggifts-gifts-and-merch.png";
 import { DEFAULT_IMPORTANT_NOTES } from "@/components/Important-Notes";
+import OcfImportantNotes from "@/components/OcfImportantNotes";
 
 
 type OcfItem = {
@@ -30,6 +31,11 @@ type Ocf = {
     generated_at: string | null;
     estimated_delivery_notes: string | null;
     important_notes: string | null;
+    strict_need_by_warning: string | null;
+    strict_need_by_date: boolean | null;
+    terms_read: boolean | null;
+    terms_agreed: boolean | null;
+    artwork_confirmed_item_ids: string[] | null;
     client_name_snapshot: string | null;
     company_snapshot: string | null;
     salesperson_name: string | null;
@@ -60,6 +66,14 @@ export default function ClientOcfView({ ocf }: { ocf: Ocf }) {
 
     const importantNotes = ocf.important_notes?.trim() || DEFAULT_IMPORTANT_NOTES;
     const [company, setCompany] = useState(ocf.company_snapshot ?? "");
+    const [strictNeedByDate, setStrictNeedByDate] = useState(
+        ocf.strict_need_by_date ?? false
+    );
+    const [termsRead, setTermsRead] = useState(ocf.terms_read ?? false);
+    const [termsAgreed, setTermsAgreed] = useState(ocf.terms_agreed ?? false);
+    const [artworkConfirmedIds, setArtworkConfirmedIds] = useState<Set<string>>(
+        () => new Set(ocf.artwork_confirmed_item_ids ?? [])
+    );
     const [sameAddressForAllItems, setSameAddressForAllItems] = useState(
         ocf.same_address_for_all_items ?? true
 );
@@ -167,6 +181,15 @@ function updateItemField(
   });
 }
 
+function setArtworkConfirmed(itemId: string, confirmed: boolean) {
+  setArtworkConfirmedIds((current) => {
+    const next = new Set(current);
+    if (confirmed) next.add(itemId);
+    else next.delete(itemId);
+    return next;
+  });
+}
+
     function openExpandedImage(src: string, alt: string) {
         setExpandedImage({ src, alt });
     }
@@ -217,12 +240,6 @@ function updateItemField(
                             <tr>
                                 <td className="py-1 font-semibold text-black">Client&apos;s Company Name:</td>
                                 <td className="py-1 text-black">{company || "-"}</td>
-                                <td className="py-1 font-semibold text-black">Contact Number:</td>
-                                <td className="py-1 text-left text-black">{ocf.salesperson_contact_number || "-"}</td>
-                            </tr>
-                            <tr>
-                                <td className="py-1 font-semibold text-black"></td>
-                                <td className="py-1 text-black"></td>
                                 <td className="py-1 font-semibold text-black">Email:</td>
                                 <td className="py-1 text-left text-black break-all">{ocf.salesperson_email || "-"}</td>
                             </tr>
@@ -281,6 +298,16 @@ function updateItemField(
                                             {item.image_url ? (
                                                 <div className="text-xs text-red-600">Click image to enlarge</div>
                                             ) : null}
+                                            <label className={`flex w-full items-start gap-2 rounded border border-gray-200 px-2 py-2 text-xs font-medium ${isLocked ? "cursor-default bg-gray-50" : "cursor-pointer hover:bg-gray-50"}`}>
+                                                <input
+                                                    type="checkbox"
+                                                    checked={artworkConfirmedIds.has(item.id)}
+                                                    onChange={(event) => setArtworkConfirmed(item.id, event.target.checked)}
+                                                    disabled={isLocked}
+                                                    className="mt-0.5 h-4 w-4 shrink-0 accent-[#7BCBD5]"
+                                                />
+                                                <span>I have confirmed the artwork/image.</span>
+                                            </label>
                                             
                                         </div>
                                     </td>
@@ -370,10 +397,54 @@ function updateItemField(
                     </tbody>
                 </table>
 
+                <div className="mt-4 border border-gray-300 text-sm">
+                    <label className={`flex w-full cursor-pointer items-center justify-center gap-3 px-4 py-3 font-semibold text-black ${isLocked ? "cursor-default bg-gray-100" : "bg-[#eef2ff] hover:bg-[#e4eaff]"}`}>
+                        <input
+                            type="checkbox"
+                            checked={strictNeedByDate}
+                            onChange={(event) => setStrictNeedByDate(event.target.checked)}
+                            disabled={isLocked}
+                            className="h-4 w-4 shrink-0 accent-[#7BCBD5]"
+                        />
+                        <span>I have a compulsory/strict Need by Date for the item(s).</span>
+                    </label>
+                    {strictNeedByDate ? (
+                        <p className="border-t border-amber-300 bg-amber-50 px-4 py-3 text-amber-900">
+                            {ocf.strict_need_by_warning}
+                        </p>
+                    ) : null}
+                </div>
+
                 <div className="mt-10 break-before-page print:break-before-page max-w-5xl">
                     <span className="flex bg-[#eef2ff] px-1 rounded-sm py-3 text-black items-center justify-center text-[15px]">𝐈𝐦𝐩𝐨𝐫𝐭𝐚𝐧𝐭 𝐧𝐨𝐭𝐞𝐬, 𝐩𝐥𝐞𝐚𝐬𝐞 𝐫𝐞𝐚𝐝 𝐜𝐚𝐫𝐞𝐟𝐮𝐥𝐥𝐲: </span>
 
-                    <span className="px-3 py-2 whitespace-pre-wrap text-[13px]">{importantNotes}</span>
+                    <OcfImportantNotes notes={importantNotes} className="py-2 text-[13px]" />
+
+                    <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <label className={`flex min-h-12 w-full items-center justify-center gap-3 rounded border px-4 py-3 text-sm font-semibold ${isLocked ? "cursor-default bg-gray-100" : "cursor-pointer bg-[#eef2ff] hover:bg-[#e4eaff]"}`}>
+                            <input
+                                type="checkbox"
+                                checked={termsRead}
+                                onChange={(event) => {
+                                    setTermsRead(event.target.checked);
+                                    if (!event.target.checked) setTermsAgreed(false);
+                                }}
+                                disabled={isLocked}
+                                className="h-4 w-4 shrink-0 accent-[#7BCBD5]"
+                            />
+                            <span>I have read the above terms.</span>
+                        </label>
+                        <label className={`flex min-h-12 w-full items-center justify-center gap-3 rounded border px-4 py-3 text-sm font-semibold ${isLocked || !termsRead ? "cursor-not-allowed bg-gray-100 text-gray-400" : "cursor-pointer bg-[#eef2ff] hover:bg-[#e4eaff]"}`}>
+                            <input
+                                type="checkbox"
+                                checked={termsAgreed}
+                                onChange={(event) => setTermsAgreed(event.target.checked)}
+                                disabled={isLocked || !termsRead}
+                                className="h-4 w-4 shrink-0 accent-[#7BCBD5]"
+                            />
+                            <span>I agree with the above terms.</span>
+                        </label>
+                    </div>
                 </div>
 
                 <div className="mt-6">
@@ -399,6 +470,15 @@ function updateItemField(
                             company={company}
                             items={items}
                             sameAddressForAllItems={sameAddressForAllItems}
+                            strictNeedByDate={strictNeedByDate}
+                            termsRead={termsRead}
+                            termsAgreed={termsAgreed}
+                            artworkConfirmedItemIds={[...artworkConfirmedIds]}
+                            confirmationsComplete={
+                                termsRead &&
+                                termsAgreed &&
+                                items.every((item) => artworkConfirmedIds.has(item.id))
+                            }
                         />
                     )}
                 </div>

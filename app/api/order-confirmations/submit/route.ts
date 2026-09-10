@@ -42,6 +42,10 @@ export async function POST(request: NextRequest) {
             clientToken,
             signatureDataUrl,
             sameAddressForAllItems,
+            strictNeedByDate,
+            termsRead,
+            termsAgreed,
+            artworkConfirmedItemIds,
             items,
         } = body ?? {};
 
@@ -54,12 +58,16 @@ export async function POST(request: NextRequest) {
 
         if (
             typeof sameAddressForAllItems !== "boolean" ||
+            typeof strictNeedByDate !== "boolean" ||
+            termsRead !== true ||
+            termsAgreed !== true ||
+            !Array.isArray(artworkConfirmedItemIds) ||
             !Array.isArray(items)
         ) {
             return NextResponse.json(
                 {
                     error:
-                        "sameAddressForAllItems is required",
+                        "Every artwork must be confirmed and both terms must be accepted before submission",
                 },
                 { status: 400 }
             );
@@ -91,6 +99,29 @@ export async function POST(request: NextRequest) {
             );
         }
 
+        const { data: ocfItems, error: ocfItemsError } = await supabase
+            .from("order_confirmation_items")
+            .select("id")
+            .eq("order_confirmation_id", ocf.id);
+
+        if (ocfItemsError) {
+            return NextResponse.json({ error: ocfItemsError.message }, { status: 500 });
+        }
+
+        const requiredItemIds = (ocfItems ?? []).map((item) => item.id);
+        const confirmedItemIds = new Set(
+            artworkConfirmedItemIds.filter((id): id is string => typeof id === "string")
+        );
+        if (
+            requiredItemIds.length === 0 ||
+            requiredItemIds.some((id) => !confirmedItemIds.has(id))
+        ) {
+            return NextResponse.json(
+                { error: "Every artwork/image must be confirmed before submission" },
+                { status: 400 }
+            );
+        }
+
         const filePath = `ocf-signatures/${ocf.id}/signature-${Date.now()}.png`;
         const fileBuffer = base64ToBuffer(signatureDataUrl);
 
@@ -115,6 +146,10 @@ export async function POST(request: NextRequest) {
             .from("order_confirmations")
             .update({
                 same_address_for_all_items: sameAddressForAllItems,
+                strict_need_by_date: strictNeedByDate,
+                terms_read: true,
+                terms_agreed: true,
+                artwork_confirmed_item_ids: requiredItemIds,
                 client_signature_path: filePath,
                 client_signed_at: now,
                 client_submitted_at: now,
@@ -129,6 +164,10 @@ export async function POST(request: NextRequest) {
         status,
         company_snapshot,
         same_address_for_all_items,
+        strict_need_by_date,
+        terms_read,
+        terms_agreed,
+        artwork_confirmed_item_ids,
         client_signed_at,
         client_submitted_at,
         client_ip,

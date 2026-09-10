@@ -8238,9 +8238,8 @@ export function CRMBoard({
             },
           });
         }}
-        onCreated={({ internalUrl }) => {
+        onCreated={() => {
           void reloadClients();
-          window.open(internalUrl, "_blank", "noopener,noreferrer");
         }}
       />
       <OcfChooserModal
