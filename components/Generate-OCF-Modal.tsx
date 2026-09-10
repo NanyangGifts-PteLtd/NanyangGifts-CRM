@@ -452,7 +452,7 @@ export function GenerateOcfModal({
 
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 px-4">
-      <div className="w-full max-w-3xl rounded-xl bg-white shadow-2xl">
+      <div className="w-full max-w-5xl rounded-xl bg-white shadow-2xl">
         <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
           <div>
             <h2 className="text-sm font-semibold text-gray-900">
@@ -479,27 +479,39 @@ export function GenerateOcfModal({
             </div>
           ) : (
             <>
-              <div className="mb-5 grid gap-3 md:grid-cols-2">
-                <label className="grid gap-1 text-xs font-medium text-gray-700">
-                  Company Name *
+              <section className="mb-6 border-b border-gray-300 pb-6">
+                <div className="mb-4">
+                  <h3 className="text-base font-semibold text-gray-900">
+                    Client information
+                  </h3>
+                  <p className="mt-1 text-sm text-gray-500">
+                    Confirm the company details that will appear on the OCF.
+                  </p>
+                </div>
+                <div className="grid gap-5 md:grid-cols-2">
+                <label className="grid gap-2 text-sm font-semibold text-gray-800">
+                  <span>
+                    Company Name <span className="text-red-500">*</span>
+                  </span>
                   <input
                     value={companyName}
                     onChange={(event) => setCompanyName(event.target.value)}
-                    className="h-10 rounded-md border border-gray-300 px-3 text-sm outline-none focus:border-[#7BCBD5]"
+                    className="h-12 rounded-md border border-gray-300 px-4 text-base font-normal outline-none focus:border-[#7BCBD5] focus:ring-1 focus:ring-[#7BCBD5]"
                     placeholder="Enter company name"
                   />
                 </label>
-                <label className="grid gap-1 text-xs font-medium text-gray-700">
+                <label className="grid gap-2 text-sm font-semibold text-gray-800">
                   Client Email
                   <input
                     type="email"
                     value={clientEmail}
                     onChange={(event) => setClientEmail(event.target.value)}
-                    className="h-10 rounded-md border border-gray-300 px-3 text-sm outline-none focus:border-[#7BCBD5]"
+                    className="h-12 rounded-md border border-gray-300 px-4 text-base font-normal outline-none focus:border-[#7BCBD5] focus:ring-1 focus:ring-[#7BCBD5]"
                     placeholder="Enter client email (optional)"
                   />
                 </label>
-              </div>
+                </div>
+              </section>
               <div className="mb-5 grid grid-cols-1 gap-1 md:grid-cols-1">
                 <div>
                   <label className="mb-1 block text-xs font-medium text-gray-700">
