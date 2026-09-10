@@ -4,6 +4,8 @@ import { DEFAULT_IMPORTANT_NOTES } from "@/components/Important-Notes";
 
 type CreateOcfBody = {
     clientId: string;
+    companyName: string;
+    clientEmail?: string | null;
     estimatedDeliveryNotes?: string | null;
     itemUploads: Array<{
         subitemId: string;
@@ -32,9 +34,14 @@ export async function POST(req: NextRequest) {
 
         const body = (await req.json()) as CreateOcfBody;
         const { clientId, estimatedDeliveryNotes, itemUploads } = body;
+        const companyName = String(body.companyName ?? "").trim();
+        const clientEmail = String(body.clientEmail ?? "").trim();
 
         if (!clientId) {
             return NextResponse.json({ error: "Missing clientId" }, { status: 400 });
+        }
+        if (!companyName) {
+            return NextResponse.json({ error: "Company Name is required" }, { status: 400 });
         }
 
         if (!Array.isArray(itemUploads)) {
@@ -130,7 +137,8 @@ export async function POST(req: NextRequest) {
                 client_id: client.id,
                 generated_by: user.id,
                 client_name_snapshot: client.name,
-                company_snapshot: client.company,
+                company_snapshot: companyName,
+                client_email_snapshot: clientEmail || null,
                 salesperson_ids: assignees.map((a: any) => a.id),
                 salesperson_name: defaultSalesperson?.full_name ?? "",
                 salesperson_email: defaultSalesperson?.email ?? "",

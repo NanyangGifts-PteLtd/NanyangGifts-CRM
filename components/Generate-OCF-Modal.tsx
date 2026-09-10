@@ -113,6 +113,8 @@ export function GenerateOcfModal({
   const [includedSubitemIds, setIncludedSubitemIds] = useState<string[]>([]);
   const [estimatedDeliveryDate, setEstimatedDeliveryDate] = useState("");
   const [estimatedDeliveryNotes, setEstimatedDeliveryNotes] = useState("");
+  const [companyName, setCompanyName] = useState("");
+  const [clientEmail, setClientEmail] = useState("");
   const [loadingItems, setLoadingItems] = useState(false);
   const [creating, setCreating] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -166,6 +168,8 @@ export function GenerateOcfModal({
 
     setEstimatedDeliveryDate("");
     setEstimatedDeliveryNotes(buildEstimatedDeliveryNotes(mappedAwarded));
+    setCompanyName(client.company ?? "");
+    setClientEmail(client.email ?? "");
     setFormError(null);
     setCreating(false);
     setLoadingItems(false);
@@ -298,17 +302,16 @@ export function GenerateOcfModal({
       });
   }, [open, rows]);
 
-  async function handleUploadRow(subitemId: string) {
-    const row = rows.find((r) => r.subitemId === subitemId);
+  async function uploadRowFile(row: UploadRow) {
     if (!row || !row.file || !clientId) return;
 
-    updateRow(subitemId, { isUploading: true, error: null });
+    updateRow(row.subitemId, { isUploading: true, error: null });
 
     try {
       const fd = new FormData();
       fd.append("file", row.file);
       fd.append("clientId", clientId);
-      fd.append("subitemId", subitemId);
+      fd.append("subitemId", row.subitemId);
 
       const res = await fetch("/api/order-confirmations/upload-item-image", {
         method: "POST",
@@ -321,29 +324,21 @@ export function GenerateOcfModal({
         throw new Error(data.error || "Upload failed");
       }
 
-      await Promise.all(
-        selectedRows
-          .filter((row) => row.file && !row.usingFinalArtwork)
-          .map((row) => onSaveFinalArtwork?.(row.subitemId, row.file!)),
-      );
+      if (!row.usingFinalArtwork) {
+        await onSaveFinalArtwork?.(row.subitemId, row.file);
+      }
 
-      updateRow(subitemId, {
+      updateRow(row.subitemId, {
         uploadedPath: data.path,
         isUploading: false,
       });
+      return String(data.path);
     } catch (err: any) {
-      updateRow(subitemId, {
+      updateRow(row.subitemId, {
         isUploading: false,
         error: err?.message || "Upload failed",
       });
-    }
-  }
-
-  async function handleUploadAll() {
-    for (const row of selectedRows) {
-      if (row.file && !row.uploadedPath) {
-        await handleUploadRow(row.subitemId);
-      }
+      return null;
     }
   }
 
@@ -364,6 +359,11 @@ export function GenerateOcfModal({
       return;
     }
 
+    if (!companyName.trim()) {
+      setFormError("Company Name is required.");
+      return;
+    }
+
     if (!allFilesChosen) {
       setFormError("Please choose an image for every included subitem.");
       return;
@@ -376,24 +376,27 @@ export function GenerateOcfModal({
       return;
     }
 
-    const notUploaded = selectedRows.filter((r) => !r.uploadedPath);
-    if (notUploaded.length > 0) {
-      setFormError(
-        "Please upload all selected files before generating the OCF.",
-      );
-      return;
-    }
-
     setCreating(true);
 
     try {
+      const resolvedRows = await Promise.all(
+        selectedRows.map(async (row) => ({
+          row,
+          imagePath: row.uploadedPath || await uploadRowFile(row),
+        })),
+      );
+      if (resolvedRows.some(({ imagePath }) => !imagePath)) {
+        throw new Error("One or more artwork images could not be uploaded.");
+      }
       const payload = {
         clientId,
+        companyName: companyName.trim(),
+        clientEmail: clientEmail.trim(),
         estimatedDeliveryDate: estimatedDeliveryDate || null,
         estimatedDeliveryNotes: estimatedDeliveryNotes || "",
-        itemUploads: selectedRows.map((row) => ({
+        itemUploads: resolvedRows.map(({ row, imagePath }) => ({
           subitemId: row.subitemId,
-          imagePath: row.uploadedPath,
+          imagePath,
           needBy: row.needByAsap ? "ASAP" : row.needByDate,
         })),
       };
@@ -457,6 +460,27 @@ export function GenerateOcfModal({
             </div>
           ) : (
             <>
+              <div className="mb-5 grid gap-3 md:grid-cols-2">
+                <label className="grid gap-1 text-xs font-medium text-gray-700">
+                  Company Name *
+                  <input
+                    value={companyName}
+                    onChange={(event) => setCompanyName(event.target.value)}
+                    className="h-10 rounded-md border border-gray-300 px-3 text-sm outline-none focus:border-[#7BCBD5]"
+                    placeholder="Enter company name"
+                  />
+                </label>
+                <label className="grid gap-1 text-xs font-medium text-gray-700">
+                  Client Email
+                  <input
+                    type="email"
+                    value={clientEmail}
+                    onChange={(event) => setClientEmail(event.target.value)}
+                    className="h-10 rounded-md border border-gray-300 px-3 text-sm outline-none focus:border-[#7BCBD5]"
+                    placeholder="Enter client email (optional)"
+                  />
+                </label>
+              </div>
               <div className="mb-5 grid grid-cols-1 gap-1 md:grid-cols-1">
                 <div>
                   <label className="mb-1 block text-xs font-medium text-gray-700">
@@ -564,7 +588,7 @@ export function GenerateOcfModal({
                                   />
                                   {row.loadingSavedArtwork
                                     ? "Loading saved final artwork..."
-                                    : "Use saved OCF (Final Artwork)"}
+                                    : "Use this image for the OCF"}
                                 </label>
                                 {(row.finalArtwork.mimeType?.startsWith(
                                   "image/",
@@ -613,17 +637,6 @@ export function GenerateOcfModal({
                               className="block text-sm file:mr-4 file:rounded-md file:border-0 file:bg-[#7BCBD5] file:px-3 file:py-2 file:font-medium file:text-white hover:file:bg-[#6cbac4]"
                             />
 
-                            <button
-                              type="button"
-                              onClick={() => handleUploadRow(row.subitemId)}
-                              disabled={!row.file || row.isUploading}
-                              className="rounded-md bg-[#0D1821] px-3 py-2 text-xs font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
-                            >
-                              {row.isUploading
-                                ? "Uploading..."
-                                : "Upload image"}
-                            </button>
-
                             {row.uploadedPath && (
                               <span className="text-xs font-medium text-teal-600">
                                 Uploaded
@@ -650,16 +663,7 @@ export function GenerateOcfModal({
           )}
         </div>
 
-        <div className="flex items-center justify-between border-t border-gray-200 px-5 py-4">
-          <button
-            type="button"
-            onClick={handleUploadAll}
-            disabled={!hasIncludedItems}
-            className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 disabled:opacity-50"
-          >
-            Upload all selected
-          </button>
-
+        <div className="flex items-center justify-end border-t border-gray-200 px-5 py-4">
           <div className="flex items-center gap-2">
             <button
               type="button"
@@ -672,7 +676,7 @@ export function GenerateOcfModal({
             <button
               type="button"
               onClick={handleCreate}
-              disabled={!hasIncludedItems || creating}
+              disabled={!hasIncludedItems || !companyName.trim() || creating}
               className="rounded-md bg-[#7BCBD5] px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
             >
               {creating ? "Generating..." : "Generate OCF"}
