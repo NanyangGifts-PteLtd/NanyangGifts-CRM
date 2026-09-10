@@ -137,6 +137,8 @@ export const PAYMENT_COLS: ColumnDef[] = [
   { key: "status", label: "Status", width: 100, minWidth: 7 },
   { key: "paymentStatus", label: "PM Status", width: 100, minWidth: 7 },
   { key: "shipper", label: "Shipper", width: 80, minWidth: 7 },
+  { key: "cnTracking", label: "CN Tracking #", width: 130, minWidth: 7 },
+  { key: "sgTracking", label: "SG Tracking #", width: 130, minWidth: 7 },
   { key: "supplier", label: "Supplier", width: 80, minWidth: 7 },
   { key: "description", label: "Description", width: 80, minWidth: 7 },
   { key: "currency", label: "Currency", width: 80, minWidth: 7 },
@@ -2083,6 +2085,20 @@ export function SubitemsTable({
               small
             />
           </div>
+        );
+      case "cnTracking":
+        return (
+          <EditableCell
+            value={sub.cnTracking}
+            onChange={(v) => onUpdateSubitem(sub.id, { cnTracking: v })}
+          />
+        );
+      case "sgTracking":
+        return (
+          <EditableCell
+            value={sub.sgTracking}
+            onChange={(v) => onUpdateSubitem(sub.id, { sgTracking: v })}
+          />
         );
       case "supplier":
         return (

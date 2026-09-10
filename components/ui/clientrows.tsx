@@ -488,6 +488,19 @@ export function ClientRow({
   const canManageSubitemLock = ["director", "dev"].includes(
     String(currentUserRole ?? "").trim().toLowerCase(),
   );
+  const hasSignedOcf = (client.activityLog ?? []).some(
+    (entry) => entry.action === "ocf_signed",
+  );
+  const hasLinkedOcf =
+    hasSignedOcf ||
+    (client.activityLog ?? []).some(
+      (entry) => entry.action === "ocf_created" || entry.action === "ocf_updated",
+    );
+  const ocfButtonClassName = hasSignedOcf
+    ? "border-emerald-500 bg-emerald-500 text-white hover:bg-emerald-600"
+    : hasLinkedOcf
+      ? "border-amber-300 bg-amber-300 text-amber-950 hover:bg-amber-400"
+      : "border-slate-200 bg-transparent text-slate-500 hover:bg-slate-50";
   const subitemsLocked = client.customFields?.subitemsLocked === "true";
   const [showCloseDialog, setShowCloseDialog] = useState(false);
   const [showMultipleInvoicesDialog, setShowMultipleInvoicesDialog] =
@@ -2608,20 +2621,21 @@ export function ClientRow({
                 <Tooltip.Root>
                   <Tooltip.Trigger asChild>
                     <button
+                      type="button"
                       onClick={() => onOpenOcfModal(client)}
-                      className="px-2 py-2 text-[10px] font-medium text-teal-500"
+                      className={`mx-1 inline-flex items-center justify-center rounded border px-2 py-1 text-[10px] font-semibold transition active:scale-95 ${ocfButtonClassName}`}
+                      aria-label="Order Confirmation Form"
                     >
-                      {" "}
-                      <FileBox
-                        size={15}
-                        color="#7BCBD5"
-                        className="transition transform active:scale-150 duration-200"
-                      />
+                      OCF
                     </button>
                   </Tooltip.Trigger>
                   <Tooltip.Portal>
                     <Tooltip.Content className="TooltipContent">
-                      Order Confirmation Form
+                      {hasSignedOcf
+                        ? "Signed Order Confirmation Form"
+                        : hasLinkedOcf
+                          ? "Linked Order Confirmation Form"
+                          : "Order Confirmation Form"}
                       <Tooltip.Arrow className="TooltipArrow" />
                     </Tooltip.Content>
                   </Tooltip.Portal>
