@@ -107,6 +107,53 @@ export async function GET(request: NextRequest) {
             .eq("reply_status", "Waiting...");
         if (resetWaitingError) throw resetWaitingError;
 
+        const reassignmentKey = `reply_timeout:${client.id}:${client.waiting_started_at}`;
+        const { data: existingReassignmentActivity, error: activityReadError } = await supabase
+            .from("activity_log")
+            .select("id")
+            .eq("client_id", client.id)
+            .contains("meta", { reassignmentKey })
+            .limit(1);
+        if (activityReadError) throw activityReadError;
+        if (!existingReassignmentActivity?.length) {
+            const { data: assignmentProfiles, error: profilesError } = await supabase
+                .from("profiles")
+                .select("id, full_name, email")
+                .in("id", [oldAssigneeId, newAssigneeId]);
+            if (profilesError) throw profilesError;
+            const oldProfile = (assignmentProfiles ?? []).find((profile) => profile.id === oldAssigneeId);
+            const newProfile = (assignmentProfiles ?? []).find((profile) => profile.id === newAssigneeId);
+            const oldName = oldProfile?.full_name?.trim() || oldProfile?.email || "Unknown user";
+            const newName = newProfile?.full_name?.trim() || newProfile?.email || "Unknown user";
+            const { error: activityInsertError } = await supabase.from("activity_log").insert({
+                client_id: client.id,
+                subitem_id: null,
+                actor_name: "Reply automation",
+                action: "assignment_changed",
+                field_name: "assignee",
+                old_value: oldName,
+                new_value: newName,
+                subitem_name: null,
+                link: null,
+                title: `reassigned this lead from ${oldName} to ${newName}`,
+                description: "The previous assignee did not reply within the configured response window.",
+                meta: {
+                    assignmentEvent: "reassignment",
+                    reason: "reply_timeout",
+                    reassignmentKey,
+                    previousAssigneeId: oldAssigneeId,
+                    previousAssigneeEmail: oldProfile?.email ?? null,
+                    assignedUserId: newAssigneeId,
+                    assignedUserEmail: newProfile?.email ?? null,
+                    waitingStartedAt: client.waiting_started_at,
+                    reassignmentDueAt: reassignmentDueAt.toISOString(),
+                    reassignedAt: now.toISOString(),
+                },
+                created_at: now.toISOString(),
+            });
+            if (activityInsertError) throw activityInsertError;
+        }
+
         const recipients = [...new Set([...oldAssigneeIds, newAssigneeId])];
         const dedupeKey = `reply_reassigned:${client.id}:${now.toISOString().slice(0, 10)}`;
         const notificationRows = recipients.map((userId) => ({

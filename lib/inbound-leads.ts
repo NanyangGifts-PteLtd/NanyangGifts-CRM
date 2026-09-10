@@ -257,11 +257,52 @@ export async function ingestLead(lead: NormalizedInboundLead): Promise<InboundRe
 
     if (!ingestion.activity_logged) {
       const sourceLabel = lead.source === "woocommerce" ? "WooCommerce" : "WPForms";
-      const { data: existingActivity, error: activityReadError } = await supabaseAdmin.from("activity_log").select("id").eq("client_id", clientId).contains("meta", { ingestionId: ingestion.id }).limit(1);
+      const { data: existingActivity, error: activityReadError } = await supabaseAdmin.from("activity_log").select("id").eq("client_id", clientId).contains("meta", { ingestionId: ingestion.id }).eq("action", "client_added").limit(1);
       if (activityReadError) throw new InboundLeadError(activityReadError.message);
       if (!existingActivity?.length) {
-        const { error } = await supabaseAdmin.from("activity_log").insert({ client_id: clientId, subitem_id: null, actor_name: "Inbound integration", action: "client_added", field_name: null, old_value: null, new_value: null, subitem_name: null, link: null, title: `created this client from ${sourceLabel}`, description: `Inbound reference: ${lead.externalId}`, meta: { ingestionId: ingestion.id, source: lead.source, submissionType: lead.submissionType, externalId: lead.externalId, assignedUserId }, created_at: new Date().toISOString() });
+        const { error } = await supabaseAdmin.from("activity_log").insert({ client_id: clientId, subitem_id: null, actor_name: "Inbound integration", action: "client_added", field_name: null, old_value: null, new_value: null, subitem_name: null, link: null, title: `created this client from ${sourceLabel}`, description: `Inbound reference: ${lead.externalId}`, meta: { ingestionId: ingestion.id, assignmentEvent: "client_created", source: lead.source, submissionType: lead.submissionType, externalId: lead.externalId, assignedUserId }, created_at: new Date().toISOString() });
         if (error) throw new InboundLeadError(error.message);
+      }
+
+      const { data: existingAssignmentActivity, error: assignmentActivityReadError } = await supabaseAdmin
+        .from("activity_log")
+        .select("id")
+        .eq("client_id", clientId)
+        .contains("meta", { ingestionId: ingestion.id, assignmentEvent: "initial" })
+        .limit(1);
+      if (assignmentActivityReadError) throw new InboundLeadError(assignmentActivityReadError.message);
+      if (!existingAssignmentActivity?.length) {
+        const { data: assignedProfile, error: assignedProfileError } = await supabaseAdmin
+          .from("profiles")
+          .select("full_name, email")
+          .eq("id", assignedUserId)
+          .single();
+        if (assignedProfileError) throw new InboundLeadError(assignedProfileError.message);
+        const assigneeName = assignedProfile.full_name?.trim() || assignedProfile.email || "Unknown user";
+        const { error: assignmentLogError } = await supabaseAdmin.from("activity_log").insert({
+          client_id: clientId,
+          subitem_id: null,
+          actor_name: "Round robin automation",
+          action: "assignment_changed",
+          field_name: "assignee",
+          old_value: null,
+          new_value: assigneeName,
+          subitem_name: null,
+          link: null,
+          title: `assigned this lead to ${assigneeName}`,
+          description: `Initial round-robin assignment from ${sourceLabel}.`,
+          meta: {
+            ingestionId: ingestion.id,
+            assignmentEvent: "initial",
+            reason: "new_lead_round_robin",
+            source: lead.source,
+            externalId: lead.externalId,
+            assignedUserId,
+            assignedUserEmail: assignedProfile.email,
+          },
+          created_at: new Date().toISOString(),
+        });
+        if (assignmentLogError) throw new InboundLeadError(assignmentLogError.message);
       }
       ingestion = await updateIngestion(ingestion.id, { activity_logged: true });
     }

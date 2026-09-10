@@ -389,7 +389,7 @@ function mapClients(row: Clients): Client {
 async function insertActivityLog(params: {
     clientId: string;
     subitemId?: string | null;
-        action: 'field_changed' | 'client_added' | 'subitem_added' | 'subitem_deleted' | 'subitem_field_changed' | 'ocf_created' | 'ocf_signed' | 'ocf_updated' | 'estimate_created' | 'file_uploaded' | 'file_replaced' | 'file_removed' | 'shipper_pushed';
+        action: 'field_changed' | 'assignment_changed' | 'client_added' | 'subitem_added' | 'subitem_deleted' | 'subitem_field_changed' | 'ocf_created' | 'ocf_signed' | 'ocf_updated' | 'estimate_created' | 'file_uploaded' | 'file_replaced' | 'file_removed' | 'shipper_pushed';
     fieldName?: string | null;
     oldValue?: unknown;
     newValue?: unknown;
