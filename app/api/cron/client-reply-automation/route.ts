@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { queueLeadReassignedMakeEvent } from "@/lib/make-integration";
+import { getSystemLabel } from "@/lib/system-labels";
 
 const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -66,10 +67,11 @@ export async function GET(request: NextRequest) {
     }
 
     const now = new Date();
+    const waitingLabel = await getSystemLabel("reply_status", "waiting");
     const { data: clients, error } = await supabase
         .from("clients")
-        .select("id, name, reply_status, waiting_started_at, client_assignees(user_id)")
-        .eq("reply_status", "Waiting...")
+        .select("id, name, reply_status, reply_status_option_id, waiting_started_at, client_assignees(user_id)")
+        .eq("reply_status_option_id", waitingLabel.id)
         .not("waiting_started_at", "is", null);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
@@ -104,7 +106,7 @@ export async function GET(request: NextRequest) {
             .from("clients")
             .update({ waiting_started_at: now.toISOString() })
             .eq("id", client.id)
-            .eq("reply_status", "Waiting...");
+            .eq("reply_status_option_id", waitingLabel.id);
         if (resetWaitingError) throw resetWaitingError;
 
         const reassignmentKey = `reply_timeout:${client.id}:${client.waiting_started_at}`;

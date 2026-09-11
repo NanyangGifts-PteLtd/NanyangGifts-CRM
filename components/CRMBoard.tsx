@@ -2054,7 +2054,7 @@ export function CRMBoard({
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok || !result.optionId) {
-        toast.error("Option could not be deleted", {
+        toast.error(result.protected ? "Backend label cannot be deleted" : "Option could not be deleted", {
           description: result.error ?? "The label option was not found.",
         });
         return;
@@ -2272,11 +2272,22 @@ export function CRMBoard({
       }
 
       const supabase = createSupabaseClient();
+      const { data: option, error: optionReadError } = await supabase
+        .from("option_values")
+        .select("id")
+        .eq("group_id", groupId)
+        .eq("value", oldName)
+        .maybeSingle();
+      if (optionReadError || !option) {
+        toast.error("Label could not be renamed", {
+          description: optionReadError?.message ?? "The label option was not found.",
+        });
+        return;
+      }
       const { error: optionError } = await supabase
         .from("option_values")
         .update({ value: trimmed })
-        .eq("group_id", groupId)
-        .eq("value", oldName);
+        .eq("id", option.id);
       if (optionError) {
         toast.error("Label could not be renamed", {
           description: optionError.message,
@@ -2286,38 +2297,43 @@ export function CRMBoard({
 
       const fieldMap: Record<
         string,
-        { table: "clients" | "subitems"; column: string }
+        { table: "clients" | "subitems"; column: string; optionIdColumn: string }
       > = {
-        reply_status: { table: "clients", column: "reply_status" },
-        client_status: { table: "clients", column: "status" },
-        channel: { table: "clients", column: "channel" },
-        importance: { table: "clients", column: "importance" },
-        progress: { table: "clients", column: "progress" },
-        payment: { table: "subitems", column: "payment" },
-        payment_status: { table: "subitems", column: "payment_status" },
-        mode_of_payment: { table: "subitems", column: "mode_of_payment" },
-        shipper: { table: "subitems", column: "shipper" },
-        local_overseas: { table: "subitems", column: "local_overseas" },
-        subitem_status: { table: "subitems", column: "status" },
-        currency: { table: "subitems", column: "currency" },
+        reply_status: { table: "clients", column: "reply_status", optionIdColumn: "reply_status_option_id" },
+        client_status: { table: "clients", column: "status", optionIdColumn: "status_option_id" },
+        channel: { table: "clients", column: "channel", optionIdColumn: "channel_option_id" },
+        importance: { table: "clients", column: "importance", optionIdColumn: "importance_option_id" },
+        progress: { table: "clients", column: "progress", optionIdColumn: "progress_option_id" },
+        payment: { table: "subitems", column: "payment", optionIdColumn: "payment_option_id" },
+        payment_status: { table: "subitems", column: "payment_status", optionIdColumn: "payment_status_option_id" },
+        mode_of_payment: { table: "subitems", column: "mode_of_payment", optionIdColumn: "mode_of_payment_option_id" },
+        shipper: { table: "subitems", column: "shipper", optionIdColumn: "shipper_option_id" },
+        local_overseas: { table: "subitems", column: "local_overseas", optionIdColumn: "local_overseas_option_id" },
+        subitem_status: { table: "subitems", column: "status", optionIdColumn: "status_option_id" },
+        currency: { table: "subitems", column: "currency", optionIdColumn: "currency_option_id" },
       };
       const field = fieldMap[code];
       if (field) {
         const { error } = await supabase
           .from(field.table)
           .update({ [field.column]: trimmed })
-          .eq(field.column, oldName);
+          .eq(field.optionIdColumn, option.id);
         if (error) {
           await supabase
             .from("option_values")
             .update({ value: oldName })
-            .eq("group_id", groupId)
-            .eq("value", trimmed);
+            .eq("id", option.id);
           toast.error("Label could not be renamed", {
             description: error.message,
           });
           return;
         }
+        // Repair any pre-ID legacy rows that still cache the old display value.
+        await supabase
+          .from(field.table)
+          .update({ [field.column]: trimmed, [field.optionIdColumn]: option.id })
+          .is(field.optionIdColumn, null)
+          .eq(field.column, oldName);
       } else if (code === "subitem_subprogress") {
         const { data: rows, error: readError } = await supabase
           .from("subitems")

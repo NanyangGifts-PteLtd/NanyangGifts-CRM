@@ -1,6 +1,7 @@
 import "server-only";
 
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { getSystemLabel } from "@/lib/system-labels";
 import { ensureCustomerProfilesForLead } from "@/lib/customer-profile-links";
 import { queueLeadAssignedMakeEvent } from "@/lib/make-integration";
 
@@ -209,6 +210,16 @@ export async function ingestLead(lead: NormalizedInboundLead): Promise<InboundRe
     }
 
     if (!ingestion.client_id) {
+      const channelSystemKey = lead.source === "woocommerce"
+        ? "ecommerce"
+        : lead.source === "email"
+          ? "email"
+          : "forms";
+      const [waitingLabel, newLeadLabel, channelLabel] = await Promise.all([
+        getSystemLabel("reply_status", "waiting"),
+        getSystemLabel("client_status", "new_lead"),
+        getSystemLabel("channel", channelSystemKey),
+      ]);
       const { data: groups, error: groupError } = await supabaseAdmin.from("crm_groups").select("id, name").ilike("name", "New Lead").order("sort_order").limit(1);
       if (groupError) throw new InboundLeadError(groupError.message);
       const groupId = groups?.[0]?.id;
@@ -218,10 +229,13 @@ export async function ingestLead(lead: NormalizedInboundLead): Promise<InboundRe
       const { data: client, error: clientError } = await supabaseAdmin.from("clients").insert({
         name: lead.customerName || lead.companyName,
         people: "",
-        reply_status: "Waiting...",
+        reply_status: waitingLabel.value,
+        reply_status_option_id: waitingLabel.id,
         follow_up: addWorkingDays(dateCreated, 3),
-        status: "New Lead",
-        channel: lead.channel,
+        status: newLeadLabel.value,
+        status_option_id: newLeadLabel.id,
+        channel: channelLabel.value,
+        channel_option_id: channelLabel.id,
         importance: "",
         company: lead.companyName,
         email: lead.email,

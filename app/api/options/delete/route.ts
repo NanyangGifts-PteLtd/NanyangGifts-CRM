@@ -47,7 +47,7 @@ async function findOption(code: string, name: string) {
 
   const { data: option, error: optionError } = await supabaseAdmin
     .from("option_values")
-    .select("id")
+    .select("id, system_key")
     .eq("group_id", group.id)
     .eq("value", name)
     .maybeSingle();
@@ -129,6 +129,13 @@ export async function POST(request: NextRequest) {
 
   const found = await findOption(code, name);
   if ("error" in found) return NextResponse.json({ error: found.error }, { status: 404 });
+  if (found.option.system_key) {
+    return NextResponse.json({
+      error: `“${name}” is required by backend automation (${code}.${found.option.system_key}) and cannot be deleted. You may rename or recolour it without interrupting the automation.`,
+      protected: true,
+      reason: "backend_automation",
+    }, { status: 409 });
+  }
   const usage = await usageFor(code, name, found.option.id);
   if (usage.error) return NextResponse.json({ error: usage.error }, { status: 500 });
   if (body.action === "preview") {

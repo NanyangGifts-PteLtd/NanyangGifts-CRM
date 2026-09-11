@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { getSystemLabel } from "@/lib/system-labels";
 
 const INTERNAL_ROLES = new Set(["sales", "pm", "admin", "director", "dev"]);
 const PRIVILEGED_ROLES = new Set(["admin", "director", "dev"]);
@@ -20,24 +21,6 @@ function withoutFileCustomFields(value: unknown) {
         return !tokens.some((token) => ["file", "files", "attachment", "attachments", "artwork"].includes(token));
       }),
   );
-}
-
-async function newLeadOptionId() {
-  const { data: group, error: groupError } = await supabaseAdmin
-    .from("option_groups")
-    .select("id")
-    .eq("code", "client_status")
-    .maybeSingle();
-  if (groupError) throw groupError;
-  if (!group) return null;
-  const { data: option, error: optionError } = await supabaseAdmin
-    .from("option_values")
-    .select("id")
-    .eq("group_id", group.id)
-    .ilike("value", "New Lead")
-    .maybeSingle();
-  if (optionError) throw optionError;
-  return option?.id ?? null;
 }
 
 async function removeIncompleteDuplicate(clientId: string) {
@@ -126,14 +109,14 @@ export async function POST(request: NextRequest) {
       "activity_log",
       "deletion_owner_id",
     ]);
-    const statusOptionId = await newLeadOptionId();
+    const newLeadLabel = await getSystemLabel("client_status", "new_lead");
     const { data: duplicate, error: duplicateError } = await supabaseAdmin
       .from("clients")
       .insert({
         ...clientCopy,
         name: `${sourceClientResult.data.name ?? "New Client"} (Copy)`,
-        status: "New Lead",
-        status_option_id: statusOptionId,
+        status: newLeadLabel.value,
+        status_option_id: newLeadLabel.id,
         custom_fields: withoutFileCustomFields(sourceClientResult.data.custom_fields),
         activity_log: [],
       })

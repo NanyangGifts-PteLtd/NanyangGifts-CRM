@@ -2,6 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { getSystemLabel } from "@/lib/system-labels";
 
 type ReplyDetectedBody = {
   eventId?: string;
@@ -139,11 +140,11 @@ export async function POST(request: NextRequest) {
       assignee = data;
     }
 
-    let clientCandidates: Array<{ id: string; name: string; email: string | null; reply_status: string | null; created_at: string }> = [];
+    let clientCandidates: Array<{ id: string; name: string; email: string | null; reply_status: string | null; reply_status_option_id: string | null; created_at: string }> = [];
     if (requestedClientId) {
       const { data, error } = await supabaseAdmin
         .from("clients")
-        .select("id, name, email, reply_status, created_at")
+        .select("id, name, email, reply_status, reply_status_option_id, created_at")
         .eq("id", requestedClientId)
         .maybeSingle();
       if (error) throw new Error(error.message);
@@ -153,7 +154,7 @@ export async function POST(request: NextRequest) {
       const matches = await Promise.all(lookupEmails.map(async (email) => {
         const { data, error } = await supabaseAdmin
           .from("clients")
-          .select("id, name, email, reply_status, created_at")
+          .select("id, name, email, reply_status, reply_status_option_id, created_at")
           .ilike("email", escapedIlike(email))
           .order("created_at", { ascending: false });
         if (error) throw new Error(error.message);
@@ -194,28 +195,15 @@ export async function POST(request: NextRequest) {
     const clientId = client.id;
 
     const oldStatus = client.reply_status ?? "";
-    let repliedOptionId: string | null = null;
-    const { data: replyGroup } = await supabaseAdmin
-      .from("option_groups")
-      .select("id")
-      .eq("code", "reply_status")
-      .maybeSingle();
-    if (replyGroup) {
-      const { data: repliedOption } = await supabaseAdmin
-        .from("option_values")
-        .select("id")
-        .eq("group_id", replyGroup.id)
-        .ilike("value", "Replied")
-        .maybeSingle();
-      repliedOptionId = repliedOption?.id ?? null;
-    }
+    const repliedLabel = await getSystemLabel("reply_status", "replied");
 
-    if (oldStatus !== "Replied") {
+    const alreadyReplied = client.reply_status_option_id === repliedLabel.id;
+    if (!alreadyReplied || oldStatus !== repliedLabel.value) {
       const { error: updateError } = await supabaseAdmin
         .from("clients")
         .update({
-          reply_status: "Replied",
-          reply_status_option_id: repliedOptionId,
+          reply_status: repliedLabel.value,
+          reply_status_option_id: repliedLabel.id,
           waiting_started_at: null,
         })
         .eq("id", clientId);
@@ -225,14 +213,14 @@ export async function POST(request: NextRequest) {
         || assignee?.email
         || body.assigneeEmail?.trim()
         || "Email integration (Make)";
-      const { error: activityError } = await supabaseAdmin.from("activity_log").insert({
+      const { error: activityError } = alreadyReplied ? { error: null } : await supabaseAdmin.from("activity_log").insert({
         client_id: clientId,
         subitem_id: null,
         actor_name: actorName,
         action: "field_changed",
         field_name: "replyStatus",
         old_value: oldStatus,
-        new_value: "Replied",
+        new_value: repliedLabel.value,
         subitem_name: null,
         link: null,
         title: "marked this client as replied from email",
@@ -257,8 +245,8 @@ export async function POST(request: NextRequest) {
       clientId,
       matchedBy: requestedClientId ? "clientId" : clientEmail ? "clientEmail" : "recipients",
       clientEmail: client.email?.trim().toLowerCase() || clientEmail || null,
-      replyStatus: "Replied",
-      alreadyReplied: oldStatus === "Replied",
+      replyStatus: repliedLabel.value,
+      alreadyReplied,
     };
     await setInboundEvent(eventId, {
       status: "completed",

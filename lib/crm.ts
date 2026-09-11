@@ -554,14 +554,20 @@ export async function createClientRow(
     groupId?: string | null,
     name?: string | null,
 ) {
+    const [waitingLabel, newLeadLabel] = await Promise.all([
+        resolveSystemOption('reply_status', 'waiting'),
+        resolveSystemOption('client_status', 'new_lead'),
+    ]);
     const { data, error } = await supabase
         .from('clients')
         .insert({
             name: name?.trim() || 'New Client',
             people: '',
-            reply_status: 'Waiting...',
+            reply_status: waitingLabel.value,
+            reply_status_option_id: waitingLabel.id,
             follow_up: '',
-            status: 'New Lead',
+            status: newLeadLabel.value,
+            status_option_id: newLeadLabel.id,
             channel: '',
             importance: '',
             progress: '',
@@ -596,6 +602,32 @@ export async function createClientRow(
     return data;
 }
 
+async function resolveSystemOption(groupCode: string, systemKey: string) {
+    const { data, error } = await supabase
+        .from('option_values')
+        .select('id, value, option_groups!inner(code)')
+        .eq('option_groups.code', groupCode)
+        .eq('system_key', systemKey)
+        .maybeSingle();
+    if (error) throw error;
+    if (!data) throw new Error(`Required system label ${groupCode}.${systemKey} is not configured.`);
+    return { id: data.id, value: data.value };
+}
+
+async function resolveOptionId(groupCode: string, value: string) {
+    const normalized = value.trim();
+    if (!normalized) return null;
+    const { data, error } = await supabase
+        .from('option_values')
+        .select('id, option_groups!inner(code)')
+        .eq('option_groups.code', groupCode)
+        .eq('value', normalized)
+        .maybeSingle();
+    if (error) throw error;
+    if (!data) throw new Error(`“${normalized}” is not a valid ${groupCode.replaceAll('_', ' ')} label.`);
+    return data.id;
+}
+
 export async function updateClientRow(
     clientId: string,
     updates: Partial<Client> & { customFields?: Record<string, string>; },
@@ -610,17 +642,31 @@ export async function updateClientRow(
     if (fetchError) throw fetchError;
 
     const nextUpdates = { ...updates } as Partial<Client>;
-    if (updates.replyStatus !== undefined && updates.replyStatus !== existing.reply_status) {
-        nextUpdates.waitingStartedAt = updates.replyStatus === 'Waiting...'
-            ? new Date().toISOString()
-            : null;
-    }
-
     const mapped = {
         ...updates,
         group_id: updates.groupId,
     };
     delete mapped.groupId;
+
+    const clientLabelFields = [
+        ["replyStatus", "reply_status", "reply_status_option_id", "reply_status"],
+        ["status", "status", "status_option_id", "client_status"],
+        ["channel", "channel", "channel_option_id", "channel"],
+        ["importance", "importance", "importance_option_id", "importance"],
+        ["progress", "progress", "progress_option_id", "progress"],
+    ] as const;
+    const clientOptionIds: Record<string, string | null> = {};
+    for (const [modelKey, , idColumn, groupCode] of clientLabelFields) {
+        const value = nextUpdates[modelKey];
+        if (value === undefined) continue;
+        clientOptionIds[idColumn] = await resolveOptionId(groupCode, String(value));
+    }
+    if (updates.replyStatus !== undefined && updates.replyStatus !== existing.reply_status) {
+        const waitingLabel = await resolveSystemOption('reply_status', 'waiting');
+        nextUpdates.waitingStartedAt = clientOptionIds.reply_status_option_id === waitingLabel.id
+            ? new Date().toISOString()
+            : null;
+    }
 
     const payload = {
         ...(updates.name !== undefined ? { name: updates.name } : {}),
@@ -644,6 +690,7 @@ export async function updateClientRow(
         ...(updates.activityLog !== undefined ? { activity_log: updates.activityLog } : {}),
         ...(updates.customFields !== undefined ? { custom_fields: updates.customFields } : {}),
         ...(nextUpdates.waitingStartedAt !== undefined ? { waiting_started_at: nextUpdates.waitingStartedAt } : {}),
+        ...clientOptionIds,
     };
 
     const { error } = await supabase
@@ -955,6 +1002,22 @@ export async function updateSubitemRow(subitemId: string, updates: Partial<Subit
         nextUpdates.shipperId = matchingShipper?.id ?? null;
     }
 
+    const subitemLabelFields = [
+        ["status", "status_option_id", "subitem_status"],
+        ["shipper", "shipper_option_id", "shipper"],
+        ["currency", "currency_option_id", "currency"],
+        ["payment", "payment_option_id", "payment"],
+        ["paymentStatus", "payment_status_option_id", "payment_status"],
+        ["modeOfPayment", "mode_of_payment_option_id", "mode_of_payment"],
+        ["localOverseas", "local_overseas_option_id", "local_overseas"],
+    ] as const;
+    const subitemOptionIds: Record<string, string | null> = {};
+    for (const [modelKey, idColumn, groupCode] of subitemLabelFields) {
+        const value = nextUpdates[modelKey];
+        if (value === undefined) continue;
+        subitemOptionIds[idColumn] = await resolveOptionId(groupCode, String(value));
+    }
+
     const { error } = await supabase
         .from("subitems")
         .update({
@@ -1008,6 +1071,7 @@ export async function updateSubitemRow(subitemId: string, updates: Partial<Subit
             ...(nextUpdates.sampleStatus !== undefined ? { sample_status: nextUpdates.sampleStatus } : {}),
             ...(nextUpdates.sampleType !== undefined ? { sample_type: nextUpdates.sampleType } : {}),
             ...(nextUpdates.customFields !== undefined ? { custom_fields: nextUpdates.customFields } : {}),
+            ...subitemOptionIds,
         })
         .eq("id", subitemId);
 

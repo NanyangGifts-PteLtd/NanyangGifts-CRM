@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { getSystemLabel } from "@/lib/system-labels";
 import { DEFAULT_IMPORTANT_NOTES, DEFAULT_STRICT_NEED_BY_WARNING } from "@/components/Important-Notes";
 
 type CreateOcfBody = {
@@ -74,11 +75,12 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "Client not found" }, { status: 404 });
         }
 
+        const awardedLabel = await getSystemLabel("subitem_status", "awarded");
         const { data: awardedSubitems, error: subitemsError } = await supabase
             .from("subitems")
             .select("id, client_id, name, qty, description, status, timeline_rows")
             .eq("client_id", clientId)
-            .eq("status", "Awarded")
+            .eq("status_option_id", awardedLabel.id)
             .order("position");
 
         if (subitemsError) {
