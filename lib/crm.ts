@@ -5,7 +5,7 @@
 // exposes crud functions
 
 import { createClient } from '@/lib/supabase/client';
-import type { TimelineRow, Client, Subitem, ActivityEntry } from '@/app/types';
+import type { TimelineRow, Client, Subitem, ActivityEntry, PaymentRow } from '@/app/types';
 import { addClientAssignee } from './assignments';
 
 
@@ -136,11 +136,18 @@ type Subitems = {
     mode_of_payment: string | null;
     order_number: string | null;
     quantity_produced: string | null;
+    qty_free: string | null;
     sample: string | null;
+    qty_total: string | null;
+    qty_we_keep: string | null;
     qty_for: string | null;
     payment_amount: string | null;
     difference: string | null;
     payment_remarks: string | null;
+    payment_rows?: Array<{
+        id: string; position: number | null; amount: string | null; order_number: string | null;
+        payment_received: boolean | null; mode_of_payment: string | null; mode_of_payment_option_id: string | null;
+    }> | null;
     timeline_rows: any[] | null;
     show_timeline: boolean | null;
     show_payments: boolean | null;
@@ -356,11 +363,23 @@ function mapSubitems(row: Subitems): Subitem {
         modeOfPayment: row.mode_of_payment ?? '',
         orderNumber: row.order_number ?? '',
         quantityProduced: row.quantity_produced ?? '',
+        qtyFree: row.qty_free ?? '',
         sample: row.sample ?? '',
+        qtyTotal: row.qty_total ?? '',
+        qtyWeKeep: row.qty_we_keep ?? '',
         qtyFor: row.qty_for ?? '',
         paymentAmount: row.payment_amount ?? '',
         difference: row.difference ?? '',
         paymentRemarks: row.payment_remarks ?? '',
+        paymentRows: (row.payment_rows ?? []).map((paymentRow) => ({
+            id: paymentRow.id,
+            position: paymentRow.position ?? 0,
+            amount: paymentRow.amount ?? '',
+            orderNumber: paymentRow.order_number ?? '',
+            paymentReceived: paymentRow.payment_received ?? null,
+            modeOfPayment: paymentRow.mode_of_payment ?? '',
+            modeOfPaymentOptionId: paymentRow.mode_of_payment_option_id ?? null,
+        })).sort((first, second) => first.position - second.position),
         timelineRows: row.timeline_rows ?? [],
         showTimeline: row.show_timeline ?? false,
         showPayments: row.show_payments ?? false,
@@ -522,7 +541,10 @@ export async function fetchClientsWithSubitems() {
         .from('clients')
         .select(`
     *,
-    subitems!subitems_client_id_fkey (*),
+    subitems!subitems_client_id_fkey (
+      *,
+      payment_rows:subitem_payment_rows (*)
+    ),
     client_assignees (
         client_id,
         user_id,
@@ -900,7 +922,10 @@ export async function createSubitemRow(clientId: string, name: string, currentUs
             mode_of_payment: '',
             order_number: '',
             quantity_produced: '',
+            qty_free: '',
             sample: '',
+            qty_total: '',
+            qty_we_keep: '',
             qty_for: '',
             payment_amount: '',
             difference: '',
@@ -1130,7 +1155,10 @@ export async function updateSubitemRow(subitemId: string, updates: Partial<Subit
             ...(nextUpdates.modeOfPayment !== undefined ? { mode_of_payment: nextUpdates.modeOfPayment } : {}),
             ...(nextUpdates.orderNumber !== undefined ? { order_number: nextUpdates.orderNumber } : {}),
             ...(nextUpdates.quantityProduced !== undefined ? { quantity_produced: nextUpdates.quantityProduced } : {}),
+            ...(nextUpdates.qtyFree !== undefined ? { qty_free: nextUpdates.qtyFree } : {}),
             ...(nextUpdates.sample !== undefined ? { sample: nextUpdates.sample } : {}),
+            ...(nextUpdates.qtyTotal !== undefined ? { qty_total: nextUpdates.qtyTotal } : {}),
+            ...(nextUpdates.qtyWeKeep !== undefined ? { qty_we_keep: nextUpdates.qtyWeKeep } : {}),
             ...(nextUpdates.qtyFor !== undefined ? { qty_for: nextUpdates.qtyFor } : {}),
             ...(nextUpdates.paymentAmount !== undefined ? { payment_amount: nextUpdates.paymentAmount } : {}),
             ...(nextUpdates.difference !== undefined ? { difference: nextUpdates.difference } : {}),
@@ -1164,7 +1192,7 @@ export async function updateSubitemRow(subitemId: string, updates: Partial<Subit
     const fieldMap: Record<string, string> = {
         replyStatus: 'reply_status', localOverseas: 'local_overseas', paymentStatus: 'payment_status',
         totalUc: 'total_uc', lsRmb: 'ls_rmb', totalC: 'total_c', modeOfPayment: 'mode_of_payment',
-        orderNumber: 'order_number', quantityProduced: 'quantity_produced', qtyFor: 'qty_for',
+        orderNumber: 'order_number', quantityProduced: 'quantity_produced', qtyFree: 'qty_free', sample: 'sample', qtyTotal: 'qty_total', qtyWeKeep: 'qty_we_keep', qtyFor: 'qty_for',
         paymentAmount: 'payment_amount', paymentRemarks: 'payment_remarks', timelineRows: 'timeline_rows',
         sampleRows: 'sample_rows', sampleOrderStatus: 'sample_order_status', sampleStatus: 'sample_status',
         sampleType: 'sample_type', cSgd: 'c_sgd', tcSgd: 'tc_sgd', numOfCartons: 'num_of_cartons',
@@ -1313,6 +1341,49 @@ export async function restoreSubitemRow(subitemId: string) {
     const { error } = await supabase.from('subitems').update({ deleted_at: null, deleted_by: null, deleted_with_client_id: null }).eq('id', subitemId);
     if (error) throw error;
     await insertActivityLog({ clientId: subitem.client_id, subitemId, subitemName: subitem.name, action: 'subitem_restored', title: 'restored this subitem from the Bin', meta: { deletedEntity: 'subitem', deletedId: subitemId } });
+}
+
+export async function createSubitemPaymentRow(subitemId: string) {
+    const { data: subitem, error: subitemError } = await supabase.from('subitems').select('id, client_id, name').eq('id', subitemId).single();
+    if (subitemError) throw subitemError;
+    const { data: lastRow, error: lastRowError } = await supabase.from('subitem_payment_rows').select('position').eq('subitem_id', subitemId).order('position', { ascending: false }).limit(1).maybeSingle();
+    if (lastRowError) throw lastRowError;
+    const { data: created, error } = await supabase.from('subitem_payment_rows').insert({ subitem_id: subitemId, position: Number(lastRow?.position ?? -1) + 1, amount: '', order_number: '', payment_received: null, mode_of_payment: '', mode_of_payment_option_id: null }).select('id, position, amount, order_number, payment_received, mode_of_payment, mode_of_payment_option_id').single();
+    if (error) throw error;
+    void insertActivityLog({ clientId: subitem.client_id, subitemId, subitemName: subitem.name, action: 'subitem_field_changed', fieldName: 'payment row added' });
+    return { id: created.id, position: created.position ?? 0, amount: created.amount ?? '', orderNumber: created.order_number ?? '', paymentReceived: created.payment_received ?? null, modeOfPayment: created.mode_of_payment ?? '', modeOfPaymentOptionId: created.mode_of_payment_option_id ?? null } satisfies PaymentRow;
+}
+
+export async function updateSubitemPaymentRow(subitemId: string, paymentRowId: string, updates: Partial<Omit<PaymentRow, 'id' | 'position'>>) {
+    const { data: subitem, error: subitemError } = await supabase.from('subitems').select('client_id, name').eq('id', subitemId).single();
+    if (subitemError) throw subitemError;
+    const { data: existing, error: existingError } = await supabase.from('subitem_payment_rows').select('*').eq('id', paymentRowId).eq('subitem_id', subitemId).single();
+    if (existingError) throw existingError;
+    const modeOfPaymentOptionId = updates.modeOfPayment === undefined ? undefined : await resolveOptionId('mode_of_payment', updates.modeOfPayment);
+    const payload = {
+        ...(updates.amount !== undefined ? { amount: updates.amount } : {}),
+        ...(updates.orderNumber !== undefined ? { order_number: updates.orderNumber } : {}),
+        ...(updates.paymentReceived !== undefined ? { payment_received: updates.paymentReceived } : {}),
+        ...(updates.modeOfPayment !== undefined ? { mode_of_payment: updates.modeOfPayment, mode_of_payment_option_id: modeOfPaymentOptionId } : {}),
+    };
+    const { data: updated, error } = await supabase.from('subitem_payment_rows').update(payload).eq('id', paymentRowId).eq('subitem_id', subitemId).select('id, position, amount, order_number, payment_received, mode_of_payment, mode_of_payment_option_id').single();
+    if (error) throw error;
+    for (const [field, value] of Object.entries(payload)) {
+        const oldValue = existing[field];
+        if (isEqualForLog(oldValue, value)) continue;
+        void insertActivityLog({ clientId: subitem.client_id, subitemId, subitemName: subitem.name, action: 'subitem_field_changed', fieldName: `payment row:${paymentRowId}:${field}`, oldValue, newValue: value });
+    }
+    return { id: updated.id, position: updated.position ?? 0, amount: updated.amount ?? '', orderNumber: updated.order_number ?? '', paymentReceived: updated.payment_received ?? null, modeOfPayment: updated.mode_of_payment ?? '', modeOfPaymentOptionId: updated.mode_of_payment_option_id ?? null } satisfies PaymentRow;
+}
+
+export async function deleteSubitemPaymentRow(subitemId: string, paymentRowId: string) {
+    const { data: subitem, error: subitemError } = await supabase.from('subitems').select('client_id, name').eq('id', subitemId).single();
+    if (subitemError) throw subitemError;
+    const { data: row, error: rowError } = await supabase.from('subitem_payment_rows').select('*').eq('id', paymentRowId).eq('subitem_id', subitemId).single();
+    if (rowError) throw rowError;
+    const { error } = await supabase.from('subitem_payment_rows').delete().eq('id', paymentRowId).eq('subitem_id', subitemId);
+    if (error) throw error;
+    void insertActivityLog({ clientId: subitem.client_id, subitemId, subitemName: subitem.name, action: 'subitem_field_changed', fieldName: 'payment row removed', oldValue: row });
 }
 
 export async function reorderSubitemRows(clientId: string, orderedSubitemIds: string[]) {

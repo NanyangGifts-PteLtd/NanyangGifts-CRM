@@ -6,7 +6,9 @@ import type {
   Profile,
   Subitem,
   TimelineRow,
+  PaymentRow,
 } from "../../app/types";
+import { createSubitemPaymentRow, updateSubitemPaymentRow, deleteSubitemPaymentRow } from "@/lib/crm";
 import {
   Calendar,
   CreditCard,
@@ -152,11 +154,13 @@ export const PAYMENT_COLS: ColumnDef[] = [
   },
   { key: "ls", label: "LS", width: 70, minWidth: 7 },
   { key: "totalC", label: "Total Cost", width: 80, minWidth: 7 },
-  { key: "modeOfPayment", label: "Mode of Payment", width: 115, minWidth: 7 },
-  { key: "orderNumber", label: "Order #", width: 115, minWidth: 7 },
   { key: "quantityProduced", label: "Qty Ordered", width: 90, minWidth: 7 },
-  { key: "sample", label: "Sample", width: 44, minWidth: 7 },
+  { key: "qtyFree", label: "Qty Free", width: 80, minWidth: 7 },
+  { key: "sample", label: "Qty Paid Sample", width: 112, minWidth: 7 },
+  { key: "qtyTotal", label: "Qty Total", width: 85, minWidth: 7 },
+  { key: "qtyWeKeep", label: "Qty we keep", width: 105, minWidth: 7 },
   { key: "qtyFor", label: "Qty For Client", width: 110, minWidth: 7 },
+  { key: "totalToPay", label: "Total to Pay", width: 105, minWidth: 7 },
   { key: "paymentAmount", label: "Payment Amt", width: 100, minWidth: 7 },
   { key: "difference", label: "Difference", width: 90, minWidth: 7 },
   { key: "paymentRemarks", label: "Remarks", width: 120, minWidth: 7 },
@@ -175,6 +179,10 @@ const FORMULA_RESULT_FIELDS = new Set([
   "markup",
   "percentMarkup",
   "priceToSet",
+  "quantityProduced",
+  "qtyTotal",
+  "qtyFor",
+  "totalToPay",
   "difference",
 ]);
 
@@ -308,6 +316,7 @@ type SubitemProps = {
     targetClientId: string,
   ) => void | Promise<void>;
   onOpenSubitemDetail?: (subitemId: string) => void;
+  onPaymentRowsChanged?: (subitemId: string, rows: PaymentRow[]) => void;
 };
 
 function parseNumber(v: string | number | undefined | null) {
@@ -320,6 +329,10 @@ function parseNumber(v: string | number | undefined | null) {
 function formatMoney(v: number | null | undefined) {
   if (v == null || Number.isNaN(v)) return "";
   return v.toFixed(2);
+}
+
+function formatQuantity(v: number) {
+  return Number.isInteger(v) ? String(v) : String(Number(v.toFixed(2)));
 }
 
 function ExpandedRow({
@@ -415,6 +428,7 @@ export function SubitemsTable({
   onDuplicateSubitemAction,
   onMoveSubitemAction,
   onOpenSubitemDetail,
+  onPaymentRowsChanged,
 }: SubitemProps) {
   const [permissionNotice, setPermissionNotice] = useState<{
     left: number;
@@ -2035,7 +2049,12 @@ export function SubitemsTable({
     const manpowerInCurrency = parseNumber(sub.manpower) * currencyMultiplier;
     const lsInCurrency = parseNumber(sub.ls) * currencyMultiplier;
     const totalC = totalUc + manpowerInCurrency + lsInCurrency;
-    const difference = parseNumber(sub.paymentAmount) - totalC;
+    const qtyFree = parseNumber(sub.qtyFree);
+    const qtyPaidSample = parseNumber(sub.sample);
+    const qtyTotal = qty + qtyFree + qtyPaidSample;
+    const qtyForClient = qtyTotal - parseNumber(sub.qtyWeKeep);
+    const totalToPay = totalC + qtyPaidSample * cost;
+    const difference = parseNumber(sub.paymentAmount) - totalToPay;
 
     switch (key) {
       case "name":
@@ -2249,9 +2268,15 @@ export function SubitemsTable({
         );
       case "quantityProduced":
         return (
+          <div className="flex justify-center text-xs text-gray-800">
+            {formatQuantity(qty)}
+          </div>
+        );
+      case "qtyFree":
+        return (
           <EditableCell
-            value={sub.quantityProduced ?? ""}
-            onChange={(v) => onUpdateSubitem(sub.id, { quantityProduced: v })}
+            value={sub.qtyFree ?? ""}
+            onChange={(v) => onUpdateSubitem(sub.id, { qtyFree: v })}
             type="number"
           />
         );
@@ -2260,15 +2285,34 @@ export function SubitemsTable({
           <EditableCell
             value={sub.sample ?? ""}
             onChange={(v) => onUpdateSubitem(sub.id, { sample: v })}
+            type="number"
+          />
+        );
+      case "qtyTotal":
+        return (
+          <div className="flex justify-center text-xs text-gray-800">
+            {formatQuantity(qtyTotal)}
+          </div>
+        );
+      case "qtyWeKeep":
+        return (
+          <EditableCell
+            value={sub.qtyWeKeep ?? ""}
+            onChange={(v) => onUpdateSubitem(sub.id, { qtyWeKeep: v })}
+            type="number"
           />
         );
       case "qtyFor":
         return (
-          <EditableCell
-            value={sub.qtyFor ?? ""}
-            onChange={(v) => onUpdateSubitem(sub.id, { qtyFor: v })}
-            type="number"
-          />
+          <div className="flex justify-center text-xs text-gray-800">
+            {formatQuantity(qtyForClient)}
+          </div>
+        );
+      case "totalToPay":
+        return (
+          <div className="flex justify-center text-xs text-gray-800">
+            {hasCurrency ? formatMoney(totalToPay) : ""}
+          </div>
         );
       case "paymentAmount":
         return (
@@ -3211,6 +3255,34 @@ export function SubitemsTable({
                     </button>
                   </td>
                 </tr>
+
+                {tableMode === "payment" && hasReachedAwardedPhase(sub.status) && (
+                  <tr className="bg-slate-50/70">
+                    <td colSpan={totalColSpan} className="border-b border-r border-[#D0D4E4] bg-[#fafcff] px-9 py-3">
+                      <div className="max-w-[980px] overflow-hidden rounded-md border border-[#D0D4E4] bg-white text-xs text-[#334155] shadow-sm">
+                        <div className="grid grid-cols-[52px_minmax(155px,1fr)_minmax(170px,1fr)_150px_minmax(185px,1fr)_36px] border-b border-[#D0D4E4] bg-[#f4f7fb] text-[11px] font-semibold uppercase tracking-wide text-[#52657f]">
+                          <span className="px-3 py-2">#</span>
+                          <span className="border-l border-[#D0D4E4] px-3 py-2">Sub-amount</span>
+                          <span className="border-l border-[#D0D4E4] px-3 py-2">Order number</span>
+                          <span className="border-l border-[#D0D4E4] px-3 py-2">Payment received?</span>
+                          <span className="border-l border-[#D0D4E4] px-3 py-2">Mode of payment</span>
+                          <span className="border-l border-slate-200" />
+                        </div>
+                        {(sub.paymentRows ?? []).map((paymentRow: PaymentRow, paymentIndex) => (
+                          <div key={paymentRow.id} className="grid grid-cols-[52px_minmax(155px,1fr)_minmax(170px,1fr)_150px_minmax(185px,1fr)_36px] border-b border-[#e2e8f0] last:border-b-0">
+                            <div className="flex items-center justify-center px-3 py-2 font-medium text-slate-500">{paymentIndex + 1}</div>
+                            <div className="border-l border-[#e2e8f0]"><EditableCell readOnly={!canEditSubitem(sub.id)} value={paymentRow.amount} type="number" onChange={(value) => void updateSubitemPaymentRow(sub.id, paymentRow.id, { amount: value }).then((updated) => onPaymentRowsChanged?.(sub.id, sub.paymentRows.map((row) => row.id === updated.id ? updated : row)))} className="!justify-start px-3 py-2" /></div>
+                            <div className="border-l border-[#e2e8f0]"><EditableCell readOnly={!canEditSubitem(sub.id)} value={paymentRow.orderNumber} onChange={(value) => void updateSubitemPaymentRow(sub.id, paymentRow.id, { orderNumber: value }).then((updated) => onPaymentRowsChanged?.(sub.id, sub.paymentRows.map((row) => row.id === updated.id ? updated : row)))} className="!justify-start px-3 py-2" /></div>
+                            <div className="border-l border-[#e2e8f0] overflow-hidden"><StatusBadge value={paymentRow.paymentReceived === null ? "" : paymentRow.paymentReceived ? "Yes" : "No"} onChange={(value) => void updateSubitemPaymentRow(sub.id, paymentRow.id, { paymentReceived: value === "Yes" }).then((updated) => onPaymentRowsChanged?.(sub.id, sub.paymentRows.map((row) => row.id === updated.id ? updated : row)))} options={[{ value: "Yes", color: "#22c55e" }, { value: "No", color: "#ef4444" }]} small readOnly={!canEditSubitem(sub.id)} /></div>
+                            <div className="border-l border-[#e2e8f0] overflow-hidden"><StatusBadge value={paymentRow.modeOfPayment} onChange={(value) => void updateSubitemPaymentRow(sub.id, paymentRow.id, { modeOfPayment: value }).then((updated) => onPaymentRowsChanged?.(sub.id, sub.paymentRows.map((row) => row.id === updated.id ? updated : row)))} options={modeOfPaymentOptions} onAddOption={onAddModeOfPayment} onDeleteOption={onDeleteModeOfPayment} manageLabel="mode of payment" small readOnly={!canEditSubitem(sub.id)} /></div>
+                            <button type="button" disabled={!canEditSubitem(sub.id)} onClick={() => { if (window.confirm("Remove this payment row?")) void deleteSubitemPaymentRow(sub.id, paymentRow.id).then(() => onPaymentRowsChanged?.(sub.id, sub.paymentRows.filter((row) => row.id !== paymentRow.id))); }} className="border-l border-[#e2e8f0] text-slate-300 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-40" title="Remove payment row"><Trash2 size={15} className="mx-auto" /></button>
+                          </div>
+                        ))}
+                        <button type="button" disabled={!canEditSubitem(sub.id)} onClick={() => void createSubitemPaymentRow(sub.id).then((created) => onPaymentRowsChanged?.(sub.id, [...sub.paymentRows, created]))} className="flex w-full items-center gap-1.5 px-3 py-2 text-left text-xs font-medium text-[#318d98] hover:bg-[#eefbfc] disabled:cursor-not-allowed disabled:opacity-50"><Plus size={15} /> Add payment</button>
+                      </div>
+                    </td>
+                  </tr>
+                )}
 
                 {tableMode === "payment" && activeSubitemView(sub) === "timeline" && hasReachedAwardedPhase(sub.status) && (
                   <ExpandedRow colSpan={totalColSpan} tone="blue">

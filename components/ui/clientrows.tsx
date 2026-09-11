@@ -344,6 +344,7 @@ export type ClientRowProps = {
     targetClientId: string,
   ) => void | Promise<void>;
   onOpenSubitemDetail?: (subitemId: string) => void;
+  onPaymentRowsChanged?: (subitemId: string, rows: import("../../app/types").PaymentRow[]) => void;
   trackingMode?: boolean;
 };
 
@@ -458,6 +459,7 @@ export function ClientRow({
   onDuplicateSubitemAction,
   onMoveSubitemAction,
   onOpenSubitemDetail,
+  onPaymentRowsChanged,
   trackingMode = false,
 }: ClientRowProps) {
   const [permissionNotice, setPermissionNotice] = useState<{
@@ -3878,6 +3880,7 @@ export function ClientRow({
           onDuplicateSubitemAction={onDuplicateSubitemAction}
           onMoveSubitemAction={onMoveSubitemAction}
           onOpenSubitemDetail={onOpenSubitemDetail}
+          onPaymentRowsChanged={onPaymentRowsChanged}
         />
       )}
       <AlertDialog

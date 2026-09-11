@@ -2126,6 +2126,7 @@ export function CRMBoard({
       name: string,
       setEntries: React.Dispatch<React.SetStateAction<OptionEntry[]>>,
     ) => {
+      const toastId = toast.loading("Checking label…");
       const response = await fetch("/api/options/delete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -2134,12 +2135,14 @@ export function CRMBoard({
       const result = await response.json().catch(() => ({}));
       if (!response.ok || !result.optionId) {
         toast.error(result.protected ? "Backend label cannot be deleted" : "Option could not be deleted", {
+          id: toastId,
           description: result.error ?? "The label option was not found.",
         });
         return;
       }
 
       if ((result.usageCount ?? 0) > 0) {
+        toast.dismiss(toastId);
         setPendingOptionDeletion({
           code,
           name,
@@ -2149,6 +2152,12 @@ export function CRMBoard({
         });
         return;
       }
+      let removedEntry: OptionEntry | undefined;
+      setEntries((previous) => {
+        removedEntry = previous.find((entry) => entry.value === name);
+        return previous.filter((entry) => entry.value !== name);
+      });
+      toast.loading("Deleting label…", { id: toastId });
       const deleteResponse = await fetch("/api/options/delete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -2156,18 +2165,25 @@ export function CRMBoard({
       });
       const deleteResult = await deleteResponse.json().catch(() => ({}));
       if (!deleteResponse.ok) {
+        if (removedEntry) {
+          setEntries((previous) =>
+            previous.some((entry) => entry.value === removedEntry!.value)
+              ? previous
+              : [...previous, removedEntry!],
+          );
+        }
         toast.error("Option could not be deleted", {
+          id: toastId,
           description: deleteResult.error ?? "The label option could not be deleted.",
         });
         return;
       }
 
-      setEntries((prev) => prev.filter((e) => e.value !== name));
-      await reloadClients();
-      notifyChange(
-        "Option deleted",
-        `${name} was removed from the ${code.replaceAll("_", " ")} list.`,
-      );
+      toast.success("Label deleted", {
+        id: toastId,
+        description: `${name} was removed from the ${code.replaceAll("_", " ")} list.`,
+      });
+      void reloadClients();
     },
     [notifyChange, reloadClients],
   );
@@ -8615,6 +8631,12 @@ export function CRMBoard({
                       onMoveSubitemAction={moveSubitemAction}
                       onOpenSubitemDetail={(subitemId) =>
                         setDetailSubitem({ clientId: client.id, subitemId })
+                      }
+                      onPaymentRowsChanged={(subitemId, paymentRows) =>
+                        setClients((current) => current.map((owner) => owner.id !== client.id ? owner : {
+                          ...owner,
+                          subitems: owner.subitems.map((subitem) => subitem.id === subitemId ? { ...subitem, paymentRows } : subitem),
+                        }))
                       }
                     />
                   ))}

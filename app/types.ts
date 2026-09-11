@@ -62,6 +62,16 @@ export interface TimelineRow {
   dependency: string;
 }
 
+export interface PaymentRow {
+  id: string;
+  position: number;
+  amount: string;
+  orderNumber: string;
+  paymentReceived: boolean | null;
+  modeOfPayment: string;
+  modeOfPaymentOptionId?: string | null;
+}
+
 
 export interface Subitem {
   id: string;
@@ -108,11 +118,15 @@ export interface Subitem {
   modeOfPayment: string;
   orderNumber: string;
   quantityProduced: string;
+  qtyFree: string;
   sample: string;
+  qtyTotal: string;
+  qtyWeKeep: string;
   qtyFor: string;
   paymentAmount: string;
   difference: string;
   paymentRemarks: string;
+  paymentRows: PaymentRow[];
 
   // Timeline
   timelineRows: TimelineRow[];
