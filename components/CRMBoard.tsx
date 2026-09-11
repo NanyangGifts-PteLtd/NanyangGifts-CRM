@@ -227,6 +227,12 @@ const TRACKING_HEADER_COLS: HeaderCol[] = [
     minWidth: 7,
   },
   {
+    key: "trackingInvoiceCreated",
+    label: "Invoice created?",
+    width: 130,
+    minWidth: 7,
+  },
+  {
     key: "trackingInvoiceNumber",
     label: "Invoice Number",
     width: 180,

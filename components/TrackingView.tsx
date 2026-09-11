@@ -27,6 +27,10 @@ const multipleInvoiceOptions: BadgeOption[] = [
   { value: "Yes", color: "#f59e0b" },
   { value: "No", color: "#64748b" },
 ];
+const invoiceCreatedOptions: BadgeOption[] = [
+  { value: "Yes", color: "#16a34a" },
+  { value: "No", color: "#64748b" },
+];
 const paymentStatusOptions: BadgeOption[] = [
   ["Not Delivered", "#ff5b57"],
   ["30days Credit terms", "#e63959"],
@@ -52,6 +56,7 @@ const paymentStatusOptions: BadgeOption[] = [
 
 type TrackingField =
   | "trackingSummary"
+  | "trackingInvoiceCreated"
   | "trackingEstimateNumber"
   | "trackingInvoiceNumber"
   | "trackingMultipleInvoices"
@@ -136,13 +141,13 @@ export function TrackingView({
   return (
     <div className="border-t border-slate-200 bg-white">
       <div className="overflow-x-auto">
-        <table className="min-w-[1320px] w-full border-collapse text-[12.6px]">
+        <table className="min-w-[1450px] w-full border-collapse text-[12.6px]">
           <tbody>
             {closedGroups.map(({ group, clients: groupClients }) => (
               <Fragment key={group.id}>
                 <tr>
                   <td
-                    colSpan={8}
+                    colSpan={10}
                     className="border-b-2 border-slate-300 bg-slate-50 p-0"
                   >
                     <button
@@ -175,6 +180,7 @@ export function TrackingView({
                       "Summary",
                       "Channel",
                       "Quote Number",
+                      "Invoice created?",
                       "Invoice Number",
                       "Multiple Invoices?",
                       "Payment Status",
@@ -275,6 +281,20 @@ export function TrackingView({
                                 value,
                               )
                             }
+                          />
+                        </td>
+                        <td className="w-[130px] border border-[#D0D4E4] p-0">
+                          <StatusBadge
+                            value={valueOf(client, "trackingInvoiceCreated")}
+                            onChange={(value) =>
+                              updateTracking(
+                                client,
+                                "trackingInvoiceCreated",
+                                value,
+                              )
+                            }
+                            options={invoiceCreatedOptions}
+                            manageLabel="invoice created"
                           />
                         </td>
                         <td className="w-[180px] border border-[#D0D4E4] p-1">

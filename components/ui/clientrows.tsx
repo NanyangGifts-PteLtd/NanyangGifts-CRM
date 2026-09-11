@@ -62,6 +62,10 @@ const trackingMultipleInvoiceOptions: OptionEntry[] = [
   { value: "Yes", color: "#f59e0b" },
   { value: "No", color: "#64748b" },
 ];
+const trackingInvoiceCreatedOptions: OptionEntry[] = [
+  { value: "Yes", color: "#16a34a" },
+  { value: "No", color: "#64748b" },
+];
 const trackingPriceInvoiceMatchOptions: OptionEntry[] = [
   { value: "Yes", color: "#16a34a" },
   { value: "ERROR - MISMATCH", color: "#dc2626" },
@@ -737,6 +741,7 @@ export function ClientRow({
             ...(client.customFields ?? {}),
             trackingEstimateGenerationId: "",
             trackingEstimateNumber: "",
+            trackingInvoiceCreated: "",
             trackingInvoiceNumber: "",
             trackingMultipleInvoices: "",
             trackingInvoiceTotal: "",
@@ -769,6 +774,7 @@ export function ClientRow({
         ...(client.customFields ?? {}),
         trackingEstimateGenerationId: estimate.id,
         trackingEstimateNumber: estimate.quickbooks_estimate_doc_number ?? "",
+        trackingInvoiceCreated: "",
         trackingInvoiceNumber: "",
         trackingMultipleInvoices: "",
         trackingInvoiceTotal: "",
@@ -825,6 +831,7 @@ export function ClientRow({
             ...(client.customFields ?? {}),
             trackingEstimateGenerationId: "",
             trackingEstimateNumber: "",
+            trackingInvoiceCreated: "",
             trackingInvoiceNumber: "",
             trackingMultipleInvoices: "",
             trackingInvoiceTotal: "",
@@ -873,6 +880,7 @@ export function ClientRow({
       onUpdate({
         customFields: {
           ...(client.customFields ?? {}),
+          trackingInvoiceCreated: invoiceNumbers.length ? "Yes" : "No",
           trackingInvoiceNumber: invoiceNumbers.join(", "),
           trackingMultipleInvoices: invoiceNumbers.length
             ? invoiceNumbers.length > 1
@@ -3461,6 +3469,30 @@ export function ClientRow({
                 }
                 options={trackingSummaryOptions}
                 manageLabel="tracking summary"
+              />
+            </div>
+            <div
+              data-client-column="trackingInvoiceCreated"
+              className="tracking-client-cell overflow-hidden border-r border-[#D0D4E4] p-0"
+              style={{
+                height: 30,
+                minWidth: colWidth.trackingInvoiceCreated,
+                width: colWidth.trackingInvoiceCreated,
+                order: columnOrderMap.trackingInvoiceCreated,
+              }}
+            >
+              <StatusBadge
+                value={client.customFields?.trackingInvoiceCreated ?? ""}
+                onChange={(value) =>
+                  onUpdate({
+                    customFields: {
+                      ...(client.customFields ?? {}),
+                      trackingInvoiceCreated: value,
+                    },
+                  })
+                }
+                options={trackingInvoiceCreatedOptions}
+                manageLabel="invoice created"
               />
             </div>
             <div
