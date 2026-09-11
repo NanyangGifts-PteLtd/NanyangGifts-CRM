@@ -22,6 +22,13 @@ const LABEL_FIELDS: Record<string, LabelField> = {
   subitem_status: { table: "subitems", valueColumn: "status", optionIdColumn: "status_option_id" },
   currency: { table: "subitems", valueColumn: "currency", optionIdColumn: "currency_option_id" },
 };
+const TRACKING_CUSTOM_FIELD_BY_CODE: Record<string, string> = {
+  tracking_summary: "trackingSummary",
+  tracking_invoice_created: "trackingInvoiceCreated",
+  tracking_multiple_invoices: "trackingMultipleInvoices",
+  tracking_payment_status: "trackingPaymentStatus",
+  tracking_price_invoice_match: "trackingPriceInvoiceMatch",
+};
 
 async function canManageLabels() {
   const caller = await createClient();
@@ -56,6 +63,18 @@ async function findOption(code: string, name: string) {
 }
 
 async function usageFor(code: string, name: string, optionId: string) {
+  const trackingField = TRACKING_CUSTOM_FIELD_BY_CODE[code];
+  if (trackingField) {
+    const { data, error } = await supabaseAdmin.from("clients").select("id, custom_fields");
+    if (error) return { error: error.message, ids: new Set<string>() };
+    return {
+      ids: new Set(
+        (data ?? [])
+          .filter((row) => row.custom_fields?.[trackingField] === name)
+          .map((row) => row.id),
+      ),
+    };
+  }
   if (code === "subitem_subprogress") {
     const { data, error } = await supabaseAdmin.from("subitems").select("id, timeline_rows");
     if (error) return { error: error.message, ids: new Set<string>() };
@@ -89,6 +108,20 @@ async function usageFor(code: string, name: string, optionId: string) {
 }
 
 async function clearUsage(code: string, name: string, optionId: string) {
+  const trackingField = TRACKING_CUSTOM_FIELD_BY_CODE[code];
+  if (trackingField) {
+    const { data, error } = await supabaseAdmin.from("clients").select("id, custom_fields");
+    if (error) return error;
+    for (const row of data ?? []) {
+      if (row.custom_fields?.[trackingField] !== name) continue;
+      const { error: updateError } = await supabaseAdmin
+        .from("clients")
+        .update({ custom_fields: { ...(row.custom_fields ?? {}), [trackingField]: "" } })
+        .eq("id", row.id);
+      if (updateError) return updateError;
+    }
+    return null;
+  }
   if (code === "subitem_subprogress") {
     const { data, error } = await supabaseAdmin.from("subitems").select("id, timeline_rows");
     if (error) return error;
@@ -123,7 +156,7 @@ export async function POST(request: NextRequest) {
   const body = await request.json() as { action?: "preview" | "delete"; code?: string; name?: string };
   const code = body.code?.trim() ?? "";
   const name = body.name?.trim() ?? "";
-  if (!code || !name || ![...Object.keys(LABEL_FIELDS), "subitem_subprogress"].includes(code)) {
+  if (!code || !name || ![...Object.keys(LABEL_FIELDS), "subitem_subprogress", ...Object.keys(TRACKING_CUSTOM_FIELD_BY_CODE)].includes(code)) {
     return NextResponse.json({ error: "Invalid label option." }, { status: 400 });
   }
 

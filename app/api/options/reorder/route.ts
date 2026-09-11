@@ -6,6 +6,8 @@ const BOARD_OPTION_CODES = new Set([
   "reply_status", "client_status", "channel", "importance", "progress",
   "payment", "payment_status", "mode_of_payment", "shipper", "local_overseas",
   "subitem_status", "currency", "subitem_subprogress",
+  "tracking_summary", "tracking_invoice_created", "tracking_multiple_invoices",
+  "tracking_payment_status", "tracking_price_invoice_match",
 ]);
 
 async function canManageLabels() {

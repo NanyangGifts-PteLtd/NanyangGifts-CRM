@@ -51,72 +51,6 @@ import { toast } from "sonner";
 import { useEscapeClose } from "@/components/hooks/use-escape-close";
 
 type OptionEntry = { value: string; color: string; section?: number };
-const trackingSummaryOptions: OptionEntry[] = [
-  { value: "Started", color: "#ffae3d" },
-  { value: "Successful", color: "#16a34a" },
-  { value: "Delivered", color: "#9748d7" },
-  { value: "Discussed", color: "#0ea5e9" },
-  { value: "Variation", color: "#a855f7" },
-];
-const trackingMultipleInvoiceOptions: OptionEntry[] = [
-  { value: "Yes", color: "#f59e0b" },
-  { value: "No", color: "#64748b" },
-];
-const trackingInvoiceCreatedOptions: OptionEntry[] = [
-  { value: "Yes", color: "#16a34a" },
-  { value: "No", color: "#64748b" },
-];
-const trackingPriceInvoiceMatchOptions: OptionEntry[] = [
-  { value: "Yes", color: "#16a34a" },
-  { value: "ERROR - MISMATCH", color: "#dc2626" },
-  { value: "Partially Invoiced", color: "#f59e0b" },
-];
-const trackingPaymentStatusOptions: OptionEntry[] = [
-  "Not Delivered",
-  "30days Credit terms",
-  "NHG AP-Direct Done",
-  "To Fill Up",
-  "Submitted",
-  "Gebiz Done",
-  "Sesami Done",
-  "Vendors@GOV Done",
-  "Chase for payment",
-  "Paypal Payment",
-  "Tenderboard Done",
-  "PAID",
-  "Ariba Done",
-  "To Verify Issues",
-  "Partially PAID",
-  "Coupa Done",
-  "Cardup",
-  "Partial Invoice",
-  "Chase for PO",
-  "Others (remarks)",
-].map((value, index) => ({
-  value,
-  color: [
-    "#ff5b57",
-    "#e63959",
-    "#5595f5",
-    "#bfc0c2",
-    "#f6c900",
-    "#008bc4",
-    "#ed5acb",
-    "#835446",
-    "#c52a50",
-    "#008448",
-    "#8bcf13",
-    "#00c976",
-    "#2f75d6",
-    "#333333",
-    "#ffae3d",
-    "#5a5fd7",
-    "#9748d7",
-    "#777777",
-    "#ec087a",
-    "#54c2ed",
-  ][index],
-}));
 type AttachmentItem = {
   id: string;
   kind: "file" | "link";
@@ -339,6 +273,13 @@ export type ClientRowProps = {
   subitemStatusOptions: OptionEntry[];
   currencyOptions: OptionEntry[];
   subitemSubprogressOptions: OptionEntry[];
+  trackingSummaryOptions: OptionEntry[];
+  trackingInvoiceCreatedOptions: OptionEntry[];
+  trackingMultipleInvoicesOptions: OptionEntry[];
+  trackingPaymentStatusOptions: OptionEntry[];
+  trackingPriceInvoiceMatchOptions: OptionEntry[];
+  onAddTrackingOption?: (code: string, name: string) => void | Promise<void>;
+  onDeleteTrackingOption?: (code: string, name: string) => void | Promise<void>;
   onAddSubitemSubprogress: (name: string) => void | Promise<void>;
   onDeleteSubitemSubprogress: (name: string) => void | Promise<void>;
   onAddCurrency: (name: string) => void | Promise<void>;
@@ -468,6 +409,13 @@ export function ClientRow({
   subitemStatusOptions,
   currencyOptions,
   subitemSubprogressOptions,
+  trackingSummaryOptions: trackingSummaryLabelOptions,
+  trackingInvoiceCreatedOptions: trackingInvoiceCreatedLabelOptions,
+  trackingMultipleInvoicesOptions: trackingMultipleInvoicesLabelOptions,
+  trackingPaymentStatusOptions: trackingPaymentStatusLabelOptions,
+  trackingPriceInvoiceMatchOptions: trackingPriceInvoiceMatchLabelOptions,
+  onAddTrackingOption,
+  onDeleteTrackingOption,
   onAddSubitemSubprogress,
   onDeleteSubitemSubprogress,
   onAddCurrency,
@@ -3467,7 +3415,12 @@ export function ClientRow({
                     },
                   })
                 }
-                options={trackingSummaryOptions}
+                options={trackingSummaryLabelOptions}
+                onAddOption={(name) => onAddTrackingOption?.("tracking_summary", name)}
+                onDeleteOption={(name) => onDeleteTrackingOption?.("tracking_summary", name)}
+                onUpdateOptionColor={(name, color) => onUpdateOptionColor?.("tracking_summary", name, color)}
+                onRenameOption={(oldName, newName) => onRenameOption?.("tracking_summary", oldName, newName)}
+                onReorderOptions={(layout) => onReorderOptions?.("tracking_summary", layout)}
                 manageLabel="tracking summary"
               />
             </div>
@@ -3491,7 +3444,12 @@ export function ClientRow({
                     },
                   })
                 }
-                options={trackingInvoiceCreatedOptions}
+                options={trackingInvoiceCreatedLabelOptions}
+                onAddOption={(name) => onAddTrackingOption?.("tracking_invoice_created", name)}
+                onDeleteOption={(name) => onDeleteTrackingOption?.("tracking_invoice_created", name)}
+                onUpdateOptionColor={(name, color) => onUpdateOptionColor?.("tracking_invoice_created", name, color)}
+                onRenameOption={(oldName, newName) => onRenameOption?.("tracking_invoice_created", oldName, newName)}
+                onReorderOptions={(layout) => onReorderOptions?.("tracking_invoice_created", layout)}
                 manageLabel="invoice created"
               />
             </div>
@@ -3603,7 +3561,12 @@ export function ClientRow({
                     },
                   })
                 }
-                options={trackingMultipleInvoiceOptions}
+                options={trackingMultipleInvoicesLabelOptions}
+                onAddOption={(name) => onAddTrackingOption?.("tracking_multiple_invoices", name)}
+                onDeleteOption={(name) => onDeleteTrackingOption?.("tracking_multiple_invoices", name)}
+                onUpdateOptionColor={(name, color) => onUpdateOptionColor?.("tracking_multiple_invoices", name, color)}
+                onRenameOption={(oldName, newName) => onRenameOption?.("tracking_multiple_invoices", oldName, newName)}
+                onReorderOptions={(layout) => onReorderOptions?.("tracking_multiple_invoices", layout)}
                 manageLabel="multiple invoices"
               />
             </div>
@@ -3629,7 +3592,12 @@ export function ClientRow({
                     },
                   })
                 }
-                options={trackingPaymentStatusOptions}
+                options={trackingPaymentStatusLabelOptions}
+                onAddOption={(name) => onAddTrackingOption?.("tracking_payment_status", name)}
+                onDeleteOption={(name) => onDeleteTrackingOption?.("tracking_payment_status", name)}
+                onUpdateOptionColor={(name, color) => onUpdateOptionColor?.("tracking_payment_status", name, color)}
+                onRenameOption={(oldName, newName) => onRenameOption?.("tracking_payment_status", oldName, newName)}
+                onReorderOptions={(layout) => onReorderOptions?.("tracking_payment_status", layout)}
                 manageLabel="tracking payment status"
                 includeBlankOption={false}
               />
@@ -3684,7 +3652,12 @@ export function ClientRow({
                     },
                   })
                 }
-                options={trackingPriceInvoiceMatchOptions}
+                options={trackingPriceInvoiceMatchLabelOptions}
+                onAddOption={(name) => onAddTrackingOption?.("tracking_price_invoice_match", name)}
+                onDeleteOption={(name) => onDeleteTrackingOption?.("tracking_price_invoice_match", name)}
+                onUpdateOptionColor={(name, color) => onUpdateOptionColor?.("tracking_price_invoice_match", name, color)}
+                onRenameOption={(oldName, newName) => onRenameOption?.("tracking_price_invoice_match", oldName, newName)}
+                onReorderOptions={(layout) => onReorderOptions?.("tracking_price_invoice_match", layout)}
                 manageLabel="price and invoice match"
               />
             </div>
