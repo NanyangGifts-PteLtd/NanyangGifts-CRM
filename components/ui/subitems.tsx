@@ -163,7 +163,7 @@ export const PAYMENT_COLS: ColumnDef[] = [
 ];
 
 type TableMode = "subitem" | "payment" | "timeline";
-type OptionEntry = { value: string; color: string };
+type OptionEntry = { value: string; color: string; section?: number };
 type ShipperPushValues = Record<string, string> & { subitemId: string };
 const CUSTOM_COL_WIDTH = 120;
 const FORMULA_RESULT_FIELDS = new Set([
@@ -280,7 +280,7 @@ type SubitemProps = {
     oldName: string,
     newName: string,
   ) => void | Promise<void>;
-  onReorderOptions?: (code: string, values: string[]) => void | Promise<void>;
+  onReorderOptions?: (code: string, layout: Array<{ value: string; section: number }>) => void | Promise<void>;
   onFilterColumn?: (column: string) => void;
   onSortColumn?: (
     category: "subitem" | "payment",
@@ -2057,6 +2057,7 @@ export function SubitemsTable({
                 onRenameOption?.("payment", oldName, newName)
               }
               onReorderOptions={(values) => onReorderOptions?.("payment", values)}
+              sectionCount={4}
               small
             />
           </div>

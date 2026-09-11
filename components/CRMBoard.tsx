@@ -99,7 +99,7 @@ import { uploadCrmFiles } from "@/lib/crm-files";
 import { CombinedPushPreviewModal } from "./shipper/CombinedPushPreviewModal";
 import { useEscapeClose } from "./hooks/use-escape-close";
 
-type OptionEntry = { value: string; color: string };
+type OptionEntry = { value: string; color: string; section?: number };
 type PendingOptionDeletion = {
   code: string;
   name: string;
@@ -686,6 +686,8 @@ export function CRMBoard({
   const [newClientName, setNewClientName] = useState("");
   const [isAddingClient, setIsAddingClient] = useState(false);
   const isSubmittingNewClient = useRef(false);
+  const optionReorderQueuesRef = useRef<Record<string, Promise<void>>>({});
+  const optionReorderRevisionRef = useRef<Record<string, number>>({});
   const [draggedClientId, setDraggedClientId] = useState<string | null>(null);
   const [draggedSubitem, setDraggedSubitem] = useState<{
     id: string;
@@ -1833,7 +1835,7 @@ export function CRMBoard({
       const { data: values, error: valuesError } = groupIds.length
         ? await supabase
             .from("option_values")
-            .select("group_id, value, color")
+            .select("group_id, value, color, section_index")
             .in("group_id", groupIds)
             .order("sort_order")
         : { data: [], error: null };
@@ -1846,7 +1848,11 @@ export function CRMBoard({
       const valuesByGroupId = new Map<string, OptionEntry[]>();
       for (const value of values ?? []) {
         const entries = valuesByGroupId.get(value.group_id) ?? [];
-        entries.push({ value: value.value, color: value.color });
+        entries.push({
+          value: value.value,
+          color: value.color,
+          section: value.section_index ?? 0,
+        });
         valuesByGroupId.set(value.group_id, entries);
       }
       const valuesByCode = new Map(
@@ -2036,8 +2042,9 @@ export function CRMBoard({
           value: trimmed,
           color: "#d1d5db",
           sort_order: currentEntries.length,
+          section_index: 0,
         })
-        .select("value, color")
+        .select("value, color, section_index")
         .single();
 
       if (error) {
@@ -2048,7 +2055,10 @@ export function CRMBoard({
         return;
       }
 
-      setEntries((prev) => [...prev, data]);
+      setEntries((prev) => [
+        ...prev,
+        { value: data.value, color: data.color, section: data.section_index ?? 0 },
+      ]);
       notifyChange(
         "Option added",
         `${trimmed} is now available in the ${code.replaceAll("_", " ")} list.`,
@@ -2201,7 +2211,10 @@ export function CRMBoard({
   );
 
   const reorderOptionValues = useCallback(
-    async (code: string, values: string[]) => {
+    async (
+      code: string,
+      layout: Array<{ value: string; section: number }>,
+    ) => {
       const setters: Record<
         string,
         React.Dispatch<React.SetStateAction<OptionEntry[]>>
@@ -2222,56 +2235,47 @@ export function CRMBoard({
       };
       const setEntries = setters[code];
       if (!setEntries) return;
-      const currentEntries: Record<string, OptionEntry[]> = {
-        reply_status: replyStatusEntries,
-        client_status: clientStatusEntries,
-        channel: channelEntries,
-        importance: importanceEntries,
-        progress: progressEntries,
-        payment: paymentEntries,
-        payment_status: paymentStatusEntries,
-        mode_of_payment: modeOfPaymentEntries,
-        shipper: shipperEntries,
-        local_overseas: localOverseasEntries,
-        subitem_status: subitemStatusEntries,
-        currency: currencyEntries,
-        subitem_subprogress: subitemSubprogressEntries,
-      };
-      const previous = currentEntries[code] ?? [];
-      const byValue = new Map(previous.map((entry) => [entry.value, entry]));
-      setEntries(values.map((value) => byValue.get(value)).filter(Boolean) as OptionEntry[]);
-
-      const response = await fetch("/api/options/reorder", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code, values }),
+      let previous: OptionEntry[] = [];
+      setEntries((current) => {
+        previous = current;
+        const byValue = new Map(current.map((entry) => [entry.value, entry]));
+        return layout
+          .map((item) => {
+            const entry = byValue.get(item.value);
+            return entry ? { ...entry, section: item.section } : null;
+          })
+          .filter(Boolean) as OptionEntry[];
       });
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        setEntries(previous);
-        toast.error("Label order could not be saved", {
-          description: result.error ?? "Please try again.",
+
+      const revision = (optionReorderRevisionRef.current[code] ?? 0) + 1;
+      optionReorderRevisionRef.current[code] = revision;
+      const save = async () => {
+        const response = await fetch("/api/options/reorder", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code, layout }),
         });
-        return;
-      }
-      notifyChange("Label order updated", `The ${code.replaceAll("_", " ")} labels were reordered.`);
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          if (optionReorderRevisionRef.current[code] === revision) {
+            setEntries(previous);
+            toast.error("Label order could not be saved", {
+              description: result.error ?? "Please try again.",
+            });
+          }
+          return;
+        }
+        if (optionReorderRevisionRef.current[code] === revision) {
+          notifyChange("Label order updated", `The ${code.replaceAll("_", " ")} labels were reordered.`);
+        }
+      };
+      const queuedSave = (optionReorderQueuesRef.current[code] ?? Promise.resolve())
+        .catch(() => undefined)
+        .then(save);
+      optionReorderQueuesRef.current[code] = queuedSave;
+      await queuedSave;
     },
-    [
-      channelEntries,
-      clientStatusEntries,
-      currencyEntries,
-      importanceEntries,
-      localOverseasEntries,
-      modeOfPaymentEntries,
-      notifyChange,
-      paymentEntries,
-      paymentStatusEntries,
-      progressEntries,
-      replyStatusEntries,
-      shipperEntries,
-      subitemStatusEntries,
-      subitemSubprogressEntries,
-    ],
+    [notifyChange],
   );
 
   const renameOptionValue = useCallback(
@@ -2621,8 +2625,9 @@ export function CRMBoard({
           value: trimmed,
           color: "#d1d5db",
           sort_order: clientStatuses.length,
+          section_index: 0,
         })
-        .select("value, color")
+        .select("value, color, section_index")
         .single();
       if (error) {
         console.error(error);
@@ -2631,7 +2636,10 @@ export function CRMBoard({
         });
         return;
       }
-      setClientStatusEntries((prev) => [...prev, data]);
+      setClientStatusEntries((prev) => [
+        ...prev,
+        { value: data.value, color: data.color, section: data.section_index ?? 0 },
+      ]);
       notifyChange("Option added", `${trimmed} was added to Status.`);
     },
     [clientStatuses.length, notifyChange],

@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { Check, GripVertical, PaintBucket, Pencil, Plus, Trash2 } from "lucide-react";
 
 const MENU_WIDTH = 540;
+const SECTION_WIDTH = 190;
 const LABEL_COLORS = [
   "#b91c1c",
   "#dc2626",
@@ -44,7 +45,8 @@ const LABEL_COLORS = [
   "#d1d5db",
 ];
 
-export type BadgeOption = { value: string; color?: string };
+export type BadgeOption = { value: string; color?: string; section?: number };
+export type BadgeOptionLayout = { value: string; section: number };
 
 function normalizeOptions(options: (string | BadgeOption)[]): BadgeOption[] {
   return options.map((option) =>
@@ -66,6 +68,7 @@ export function StatusBadge({
   manageLabel = "option",
   readOnly = false,
   includeBlankOption = true,
+  sectionCount = 1,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -76,10 +79,11 @@ export function StatusBadge({
   canDeleteOption?: (name: string) => boolean;
   onUpdateOptionColor?: (name: string, color: string) => void | Promise<void>;
   onRenameOption?: (oldName: string, newName: string) => void | Promise<void>;
-  onReorderOptions?: (values: string[]) => void | Promise<void>;
+  onReorderOptions?: (layout: BadgeOptionLayout[]) => void | Promise<void>;
   manageLabel?: string;
   readOnly?: boolean;
   includeBlankOption?: boolean;
+  sectionCount?: number;
 }) {
   const [open, setOpen] = useState(false);
   const [editingLabels, setEditingLabels] = useState(false);
@@ -97,9 +101,44 @@ export function StatusBadge({
     !includeBlankOption ||
     configuredOptions.some((option) => option.value === "")
       ? configuredOptions
-      : [{ value: "", color: "#bfc0c2" }, ...configuredOptions];
+      : [{ value: "", color: "#bfc0c2", section: 0 }, ...configuredOptions];
+  const normalizedSectionCount = Math.max(1, sectionCount);
+  const sectionFor = (option: BadgeOption) =>
+    Math.min(
+      normalizedSectionCount - 1,
+      Math.max(0, Number.isInteger(option.section) ? Number(option.section) : 0),
+    );
+  const optionsBySection = Array.from(
+    { length: normalizedSectionCount },
+    (_, section) => options.filter((option) => sectionFor(option) === section),
+  );
+  const largestSectionSize = Math.max(
+    ...optionsBySection.map((section) => section.length),
+  );
   const activeBg =
     options.find((option) => option.value === value)?.color ?? "#e5e7eb";
+
+  const positionMenu = React.useCallback(() => {
+    if (!btnRef.current) return;
+    const rect = btnRef.current.getBoundingClientRect();
+    const desiredWidth = normalizedSectionCount > 1
+      ? normalizedSectionCount * SECTION_WIDTH + 32
+      : MENU_WIDTH;
+    const width = Math.min(desiredWidth, window.innerWidth - 16);
+    const left = Math.min(
+      Math.max(8, rect.left + rect.width / 2 - width / 2),
+      window.innerWidth - width - 8,
+    );
+    const estimatedHeight = Math.min(
+      (largestSectionSize + 1) * 46 + 90,
+      620,
+    );
+    const top =
+      window.innerHeight - rect.bottom >= estimatedHeight
+        ? rect.bottom + 6
+        : rect.top - estimatedHeight - 6;
+    setMenuStyle({ position: "fixed", top, left, width, zIndex: 9999 });
+  }, [largestSectionSize, normalizedSectionCount]);
 
   const resetMenuState = () => {
     setEditingLabels(false);
@@ -133,6 +172,17 @@ export function StatusBadge({
     return () => document.removeEventListener("mousedown", close);
   }, [open]);
 
+  useEffect(() => {
+    if (!open) return;
+    const reposition = () => positionMenu();
+    window.addEventListener("scroll", reposition, true);
+    window.addEventListener("resize", reposition);
+    return () => {
+      window.removeEventListener("scroll", reposition, true);
+      window.removeEventListener("resize", reposition);
+    };
+  }, [open, positionMenu]);
+
   const handleOpen = () => {
     if (readOnly) return;
     if (!btnRef.current) return;
@@ -141,21 +191,7 @@ export function StatusBadge({
       return;
     }
     resetMenuState();
-    const rect = btnRef.current.getBoundingClientRect();
-    const width = Math.min(MENU_WIDTH, window.innerWidth - 16);
-    const left = Math.min(
-      Math.max(8, rect.left + rect.width / 2 - width / 2),
-      window.innerWidth - width - 8,
-    );
-    const estimatedHeight = Math.min(
-      Math.ceil((options.length + 1) / 3) * 46 + 76,
-      520,
-    );
-    const top =
-      window.innerHeight - rect.bottom >= estimatedHeight
-        ? rect.bottom + 6
-        : Math.max(8, rect.top - estimatedHeight - 6);
-    setMenuStyle({ position: "fixed", top, left, width, zIndex: 9999 });
+    positionMenu();
     setOpen(true);
   };
 
@@ -165,16 +201,85 @@ export function StatusBadge({
       await onRenameOption?.(oldName, nextName);
   };
 
-  const moveOption = async (targetName: string) => {
+  const moveOption = async (targetSection: number, targetName?: string) => {
     if (draggedOption === null || draggedOption === targetName) return;
-    const values = configuredOptions.map((option) => option.value);
-    const fromIndex = values.indexOf(draggedOption);
-    const targetIndex = values.indexOf(targetName);
-    if (fromIndex < 0 || targetIndex < 0) return;
-    values.splice(fromIndex, 1);
-    values.splice(targetIndex, 0, draggedOption);
+    const grouped = Array.from({ length: normalizedSectionCount }, (_, section) =>
+      configuredOptions
+        .filter((option) => sectionFor(option) === section)
+        .map((option) => option.value),
+    );
+    for (const values of grouped) {
+      const index = values.indexOf(draggedOption);
+      if (index >= 0) values.splice(index, 1);
+    }
+    const targetValues = grouped[targetSection];
+    const targetIndex = targetName !== undefined
+      ? targetValues.indexOf(targetName)
+      : -1;
+    if (targetIndex >= 0) targetValues.splice(targetIndex, 0, draggedOption);
+    else targetValues.push(draggedOption);
+    const layout = grouped.flatMap((values, section) =>
+      values.map((optionValue) => ({ value: optionValue, section })),
+    );
     setDraggedOption(null);
-    await onReorderOptions?.(values);
+    await onReorderOptions?.(layout);
+  };
+
+  const renderOption = (option: BadgeOption, section: number) => {
+    const optionColor = option.color ?? "#e5e7eb";
+    const allowDelete = canDeleteOption ? canDeleteOption(option.value) : true;
+    const isStoredOption = configuredOptions.some(
+      (configuredOption) => configuredOption.value === option.value,
+    );
+    const canDrag = editingLabels && Boolean(onReorderOptions) && isStoredOption;
+    return (
+      <div
+        key={option.value || "__empty__"}
+        draggable={canDrag}
+        onDragStart={(event) => {
+          if (!canDrag) return;
+          event.dataTransfer.effectAllowed = "move";
+          event.dataTransfer.setData("text/plain", option.value || "__blank_label__");
+          setDraggedOption(option.value);
+        }}
+        onDragOver={(event) => {
+          if (editingLabels && draggedOption !== null) event.preventDefault();
+        }}
+        onDrop={(event) => {
+          if (!editingLabels) return;
+          event.preventDefault();
+          event.stopPropagation();
+          void moveOption(section, option.value);
+        }}
+        onDragEnd={() => setDraggedOption(null)}
+        className={`relative min-w-0 ${canDrag ? "cursor-grab active:cursor-grabbing" : ""} ${draggedOption === option.value ? "opacity-40" : ""}`}
+      >
+        {!editingLabels ? (
+          <button type="button" onClick={() => { onChange(option.value); closeMenu(); }} aria-label={option.value || "Clear label"} title={option.value || "Clear label"} className="flex h-8 w-full items-center justify-center rounded-sm px-2 text-xs font-semibold text-white transition hover:brightness-95" style={{ background: optionColor }}>
+            <span className="truncate">{option.value}</span>
+            {option.value === value && <Check className="ml-1 shrink-0" size={13} />}
+          </button>
+        ) : option.value === "" ? (
+          <div className="flex h-9 items-center gap-1 rounded-md border border-gray-200 bg-gray-50 p-1 text-xs text-gray-500">
+            {canDrag && <span className="flex h-7 w-4 shrink-0 cursor-grab items-center justify-center text-[#0f8da8] active:cursor-grabbing" title="Drag to reorder or move section"><GripVertical size={15} /></span>}
+            <button type="button" onClick={() => setColorEditor(colorEditor === option.value ? null : option.value)} className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-white" style={{ background: optionColor }} title="Change blank label color"><PaintBucket size={14} /></button>
+            <span className="px-1">Blank label</span>
+          </div>
+        ) : (
+          <div className="flex h-9 items-center gap-1 rounded-md border border-gray-200 bg-white p-1">
+            {onReorderOptions && <span className="flex h-7 w-4 shrink-0 cursor-grab items-center justify-center text-[#0f8da8] active:cursor-grabbing" title="Drag to reorder or move section"><GripVertical size={15} /></span>}
+            <button type="button" onClick={() => setColorEditor(colorEditor === option.value ? null : option.value)} className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-white" style={{ background: optionColor }} title={`Change ${manageLabel} color`}><PaintBucket size={14} /></button>
+            <input value={draftNames[option.value] ?? option.value} onChange={(event) => setDraftNames((previous) => ({ ...previous, [option.value]: event.target.value }))} onBlur={() => void rename(option.value)} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} className="min-w-0 flex-1 px-1 text-xs text-gray-700 outline-none" />
+            {onDeleteOption && allowDelete && <button type="button" onClick={() => void onDeleteOption(option.value)} className="shrink-0 rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600" title={`Delete ${manageLabel}`}><Trash2 size={13} /></button>}
+          </div>
+        )}
+        {colorEditor === option.value && onUpdateOptionColor && (
+          <div className="absolute left-0 top-10 z-20 grid w-56 grid-cols-6 gap-2 rounded-lg border border-gray-200 bg-white p-2 shadow-xl">
+            {LABEL_COLORS.map((color) => <button key={color} type="button" onClick={async () => { await onUpdateOptionColor(option.value, color); setColorEditor(null); }} className="h-6 w-6 rounded-md border border-white ring-1 ring-gray-200 transition hover:scale-110" style={{ background: color }} title={color} />)}
+          </div>
+        )}
+      </div>
+    );
   };
 
   const menu =
@@ -183,145 +288,13 @@ export function StatusBadge({
       <div
         ref={menuRef}
         style={menuStyle}
-        className="max-h-[min(520px,calc(100vh-16px))] overflow-y-auto rounded-xl border border-gray-200 bg-white p-4 shadow-2xl"
+        className="max-h-[min(620px,calc(100vh-16px))] overflow-auto rounded-xl border border-gray-200 bg-white p-4 shadow-2xl"
       >
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-          {options.map((option) => {
-            const optionColor = option.color ?? "#e5e7eb";
-            const allowDelete = canDeleteOption
-              ? canDeleteOption(option.value)
-              : true;
-            return (
-              <div
-                key={option.value || "__empty__"}
-                draggable={editingLabels && Boolean(onReorderOptions)}
-                onDragStart={(event) => {
-                  if (!editingLabels) return;
-                  event.dataTransfer.effectAllowed = "move";
-                  event.dataTransfer.setData("text/plain", option.value);
-                  setDraggedOption(option.value);
-                }}
-                onDragOver={(event) => {
-                  if (editingLabels && draggedOption !== null) event.preventDefault();
-                }}
-                onDrop={(event) => {
-                  if (!editingLabels) return;
-                  event.preventDefault();
-                  void moveOption(option.value);
-                }}
-                onDragEnd={() => setDraggedOption(null)}
-                className={`relative min-w-0 ${editingLabels && onReorderOptions ? "cursor-grab active:cursor-grabbing" : ""} ${draggedOption === option.value ? "opacity-40" : ""}`}
-              >
-                {!editingLabels ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onChange(option.value);
-                      closeMenu();
-                    }}
-                    aria-label={option.value || "Clear label"}
-                    title={option.value || "Clear label"}
-                    className="flex h-8 w-full items-center justify-center rounded-sm px-2 text-xs font-semibold text-white transition hover:brightness-95"
-                    style={{ background: optionColor }}
-                  >
-                    <span className="truncate">{option.value}</span>
-                    {option.value === value && (
-                      <Check className="ml-1 shrink-0" size={13} />
-                    )}
-                  </button>
-                ) : option.value === "" ? (
-                  <div className="flex h-9 items-center gap-1 rounded-md border border-gray-200 bg-gray-50 p-1 text-xs text-gray-500">
-                    {onReorderOptions && (
-                      <span
-                        className="flex h-7 w-4 shrink-0 cursor-grab items-center justify-center text-[#0f8da8] active:cursor-grabbing"
-                        title="Drag to reorder"
-                      >
-                        <GripVertical size={15} />
-                      </span>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setColorEditor(colorEditor === option.value ? null : option.value)
-                      }
-                      className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-white"
-                      style={{ background: optionColor }}
-                      title="Change blank label color"
-                    >
-                      <PaintBucket size={14} />
-                    </button>
-                    <span className="px-1">Blank label</span>
-                  </div>
-                ) : (
-                  <div className="flex h-9 items-center gap-1 rounded-md border border-gray-200 bg-white p-1">
-                    {onReorderOptions && (
-                      <span
-                        className="flex h-7 w-4 shrink-0 cursor-grab items-center justify-center text-[#0f8da8] active:cursor-grabbing"
-                        title="Drag to reorder"
-                      >
-                        <GripVertical size={15} />
-                      </span>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setColorEditor(
-                          colorEditor === option.value ? null : option.value,
-                        )
-                      }
-                      className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-white"
-                      style={{ background: optionColor }}
-                      title={`Change ${manageLabel} color`}
-                    >
-                      <PaintBucket size={14} />
-                    </button>
-                    <input
-                      value={draftNames[option.value] ?? option.value}
-                      onChange={(event) =>
-                        setDraftNames((previous) => ({
-                          ...previous,
-                          [option.value]: event.target.value,
-                        }))
-                      }
-                      onBlur={() => void rename(option.value)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") event.currentTarget.blur();
-                      }}
-                      className="min-w-0 flex-1 px-1 text-xs text-gray-700 outline-none"
-                    />
-                    {onDeleteOption && allowDelete && (
-                      <button
-                        type="button"
-                        onClick={() => void onDeleteOption(option.value)}
-                        className="shrink-0 rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600"
-                        title={`Delete ${manageLabel}`}
-                      >
-                        <Trash2 size={13} />
-                      </button>
-                    )}
-                  </div>
-                )}
-                {colorEditor === option.value && onUpdateOptionColor && (
-                  <div className="absolute left-0 top-10 z-20 grid w-56 grid-cols-6 gap-2 rounded-lg border border-gray-200 bg-white p-2 shadow-xl">
-                    {LABEL_COLORS.map((color) => (
-                      <button
-                        key={color}
-                        type="button"
-                        onClick={async () => {
-                          await onUpdateOptionColor(option.value, color);
-                          setColorEditor(null);
-                        }}
-                        className="h-6 w-6 rounded-md border border-white ring-1 ring-gray-200 transition hover:scale-110"
-                        style={{ background: color }}
-                        title={color}
-                      />
-                    ))}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-          {editingLabels && onAddOption && (
+        <div className={normalizedSectionCount > 1 ? "grid min-w-max gap-0" : "grid grid-cols-1 gap-2 sm:grid-cols-3"} style={normalizedSectionCount > 1 ? { gridTemplateColumns: `repeat(${normalizedSectionCount}, minmax(${SECTION_WIDTH - 24}px, 1fr))` } : undefined}>
+          {optionsBySection.map((sectionOptions, section) => (
+            <div key={section} onDragOver={(event) => { if (editingLabels && draggedOption !== null) event.preventDefault(); }} onDrop={(event) => { if (!editingLabels) return; event.preventDefault(); void moveOption(section); }} className={`${normalizedSectionCount > 1 ? `min-h-14 space-y-2 px-3 ${section > 0 ? "border-l border-gray-300" : ""}` : "contents"}`}>
+              {sectionOptions.map((option) => renderOption(option, section))}
+              {editingLabels && onAddOption && section === 0 && (
             <div className="flex h-9 items-center gap-1 rounded-md border border-dashed border-gray-300 p-1">
               <input
                 value={newOption}
@@ -342,7 +315,9 @@ export function StatusBadge({
                 <Plus size={11} /> Add
               </button>
             </div>
-          )}
+              )}
+            </div>
+          ))}
         </div>
         {(onAddOption || onUpdateOptionColor || onRenameOption) && (
           <button

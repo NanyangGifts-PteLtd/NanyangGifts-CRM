@@ -128,7 +128,7 @@ export function TimelineSection({
   onDeleteTimelineProgress?: (name: string) => void | Promise<void>;
   onUpdateOptionColor?: (name: string, color: string) => void | Promise<void>;
   onRenameOption?: (oldName: string, newName: string) => void | Promise<void>;
-  onReorderOptions?: (values: string[]) => void | Promise<void>;
+  onReorderOptions?: (layout: Array<{ value: string; section: number }>) => void | Promise<void>;
   readOnly?: boolean;
 }) {
   const [permissionNotice, setPermissionNotice] = useState<{

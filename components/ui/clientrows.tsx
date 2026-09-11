@@ -50,7 +50,7 @@ import { FilePreview } from "./file-preview";
 import { toast } from "sonner";
 import { useEscapeClose } from "@/components/hooks/use-escape-close";
 
-type OptionEntry = { value: string; color: string };
+type OptionEntry = { value: string; color: string; section?: number };
 const trackingSummaryOptions: OptionEntry[] = [
   { value: "Started", color: "#ffae3d" },
   { value: "Successful", color: "#16a34a" },
@@ -361,7 +361,7 @@ export type ClientRowProps = {
     oldName: string,
     newName: string,
   ) => void | Promise<void>;
-  onReorderOptions?: (code: string, values: string[]) => void | Promise<void>;
+  onReorderOptions?: (code: string, layout: Array<{ value: string; section: number }>) => void | Promise<void>;
   onFilterColumn?: (column: string) => void;
   onSortColumn?: (
     category: "subitem" | "payment",
@@ -3055,6 +3055,7 @@ export function ClientRow({
               onRenameOption?.("client_status", oldName, newName)
             }
             onReorderOptions={(values) => onReorderOptions?.("client_status", values)}
+            sectionCount={5}
           />
 
           <AlertDialog open={showCloseDialog} onOpenChange={setShowCloseDialog}>

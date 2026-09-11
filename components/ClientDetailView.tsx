@@ -1119,7 +1119,12 @@ function DetailStatus({
         className={`h-10 overflow-hidden rounded ${locked ? "cursor-default opacity-70" : ""}`}
       >
         <div className={`h-full ${locked ? "pointer-events-none" : ""}`}>
-          <StatusBadge value={value} onChange={onChange} options={options} />
+          <StatusBadge
+            value={value}
+            onChange={onChange}
+            options={options}
+            sectionCount={label === "Status" ? 5 : 1}
+          />
         </div>
       </div>
     </div>

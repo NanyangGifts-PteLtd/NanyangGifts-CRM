@@ -198,6 +198,7 @@ export function SubitemDetailView({
           value={String(subitem[key] ?? "")}
           onChange={(value) => onUpdate({ [key]: value } as Partial<Subitem>)}
           options={values}
+          sectionCount={key === "payment" ? 4 : 1}
         />
       </div>
     </div>

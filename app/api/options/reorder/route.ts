@@ -22,10 +22,28 @@ async function canManageLabels() {
 
 export async function POST(request: NextRequest) {
   if (!(await canManageLabels())) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  const body = await request.json() as { code?: string; values?: string[] };
+  const body = await request.json() as {
+    code?: string;
+    values?: string[];
+    layout?: Array<{ value?: string; section?: number }>;
+  };
   const code = body.code?.trim() ?? "";
-  const values = Array.isArray(body.values) ? body.values.map((value) => value.trim()) : [];
-  if (!BOARD_OPTION_CODES.has(code) || values.length === 0 || new Set(values).size !== values.length) {
+  const layout = Array.isArray(body.layout)
+    ? body.layout.map((item) => ({
+        value: item.value?.trim() ?? "",
+        section: Number.isInteger(item.section) && Number(item.section) >= 0
+          ? Number(item.section)
+          : 0,
+      }))
+    : (Array.isArray(body.values) ? body.values : []).map((value) => ({ value: value.trim(), section: 0 }));
+  const values = layout.map((item) => item.value);
+  const sectionCount = code === "client_status" ? 5 : code === "payment" ? 4 : 1;
+  if (
+    !BOARD_OPTION_CODES.has(code) ||
+    values.length === 0 ||
+    new Set(values).size !== values.length ||
+    layout.some((item) => item.section >= sectionCount)
+  ) {
     return NextResponse.json({ error: "Invalid label order." }, { status: 400 });
   }
 
@@ -47,8 +65,11 @@ export async function POST(request: NextRequest) {
   }
 
   const results = await Promise.all(
-    values.map((value, sort_order) =>
-      supabaseAdmin.from("option_values").update({ sort_order }).eq("id", idsByValue.get(value)!),
+    layout.map((item, sort_order) =>
+      supabaseAdmin
+        .from("option_values")
+        .update({ sort_order, section_index: item.section })
+        .eq("id", idsByValue.get(item.value)!),
     ),
   );
   const error = results.find((result) => result.error)?.error;
