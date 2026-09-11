@@ -14,15 +14,38 @@ type ReplyDetectedBody = {
   sentAt?: string;
   subject?: string;
   from?: string;
-  to?: Array<string | { email?: string; Email?: string }>;
-  cc?: Array<string | { email?: string; Email?: string }>;
+  to?: unknown;
+  cc?: unknown;
+  To?: unknown;
+  CC?: unknown;
 };
 
-function recipientEmails(value: ReplyDetectedBody["to"]) {
-  return (Array.isArray(value) ? value : [])
-    .map((recipient) => typeof recipient === "string" ? recipient : recipient?.email ?? recipient?.Email ?? "")
-    .map((email) => email.trim().toLowerCase())
-    .filter(Boolean);
+function recipientEmails(value: unknown): string[] {
+  const emails = new Set<string>();
+  const visit = (candidate: unknown) => {
+    if (typeof candidate === "string") {
+      for (const match of candidate.matchAll(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi)) {
+        emails.add(match[0].trim().toLowerCase());
+      }
+      return;
+    }
+    if (Array.isArray(candidate)) {
+      candidate.forEach(visit);
+      return;
+    }
+    if (candidate && typeof candidate === "object") {
+      const record = candidate as Record<string, unknown>;
+      // Make recipient collections commonly expose Email/email/address, but
+      // recurse through all values so nested arrays and collection wrappers
+      // are accepted as well.
+      visit(record.email ?? record.Email ?? record.address ?? record.Address);
+      Object.entries(record).forEach(([key, nested]) => {
+        if (!["email", "Email", "address", "Address"].includes(key)) visit(nested);
+      });
+    }
+  };
+  visit(value);
+  return [...emails];
 }
 
 function escapedIlike(value: string) {
@@ -62,11 +85,11 @@ export async function POST(request: NextRequest) {
 
   const eventId = body.eventId?.trim() || body.messageId?.trim() || "";
   const requestedClientId = body.clientId?.trim() || "";
-  const clientEmail = body.clientEmail?.trim().toLowerCase() || "";
+  const clientEmail = recipientEmails(body.clientEmail)[0] ?? "";
   const assigneeEmail = body.assigneeEmail?.trim().toLowerCase() || "";
   const recipientCandidates = [...new Set([
-    ...recipientEmails(body.to),
-    ...recipientEmails(body.cc),
+    ...recipientEmails(body.to ?? body.To),
+    ...recipientEmails(body.cc ?? body.CC),
   ].filter((email) => email !== assigneeEmail))];
   if (!eventId || (!requestedClientId && !clientEmail && recipientCandidates.length === 0)) {
     return NextResponse.json({
@@ -142,7 +165,12 @@ export async function POST(request: NextRequest) {
       );
     }
     if (!clientCandidates.length) {
-      throw new Error(`No CRM client was found for ${requestedClientId ? "that client ID" : clientEmail || "the To/CC recipients"}.`);
+      const lookupDescription = requestedClientId
+        ? "that client ID"
+        : clientEmail
+          ? clientEmail
+          : `the received To/CC recipients (${recipientCandidates.join(", ") || "none"})`;
+      throw new Error(`No CRM client was found for ${lookupDescription}.`);
     }
 
     if (assignee) {
