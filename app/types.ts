@@ -49,6 +49,8 @@ export interface SampleRow {
 
 export interface TimelineRow {
   id: string;
+  /** User-added rows may be removed; the standard workflow rows may not. */
+  isCustom?: boolean;
   name: string;
   person: string;
   remarks: string;

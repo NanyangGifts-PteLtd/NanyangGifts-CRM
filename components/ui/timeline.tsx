@@ -2,10 +2,20 @@
 
 import { TimelineRow } from "../../app/types";
 import { EditableCell } from "./editablecell";
-import { Calendar } from "lucide-react";
+import { Calendar, GripVertical, Plus, Trash2 } from "lucide-react";
 import { StatusBadge } from "./statusbadge";
 import { toast } from "sonner";
 import { useEffect, useState } from "react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "./alert-dialog";
 
 export type OptionEntry = { value: string; color: string };
 
@@ -135,6 +145,12 @@ export function TimelineSection({
     left: number;
     top: number;
   } | null>(null);
+  const [newTimelineName, setNewTimelineName] = useState("");
+  const [draggedRowId, setDraggedRowId] = useState<string | null>(null);
+  const [dropTargetId, setDropTargetId] = useState<string | null>(null);
+  const [pendingRowRemovalId, setPendingRowRemovalId] = useState<string | null>(
+    null,
+  );
   useEffect(() => {
     if (readOnly) return;
 
@@ -170,9 +186,32 @@ export function TimelineSection({
   }, [onUpdate, readOnly, rows]);
 
   const updateRow = (id: string, field: keyof TimelineRow, val: string) => {
-    const nextRows = rows.map((r) =>
-      r.id === id ? { ...r, [field]: val } : r,
-    );
+    const currentRow = rows.find((row) => row.id === id);
+    const normalizedValue = field === "name" ? val.trim() : val;
+    if (field === "name") {
+      if (!normalizedValue) {
+        toast.error("Process name is required");
+        return;
+      }
+      const duplicate = rows.some(
+        (row) =>
+          row.id !== id &&
+          row.name.trim().toLocaleLowerCase() ===
+            normalizedValue.toLocaleLowerCase(),
+      );
+      if (duplicate) {
+        toast.error("Process names must be unique", {
+          description: `A process named “${normalizedValue}” already exists in this timeline.`,
+        });
+        return;
+      }
+    }
+    const nextRows = rows.map((r) => {
+      if (r.id === id) return { ...r, [field]: normalizedValue };
+      return field === "name" && currentRow && r.dependency === currentRow.name
+        ? { ...r, dependency: normalizedValue }
+        : r;
+    });
     const target = nextRows.find((r) => r.id === id);
 
     if (target) {
@@ -266,6 +305,72 @@ export function TimelineSection({
     onUpdate(nextRows);
   };
 
+  const createTimelineRow = () => {
+    const name = newTimelineName.trim();
+    if (!name) return;
+    if (
+      rows.some(
+        (row) => row.name.trim().toLocaleLowerCase() === name.toLocaleLowerCase(),
+      )
+    ) {
+      toast.error("Process names must be unique", {
+        description: `A process named “${name}” already exists in this timeline.`,
+      });
+      return;
+    }
+    const id = crypto.randomUUID();
+    onUpdate([
+      ...rows,
+      {
+        id,
+        isCustom: true,
+        name,
+        person: "",
+        remarks: "",
+        numOfCartons: "",
+        subProgress: "Pending",
+        timelineStart: "",
+        timelineEnd: "",
+        duration: "",
+        dependency: "",
+      },
+    ]);
+    setNewTimelineName("");
+  };
+
+  const moveRowBefore = (sourceId: string, targetId: string) => {
+    if (sourceId === targetId) return;
+    const source = rows.find((row) => row.id === sourceId);
+    const remainingRows = rows.filter((row) => row.id !== sourceId);
+    const targetIndex = remainingRows.findIndex((row) => row.id === targetId);
+    if (!source || targetIndex < 0) return;
+    const nextRows = [...remainingRows];
+    nextRows.splice(targetIndex, 0, source);
+    onUpdate(nextRows);
+  };
+
+  const moveRowToEnd = (sourceId: string) => {
+    const source = rows.find((row) => row.id === sourceId);
+    if (!source) return;
+    onUpdate([...rows.filter((row) => row.id !== sourceId), source]);
+  };
+
+  const removeRow = (id: string) => {
+    const row = rows.find((candidate) => candidate.id === id);
+    if (!row?.isCustom) return;
+    const nextRows = rows
+      .filter((candidate) => candidate.id !== id)
+      .map((candidate) =>
+        candidate.dependency === row.name
+          ? { ...candidate, dependency: "" }
+          : candidate,
+      );
+    onUpdate(nextRows);
+    setPendingRowRemovalId(null);
+  };
+
+  const pendingRowRemoval = rows.find((row) => row.id === pendingRowRemovalId);
+
   return (
     <div
       onClickCapture={(event) => {
@@ -295,6 +400,31 @@ export function TimelineSection({
           You can only edit items that are assigned to you
         </div>
       )}
+      <AlertDialog
+        open={!!pendingRowRemoval}
+        onOpenChange={(open) => !open && setPendingRowRemovalId(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove timeline process?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Remove “{pendingRowRemoval?.name}” from this timeline? Any
+              process depending on it will have its dependency cleared.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700"
+              onClick={() => {
+                if (pendingRowRemoval) removeRow(pendingRowRemoval.id);
+              }}
+            >
+              Remove process
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <div className="flex items-center gap-2 bg-gradient-to-r from-[#9bd9e0] to-[#7BCBD5] px-3 py-1.5">
         <Calendar size={12} className="text-white" />
         <span className="text-xs font-semibold text-white">
@@ -340,10 +470,61 @@ export function TimelineSection({
               return (
                 <tr
                   key={row.id}
-                  className="border-b border-gray-100 hover:bg-gray-50"
+                  onDragOver={(event) => {
+                    if (!draggedRowId || draggedRowId === row.id) return;
+                    event.preventDefault();
+                    setDropTargetId(row.id);
+                  }}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    if (draggedRowId) moveRowBefore(draggedRowId, row.id);
+                    setDraggedRowId(null);
+                    setDropTargetId(null);
+                  }}
+                  className={`border-b border-gray-100 hover:bg-gray-50 ${dropTargetId === row.id ? "border-t-2 border-t-[#3799b1]" : ""}`}
                 >
                   <td className="border-r border-gray-100 px-2 py-1">
-                    <span className="text-xs text-gray-700">{row.name}</span>
+                    <div className="flex min-w-0 items-center gap-1">
+                      <span
+                        draggable={!readOnly}
+                        onDragStart={(event) => {
+                          event.dataTransfer.effectAllowed = "move";
+                          event.dataTransfer.setData("text/plain", row.id);
+                          setDraggedRowId(row.id);
+                        }}
+                        onDragEnd={() => {
+                          setDraggedRowId(null);
+                          setDropTargetId(null);
+                        }}
+                        className={`shrink-0 touch-none ${readOnly ? "cursor-not-allowed text-gray-200" : "cursor-grab text-gray-300 active:cursor-grabbing"}`}
+                        title={readOnly ? undefined : "Drag to rearrange process"}
+                        aria-label="Drag to rearrange process"
+                      >
+                        <GripVertical size={14} aria-hidden="true" />
+                      </span>
+                      {row.isCustom ? (
+                        <EditableCell
+                          value={row.name}
+                          onChange={(value) => updateRow(row.id, "name", value)}
+                          className="min-h-[25px] min-w-0 flex-1 !justify-start px-1 text-left text-xs"
+                        />
+                      ) : (
+                        <span className="min-w-0 flex-1 text-xs text-gray-700">
+                          {row.name}
+                        </span>
+                      )}
+                      {row.isCustom && (
+                        <button
+                          type="button"
+                          onClick={() => setPendingRowRemovalId(row.id)}
+                          className="shrink-0 p-0.5 text-gray-300 transition hover:text-red-500"
+                          title="Remove added row"
+                          aria-label={`Remove ${row.name || "timeline row"}`}
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      )}
+                    </div>
                   </td>
 
                   <td className="border-r border-gray-100 px-2 py-1">
@@ -434,6 +615,47 @@ export function TimelineSection({
             })}
           </tbody>
         </table>
+      </div>
+      <div
+        onDragOver={(event) => {
+          if (!draggedRowId) return;
+          event.preventDefault();
+          setDropTargetId("end");
+        }}
+        onDrop={(event) => {
+          event.preventDefault();
+          if (draggedRowId) moveRowToEnd(draggedRowId);
+          setDraggedRowId(null);
+          setDropTargetId(null);
+        }}
+        className={`group/add-timeline-row border-t px-2 py-1.5 ${dropTargetId === "end" ? "border-t-2 border-t-[#3799b1] bg-[#f4fcfc]" : "border-gray-100"}`}
+      >
+        <div className="relative max-w-sm">
+          <Plus
+            size={13}
+            className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[#318d98]"
+          />
+          <input
+            value={newTimelineName}
+            onChange={(event) => setNewTimelineName(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                createTimelineRow();
+              }
+              if (event.key === "Escape") {
+                event.preventDefault();
+                setNewTimelineName("");
+                event.currentTarget.blur();
+              }
+            }}
+            onBlur={createTimelineRow}
+            disabled={readOnly}
+            placeholder="Add timeline row"
+            aria-label="New timeline process name"
+            className="h-7 w-full rounded border border-transparent bg-transparent pl-7 pr-2 text-xs text-gray-700 outline-none transition group-hover/add-timeline-row:border-gray-500 group-hover/add-timeline-row:bg-white focus:border-[#3799b1] focus:bg-white focus:ring-2 focus:ring-[#7BCBD5]/25 disabled:cursor-not-allowed disabled:opacity-50"
+          />
+        </div>
       </div>
     </div>
   );
