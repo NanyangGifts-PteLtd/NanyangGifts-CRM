@@ -167,6 +167,7 @@ type Clients = {
     email: string | null;
     phone: string | null;
     requirements: string | null;
+    unqualified_reason: string | null;
     qty: string | null;
     nbd: string | null;
     total_price: string | null;
@@ -371,6 +372,7 @@ function mapClients(row: Clients): Client {
         email: row.email ?? '',
         phone: row.phone ?? '',
         requirements: row.requirements ?? '',
+        unqualifiedReason: row.unqualified_reason ?? '',
         nbd: row.nbd ?? '',
         totalPrice: row.total_price ?? '',
         billingAddress: row.billing_address ?? '',
@@ -575,6 +577,7 @@ export async function createClientRow(
             email: '',
             phone: '',
             requirements: '',
+            unqualified_reason: '',
             nbd: '',
             total_price: '',
             billing_address: '',
@@ -681,6 +684,7 @@ export async function updateClientRow(
         ...(updates.email !== undefined ? { email: updates.email } : {}),
         ...(updates.phone !== undefined ? { phone: updates.phone } : {}),
         ...(updates.requirements !== undefined ? { requirements: updates.requirements } : {}),
+        ...(updates.unqualifiedReason !== undefined ? { unqualified_reason: updates.unqualifiedReason } : {}),
         ...(updates.nbd !== undefined ? { nbd: updates.nbd } : {}),
         ...(updates.totalPrice !== undefined ? { total_price: updates.totalPrice } : {}),
         ...(updates.billingAddress !== undefined ? { billing_address: updates.billingAddress } : {}),
@@ -710,6 +714,7 @@ export async function updateClientRow(
                 key === 'followUp' ? 'follow_up' :
                     key === 'totalPrice' ? 'total_price' :
                         key === 'billingAddress' ? 'billing_address' :
+                            key === 'unqualifiedReason' ? 'unqualified_reason' :
                             key === 'createdAt' ? 'created_at' :
                                 key === 'groupId' ? 'group_id' :
                                     key

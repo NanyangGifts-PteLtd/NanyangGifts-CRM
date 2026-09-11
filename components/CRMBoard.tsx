@@ -176,6 +176,12 @@ const CLIENT_HEADER_COLS: HeaderCol[] = [
   { key: "replyStatus", label: "Reply Status", width: 80, minWidth: 7 },
   { key: "followUp", label: "Follow Up", width: 100, minWidth: 7 },
   { key: "status", label: "Status", width: 80, minWidth: 7 },
+  {
+    key: "unqualifiedReason",
+    label: "Unqualified Reason",
+    width: 180,
+    minWidth: 90,
+  },
   { key: "channel", label: "Channel", width: 80, minWidth: 7 },
   { key: "importance", label: "Importance", width: 80, minWidth: 7 },
   { key: "company", label: "Company", width: 80, minWidth: 7 },
@@ -203,6 +209,11 @@ const CLIENT_HEADER_COLS: HeaderCol[] = [
   { key: "addClientCol", label: "", width: 44, minWidth: 44 },
   { key: "empty", label: "", width: 44, minWidth: 44 },
 ];
+const UNQUALIFIED_GROUP_NAME = "unqualified lead";
+const isUnqualifiedGroupName = (name?: string | null) =>
+  name?.trim().toLowerCase() === UNQUALIFIED_GROUP_NAME;
+const isUnqualifiedStatus = (status?: string | null) =>
+  status?.trim().toLowerCase() === "unqualified";
 const TRACKING_HEADER_COLS: HeaderCol[] = [
   { key: "selectCheckbox", label: "", width: 60, minWidth: 7 },
   { key: "client", label: "Client", width: 250, minWidth: 7 },
@@ -714,6 +725,11 @@ export function CRMBoard({
     clientId: string;
     updates: Partial<Client>;
   } | null>(null);
+  const [pendingUnqualifiedLead, setPendingUnqualifiedLead] = useState<{
+    changes: Array<{ clientId: string; updates: Partial<Client> }>;
+  } | null>(null);
+  const [unqualifiedReasonDraft, setUnqualifiedReasonDraft] = useState("");
+  const [savingUnqualifiedLead, setSavingUnqualifiedLead] = useState(false);
   const [closeLeadFiles, setCloseLeadFiles] = useState<{
     purchaseOrder: File | null;
     signedQuotation: File | null;
@@ -3320,9 +3336,18 @@ export function CRMBoard({
         (s) => s.toLowerCase() === targetGroup.name.toLowerCase(),
       ) as ClientStatus | undefined;
       const updates: Partial<Client> = { groupId };
-      if (targetGroup.name.trim().toLowerCase().startsWith("closed leads"))
+      if (isUnqualifiedGroupName(targetGroup.name))
+        updates.status = "Unqualified";
+      else if (targetGroup.name.trim().toLowerCase().startsWith("closed leads"))
         updates.status = "Closed";
       else if (matchingStatus) updates.status = matchingStatus;
+      if (isUnqualifiedGroupName(targetGroup.name)) {
+        setUnqualifiedReasonDraft(draggedClient.unqualifiedReason ?? "");
+        setPendingUnqualifiedLead({
+          changes: [{ clientId: localDraggedId, updates }],
+        });
+        return;
+      }
       if (updates.status === "Closed" && draggedClient.status !== "Closed") {
         if (!draggedClient.email.trim()) {
           toast.error("An Email address is required to close this lead", {
@@ -4378,6 +4403,7 @@ export function CRMBoard({
   const STATUS_TO_GROUP_NAME: Partial<Record<ClientStatus, string>> = {
     "Follow Up": "Follow Up",
     Shortlisted: "Shortlisted",
+    Unqualified: "Unqualified Lead",
   };
   const CLOSING_QUALIFYING_SUBITEM_STATUSES = new Set([
     "awarded",
@@ -4487,6 +4513,7 @@ export function CRMBoard({
       clientId: string,
       updates: Partial<Client>,
       closeRequirementsApproved = false,
+      unqualifiedReasonApproved = false,
     ) => {
       const existingClient = clients.find((client) => client.id === clientId);
       if (!canEditClientRecord(clientId)) {
@@ -4569,6 +4596,16 @@ export function CRMBoard({
         .trim()
         .toLowerCase()
         .startsWith("closed leads");
+      const isMovingToUnqualified = isUnqualifiedGroupName(selectedGroup?.name);
+      const isBecomingUnqualified =
+        isMovingToUnqualified || isUnqualifiedStatus(updates.status);
+      if (isBecomingUnqualified && !unqualifiedReasonApproved) {
+        setUnqualifiedReasonDraft(
+          updates.unqualifiedReason ?? existingClient?.unqualifiedReason ?? "",
+        );
+        setPendingUnqualifiedLead({ changes: [{ clientId, updates }] });
+        return;
+      }
       const isBecomingClosed =
         updates.status === "Closed" || isMovingToClosedLeads;
       if (isBecomingClosed && !existingClient?.email.trim()) {
@@ -4590,7 +4627,10 @@ export function CRMBoard({
         setPendingCloseLead({ clientId, updates });
         return;
       }
-      if (isMovingToClosedLeads) {
+      if (isMovingToUnqualified) {
+        nextUpdates.status = "Unqualified";
+        movedToGroupName = selectedGroup?.name ?? null;
+      } else if (isMovingToClosedLeads) {
         nextUpdates.status = "Closed";
         movedToGroupName = selectedGroup?.name ?? null;
       }
@@ -4698,6 +4738,37 @@ export function CRMBoard({
       showAssignmentPermissionError,
     ],
   );
+
+  const confirmUnqualifiedLead = useCallback(async () => {
+    const pending = pendingUnqualifiedLead;
+    const reason = unqualifiedReasonDraft.trim();
+    if (!pending || !reason) return;
+    setSavingUnqualifiedLead(true);
+    try {
+      const results = await Promise.all(
+        pending.changes.map(({ clientId, updates }) =>
+          updateClient(
+            clientId,
+            { ...updates, unqualifiedReason: reason },
+            false,
+            true,
+          ),
+        ),
+      );
+      if (results.some((result) => !result)) return;
+      setPendingUnqualifiedLead(null);
+      setUnqualifiedReasonDraft("");
+      setSelectedIds(new Set());
+      toast.success(
+        pending.changes.length === 1
+          ? "Lead marked as unqualified"
+          : `${pending.changes.length} leads marked as unqualified`,
+        { description: "The reason was saved in Unqualified Reason." },
+      );
+    } finally {
+      setSavingUnqualifiedLead(false);
+    }
+  }, [pendingUnqualifiedLead, unqualifiedReasonDraft, updateClient]);
 
   const confirmCloseLead = useCallback(async () => {
     const hasClosingEvidence = Boolean(
@@ -4914,6 +4985,7 @@ export function CRMBoard({
           email: "email",
           phone: "phone",
           requirements: "requirements",
+          unqualifiedReason: "unqualifiedReason",
           nbd: "nbd",
           totalPrice: "totalPrice",
           billingAddress: "billingAddress",
@@ -5039,6 +5111,7 @@ export function CRMBoard({
         email: createdClient.email ?? "",
         phone: createdClient.phone ?? "",
         requirements: createdClient.requirements ?? "",
+        unqualifiedReason: createdClient.unqualified_reason ?? "",
         nbd: createdClient.nbd ?? "",
         groupId: createdClient.group_id ?? defaultGroupId,
         totalPrice: createdClient.total_price ?? "",
@@ -5309,9 +5382,25 @@ export function CRMBoard({
         showAssignmentPermissionError();
         return;
       }
+      const targetGroup = groups.find((group) => group.id === targetGroupId);
+      if (isUnqualifiedGroupName(targetGroup?.name)) {
+        const clientIds = [...selectedIds];
+        const firstClient = clients.find((client) => client.id === clientIds[0]);
+        setUnqualifiedReasonDraft(
+          clientIds.length === 1 ? (firstClient?.unqualifiedReason ?? "") : "",
+        );
+        setPendingUnqualifiedLead({
+          changes: clientIds.map((clientId) => ({
+            clientId,
+            updates: { groupId: targetGroupId, status: "Unqualified" },
+          })),
+        });
+        setShowClientMoveMenu(false);
+        setClientMoveSearch("");
+        return;
+      }
       setIsMovingClients(true);
       try {
-        const targetGroup = groups.find((group) => group.id === targetGroupId);
         const updates: Partial<Client> = { groupId: targetGroupId };
         if (targetGroup?.name.trim().toLowerCase().startsWith("closed leads"))
           updates.status = "Closed";
@@ -5354,6 +5443,7 @@ export function CRMBoard({
     },
     [
       canEditClientRecord,
+      clients,
       groups,
       reloadClients,
       selectedIds,
@@ -6955,6 +7045,50 @@ export function CRMBoard({
               }}
             >
               Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={!!pendingUnqualifiedLead}
+        onOpenChange={(open) => {
+          if (!open && !savingUnqualifiedLead) {
+            setPendingUnqualifiedLead(null);
+            setUnqualifiedReasonDraft("");
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {pendingUnqualifiedLead?.changes.length === 1
+                ? "Mark this lead as unqualified?"
+                : `Mark ${pendingUnqualifiedLead?.changes.length ?? 0} leads as unqualified?`}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Explain why the lead is unqualified. This reason is required and will be saved on the Board.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <textarea
+            autoFocus
+            value={unqualifiedReasonDraft}
+            onChange={(event) => setUnqualifiedReasonDraft(event.target.value)}
+            placeholder="Enter the unqualified reason"
+            rows={5}
+            disabled={savingUnqualifiedLead}
+            className="w-full resize-y rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-800 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+          />
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={savingUnqualifiedLead}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={!unqualifiedReasonDraft.trim() || savingUnqualifiedLead}
+              onClick={(event) => {
+                event.preventDefault();
+                void confirmUnqualifiedLead();
+              }}
+            >
+              {savingUnqualifiedLead ? "Saving..." : "Confirm unqualified"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

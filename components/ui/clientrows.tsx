@@ -3180,6 +3180,24 @@ export function ClientRow({
         </div>
 
         <div
+          data-client-column="unqualifiedReason"
+          className="min-w-0 overflow-hidden whitespace-nowrap border-r border-[#D0D4E4] py-1.5 text-ellipsis"
+          style={{
+            height: 30,
+            minWidth: colWidth.unqualifiedReason,
+            width: colWidth.unqualifiedReason,
+            order: columnOrderMap.unqualifiedReason ?? 5.5,
+          }}
+        >
+          <EditableCell
+            className="!justify-start px-1"
+            value={client.unqualifiedReason}
+            onChange={(v) => onUpdate({ unqualifiedReason: v })}
+            placeholder=""
+          />
+        </div>
+
+        <div
           data-client-column="channel"
           className="overflow-hidden whitespace-nowrap text-ellipsis !text-center border-r border-[#D0D4E4] p-0 h-[33.1px] flex-shrink-0 transition transform active:scale-95 duration-150"
           style={{

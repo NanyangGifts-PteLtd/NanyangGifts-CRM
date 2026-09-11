@@ -157,6 +157,7 @@ export interface Client {
   email: string;
   phone: string;
   requirements: string;
+  unqualifiedReason: string;
   nbd: string;
   totalPrice: string;
   createdAt: string;
