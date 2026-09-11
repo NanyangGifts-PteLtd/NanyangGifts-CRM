@@ -125,20 +125,42 @@ export function StatusBadge({
       ? normalizedSectionCount * SECTION_WIDTH + 32
       : MENU_WIDTH;
     const width = Math.min(desiredWidth, window.innerWidth - 16);
-    const left = Math.min(
+    const clampedLeft = Math.min(
       Math.max(8, rect.left + rect.width / 2 - width / 2),
       window.innerWidth - width - 8,
     );
-    const estimatedHeight = Math.min(
-      (largestSectionSize + 1) * 46 + 90,
+    const fallbackHeight = Math.min(
+      normalizedSectionCount > 1
+        ? (largestSectionSize + 1) * 46 + 90
+        : Math.ceil((options.length + 1) / 3) * 46 + 76,
       620,
     );
-    const top =
-      window.innerHeight - rect.bottom >= estimatedHeight
+    const measuredHeight = menuRef.current?.getBoundingClientRect().height;
+    const menuHeight = measuredHeight && measuredHeight > 0
+      ? measuredHeight
+      : fallbackHeight;
+    const spaceBelow = window.innerHeight - rect.bottom - 8;
+    const spaceAbove = rect.top - 8;
+    const preferredTop =
+      spaceBelow >= menuHeight || spaceBelow >= spaceAbove
         ? rect.bottom + 6
-        : rect.top - estimatedHeight - 6;
+        : rect.top - menuHeight - 6;
+    const anchorIsVisible =
+      rect.bottom >= 0 &&
+      rect.top <= window.innerHeight &&
+      rect.right >= 0 &&
+      rect.left <= window.innerWidth;
+    const top = anchorIsVisible
+      ? Math.min(
+          Math.max(8, preferredTop),
+          Math.max(8, window.innerHeight - menuHeight - 8),
+        )
+      : preferredTop;
+    const left = anchorIsVisible
+      ? clampedLeft
+      : rect.left + rect.width / 2 - width / 2;
     setMenuStyle({ position: "fixed", top, left, width, zIndex: 9999 });
-  }, [largestSectionSize, normalizedSectionCount]);
+  }, [largestSectionSize, normalizedSectionCount, options.length]);
 
   const resetMenuState = () => {
     setEditingLabels(false);
@@ -182,6 +204,11 @@ export function StatusBadge({
       window.removeEventListener("resize", reposition);
     };
   }, [open, positionMenu]);
+
+  React.useLayoutEffect(() => {
+    if (!open) return;
+    positionMenu();
+  }, [colorEditor, editingLabels, open, positionMenu]);
 
   const handleOpen = () => {
     if (readOnly) return;
