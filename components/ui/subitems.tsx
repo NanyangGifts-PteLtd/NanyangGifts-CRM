@@ -434,18 +434,23 @@ export function SubitemsTable({
   const [subitemViewById, setSubitemViewById] = useState<
     Record<string, "timeline" | "sample" | null>
   >({});
-  const activeSubitemView = (subitem: Subitem) =>
-    Object.hasOwn(subitemViewById, subitem.id)
-      ? subitemViewById[subitem.id]
+  const subitemView = (
+    current: Record<string, "timeline" | "sample" | null>,
+    subitem: Subitem,
+  ) =>
+    Object.hasOwn(current, subitem.id)
+      ? current[subitem.id]
       : subitem.showTimeline
         ? "timeline"
         : subitem.showSample
           ? "sample"
           : null;
+  const activeSubitemView = (subitem: Subitem) =>
+    subitemView(subitemViewById, subitem);
   const toggleSubitemView = (subitem: Subitem, view: "timeline" | "sample") => {
     setSubitemViewById((current) => ({
       ...current,
-      [subitem.id]: activeSubitemView(subitem) === view ? null : view,
+      [subitem.id]: subitemView(current, subitem) === view ? null : view,
     }));
   };
   const canCreateSubitems =
@@ -456,6 +461,50 @@ export function SubitemsTable({
   const hasPaymentEligibleSubitems = subitems.some((subitem) =>
     hasReachedAwardedPhase(subitem.status),
   );
+  const toggleClientTimelines = (clickedSubitem: Subitem) => {
+    if (
+      !hasPaymentEligibleSubitems ||
+      !hasReachedAwardedPhase(clickedSubitem.status)
+    ) {
+      toast.warning("This subitem has not been awarded yet", {
+        description:
+          "Timeline and payment details are available once the subitem has reached the Awarded phase.",
+      });
+      return;
+    }
+
+    const eligibleSubitems = subitems.filter((subitem) =>
+      hasReachedAwardedPhase(subitem.status),
+    );
+    setSubitemViewById((current) => {
+      const allTimelinesOpen =
+        tableMode === "payment" &&
+        eligibleSubitems.every(
+          (subitem) => subitemView(current, subitem) === "timeline",
+        );
+      return eligibleSubitems.reduce(
+        (next, subitem) => ({
+          ...next,
+          [subitem.id]: allTimelinesOpen ? null : "timeline",
+        }),
+        { ...current },
+      );
+    });
+    setTableMode("payment");
+  };
+  React.useEffect(() => {
+    if (tableMode === "payment" && !hasPaymentEligibleSubitems) {
+      setTableMode(null);
+      setSubitemViewById((current) =>
+        Object.fromEntries(
+          Object.entries(current).map(([id, view]) => [
+            id,
+            view === "timeline" ? null : view,
+          ]),
+        ),
+      );
+    }
+  }, [hasPaymentEligibleSubitems, tableMode]);
   const togglePaymentView = () => {
     if (tableMode === "payment") {
       setTableMode(null);
@@ -1569,17 +1618,7 @@ export function SubitemsTable({
         <button
           type="button"
           data-view-action
-          onClick={() => {
-            if (activeSubitemView(sub) !== "timeline" && !hasReachedAwardedPhase(sub.status)) {
-              toast.warning("This subitem has not been awarded yet", {
-                description:
-                  "Timeline and payment details are available once the subitem has reached the Awarded phase.",
-              });
-              return;
-            }
-            toggleSubitemView(sub, "timeline");
-            if (activeSubitemView(sub) !== "timeline") setTableMode("payment");
-          }}
+          onClick={() => toggleClientTimelines(sub)}
           className={`flex items-center justify-center rounded-sm border p-1 transition active:scale-95 ${
             tableMode === "payment" && activeSubitemView(sub) === "timeline"
               ? "border-[#7BCBD5] bg-[#7BCBD5] text-white"
