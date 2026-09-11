@@ -24,8 +24,10 @@ export function EditableCell({
     const textareaRef = useRef<HTMLTextAreaElement>(null);
 
     useEffect(() => {
-        setLocal(value);
-    }, [value]);
+        // Realtime snapshots must never replace the user's active draft. Once
+        // editing ends, the latest committed prop can safely resynchronise it.
+        if (!editing) setLocal(value);
+    }, [value, editing]);
 
     useEffect(() => {
         if (!editing) return;

@@ -82,6 +82,7 @@ import {
   type CustomColumn,
 } from "@/lib/custom-columns";
 import { toast } from "sonner";
+import { enqueueBoardWrite } from "@/lib/board-write-coordinator";
 import type { SearchResult } from "../app/types";
 import {
   calculateSubitemFinancials,
@@ -1784,13 +1785,15 @@ export function CRMBoard({
       );
 
       try {
-        await updateClientRow(clientId, { customFields: nextCustomFields });
+        await enqueueBoardWrite("client", clientId, () =>
+          updateClientRow(clientId, { customFields: nextCustomFields }),
+        );
       } catch (error) {
         console.error("Failed to update client custom field", error);
-        setClients(clients);
+        void reloadClients();
       }
     },
-    [clients, setClients],
+    [clients, reloadClients, setClients],
   );
 
   // Labels are public-to-internal Board configuration. RLS now authorizes
@@ -2867,9 +2870,11 @@ export function CRMBoard({
 
       await Promise.all(
         updatedClients.map((client) =>
-          updateClientRow(client.id, {
-            customFields: client.customFields ?? {},
-          }),
+          enqueueBoardWrite("client", client.id, () =>
+            updateClientRow(client.id, {
+              customFields: client.customFields ?? {},
+            }),
+          ),
         ),
       );
       setPendingDeleteCustomColumn(null);
@@ -3297,9 +3302,11 @@ export function CRMBoard({
         prev.map((c) => (c.id === localDraggedId ? { ...c, ...updates } : c)),
       );
       try {
-        await updateClientRow(localDraggedId, updates);
+        await enqueueBoardWrite("client", localDraggedId, () =>
+          updateClientRow(localDraggedId, updates),
+        );
       } catch (err) {
-        setClients(clients);
+        void reloadClients();
         console.error("Failed to move client to group", err);
         toast.error("Client could not be moved", {
           description:
@@ -4226,7 +4233,9 @@ export function CRMBoard({
       const previousIds = clientAssignees[clientId] ?? [];
       setClientAssignees((prev) => ({ ...prev, [clientId]: ids }));
       try {
-        await saveClientAssignees(clientId, ids, currentUserId);
+        await enqueueBoardWrite("client", clientId, () =>
+          saveClientAssignees(clientId, ids, currentUserId),
+        );
         const clientName =
           clients.find((client) => client.id === clientId)?.name ?? "A client";
         await Promise.all(
@@ -4256,7 +4265,9 @@ export function CRMBoard({
       const previousIds = clientPmAssignees[clientId] ?? [];
       setClientPmAssignees((previous) => ({ ...previous, [clientId]: ids }));
       try {
-        await saveClientPmAssignees(clientId, ids, currentUserId);
+        await enqueueBoardWrite("client", clientId, () =>
+          saveClientPmAssignees(clientId, ids, currentUserId),
+        );
         const clientName =
           clients.find((client) => client.id === clientId)?.name ?? "A client";
         await Promise.all(
@@ -4290,7 +4301,9 @@ export function CRMBoard({
       const previousIds = subitemAssignees[subitemId] ?? [];
       setSubitemAssignees((prev) => ({ ...prev, [subitemId]: ids }));
       try {
-        await saveSubitemAssignees(subitemId, ids, currentUserId);
+        await enqueueBoardWrite("subitem", subitemId, () =>
+          saveSubitemAssignees(subitemId, ids, currentUserId),
+        );
         const parentClient = clients.find((client) =>
           client.subitems.some((subitem) => subitem.id === subitemId),
         );
@@ -4402,9 +4415,11 @@ export function CRMBoard({
             client.id === pending.clientId ? { ...client, ...update } : client,
           ),
         );
-        await updateClientRow(pending.clientId, update, {
-          customerProfileAction: action,
-        });
+        await enqueueBoardWrite("client", pending.clientId, () =>
+          updateClientRow(pending.clientId, update, {
+            customerProfileAction: action,
+          }),
+        );
         setCustomerMatchPending(null);
         toast.success(
           action === "different"
@@ -4569,12 +4584,14 @@ export function CRMBoard({
         prev.map((c) => (c.id === clientId ? { ...c, ...nextUpdates } : c)),
       );
       try {
-        await updateClientRow(
-          clientId,
-          nextUpdates,
-          movedToGroupName
-            ? { automated: true, reason: "status_group_automation" }
-            : undefined,
+        await enqueueBoardWrite("client", clientId, () =>
+          updateClientRow(
+            clientId,
+            nextUpdates,
+            movedToGroupName
+              ? { automated: true, reason: "status_group_automation" }
+              : undefined,
+          ),
         );
         if (movedToGroupName && nextUpdates.status) {
           const previousClient = clients.find(
@@ -4614,7 +4631,7 @@ export function CRMBoard({
         }
         return true;
       } catch (error: any) {
-        setClients(clients);
+        void reloadClients();
         console.error("Failed to update client", error);
         const isRlsError =
           error?.code === "42501" ||
@@ -4636,6 +4653,7 @@ export function CRMBoard({
       commitCustomerMatch,
       ensureCurrentClosedLeadsGroup,
       groups,
+      reloadClients,
       setClients,
       showAssignmentPermissionError,
     ],
@@ -4754,12 +4772,14 @@ export function CRMBoard({
     try {
       await Promise.all(
         targets.map((client) =>
-          updateClientRow(client.id, {
-            customFields: {
-              ...(client.customFields ?? {}),
-              subitemsLocked: pendingSubitemLock.locked ? "true" : "false",
-            },
-          }),
+          enqueueBoardWrite("client", client.id, () =>
+            updateClientRow(client.id, {
+              customFields: {
+                ...(client.customFields ?? {}),
+                subitemsLocked: pendingSubitemLock.locked ? "true" : "false",
+              },
+            }),
+          ),
         ),
       );
       toast.success(
@@ -4807,13 +4827,15 @@ export function CRMBoard({
         })),
       );
       try {
-        await updateSubitemRow(subitemId, updates);
+        await enqueueBoardWrite("subitem", subitemId, () =>
+          updateSubitemRow(subitemId, updates),
+        );
       } catch (error: any) {
-        setClients(clients);
+        void reloadClients();
         console.error("Failed to update subitem", error);
       }
     },
-    [canEditSubitemRecord, clients, showAssignmentPermissionError],
+    [canEditSubitemRecord, clients, reloadClients, showAssignmentPermissionError],
   );
 
   const undoActivity = useCallback(
@@ -4915,7 +4937,10 @@ export function CRMBoard({
             ),
           })),
         );
-        await updateSubitemRow(entry.subitemId, updates);
+        const undoSubitemId = entry.subitemId;
+        await enqueueBoardWrite("subitem", undoSubitemId, () =>
+          updateSubitemRow(undoSubitemId, updates),
+        );
         toast.success("Change undone", {
           description: `${entry.fieldName} was restored to its previous value.`,
         });
@@ -5242,7 +5267,9 @@ export function CRMBoard({
         }
         await Promise.all(
           [...selectedIds].map((clientId) =>
-            updateClientRow(clientId, updates),
+            enqueueBoardWrite("client", clientId, () =>
+              updateClientRow(clientId, updates),
+            ),
           ),
         );
         await reloadClients();

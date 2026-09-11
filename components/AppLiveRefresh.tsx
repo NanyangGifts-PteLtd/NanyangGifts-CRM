@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { boardProtectionDelay } from "@/lib/board-write-coordinator";
 
 type RefreshKind = "records" | "profiles" | "groups" | "notifications" | "boardMetadata" | "labelOptions" | "roundRobin";
 
@@ -30,6 +31,9 @@ export function AppLiveRefresh({
     const schedule = (kind: RefreshKind) => {
       const current = timers.current[kind];
       if (current !== undefined) window.clearTimeout(current);
+      const delay = kind === "records"
+        ? Math.max(300, boardProtectionDelay() + 100)
+        : 300;
       timers.current[kind] = window.setTimeout(() => {
         delete timers.current[kind];
         if (disposed) return;
@@ -40,7 +44,7 @@ export function AppLiveRefresh({
         if (kind === "boardMetadata") onBoardMetadataRefresh();
         if (kind === "labelOptions") onLabelOptionsRefresh();
         if (kind === "roundRobin") onRoundRobinRefresh();
-      }, 300);
+      }, delay);
     };
 
     let channel: ReturnType<typeof supabase.channel> | null = null;
@@ -52,7 +56,9 @@ export function AppLiveRefresh({
         .channel("app-live-refresh")
         .on("postgres_changes", { event: "*", schema: "public", table: "clients" }, () => schedule("records"))
         .on("postgres_changes", { event: "*", schema: "public", table: "subitems" }, () => schedule("records"))
-        .on("postgres_changes", { event: "*", schema: "public", table: "activity_log" }, () => schedule("records"))
+        // An activity entry accompanies many record writes but does not change
+        // Board record data. Reloading here duplicates the clients/subitems
+        // refresh and can replay an older snapshot over an active editor.
         .on("postgres_changes", { event: "*", schema: "public", table: "client_assignees" }, () => schedule("records"))
         .on("postgres_changes", { event: "*", schema: "public", table: "subitem_assignees" }, () => schedule("records"))
         .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, () => schedule("profiles"))

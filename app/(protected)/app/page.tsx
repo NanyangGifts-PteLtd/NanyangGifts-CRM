@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Client, ClientAssigneeMap, SubitemAssigneeMap, Profile, Notification, SearchResult, CRMGroup } from '../../types';
 import { fetchClientsWithSubitems } from '@/lib/crm';
 import { CRMBoard } from '@/components/CRMBoard';
@@ -17,6 +17,7 @@ import { TeamPanel } from '@/components/TeamPanel';
 import { UserAdminPanel } from '@/components/UserAdminPanel';
 import { CustomerProfilesPanel } from '@/components/CustomerProfilesPanel';
 import { AppLiveRefresh } from '@/components/AppLiveRefresh';
+import { boardProtectionDelay, getBoardWriteRevision, isBoardRecordProtected } from '@/lib/board-write-coordinator';
 
 export default function Page() {
   const [clients, setClients] = useState<Client[]>([]);
@@ -38,6 +39,8 @@ export default function Page() {
   const [labelOptionsVersion, setLabelOptionsVersion] = useState(0);
   const [groupVersion, setGroupVersion] = useState(0);
   const [roundRobinVersion, setRoundRobinVersion] = useState(0);
+  const reconciliationTimer = useRef<number | null>(null);
+  const recordsRefreshSequence = useRef(0);
 
   const selectSearchResult = useCallback((result: SearchResult) => {
     // currently setting to CRM panel since only CRM panel has search results, change in the future when other panels have search results
@@ -70,6 +73,8 @@ export default function Page() {
   }, []);
 
   const reloadClients = useCallback(async () => {
+    const refreshSequence = ++recordsRefreshSequence.current;
+    const writeRevisionAtStart = getBoardWriteRevision();
     try {
       const [rows, clientAssignmentMaps, subitemAssigneeMap] = await Promise.all([
         fetchClientsWithSubitems(),
@@ -77,10 +82,72 @@ export default function Page() {
         fetchAllSubitemAssignees(),
       ]);
 
-      setClients(rows);
-      setClientAssignees(clientAssignmentMaps.people);
-      setClientPmAssignees(clientAssignmentMaps.pm);
-      setSubitemAssignees(subitemAssigneeMap);
+      // Never allow an older or edit-stale request to install its snapshot.
+      // A fresh reconciliation will pick up both the latest local write and
+      // any concurrent remote changes.
+      if (
+        refreshSequence !== recordsRefreshSequence.current ||
+        writeRevisionAtStart !== getBoardWriteRevision()
+      ) {
+        if (refreshSequence === recordsRefreshSequence.current) {
+          if (reconciliationTimer.current !== null) window.clearTimeout(reconciliationTimer.current);
+          reconciliationTimer.current = window.setTimeout(() => {
+            reconciliationTimer.current = null;
+            void reloadClients();
+          }, 100);
+        }
+        return;
+      }
+
+      const protectionDelay = boardProtectionDelay();
+      setClients((current) => {
+        const currentClients = new Map(current.map((client) => [client.id, client]));
+        return rows.map((incomingClient) => {
+          const localClient = currentClients.get(incomingClient.id);
+          if (!localClient) return incomingClient;
+
+          const localSubitems = new Map(localClient.subitems.map((item) => [item.id, item]));
+          const mergedSubitems = incomingClient.subitems.map((incomingSubitem) => {
+            if (!isBoardRecordProtected("subitem", incomingSubitem.id)) return incomingSubitem;
+            const localSubitem = localSubitems.get(incomingSubitem.id);
+            if (!localSubitem) return incomingSubitem;
+            return localSubitem;
+          });
+
+          if (isBoardRecordProtected("client", incomingClient.id)) {
+            return { ...localClient, subitems: mergedSubitems };
+          }
+          return { ...incomingClient, subitems: mergedSubitems };
+        });
+      });
+      setClientAssignees((current) => {
+        const next = { ...clientAssignmentMaps.people };
+        for (const [clientId, ids] of Object.entries(current)) {
+          if (isBoardRecordProtected("client", clientId)) next[clientId] = ids;
+        }
+        return next;
+      });
+      setClientPmAssignees((current) => {
+        const next = { ...clientAssignmentMaps.pm };
+        for (const [clientId, ids] of Object.entries(current)) {
+          if (isBoardRecordProtected("client", clientId)) next[clientId] = ids;
+        }
+        return next;
+      });
+      setSubitemAssignees((current) => {
+        const next = { ...subitemAssigneeMap };
+        for (const [subitemId, ids] of Object.entries(current)) {
+          if (isBoardRecordProtected("subitem", subitemId)) next[subitemId] = ids;
+        }
+        return next;
+      });
+      if (protectionDelay > 0) {
+        if (reconciliationTimer.current !== null) window.clearTimeout(reconciliationTimer.current);
+        reconciliationTimer.current = window.setTimeout(() => {
+          reconciliationTimer.current = null;
+          void reloadClients();
+        }, Math.max(350, protectionDelay + 100));
+      }
     } catch (error) {
       console.error('Failed to load clients', error);
     }
@@ -177,6 +244,10 @@ export default function Page() {
     };
 
     void loadProfiles();
+  }, []);
+
+  useEffect(() => () => {
+    if (reconciliationTimer.current !== null) window.clearTimeout(reconciliationTimer.current);
   }, []);
 
   const reloadProfiles = useCallback(async () => {
