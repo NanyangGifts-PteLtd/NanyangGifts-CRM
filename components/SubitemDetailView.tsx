@@ -289,6 +289,15 @@ export function SubitemDetailView({
     setPendingSingleFileChange(null);
   };
   useEffect(() => {
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented || event.isComposing) return;
+      event.preventDefault();
+      onClose();
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [onClose]);
+  useEffect(() => {
     if (!canEdit) return;
     const today = new Date().toISOString().slice(0, 10);
     const nextRows = (subitem.timelineRows ?? []).map((row) => {
@@ -312,7 +321,7 @@ export function SubitemDetailView({
     }
   }, [subitem.id]);
   return (
-    <div className="fixed inset-0 z-[220] bg-slate-950/40 p-3 sm:p-6">
+    <div data-crm-subitem-detail className="fixed inset-0 z-[220] bg-slate-950/40 p-3 sm:p-6">
       <section className="flex h-full flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
         <header className="flex items-center gap-4 border-b border-slate-200 px-6 py-4">
           <div

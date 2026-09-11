@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState, useRef } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { X } from "lucide-react";
 import { Client, Subitem } from "@/app/types";
 import { FileDropTarget } from "./ui/file-drop-target";
+import { useEscapeClose } from "./hooks/use-escape-close";
 
 type AwardedSubitem = Pick<
   Subitem,
@@ -199,6 +200,27 @@ export function GenerateOcfModal({
       selectedRows.every((row) => row.needByAsap || !!row.needByDate),
     [hasIncludedItems, selectedRows],
   );
+  const isDirty = useMemo(() => {
+    if (!client) return false;
+    if (companyName !== (client.company ?? "") || clientEmail !== (client.email ?? "")) return true;
+    if (estimatedDeliveryDate) return true;
+    const initialIds = awardedSubitems.map((item) => item.id);
+    if (initialIds.join("|") !== includedSubitemIds.join("|")) return true;
+    return rows.some((row) => {
+      const source = awardedSubitems.find((item) => item.id === row.subitemId);
+      if (!source) return true;
+      const initialDate = dateInputValue(nbdTimelineRow(source)?.timelineStart);
+      const initialAsap = !initialDate && nbdTimelineRow(source)?.remarks.trim().toLowerCase() === "asap";
+      return Boolean(row.file)
+        || String(row.qty ?? "") !== String(source.qty ?? "")
+        || row.remarks !== (source.description ?? "")
+        || row.usingFinalArtwork !== Boolean(savedFinalArtwork(source.customFields?.ocfFinalArtworkFile))
+        || row.needByDate !== initialDate
+        || row.needByAsap !== initialAsap;
+    });
+  }, [awardedSubitems, client, clientEmail, companyName, estimatedDeliveryDate, includedSubitemIds, rows]);
+
+  useEscapeClose({ open: open && Boolean(client), onClose, disabled: creating, isDirty });
 
   function toggleIncludedSubitem(subitemId: string, checked: boolean) {
     setIncludedSubitemIds((previous) =>

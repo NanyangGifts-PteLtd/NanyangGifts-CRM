@@ -11,7 +11,7 @@ export default function ProtectedAppLayout({
     <Suspense fallback={null}>
       <AuthGate>
         {children}
-        <Toaster position="bottom-right" closeButton richColors />
+        <Toaster position="top-center" closeButton richColors />
       </AuthGate>
     </Suspense>
   );

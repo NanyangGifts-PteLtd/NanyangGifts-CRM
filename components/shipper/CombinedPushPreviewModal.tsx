@@ -1,6 +1,8 @@
 "use client";
 
+import { useMemo, useRef } from "react";
 import { X } from "lucide-react";
+import { useEscapeClose } from "../hooks/use-escape-close";
 
 type CombinedPushPreview = {
   rows: Array<
@@ -99,6 +101,12 @@ export function CombinedPushPreviewModal({
   onClose: () => void;
   onConfirm: () => void;
 }) {
+  const initialPreview = useRef(JSON.stringify({ rows: preview.rows, shared: preview.shared }));
+  const isDirty = useMemo(
+    () => JSON.stringify({ rows: preview.rows, shared: preview.shared }) !== initialPreview.current,
+    [preview.rows, preview.shared],
+  );
+  useEscapeClose({ open: true, onClose, disabled: saving, isDirty });
   const item = preview.rows[preview.page];
   const changeItem = (key: string, value: string) =>
     onChange({

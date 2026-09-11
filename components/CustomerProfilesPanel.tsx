@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import type { Client } from "@/app/types";
+import { useEscapeClose } from "./hooks/use-escape-close";
 
 type ClientPhoneNumber = {
   id: string;
@@ -525,6 +526,7 @@ function DeleteProfileDialog({
   onCancel: () => void;
   onConfirm: () => void;
 }) {
+  useEscapeClose({ open: true, onClose: onCancel, disabled: deleting });
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-[2px]">
       <div className="w-full max-w-md overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
@@ -583,6 +585,7 @@ function BlacklistDialog({
   onCancel: () => void;
   onConfirm: () => void;
 }) {
+  useEscapeClose({ open: true, onClose: onCancel, disabled: saving });
   return (
     <div
       className="fixed inset-0 z-[220] flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-[2px]"
@@ -655,6 +658,7 @@ function DeleteRemarkDialog({
   onCancel: () => void;
   onConfirm: () => void;
 }) {
+  useEscapeClose({ open: true, onClose: onCancel, disabled: deleting });
   return (
     <div
       className="fixed inset-0 z-[210] flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-[2px]"

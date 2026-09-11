@@ -221,6 +221,16 @@ export function ClientDetailView({
     if (initialTab) setTab(initialTab);
   }, [initialTab]);
   useEffect(() => {
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented || event.isComposing) return;
+      if (document.querySelector("[data-crm-subitem-detail]")) return;
+      event.preventDefault();
+      onClose();
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [onClose]);
+  useEffect(() => {
     if (tab !== "files") return;
     let active = true;
     void fetch(
@@ -429,7 +439,7 @@ export function ClientDetailView({
   };
 
   return (
-    <div className="fixed inset-0 z-[200] bg-slate-950/40 p-3 sm:p-6">
+    <div data-crm-client-detail className="fixed inset-0 z-[200] bg-slate-950/40 p-3 sm:p-6">
       <section className="flex h-full flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
         <header className="flex items-center gap-4 border-b border-slate-200 px-6 py-4">
           <div

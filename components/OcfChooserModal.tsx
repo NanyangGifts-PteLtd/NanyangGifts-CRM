@@ -2,6 +2,7 @@
 
 import { FilePlus2, Files, X } from "lucide-react";
 import type { Client } from "@/app/types";
+import { useEscapeClose } from "./hooks/use-escape-close";
 
 export function OcfChooserModal({ open, client, canGenerate, onClose, onView, onGenerate }: {
     open: boolean;
@@ -11,6 +12,7 @@ export function OcfChooserModal({ open, client, canGenerate, onClose, onView, on
     onView: () => void;
     onGenerate: () => void;
 }) {
+    useEscapeClose({ open: open && Boolean(client), onClose });
     if (!open || !client) return null;
 
     return (

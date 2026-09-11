@@ -47,6 +47,7 @@ import { FileDropTarget } from "./file-drop-target";
 import { uploadCrmFiles } from "@/lib/crm-files";
 import { FilePreview } from "./file-preview";
 import { toast } from "sonner";
+import { useEscapeClose } from "@/components/hooks/use-escape-close";
 
 type OptionEntry = { value: string; color: string };
 const trackingSummaryOptions: OptionEntry[] = [
@@ -670,6 +671,24 @@ export function ClientRow({
   const [sampleArtworkUploads, setSampleArtworkUploads] = useState<
     Record<string, SampleArtworkUpload>
   >({});
+  const attachmentLinkDraft = attachmentLinkDialog
+    ? attachmentDrafts[attachmentLinkDialog] ?? ""
+    : "";
+  useEscapeClose({
+    open: Boolean(attachmentSourceMenu),
+    onClose: () => setAttachmentSourceMenu(null),
+  });
+  useEscapeClose({
+    open: Boolean(attachmentLinkDialog),
+    onClose: () => {
+      if (attachmentLinkDialog) {
+        setAttachmentDrafts((current) => ({ ...current, [attachmentLinkDialog]: "" }));
+      }
+      setAttachmentLinkDialog(null);
+    },
+    isDirty: Boolean(attachmentLinkDraft.trim()),
+    discardMessage: "Discard this unsaved attachment link and close it?",
+  });
   const setMultipleInvoices = (value: "Yes" | "No") => {
     onUpdate({
       customFields: {
@@ -1592,6 +1611,12 @@ export function ClientRow({
     return <>{entry.action ?? "activity recorded"}</>;
   }
 
+  const hasUnsavedQuoteDraft =
+    estimateMode === "quickbooks" ||
+    (estimateMode === "sample" && Object.keys(sampleArtworkUploads).length > 0);
+  const quoteActionInProgress =
+    isGeneratingEstimate || isGeneratingSample || isUpdatingEstimate;
+
   return (
     <div
       className={`mb-0 w-fit min-w-0 ${isSubitemDropTarget ? "ring-2 ring-inset ring-[#0f8da8]" : ""}`}
@@ -1650,6 +1675,18 @@ export function ClientRow({
         }}
       >
         <AlertDialogContent
+          onEscapeKeyDown={(event) => {
+            if (quoteActionInProgress) {
+              event.preventDefault();
+              return;
+            }
+            if (
+              hasUnsavedQuoteDraft &&
+              !window.confirm("Discard this unsaved quote preview and close it?")
+            ) {
+              event.preventDefault();
+            }
+          }}
           className={
             estimateMode === "quickbooks" || estimateMode === "update"
               ? "max-h-[92vh] w-[96vw] max-w-[1100px] overflow-y-auto sm:max-w-[1100px]"

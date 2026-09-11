@@ -97,6 +97,7 @@ import {
 } from "./AdvancedFilters";
 import { uploadCrmFiles } from "@/lib/crm-files";
 import { CombinedPushPreviewModal } from "./shipper/CombinedPushPreviewModal";
+import { useEscapeClose } from "./hooks/use-escape-close";
 
 type OptionEntry = { value: string; color: string };
 type PendingOptionDeletion = {
@@ -1194,6 +1195,21 @@ export function CRMBoard({
   const [pendingDeleteCustomColumn, setPendingDeleteCustomColumn] =
     useState<CustomColumn | null>(null);
   const [isDeletingCustomColumn, setIsDeletingCustomColumn] = useState(false);
+  useEscapeClose({
+    open: Boolean(showAddColModal),
+    onClose: () => {
+      setShowAddColModal(null);
+      setNewColName("");
+      setNewColType("text");
+    },
+    disabled: isAddingCol,
+    isDirty: Boolean(newColName.trim()) || newColType !== "text",
+  });
+  useEscapeClose({
+    open: Boolean(pendingDeleteCustomColumn),
+    onClose: () => setPendingDeleteCustomColumn(null),
+    disabled: isDeletingCustomColumn,
+  });
   const canCreateCustomColumns = ["director", "dev"].includes(
     String(currentUserRole ?? "")
       .trim()

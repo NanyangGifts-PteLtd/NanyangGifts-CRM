@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { X } from "lucide-react";
+import { useEscapeClose } from "./hooks/use-escape-close";
 
 type OcfConfigurationSettingsModalProps = {
     open: boolean;
@@ -20,6 +21,8 @@ export default function OcfConfigurationSettingsModal({
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [message, setMessage] = useState<string | null>(null);
+    const [savedImportantNotes, setSavedImportantNotes] = useState("");
+    const [savedStrictNeedByWarning, setSavedStrictNeedByWarning] = useState("");
 
     const canEdit = ["director", "dev"].includes(
         String(currentUserRole ?? "").trim().toLowerCase()
@@ -46,6 +49,8 @@ export default function OcfConfigurationSettingsModal({
 
                 setImportantNotes(data.importantNotes ?? "");
                 setStrictNeedByWarning(data.strictNeedByWarning ?? "");
+                setSavedImportantNotes(data.importantNotes ?? "");
+                setSavedStrictNeedByWarning(data.strictNeedByWarning ?? "");
             } catch (err: any) {
                 setError(err.message || "Failed to load OCF settings.");
             } finally {
@@ -82,12 +87,21 @@ export default function OcfConfigurationSettingsModal({
             }
 
             setMessage("OCF configuration saved successfully.");
+            setSavedImportantNotes(importantNotes);
+            setSavedStrictNeedByWarning(strictNeedByWarning);
         } catch (err: any) {
             setError(err.message || "Failed to save OCF settings.");
         } finally {
             setSaving(false);
         }
     }
+
+    useEscapeClose({
+        open,
+        onClose,
+        disabled: saving,
+        isDirty: canEdit && (importantNotes !== savedImportantNotes || strictNeedByWarning !== savedStrictNeedByWarning),
+    });
 
     if (!open) return null;
 

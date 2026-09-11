@@ -1,6 +1,7 @@
 "use client";
 import React, { useEffect, useRef, useState } from "react";
 import { FolderPlus, X } from "lucide-react";
+import { useEscapeClose } from "./hooks/use-escape-close";
 
 type AddGroupModalProps = {
     open: boolean;
@@ -22,7 +23,6 @@ export function AddGroupModal({ open, onClose, onSubmit }: AddGroupModalProps) {
     useEffect(() => {
         const onKeyDown = (e: KeyboardEvent) => {
             if (!open) return;
-            if (e.key === "Escape") onClose();
             if (e.key === "Enter" && name.trim()) {
                 onSubmit(name.trim());
                 onClose();
@@ -32,6 +32,8 @@ export function AddGroupModal({ open, onClose, onSubmit }: AddGroupModalProps) {
         window.addEventListener("keydown", onKeyDown);
         return () => window.removeEventListener("keydown", onKeyDown);
     }, [open, name, onClose, onSubmit]);
+
+    useEscapeClose({ open, onClose, isDirty: Boolean(name.trim()) });
 
     if (!open) return null;
 

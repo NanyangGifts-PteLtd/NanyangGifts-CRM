@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { X, Eye, EyeOff, Check } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import { useEscapeClose } from './hooks/use-escape-close';
 
 interface ChangePasswordModalProps {
     open: boolean;
@@ -19,8 +20,6 @@ export default function ChangePasswordModal({ open, onClose }: ChangePasswordMod
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState(false);
-
-    if (!open) return null;
 
     const passwordsMatch = password === confirm;
     const isStrong = password.length >= 8;
@@ -65,6 +64,15 @@ export default function ChangePasswordModal({ open, onClose }: ChangePasswordMod
         setSuccess(false);
         onClose();
     };
+
+    useEscapeClose({
+        open,
+        onClose: handleClose,
+        disabled: loading,
+        isDirty: Boolean(currentPassword || password || confirm),
+    });
+
+    if (!open) return null;
 
     return (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/30 backdrop-blur-[2px] px-4">
