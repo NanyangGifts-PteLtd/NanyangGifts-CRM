@@ -654,6 +654,7 @@ export function ClientRow({
   const [quoteDeliveryBySubitem, setQuoteDeliveryBySubitem] = useState<
     Record<string, "singapore" | "other" | "">
   >({});
+  const [sameQuoteTaxForAll, setSameQuoteTaxForAll] = useState(false);
   const [quickBooksDefaultsLoading, setQuickBooksDefaultsLoading] =
     useState(false);
   const [estimateResult, setEstimateResult] = useState<{
@@ -900,6 +901,40 @@ export function ClientRow({
   const estimateEligibleSubitems = client.subitems.filter((subitem) =>
     ["Quoted", "Shortlisted", "Awarded"].includes(subitem.status?.trim()),
   );
+  const editableQuoteTaxLineIds = [
+    ...estimateEligibleSubitems.map((subitem) => ({ id: subitem.id, name: subitem.name })),
+    ...(updateEstimatePreview?.incoming.lines ?? []).map((line) => ({ id: line.id, name: line.name })),
+  ].filter(
+    (line, index, lines) =>
+      !isFreightLine(line.name) &&
+      lines.findIndex((candidate) => candidate.id === line.id) === index,
+  ).map((line) => line.id);
+  const setQuoteTaxDestination = (
+    subitemId: string,
+    destination: "singapore" | "other",
+  ) => {
+    setQuoteDeliveryBySubitem((current) => {
+      if (!sameQuoteTaxForAll) return { ...current, [subitemId]: destination };
+      return editableQuoteTaxLineIds.reduce(
+        (next, id) => ({ ...next, [id]: destination }),
+        { ...current },
+      );
+    });
+  };
+  const toggleSameQuoteTaxForAll = (checked: boolean) => {
+    setSameQuoteTaxForAll(checked);
+    if (!checked) return;
+    setQuoteDeliveryBySubitem((current) => {
+      const existing = editableQuoteTaxLineIds
+        .map((id) => current[id])
+        .find((value): value is "singapore" | "other" => Boolean(value));
+      if (!existing) return current;
+      return editableQuoteTaxLineIds.reduce(
+        (next, id) => ({ ...next, [id]: existing }),
+        { ...current },
+      );
+    });
+  };
   const quickBooksEstimatePreview = useMemo(() => {
     const lines = [...estimateEligibleSubitems]
       .sort(
@@ -1034,6 +1069,7 @@ export function ClientRow({
   const loadUpdatePreview = async (generationId: string) => {
     setSelectedEstimateGenerationId(generationId);
     setQuoteDeliveryBySubitem({});
+    setSameQuoteTaxForAll(false);
     setUpdateEstimatePreview(null);
     setUpdateEstimateError(null);
     if (!generationId) return;
@@ -1664,6 +1700,7 @@ export function ClientRow({
             setQuickBooksSalesperson("");
             setQuickBooksCompanyName(client.company ?? "");
             setQuoteDeliveryBySubitem({});
+            setSameQuoteTaxForAll(false);
             setUpdateEstimates([]);
             setSelectedEstimateGenerationId("");
             setUpdateEstimatePreview(null);
@@ -1933,7 +1970,22 @@ export function ClientRow({
                                 <th className="px-2 py-2 text-right">Qty</th>
                                 <th className="px-2 py-2 text-right">Rate</th>
                                 <th className="px-3 py-2 text-right">Amount</th>
-                                <th className="w-[36%] px-3 py-2">Tax</th>
+                                <th className="w-[36%] px-3 py-2">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span>Tax</span>
+                                    {isIncoming && (
+                                      <label className="flex cursor-pointer items-center gap-1 whitespace-nowrap normal-case tracking-normal text-slate-600">
+                                        <input
+                                          type="checkbox"
+                                          checked={sameQuoteTaxForAll}
+                                          onChange={(event) => toggleSameQuoteTaxForAll(event.target.checked)}
+                                          className="h-3 w-3 accent-emerald-500"
+                                        />
+                                        Same for all
+                                      </label>
+                                    )}
+                                  </div>
+                                </th>
                               </tr>
                             </thead>
                             <tbody>
@@ -1956,12 +2008,10 @@ export function ClientRow({
                                         }
                                         disabled={isFreightLine(line.name)}
                                         onChange={(event) =>
-                                          setQuoteDeliveryBySubitem((current) => ({
-                                            ...current,
-                                            [line.id as string]: event.target.value as
-                                              | "singapore"
-                                              | "other",
-                                          }))
+                                          setQuoteTaxDestination(
+                                            line.id as string,
+                                            event.target.value as "singapore" | "other",
+                                          )
                                         }
                                         className="w-full rounded border border-slate-200 bg-white px-1 py-1 text-[10px] text-slate-700"
                                       >
@@ -2127,7 +2177,20 @@ export function ClientRow({
                           <th className="px-2 py-2 text-right">Qty</th>
                           <th className="px-2 py-2 text-right">Unit price</th>
                           <th className="px-2 py-2 text-right">Amount</th>
-                          <th className="w-[28%] px-3 py-2">Tax</th>
+                          <th className="w-[28%] px-3 py-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <span>Tax</span>
+                              <label className="flex cursor-pointer items-center gap-1 whitespace-nowrap normal-case tracking-normal text-slate-600">
+                                <input
+                                  type="checkbox"
+                                  checked={sameQuoteTaxForAll}
+                                  onChange={(event) => toggleSameQuoteTaxForAll(event.target.checked)}
+                                  className="h-3 w-3 accent-emerald-500"
+                                />
+                                Same for all
+                              </label>
+                            </div>
+                          </th>
                         </tr>
                       </thead>
                       <tbody>
@@ -2160,12 +2223,10 @@ export function ClientRow({
                                 value={line.delivery}
                                 disabled={line.freight}
                                 onChange={(event) =>
-                                  setQuoteDeliveryBySubitem((current) => ({
-                                    ...current,
-                                    [line.id]: event.target.value as
-                                      | "singapore"
-                                      | "other",
-                                  }))
+                                  setQuoteTaxDestination(
+                                    line.id,
+                                    event.target.value as "singapore" | "other",
+                                  )
                                 }
                                 className="w-full rounded border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-700 outline-none focus:border-emerald-400"
                                 aria-label={`Tax destination for ${line.name}`}
