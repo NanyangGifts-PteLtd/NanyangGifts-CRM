@@ -11,6 +11,7 @@ import {
   CheckCircle,
   XCircle,
   X,
+  Trash2,
 } from "lucide-react";
 import { Notification } from "../app/types";
 import { LogoutButton } from "./logout-button";
@@ -909,6 +910,16 @@ export default function TopBar({
               <p className="text-xs text-gray-500 mt-0.5 truncate">Online</p>
             </div>
 
+            <button
+              type="button"
+              onClick={() => {
+                setShowProfile(false);
+                window.dispatchEvent(new Event("crm:open-bin-request"));
+              }}
+              className="flex w-full items-center gap-2 border-b border-gray-100 px-4 py-2 text-left text-xs text-gray-700 hover:bg-[#e7fdff]"
+            >
+              <Trash2 size={13} className="text-[#43adc4]" /> CRM Board Bin
+            </button>
             <button
               key="Change Password"
               onClick={() => {

@@ -2750,7 +2750,16 @@ export function ClientRow({
                         );
                       }
 
-                      return clientActivities.map((entry) => (
+                      return clientActivities.map((entry) => {
+                        const isDeletionEntry =
+                          entry.action === "client_deleted" ||
+                          entry.action === "subitem_deleted";
+                        const deletionUndoExpired =
+                          isDeletionEntry &&
+                          new Date(entry.createdAt).getTime() +
+                            30 * 86_400_000 <=
+                            Date.now();
+                        return (
                         <div
                           key={entry.id}
                           className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2"
@@ -2808,14 +2817,19 @@ export function ClientRow({
                                 </span>
                               ) : null}
                               {(entry.action === "field_changed" ||
-                                entry.action === "subitem_field_changed") &&
-                                entry.oldValue !== undefined &&
-                                entry.oldValue !== null && (
+                                entry.action === "subitem_field_changed" ||
+                                entry.action === "client_deleted" ||
+                                entry.action === "subitem_deleted") &&
+                                (entry.action === "client_deleted" ||
+                                  entry.action === "subitem_deleted" ||
+                                  (entry.oldValue !== undefined &&
+                                    entry.oldValue !== null)) && (
                                 <button
                                   type="button"
                                   disabled={
                                     undoneActivityIds.has(entry.id) ||
-                                    !canEditClient
+                                    !canEditClient ||
+                                    deletionUndoExpired
                                   }
                                   onClick={async () => {
                                     if (undoneActivityIds.has(entry.id)) return;
@@ -2827,6 +2841,8 @@ export function ClientRow({
                                   title={
                                     !canEditClient
                                       ? "You can only edit items that are assigned to you"
+                                      : deletionUndoExpired
+                                        ? "This item is no longer available for restoration"
                                       : undoneActivityIds.has(entry.id)
                                         ? "The action has already been undone"
                                         : "Undo this action"
@@ -2841,7 +2857,8 @@ export function ClientRow({
                             </div>
                           </div>
                         </div>
-                      ));
+                        );
+                      });
                     })()}
                   </div>
                 </div>

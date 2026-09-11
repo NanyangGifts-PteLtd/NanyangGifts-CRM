@@ -70,6 +70,10 @@ import {
   reorderSubitemRows,
   duplicateSubitemRow,
   duplicateClientRow,
+  fetchDeletedBinItems,
+  restoreClientRow,
+  restoreSubitemRow,
+  type DeletedBinItem,
 } from "@/lib/crm";
 import { fetchClientAssignmentMaps } from "@/lib/assignments";
 import { GenerateOcfModal } from "./Generate-OCF-Modal";
@@ -456,6 +460,14 @@ export function CRMBoard({
   const [isOcfChooserOpen, setIsOcfChooserOpen] = useState(false);
   const [isOcfModalOpen, setIsOcfModalOpen] = useState(false);
   const [showAddGroupModal, setShowAddGroupModal] = useState(false);
+  const [showBin, setShowBin] = useState(false);
+  const [binItems, setBinItems] = useState<DeletedBinItem[]>([]);
+  const [loadingBin, setLoadingBin] = useState(false);
+  const [restoringBinItemId, setRestoringBinItemId] = useState<string | null>(null);
+  const [selectedBinItemKeys, setSelectedBinItemKeys] = useState<Set<string>>(new Set());
+  const [pendingPermanentBinItems, setPendingPermanentBinItems] = useState<DeletedBinItem[] | null>(null);
+  const [permanentlyDeletingBin, setPermanentlyDeletingBin] = useState(false);
+  const [binRestoreIssue, setBinRestoreIssue] = useState<string | null>(null);
   const [pendingDeleteClientId, setPendingDeleteClientId] = useState<
     string | null
   >(null);
@@ -5073,6 +5085,22 @@ export function CRMBoard({
 
   const undoActivity = useCallback(
     async (entry: import("../app/types").ActivityEntry) => {
+      if (entry.action === "client_deleted") {
+        const clientId = String(entry.meta?.deletedId ?? entry.clientId ?? "");
+        if (!clientId) return;
+        await restoreClientRow(clientId);
+        await reloadClients();
+        toast.success("Client deletion undone");
+        return;
+      }
+      if (entry.action === "subitem_deleted") {
+        const subitemId = String(entry.meta?.deletedId ?? "");
+        if (!subitemId) return;
+        await restoreSubitemRow(subitemId);
+        await reloadClients();
+        toast.success("Subitem deletion undone");
+        return;
+      }
       if (entry.action === "field_changed") {
         const fieldMap: Record<string, keyof Client> = {
           replyStatus: "replyStatus",
@@ -5187,8 +5215,88 @@ export function CRMBoard({
       setClients,
       showAssignmentPermissionError,
       updateClient,
+      reloadClients,
     ],
   );
+
+  const openBin = useCallback(async () => {
+    setShowBin(true);
+    setSelectedBinItemKeys(new Set());
+    setLoadingBin(true);
+    try {
+      setBinItems(await fetchDeletedBinItems());
+    } catch (error: any) {
+      toast.error("Bin could not be loaded", { description: error?.message });
+    } finally {
+      setLoadingBin(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const handleOpenBin = () => void openBin();
+    window.addEventListener("crm:open-bin", handleOpenBin);
+    return () => window.removeEventListener("crm:open-bin", handleOpenBin);
+  }, [openBin]);
+
+  const restoreBinItem = useCallback(async (item: DeletedBinItem) => {
+    if (item.parentDeleted) {
+      setBinRestoreIssue(`“${item.name}” cannot be restored because its original parent client is still in the Bin or has been permanently deleted. Restore the parent client first if it is still available.`);
+      return;
+    }
+    setRestoringBinItemId(item.id);
+    try {
+      if (item.type === "client") await restoreClientRow(item.id);
+      else await restoreSubitemRow(item.id);
+      setBinItems((items) => items.filter((candidate) => candidate.id !== item.id));
+      await reloadClients();
+      toast.success(`${item.type === "client" ? "Client" : "Subitem"} restored`);
+    } catch (error: any) {
+      setBinRestoreIssue(error?.message || `“${item.name}” could not be restored because it is no longer eligible for restoration.`);
+    } finally {
+      setRestoringBinItemId(null);
+    }
+  }, [reloadClients]);
+
+  const permanentlyDeleteBinItem = useCallback(async (item: DeletedBinItem) => {
+    const response = await fetch("/api/crm-bin/permanent-delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: item.type, id: item.id }),
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result?.error || "Item could not be permanently deleted.");
+  }, []);
+
+  const confirmPermanentBinDelete = useCallback(async () => {
+    const items = pendingPermanentBinItems ?? [];
+    if (!items.length) return;
+    setPermanentlyDeletingBin(true);
+    const failures: string[] = [];
+    const deletedKeys = new Set<string>();
+    for (const item of items) {
+      try {
+        await permanentlyDeleteBinItem(item);
+        deletedKeys.add(`${item.type}:${item.id}`);
+      } catch (error: any) {
+        failures.push(`${item.name}: ${error?.message || "could not be deleted"}`);
+      }
+    }
+    setBinItems((current) => current.filter((item) => !deletedKeys.has(`${item.type}:${item.id}`)));
+    setSelectedBinItemKeys((current) => new Set([...current].filter((key) => !deletedKeys.has(key))));
+    setPermanentlyDeletingBin(false);
+    setPendingPermanentBinItems(null);
+    if (deletedKeys.size) toast.success(`${deletedKeys.size} Bin item${deletedKeys.size === 1 ? "" : "s"} permanently deleted`);
+    if (failures.length) setBinRestoreIssue(`Some items could not be permanently deleted:\n${failures.join("\n")}`);
+    await reloadClients();
+  }, [pendingPermanentBinItems, permanentlyDeleteBinItem, reloadClients]);
+
+  const restoreSelectedBinItems = useCallback(async () => {
+    const items = binItems.filter((item) => selectedBinItemKeys.has(`${item.type}:${item.id}`));
+    const ineligible = items.filter((item) => item.parentDeleted || new Date(item.expiresAt).getTime() <= Date.now());
+    const eligible = items.filter((item) => !ineligible.includes(item));
+    for (const item of eligible) await restoreBinItem(item);
+    if (ineligible.length) setBinRestoreIssue(`${ineligible.length} selected item${ineligible.length === 1 ? " is" : "s are"} not eligible for restoration. A subitem requires its original parent client to exist, and all Bin items must be restored within 30 days.`);
+  }, [binItems, restoreBinItem, selectedBinItemKeys]);
 
   const addClient = useCallback(async (groupId?: string | null, name?: string) => {
     try {
@@ -5294,7 +5402,7 @@ export function CRMBoard({
         await deleteClientRow(clientId);
         notifyChange(
           "Client deleted",
-          "The client and its related records were removed.",
+          "The client was moved to the Bin and can be restored for 30 days.",
         );
       } catch (error: any) {
         setClients(clients);
@@ -5618,7 +5726,7 @@ export function CRMBoard({
       );
       try {
         await deleteSubitemRow(subitemId);
-        notifyChange("Subitem deleted", "The subitem was removed.");
+        notifyChange("Subitem deleted", "The subitem was moved to the Bin and can be restored for 30 days.");
       } catch (error: any) {
         setClients(clients);
         console.error("Failed to delete subitem", error);
@@ -5943,6 +6051,113 @@ export function CRMBoard({
             />
           );
         })()}
+      {showBin && (
+        <div className="fixed inset-0 z-[250] flex items-center justify-center bg-slate-950/40 p-4">
+          <section className="flex max-h-[min(720px,calc(100vh-2rem))] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <header className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+              <div>
+                <h2 className="text-base font-semibold text-slate-900">Bin</h2>
+                <p className="mt-1 text-xs text-slate-500">Deleted clients and subitems can be restored for 30 days.</p>
+              </div>
+              <button type="button" onClick={() => setShowBin(false)} className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Close Bin">
+                <X size={18} />
+              </button>
+            </header>
+            {!loadingBin && binItems.length > 0 && (
+              <div className="flex items-center gap-2 border-b border-slate-100 px-5 py-2.5">
+                <label className="flex items-center gap-2 text-xs text-slate-600">
+                  <input type="checkbox" checked={selectedBinItemKeys.size === binItems.length} onChange={(event) => setSelectedBinItemKeys(event.target.checked ? new Set(binItems.map((item) => `${item.type}:${item.id}`)) : new Set())} className="h-3.5 w-3.5 accent-[#43adc4]" />
+                  Select all
+                </label>
+                {selectedBinItemKeys.size > 0 && (
+                  <>
+                    <span className="text-xs text-slate-500">{selectedBinItemKeys.size} selected</span>
+                    <button type="button" onClick={() => void restoreSelectedBinItems()} className="ml-auto rounded-md border border-teal-200 px-2.5 py-1 text-xs font-medium text-teal-700 hover:bg-teal-50">Restore selected</button>
+                    <button type="button" onClick={() => setPendingPermanentBinItems(binItems.filter((item) => selectedBinItemKeys.has(`${item.type}:${item.id}`)))} className="rounded-md border border-red-200 px-2.5 py-1 text-xs font-medium text-red-700 hover:bg-red-50">Permanently delete</button>
+                  </>
+                )}
+              </div>
+            )}
+            <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-4">
+              {loadingBin ? (
+                <p className="py-8 text-center text-sm text-slate-500">Loading Bin…</p>
+              ) : binItems.length === 0 ? (
+                <p className="py-8 text-center text-sm text-slate-500">The Bin is empty.</p>
+              ) : binItems.map((item) => {
+                const daysRemaining = Math.max(0, Math.ceil((new Date(item.expiresAt).getTime() - Date.now()) / 86_400_000));
+                return (
+                  <div key={`${item.type}:${item.id}`} className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
+                    <input
+                      type="checkbox"
+                      checked={selectedBinItemKeys.has(`${item.type}:${item.id}`)}
+                      onChange={(event) => setSelectedBinItemKeys((current) => {
+                        const next = new Set(current);
+                        const key = `${item.type}:${item.id}`;
+                        if (event.target.checked) next.add(key); else next.delete(key);
+                        return next;
+                      })}
+                      aria-label={`Select ${item.name}`}
+                      className="h-3.5 w-3.5 shrink-0 accent-[#43adc4]"
+                    />
+                    <Trash2 size={16} className="shrink-0 text-slate-400" />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium text-slate-800">{item.name}</p>
+                      <p className="mt-0.5 text-xs text-slate-500">
+                        {item.type === "client" ? `Client${item.subitemCount ? ` · ${item.subitemCount} subitem${item.subitemCount === 1 ? "" : "s"}` : ""}` : `Subitem · ${item.clientName}`} · {daysRemaining} day{daysRemaining === 1 ? "" : "s"} remaining
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={item.parentDeleted || new Date(item.expiresAt).getTime() <= Date.now() || restoringBinItemId === item.id}
+                      onClick={() => void restoreBinItem(item)}
+                      title={item.parentDeleted ? "Restore the parent client first" : new Date(item.expiresAt).getTime() <= Date.now() ? "The 30-day Bin retention period has ended" : "Restore this item"}
+                      className="rounded-md border border-teal-200 bg-white px-2.5 py-1.5 text-xs font-medium text-teal-700 hover:bg-teal-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {restoringBinItemId === item.id ? "Restoring…" : "Restore"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPendingPermanentBinItems([item])}
+                      className="rounded-md border border-red-200 bg-white px-2.5 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50"
+                    >
+                      Permanently delete
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        </div>
+      )}
+      <AlertDialog open={!!pendingPermanentBinItems} onOpenChange={(open) => !open && !permanentlyDeletingBin && setPendingPermanentBinItems(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Permanently delete from the Bin?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingPermanentBinItems?.length === 1
+                ? `“${pendingPermanentBinItems[0].name}” and its stored files will be permanently deleted. This cannot be undone.`
+                : `${pendingPermanentBinItems?.length ?? 0} selected Bin items and their stored files will be permanently deleted. This cannot be undone.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={permanentlyDeletingBin}>Cancel</AlertDialogCancel>
+            <AlertDialogAction disabled={permanentlyDeletingBin} className="bg-red-600 hover:bg-red-700" onClick={(event) => { event.preventDefault(); void confirmPermanentBinDelete(); }}>
+              {permanentlyDeletingBin ? "Deleting…" : "Permanently delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog open={!!binRestoreIssue} onOpenChange={(open) => !open && setBinRestoreIssue(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Item cannot be restored</AlertDialogTitle>
+            <AlertDialogDescription className="whitespace-pre-line">{binRestoreIssue}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={() => setBinRestoreIssue(null)}>Close</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       {selectedIds.size > 0 && (
         <div className="fixed bottom-8 left-1/2 z-[100] flex min-h-16 w-[min(1100px,calc(100vw-2rem))] -translate-x-1/2 items-center gap-2 overflow-x-auto rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-2xl">
           <div className="whitespace-nowrap text-base font-medium text-slate-800">
@@ -7133,8 +7348,7 @@ export function CRMBoard({
           <AlertDialogHeader>
             <AlertDialogTitle>Delete selected clients?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete {selectedIds.size} selected client
-              {selectedIds.size === 1 ? "" : "s"}. This action cannot be undone.
+              These clients will be moved to the Bin for 30 days before permanent deletion.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -7248,11 +7462,11 @@ export function CRMBoard({
           <AlertDialogHeader>
             <AlertDialogTitle>Delete this client?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete{" "}
+              This will move{" "}
               <span className="font-semibold text-gray-700">
                 {pendingClientToDelete?.name ?? "this client"}
               </span>{" "}
-              and all of its related data. This action cannot be undone.
+              and its active subitems to the Bin. They can be restored for 30 days.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -7279,9 +7493,8 @@ export function CRMBoard({
           <AlertDialogHeader>
             <AlertDialogTitle>Delete selected subitems?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete{" "}
-              {pendingDeleteSelectedSubitems?.length ?? 0} selected subitems.
-              This action cannot be undone.
+              This will move{" "}
+              {pendingDeleteSelectedSubitems?.length ?? 0} selected subitems to the Bin for 30 days.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -7323,7 +7536,7 @@ export function CRMBoard({
           <AlertDialogHeader>
             <AlertDialogTitle>Delete this subitem?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete{" "}
+              This will move{" "}
               <span className="font-semibold text-gray-700">
                 {pendingSubitemToDelete?.subitemName ?? "this subitem"}
               </span>{" "}
@@ -7331,7 +7544,7 @@ export function CRMBoard({
               <span className="font-semibold text-gray-700">
                 {pendingSubitemToDelete?.clientName ?? "this client"}
               </span>
-              . This action cannot be undone.
+              . It can be restored from the Bin for 30 days.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

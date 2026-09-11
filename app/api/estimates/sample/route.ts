@@ -174,7 +174,7 @@ export async function POST(req: NextRequest) {
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const { clientId, artworks = [] } = await req.json() as { clientId?: string; artworks?: ArtworkInput[] };
     if (!clientId) return NextResponse.json({ error: "Missing clientId" }, { status: 400 });
-    const { data: client, error } = await supabase.from("clients").select("*, subitems(*)").eq("id", clientId).single();
+    const { data: client, error } = await supabase.from("clients").select("*, subitems!subitems_client_id_fkey(*)").eq("id", clientId).single();
     if (error || !client) return NextResponse.json({ error: "Client not found" }, { status: 404 });
     if (!client.company?.trim()) return NextResponse.json({ error: "Client company name is required" }, { status: 400 });
     const subitems = (client.subitems ?? []).filter((item: any) => ELIGIBLE.has((item.status ?? "").trim())).sort((a: any, b: any) => Number(a.position ?? Number.MAX_SAFE_INTEGER) - Number(b.position ?? Number.MAX_SAFE_INTEGER));

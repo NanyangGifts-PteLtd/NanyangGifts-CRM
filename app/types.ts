@@ -130,7 +130,7 @@ export interface Subitem {
 export type ActivityEntry = {
   id: string,
   clientId?: string;
-  action: "field_changed" | "assignment_changed" | "client_added" | "subitem_added" | "subitem_deleted" | "subitem_field_changed" | "ocf_created" | "ocf_signed" | "ocf_updated" | "estimate_created" | "file_uploaded" | "file_replaced" | "file_removed" | "shipper_pushed";
+  action: "field_changed" | "assignment_changed" | "client_added" | "client_deleted" | "client_restored" | "subitem_added" | "subitem_deleted" | "subitem_restored" | "subitem_field_changed" | "ocf_created" | "ocf_signed" | "ocf_updated" | "estimate_created" | "file_uploaded" | "file_replaced" | "file_removed" | "shipper_pushed";
   fieldName?: string;
   oldValue?: unknown;
   newValue?: unknown;

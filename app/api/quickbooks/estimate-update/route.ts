@@ -149,7 +149,7 @@ async function authorisedGeneration(
   }
   const { data: client } = await supabase
     .from("clients")
-    .select("*, subitems(*)")
+    .select("*, subitems!subitems_client_id_fkey(*)")
     .eq("id", generation.client_id)
     .maybeSingle();
   if (!client) throw new Error("Client not found");

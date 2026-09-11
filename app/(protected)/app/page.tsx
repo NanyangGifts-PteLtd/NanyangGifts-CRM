@@ -164,6 +164,18 @@ export default function Page() {
   }, [activePanel, searchTarget]);
 
   useEffect(() => {
+    const openCrmBoardBin = () => {
+      setActivePanel('crm');
+      window.setTimeout(
+        () => window.dispatchEvent(new Event('crm:open-bin')),
+        0,
+      );
+    };
+    window.addEventListener('crm:open-bin-request', openCrmBoardBin);
+    return () => window.removeEventListener('crm:open-bin-request', openCrmBoardBin);
+  }, []);
+
+  useEffect(() => {
     if (!searchTarget) return;
 
     const timeout = window.setTimeout(() => {

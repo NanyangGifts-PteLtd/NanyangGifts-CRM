@@ -135,7 +135,7 @@ export async function POST(req: NextRequest) {
             .from('clients')
             .select(`
         *,
-        subitems (*)
+        subitems!subitems_client_id_fkey (*)
         `)
             .eq('id', clientId)
             .single();

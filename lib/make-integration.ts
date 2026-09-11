@@ -244,7 +244,7 @@ export async function queueLeadReassignedMakeEvent(input: {
   const [{ data: client, error: clientError }, { data: assignees, error: assigneeError }] = await Promise.all([
     supabaseAdmin
       .from("clients")
-      .select("id, name, email, phone, requirements, nbd, billing_address, total_price, custom_fields, subitems(name, qty)")
+      .select("id, name, email, phone, requirements, nbd, billing_address, total_price, custom_fields, subitems!subitems_client_id_fkey(name, qty)")
       .eq("id", input.clientId)
       .single(),
     supabaseAdmin

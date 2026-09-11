@@ -151,6 +151,9 @@ type Subitems = {
     sample_type: string | null;
     custom_fields?: Record<string, string>;
     shipper_id: string | null;
+    deleted_at?: string | null;
+    deleted_by?: string | null;
+    deleted_with_client_id?: string | null;
 };
 
 type Clients = {
@@ -180,6 +183,20 @@ type Clients = {
     activity_log?: ActivityLogRow[] | null;
     subitems?: Subitems[];
     custom_fields?: Record<string, string>;
+    deleted_at?: string | null;
+    deleted_by?: string | null;
+};
+
+export type DeletedBinItem = {
+    id: string;
+    type: 'client' | 'subitem';
+    name: string;
+    clientId?: string;
+    clientName?: string;
+    deletedAt: string;
+    expiresAt: string;
+    subitemCount?: number;
+    parentDeleted?: boolean;
 };
 
 type ActivityLogRow = {
@@ -208,6 +225,7 @@ const TIMELINE_LOG_FIELDS: Array<keyof TimelineRow> = [
     'duration',
     'dependency'
 ]
+const BIN_RETENTION_MS = 30 * 86_400_000;
 function isEqualForLog(a: unknown, b: unknown) {
     return JSON.stringify(a) === JSON.stringify(b);
 }
@@ -382,7 +400,7 @@ function mapClients(row: Clients): Client {
         expanded: row.expanded ?? false,
         color: row.color ?? '#7BCBD5',
         activityLog: (row.activity_log ?? []).map(mapActivityEntry),
-        subitems: (row.subitems ?? []).map(mapSubitems).sort((first, second) => first.position - second.position || (first.createdAt ?? '').localeCompare(second.createdAt ?? '')),
+        subitems: (row.subitems ?? []).filter((subitem) => !subitem.deleted_at).map(mapSubitems).sort((first, second) => first.position - second.position || (first.createdAt ?? '').localeCompare(second.createdAt ?? '')),
         customFields: row.custom_fields ?? {},
 
     };
@@ -391,7 +409,7 @@ function mapClients(row: Clients): Client {
 async function insertActivityLog(params: {
     clientId: string;
     subitemId?: string | null;
-        action: 'field_changed' | 'assignment_changed' | 'client_added' | 'subitem_added' | 'subitem_deleted' | 'subitem_field_changed' | 'ocf_created' | 'ocf_signed' | 'ocf_updated' | 'estimate_created' | 'file_uploaded' | 'file_replaced' | 'file_removed' | 'shipper_pushed';
+        action: 'field_changed' | 'assignment_changed' | 'client_added' | 'client_deleted' | 'client_restored' | 'subitem_added' | 'subitem_deleted' | 'subitem_restored' | 'subitem_field_changed' | 'ocf_created' | 'ocf_signed' | 'ocf_updated' | 'estimate_created' | 'file_uploaded' | 'file_replaced' | 'file_removed' | 'shipper_pushed';
     fieldName?: string | null;
     oldValue?: unknown;
     newValue?: unknown;
@@ -504,7 +522,7 @@ export async function fetchClientsWithSubitems() {
         .from('clients')
         .select(`
     *,
-    subitems (*),
+    subitems!subitems_client_id_fkey (*),
     client_assignees (
         client_id,
         user_id,
@@ -518,6 +536,7 @@ export async function fetchClientsWithSubitems() {
         )
     )
     `)
+        .is('deleted_at', null)
         .order('created_at', { ascending: true });
 
     if (clientsError) {
@@ -549,6 +568,34 @@ export async function fetchClientsWithSubitems() {
             activity_log: activityByClientId.get((row as Clients).id) ?? [],
         })
     );
+}
+
+export async function fetchDeletedBinItems(): Promise<DeletedBinItem[]> {
+    const [clientsResult, subitemsResult] = await Promise.all([
+        supabase.from('clients').select('id, name, deleted_at, subitems!subitems_client_id_fkey(id, deleted_at)').not('deleted_at', 'is', null).order('deleted_at', { ascending: false }),
+        supabase.from('subitems').select('id, name, client_id, deleted_at, deleted_with_client_id, clients!subitems_client_id_fkey(name, deleted_at)').not('deleted_at', 'is', null).order('deleted_at', { ascending: false }),
+    ]);
+    if (clientsResult.error) throw clientsResult.error;
+    if (subitemsResult.error) throw subitemsResult.error;
+    const expiresAt = (value: string) => {
+        const date = new Date(value);
+        date.setUTCDate(date.getUTCDate() + 30);
+        return date.toISOString();
+    };
+    const clientItems: DeletedBinItem[] = (clientsResult.data ?? []).map((client: any) => ({
+        id: client.id, type: 'client', name: client.name ?? 'Unnamed client',
+        deletedAt: client.deleted_at, expiresAt: expiresAt(client.deleted_at),
+        subitemCount: (client.subitems ?? []).filter((subitem: any) => Boolean(subitem.deleted_at)).length,
+    }));
+    const subitemItems: DeletedBinItem[] = (subitemsResult.data ?? [])
+        .filter((subitem: any) => !subitem.deleted_with_client_id)
+        .map((subitem: any) => ({
+            id: subitem.id, type: 'subitem', name: subitem.name ?? 'Unnamed subitem',
+            clientId: subitem.client_id, clientName: subitem.clients?.name ?? 'Deleted client',
+            deletedAt: subitem.deleted_at, expiresAt: expiresAt(subitem.deleted_at),
+            parentDeleted: Boolean(subitem.clients?.deleted_at),
+        }));
+    return [...clientItems, ...subitemItems].sort((first, second) => new Date(second.deletedAt).getTime() - new Date(first.deletedAt).getTime());
 }
 
 export async function createClientRow(
@@ -765,12 +812,33 @@ async function assertDeletionAllowed(table: 'clients' | 'subitems', id: string) 
 
 export async function deleteClientRow(clientId: string) {
     await assertDeletionAllowed('clients', clientId);
+    const deletedAt = new Date().toISOString();
+    const { data: { user } } = await supabase.auth.getUser();
     const { error } = await supabase
         .from('clients')
-        .delete()
+        .update({ deleted_at: deletedAt, deleted_by: user?.id ?? null })
         .eq('id', clientId);
-
     if (error) throw error;
+    const { error: subitemsError } = await supabase
+        .from('subitems')
+        .update({ deleted_at: deletedAt, deleted_by: user?.id ?? null, deleted_with_client_id: clientId })
+        .eq('client_id', clientId)
+        .is('deleted_at', null);
+    if (subitemsError) throw subitemsError;
+    await insertActivityLog({ clientId, action: 'client_deleted', title: 'moved this client to the Bin', meta: { deletedEntity: 'client', deletedId: clientId, deletedAt } });
+}
+
+export async function restoreClientRow(clientId: string) {
+    await assertDeletionAllowed('clients', clientId);
+    const { data: client, error: fetchError } = await supabase.from('clients').select('id, deleted_at').eq('id', clientId).single();
+    if (fetchError) throw fetchError;
+    if (!client.deleted_at) throw new Error('This client is no longer in the Bin.');
+    if (Date.now() - new Date(client.deleted_at).getTime() >= BIN_RETENTION_MS) throw new Error('The 30-day Bin retention period has ended.');
+    const { error } = await supabase.from('clients').update({ deleted_at: null, deleted_by: null }).eq('id', clientId);
+    if (error) throw error;
+    const { error: subitemsError } = await supabase.from('subitems').update({ deleted_at: null, deleted_by: null, deleted_with_client_id: null }).eq('deleted_with_client_id', clientId);
+    if (subitemsError) throw subitemsError;
+    await insertActivityLog({ clientId, action: 'client_restored', title: 'restored this client from the Bin', meta: { deletedEntity: 'client', deletedId: clientId } });
 }
 
 // subitem functions
@@ -1201,17 +1269,20 @@ export async function deleteSubitemRow(subitemId: string) {
     if (fetchError) throw fetchError;
 
     try {
+        const deletedAt = new Date().toISOString();
         await insertActivityLog({
             clientId: existing.client_id,
             subitemId: null,
             subitemName: existing.name,
             action: 'subitem_deleted',
+            title: 'moved this subitem to the Bin',
             oldValue: {
                 id: existing.id,
                 name: existing.name,
                 qty: existing.qty,
                 remarks: existing.remarks ?? null,
             },
+            meta: { deletedEntity: 'subitem', deletedId: existing.id, deletedAt },
         });
     } catch (logError: any) {
         console.error('Failed to insert delete activity log', {
@@ -1223,12 +1294,25 @@ export async function deleteSubitemRow(subitemId: string) {
         });
     }
 
+    const deletedAt = new Date().toISOString();
+    const { data: { user } } = await supabase.auth.getUser();
     const { error } = await supabase
         .from('subitems')
-        .delete()
+        .update({ deleted_at: deletedAt, deleted_by: user?.id ?? null, deleted_with_client_id: null })
         .eq('id', subitemId);
 
     if (error) throw error;
+}
+
+export async function restoreSubitemRow(subitemId: string) {
+    await assertDeletionAllowed('subitems', subitemId);
+    const { data: subitem, error: fetchError } = await supabase.from('subitems').select('id, client_id, name, deleted_at').eq('id', subitemId).single();
+    if (fetchError) throw fetchError;
+    if (!subitem.deleted_at) throw new Error('This subitem is no longer in the Bin.');
+    if (Date.now() - new Date(subitem.deleted_at).getTime() >= BIN_RETENTION_MS) throw new Error('The 30-day Bin retention period has ended.');
+    const { error } = await supabase.from('subitems').update({ deleted_at: null, deleted_by: null, deleted_with_client_id: null }).eq('id', subitemId);
+    if (error) throw error;
+    await insertActivityLog({ clientId: subitem.client_id, subitemId, subitemName: subitem.name, action: 'subitem_restored', title: 'restored this subitem from the Bin', meta: { deletedEntity: 'subitem', deletedId: subitemId } });
 }
 
 export async function reorderSubitemRows(clientId: string, orderedSubitemIds: string[]) {
