@@ -528,10 +528,12 @@ export function ClientRow({
     (profile) => profile.role?.toLowerCase() === "pm",
   );
   const pmAssignedIds = clientPmAssignedIds;
-  const isDirector = String(currentUserRole ?? "").trim().toLowerCase() === "director";
+  const canEditWithoutAssignment = ["admin", "director"].includes(
+    String(currentUserRole ?? "").trim().toLowerCase(),
+  );
   const canEditClient =
     !!currentUserId &&
-    (isDirector ||
+    (canEditWithoutAssignment ||
       clientAssignedIds.includes(currentUserId) ||
       pmAssignedIds.includes(currentUserId));
   const canManageClient =

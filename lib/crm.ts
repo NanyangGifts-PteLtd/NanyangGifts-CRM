@@ -744,7 +744,7 @@ async function assertDeletionAllowed(table: 'clients' | 'subitems', id: string) 
         .eq('id', user.id)
         .single();
     if (profileError) throw profileError;
-    if (['admin', 'director', 'dev'].includes(String(profile?.role ?? '').toLowerCase())) return;
+    if (['director', 'dev'].includes(String(profile?.role ?? '').toLowerCase())) return;
 
     const { data: item, error: itemError } = await supabase
         .from(table)
@@ -759,7 +759,7 @@ async function assertDeletionAllowed(table: 'clients' | 'subitems', id: string) 
     if (ageInHours >= 72) throw new Error('This item is more than 72 hours old and can only be deleted by a director or dev.');
 
     if (!item.deletion_owner_id || item.deletion_owner_id !== user.id) {
-        throw new Error('You can only delete items created by you, unless you are an admin, director, or developer.');
+        throw new Error('You can only delete items created by you, unless you are a director or developer.');
     }
 }
 

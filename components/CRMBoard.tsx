@@ -538,7 +538,11 @@ export function CRMBoard({
   const canEditClientRecord = useCallback(
     (clientId: string) => {
       if (!currentUserId) return false;
-      if (String(currentUserRole ?? "").trim().toLowerCase() === "director")
+      if (
+        ["admin", "director"].includes(
+          String(currentUserRole ?? "").trim().toLowerCase(),
+        )
+      )
         return true;
       const client = clients.find((item) => item.id === clientId);
       return (
