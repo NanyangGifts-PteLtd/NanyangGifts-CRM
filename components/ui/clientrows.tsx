@@ -22,6 +22,7 @@ import {
   Plus,
   Link as LinkIcon,
   FileText,
+  LockKeyhole,
   X,
 } from "lucide-react";
 import { EditableCell } from "./editablecell";
@@ -2546,6 +2547,13 @@ export function ClientRow({
             className="absolute -left-7 top-1/2 z-30 -translate-y-1/2"
             triggerClassName="opacity-0 transition-opacity group-hover/client-actions:opacity-100"
           />
+          {subitemsLocked && (
+            <LockKeyhole
+              size={13}
+              aria-label="Client subitems are locked"
+              className="absolute left-2 top-1/2 -translate-y-1/2 text-amber-600"
+            />
+          )}
           <input
             data-selection-control
             type="checkbox"

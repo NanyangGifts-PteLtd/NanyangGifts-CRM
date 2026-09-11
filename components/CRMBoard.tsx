@@ -4801,33 +4801,54 @@ export function CRMBoard({
         };
       }),
     );
+    const succeededIds = new Set<string>();
+    const failedClients: Array<{ id: string; name: string; error: unknown }> = [];
     try {
-      await Promise.all(
-        targets.map((client) =>
-          enqueueBoardWrite("client", client.id, () =>
+      for (const client of targets) {
+        try {
+          await enqueueBoardWrite("client", client.id, () =>
             updateClientRow(client.id, {
               customFields: {
                 ...(client.customFields ?? {}),
                 subitemsLocked: pendingSubitemLock.locked ? "true" : "false",
               },
             }),
-          ),
-        ),
-      );
+          );
+          succeededIds.add(client.id);
+        } catch (error) {
+          failedClients.push({ id: client.id, name: client.name, error });
+        }
+      }
+      if (failedClients.length) {
+        setClients((current) =>
+          current.map((client) => {
+            if (!failedClients.some((failed) => failed.id === client.id)) return client;
+            return previousClients.find((previous) => previous.id === client.id) ?? client;
+          }),
+        );
+      }
+      if (!succeededIds.size) {
+        throw failedClients[0]?.error ?? new Error("No clients could be updated.");
+      }
       toast.success(
         pendingSubitemLock.locked
           ? "Client subitems locked"
           : "Client subitems unlocked",
         {
           description:
-            pendingSubitemLock.clientIds.length === 1
+            succeededIds.size === 1
               ? "Subitem values are now protected for this client."
-              : `Subitem values were updated for ${pendingSubitemLock.clientIds.length} clients.`,
+              : `Subitem values were updated for ${succeededIds.size} clients.`,
         },
       );
+      if (failedClients.length) {
+        toast.error("Some clients could not be updated", {
+          description: failedClients.map((client) => client.name).join(", "),
+        });
+      }
       setPendingSubitemLock(null);
     } catch (error) {
-      setClients(previousClients);
+      if (!succeededIds.size) setClients(previousClients);
       toast.error("Could not update the subitem lock", {
         description:
           error instanceof Error ? error.message : "Please try again.",
