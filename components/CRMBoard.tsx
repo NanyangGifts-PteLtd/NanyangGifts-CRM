@@ -4000,6 +4000,7 @@ export function CRMBoard({
       clients.map((client) => ({
         id: client.id,
         name: client.name || "Unnamed client",
+        displayId: client.displayId,
         groupName:
           groups.find((group) => group.id === client.groupId)?.name ||
           "Ungrouped",
@@ -4247,7 +4248,7 @@ export function CRMBoard({
           (client) =>
             client.groupName === group.name &&
             (!subitemMoveSearch.trim() ||
-              client.name
+              `${client.name} ${client.displayId ?? ""}`
                 .toLowerCase()
                 .includes(subitemMoveSearch.trim().toLowerCase())),
         ),
@@ -4257,7 +4258,7 @@ export function CRMBoard({
       (client) =>
         client.groupName === "Ungrouped" &&
         (!subitemMoveSearch.trim() ||
-          client.name
+          `${client.name} ${client.displayId ?? ""}`
             .toLowerCase()
             .includes(subitemMoveSearch.trim().toLowerCase())),
     );
@@ -6055,6 +6056,7 @@ export function CRMBoard({
                   clients: groupClients.map((target) => ({
                     id: target.id,
                     name: target.name,
+                    displayId: target.displayId,
                   })),
                 }),
               )}
@@ -6515,6 +6517,7 @@ export function CRMBoard({
                         className="block w-full rounded px-2 py-2 text-left text-sm text-slate-700 hover:bg-sky-50"
                       >
                         {client.name}
+                        {client.displayId ? <span className="ml-1 font-mono text-xs text-slate-400">· {client.displayId}</span> : null}
                       </button>
                     ))}
                   </div>
@@ -8692,6 +8695,7 @@ export function CRMBoard({
                           clients: groupClients.map((target) => ({
                             id: target.id,
                             name: target.name,
+                            displayId: target.displayId,
                           })),
                         }),
                       )}

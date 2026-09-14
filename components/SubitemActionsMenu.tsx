@@ -25,7 +25,7 @@ export function SubitemActionsMenu({
   subitemName: string;
   targetGroups: Array<{
     name: string;
-    clients: Array<{ id: string; name: string }>;
+    clients: Array<{ id: string; name: string; displayId?: string }>;
   }>;
   canEdit: boolean;
   onOpen?: () => void;
@@ -155,7 +155,9 @@ export function SubitemActionsMenu({
                 </div>
                 {targetGroups.map((group) => {
                   const clients = group.clients.filter((client) =>
-                    client.name.toLowerCase().includes(search.toLowerCase()),
+                    `${client.name} ${client.displayId ?? ""}`
+                      .toLowerCase()
+                      .includes(search.toLowerCase()),
                   );
                   return clients.length ? (
                     <div key={group.name} className="mb-3">
@@ -173,6 +175,7 @@ export function SubitemActionsMenu({
                           className="block w-full rounded px-2 py-2 text-left text-sm text-slate-700 hover:bg-sky-50 disabled:opacity-50"
                         >
                           {client.name}
+                          {client.displayId ? <span className="ml-1 font-mono text-xs text-slate-400">· {client.displayId}</span> : null}
                         </button>
                       ))}
                     </div>
@@ -180,7 +183,7 @@ export function SubitemActionsMenu({
                 })}
                 {!targetGroups.some((group) =>
                   group.clients.some((client) =>
-                    client.name.toLowerCase().includes(search.toLowerCase()),
+                    `${client.name} ${client.displayId ?? ""}`.toLowerCase().includes(search.toLowerCase()),
                   ),
                 ) && (
                   <p className="px-2 py-4 text-center text-xs text-slate-400">

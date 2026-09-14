@@ -77,7 +77,9 @@ type SchedulerResource = {
   groupId: string;
   groupName: string;
   clientName: string;
+  clientDisplayId: string;
   subitemName: string;
+  subitemDisplayId: string;
   processNames: string[];
   pmIds: string[];
   peopleIds: string[];
@@ -239,6 +241,7 @@ function buildSchedulerData(
       const group = client.groupId ? groupMap.get(client.groupId) : undefined;
       const groupName = group?.name || "No group";
       const clientName = client.name || "Unnamed Client";
+      const clientDisplayId = client.displayId || "";
       const subitems = Array.isArray(client.subitems)
         ? client.subitems.filter(
             (subitem): subitem is Subitem =>
@@ -249,6 +252,7 @@ function buildSchedulerData(
 
       return rows.map((subitem) => {
         const subitemName = subitem?.name || "No subitems";
+        const subitemDisplayId = subitem?.displayId || "";
         const timelineRows = Array.isArray(subitem?.timelineGroups) && subitem.timelineGroups.length
           ? subitem.timelineGroups.flatMap((timeline, timelineIndex) =>
               (timeline.rows ?? [])
@@ -318,7 +322,9 @@ function buildSchedulerData(
           groupId: group?.id || "ungrouped",
           groupName,
           clientName,
+          clientDisplayId,
           subitemName,
+          subitemDisplayId,
           processNames,
           pmIds: parsePmIds(client),
           peopleIds: Array.from(
@@ -460,10 +466,10 @@ export default function GanttChart({
             searchScope === "group"
               ? resource.groupName
               : searchScope === "client"
-                ? resource.clientName
+                ? `${resource.clientName} ${resource.clientDisplayId}`
                 : searchScope === "subitem"
-                  ? resource.subitemName
-                  : `${resource.groupName} ${resource.clientName} ${resource.subitemName} ${resource.processNames.join(" ")}`;
+                  ? `${resource.subitemName} ${resource.subitemDisplayId}`
+                  : `${resource.groupName} ${resource.clientName} ${resource.clientDisplayId} ${resource.subitemName} ${resource.subitemDisplayId} ${resource.processNames.join(" ")}`;
           if (!searchable.toLowerCase().includes(query)) return [];
         }
         if (filters.groupIds.size && !filters.groupIds.has(resource.groupId))

@@ -339,7 +339,7 @@ export type ClientRowProps = {
   onToggleClientSubitemsLock?: (clientId: string, locked: boolean) => void;
   subitemMoveTargetGroups: Array<{
     name: string;
-    clients: Array<{ id: string; name: string }>;
+    clients: Array<{ id: string; name: string; displayId?: string }>;
   }>;
   onDuplicateSubitemAction: (subitemId: string) => void | Promise<void>;
   onMoveSubitemAction: (

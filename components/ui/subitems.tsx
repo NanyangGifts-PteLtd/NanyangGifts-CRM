@@ -324,7 +324,7 @@ type SubitemProps = {
   onUndoActivity?: (entry: ActivityEntry) => void | Promise<void>;
   moveTargetGroups: Array<{
     name: string;
-    clients: Array<{ id: string; name: string }>;
+    clients: Array<{ id: string; name: string; displayId?: string }>;
   }>;
   onDuplicateSubitemAction: (subitemId: string) => void | Promise<void>;
   onMoveSubitemAction: (

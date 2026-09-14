@@ -453,8 +453,11 @@ export function ClientDetailView({
                 value={client.name}
                 readOnly={!canEdit}
                 onChange={(event) => onUpdate({ name: event.target.value })}
-                className={`min-w-[12rem] max-w-[55vw] rounded border px-2 py-1 text-2xl font-semibold outline-none transition ${hoverName && canEdit ? "border-sky-400 bg-white" : "border-transparent bg-transparent"} ${!canEdit ? "cursor-default" : ""}`}
-                style={{ width: `${Math.min(Math.max(client.name.length + 3, 16), 48)}ch` }}
+                className={`min-w-0 shrink rounded border px-2 py-1 text-2xl font-semibold outline-none transition ${hoverName && canEdit ? "border-sky-400 bg-white" : "border-transparent bg-transparent"} ${!canEdit ? "cursor-default" : ""}`}
+                style={{
+                  width: `${Math.min(Math.max(client.name.length + 3, 16), 48)}ch`,
+                  maxWidth: "calc(100% - 10rem)",
+                }}
               />
               {client.displayId ? (
                 <span title="Client ID" className="shrink-0 rounded border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-medium text-slate-500">

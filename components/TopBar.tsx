@@ -125,6 +125,7 @@ function searchResults(
   for (const client of clients) {
     const clientFields: Array<[string, unknown]> = [
       ["Client", client.name],
+      ["Client ID", client.displayId],
       ["People", client.people],
       ["Reply Status", client.replyStatus],
       ["Follow Up", client.followUp],
@@ -154,7 +155,7 @@ function searchResults(
         add({
           clientId: client.id,
           kind: "client",
-          label: client.name || "Unnamed client",
+          label: `${client.name || "Unnamed client"}${client.displayId ? ` · ${client.displayId}` : ""}`,
           context: `${client.name} · People`,
           field: "people",
           value,
@@ -168,7 +169,9 @@ function searchResults(
       client.name || "Unnamed client",
       client.name || "Client",
       client as unknown as Record<string, unknown>,
-      new Set(["subitems", "activityLog", "customFields"]),
+      // The database UUID is an internal relation key, not a user-facing
+      // search term. Human-facing display IDs are added explicitly above.
+      new Set(["id", "subitems", "activityLog", "customFields"]),
     );
     addScalarFields(
       client.id,
@@ -182,6 +185,7 @@ function searchResults(
     for (const subitem of client.subitems) {
       const subitemFields: Array<[string, unknown]> = [
         ["Subitem", subitem.name],
+        ["Subitem ID", subitem.displayId],
         ["People", subitem.people],
         ["Status", subitem.status],
         ["Local/Overseas", subitem.localOverseas],
@@ -207,7 +211,7 @@ function searchResults(
             field.startsWith("Payment") || field === "Mode of Payment"
               ? "payment"
               : "subitem",
-          label: subitem.name || "Unnamed subitem",
+          label: `${subitem.name || "Unnamed subitem"}${subitem.displayId ? ` · ${subitem.displayId}` : ""}`,
           context: `${client.name} · ${field}`,
           field,
           value: String(value ?? ""),
@@ -232,7 +236,9 @@ function searchResults(
         subitem.name || "Unnamed subitem",
         `${client.name} · ${subitem.name}`,
         subitem as unknown as Record<string, unknown>,
-        new Set(["timelineRows", "sampleRows", "customFields"]),
+      // Keep the subitem UUID internal too; use the explicit Subitem ID
+      // field above for user searches instead.
+      new Set(["id", "timelineRows", "sampleRows", "customFields"]),
       );
       addScalarFields(
         client.id,

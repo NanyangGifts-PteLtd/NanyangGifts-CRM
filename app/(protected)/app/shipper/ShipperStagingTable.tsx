@@ -9,8 +9,10 @@ import type { ShipperRow } from "./[token]/ShipperGrid";
 type Shipper = { id: string; name: string | null };
 type Subitem = {
   id: string;
+  displayId: string;
   name: string;
   clientId: string;
+  clientDisplayId: string;
   clientName: string;
   cnTracking: string;
 };
@@ -145,8 +147,10 @@ export function ShipperStagingTable({
           .filter((item: any) => item.canPush)
           .map((item: any) => ({
             id: item.id,
+            displayId: item.display_id || "",
             name: item.name,
             clientId: client.id,
+            clientDisplayId: client.display_id || "",
             clientName: client.name,
             cnTracking: item.cn_tracking || "",
           })),
@@ -239,7 +243,7 @@ export function ShipperStagingTable({
         .map((group) => ({
           ...group,
           items: group.items.filter((item) =>
-            `${item.name} ${item.clientName}`
+            `${item.name} ${item.displayId} ${item.clientName} ${item.clientDisplayId}`
               .toLowerCase()
               .includes(search.toLowerCase()),
           ),
@@ -453,7 +457,8 @@ export function ShipperStagingTable({
                         }}
                         className="block w-full border-t p-3 text-left hover:bg-sky-50"
                       >
-                        {item.name}{" "}
+                        {item.name}
+                        {item.displayId ? <span className="ml-1 font-mono text-xs text-slate-400">· {item.displayId}</span> : null}{" "}
                         <span className="text-slate-500">
                           · {item.clientName}
                         </span>
