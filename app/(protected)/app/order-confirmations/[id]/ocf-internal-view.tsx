@@ -214,6 +214,14 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
                         >
                             Copy Client Link
                         </button>
+                        <button
+                            type="button"
+                            onClick={() => setSaveMessage("Emailing the OCF to the client will be available once the email integration is connected.")}
+                            className="whitespace-nowrap rounded bg-violet-500 px-4 py-2 text-sm font-medium text-white hover:bg-violet-600"
+                            title="Placeholder for the upcoming client email integration"
+                        >
+                            Email OCF to Client
+                        </button>
                     </div>
                 </div>
 
