@@ -7,6 +7,7 @@
 import { createClient } from '@/lib/supabase/client';
 import type { TimelineRow, Client, Subitem, ActivityEntry, PaymentRow } from '@/app/types';
 import { addClientAssignee } from './assignments';
+import { capitaliseFirstCharacter } from './text-format';
 
 
 const supabase = createClient();
@@ -642,7 +643,7 @@ export async function createClientRow(
     const { data, error } = await supabase
         .from('clients')
         .insert({
-            name: name?.trim() || 'New Client',
+            name: capitaliseFirstCharacter(name?.trim() || 'New Client'),
             people: '',
             reply_status: waitingLabel.value,
             reply_status_option_id: waitingLabel.id,
@@ -725,6 +726,10 @@ export async function updateClientRow(
     if (fetchError) throw fetchError;
 
     const nextUpdates = { ...updates } as Partial<Client>;
+    if (nextUpdates.name !== undefined)
+        nextUpdates.name = capitaliseFirstCharacter(nextUpdates.name);
+    if (nextUpdates.company !== undefined)
+        nextUpdates.company = capitaliseFirstCharacter(nextUpdates.company);
     const mapped = {
         ...updates,
         group_id: updates.groupId,
@@ -752,7 +757,7 @@ export async function updateClientRow(
     }
 
     const payload = {
-        ...(updates.name !== undefined ? { name: updates.name } : {}),
+        ...(nextUpdates.name !== undefined ? { name: nextUpdates.name } : {}),
         ...(updates.people !== undefined ? { people: updates.people } : {}),
         ...(nextUpdates.replyStatus !== undefined ? { reply_status: nextUpdates.replyStatus } : {}),
         ...(updates.followUp !== undefined ? { follow_up: updates.followUp } : {}),
@@ -760,7 +765,7 @@ export async function updateClientRow(
         ...(updates.channel !== undefined ? { channel: updates.channel } : {}),
         ...(updates.importance !== undefined ? { importance: updates.importance } : {}),
         ...(updates.progress !== undefined ? { progress: updates.progress } : {}),
-        ...(updates.company !== undefined ? { company: updates.company } : {}),
+        ...(nextUpdates.company !== undefined ? { company: nextUpdates.company } : {}),
         ...(updates.email !== undefined ? { email: updates.email } : {}),
         ...(updates.phone !== undefined ? { phone: updates.phone } : {}),
         ...(updates.requirements !== undefined ? { requirements: updates.requirements } : {}),
@@ -784,7 +789,7 @@ export async function updateClientRow(
 
     if (error) throw error;
 
-    for (const [key, value] of Object.entries(updates) as [keyof Client, unknown][]) {
+    for (const [key, value] of Object.entries(nextUpdates) as [keyof Client, unknown][]) {
         if (CLIENT_LOG_IGNORE_FIELDS.has(key)) continue;
 
 

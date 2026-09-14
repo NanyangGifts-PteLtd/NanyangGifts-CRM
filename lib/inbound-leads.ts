@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getSystemLabel } from "@/lib/system-labels";
 import { ensureCustomerProfilesForLead } from "@/lib/customer-profile-links";
 import { queueLeadAssignedMakeEvent } from "@/lib/make-integration";
+import { capitaliseFirstCharacter } from "@/lib/text-format";
 
 export type InboundSubitem = { name: string; qty: string };
 
@@ -190,6 +191,11 @@ async function createSubitems(clientId: string, lead: NormalizedInboundLead) {
 }
 
 export async function ingestLead(lead: NormalizedInboundLead): Promise<InboundResult> {
+  lead = {
+    ...lead,
+    customerName: capitaliseFirstCharacter(lead.customerName),
+    companyName: capitaliseFirstCharacter(lead.companyName),
+  };
   validateInboundLead(lead);
   const reservation = await reserveIngestion(lead);
   if (reservation.earlyResult) return reservation.earlyResult;

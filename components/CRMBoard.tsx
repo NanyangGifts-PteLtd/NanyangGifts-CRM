@@ -87,6 +87,7 @@ import {
 } from "@/lib/custom-columns";
 import { toast } from "sonner";
 import { enqueueBoardWrite } from "@/lib/board-write-coordinator";
+import { capitaliseFirstCharacter } from "@/lib/text-format";
 import type { SearchResult } from "../app/types";
 import {
   calculateSubitemFinancials,
@@ -4683,6 +4684,17 @@ export function CRMBoard({
       unqualifiedReasonApproved = false,
     ) => {
       const existingClient = clients.find((client) => client.id === clientId);
+      if (updates.name !== undefined || updates.company !== undefined) {
+        updates = {
+          ...updates,
+          ...(updates.name !== undefined
+            ? { name: capitaliseFirstCharacter(updates.name) }
+            : {}),
+          ...(updates.company !== undefined
+            ? { company: capitaliseFirstCharacter(updates.company) }
+            : {}),
+        };
+      }
       if (!canEditClientRecord(clientId)) {
         showAssignmentPermissionError();
         return;
