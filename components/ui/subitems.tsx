@@ -136,7 +136,6 @@ export const PAYMENT_COLS: ColumnDef[] = [
   { key: "name", label: "Subitem", width: 290, minWidth: 170 },
   { key: "payment", label: "Payment", width: 82, minWidth: 7 },
   { key: "status", label: "Status", width: 100, minWidth: 7 },
-  { key: "paymentStatus", label: "PM Status", width: 100, minWidth: 7 },
   { key: "shipper", label: "Shipper", width: 80, minWidth: 7 },
   { key: "cnTracking", label: "CN Tracking #", width: 130, minWidth: 7 },
   { key: "sgTracking", label: "SG Tracking #", width: 130, minWidth: 7 },
@@ -163,6 +162,7 @@ export const PAYMENT_COLS: ColumnDef[] = [
   { key: "totalToPay", label: "Total to Pay", width: 105, minWidth: 7 },
   { key: "paymentAmount", label: "Payment Amt", width: 100, minWidth: 7 },
   { key: "difference", label: "Difference", width: 90, minWidth: 7 },
+  { key: "paymentStatus", label: "Payment Status", width: 110, minWidth: 7 },
   { key: "paymentRemarks", label: "Remarks", width: 120, minWidth: 7 },
 ];
 
@@ -183,6 +183,7 @@ const FORMULA_RESULT_FIELDS = new Set([
   "qtyTotal",
   "qtyFor",
   "totalToPay",
+  "paymentAmount",
   "difference",
 ]);
 
@@ -2054,7 +2055,17 @@ export function SubitemsTable({
     const qtyTotal = qty + qtyFree + qtyPaidSample;
     const qtyForClient = qtyTotal - parseNumber(sub.qtyWeKeep);
     const totalToPay = totalC + qtyPaidSample * cost;
-    const difference = parseNumber(sub.paymentAmount) - totalToPay;
+    const paymentAmount = (sub.paymentRows ?? [])
+      .filter((row) => row.paymentReceived === true)
+      .reduce((sum, row) => sum + parseNumber(row.amount), 0);
+    const difference = paymentAmount - totalToPay;
+    const automaticPaymentStatus = Math.abs(difference) < 0.005
+      ? "✅"
+      : difference < 0 ? "Underpaid" : "Overpaid";
+    const paymentStatus = sub.paymentStatus === "Resolved" ? "Resolved" : automaticPaymentStatus;
+    const canResolvePayment = ["admin", "director", "dev"].includes(
+      String(currentUserRole ?? "").trim().toLowerCase(),
+    );
 
     switch (key) {
       case "name":
@@ -2106,19 +2117,23 @@ export function SubitemsTable({
         return (
           <div className="overflow-hidden whitespace-nowrap text-ellipsis !text-center border-r border-[#D0D4E4] p-0 h-[33.1px] flex-shrink-0 transition transform active:scale-95 duration-150">
             <StatusBadge
-              value={sub.paymentStatus ?? ""}
-              onChange={(v) => onUpdateSubitem(sub.id, { paymentStatus: v })}
-              options={paymentStatusOptions}
-              onAddOption={onAddPaymentStatus}
-              onDeleteOption={onDeletePaymentStatus}
+              value={paymentStatus}
+              onChange={(v) => {
+                if (v === "Resolved" && canResolvePayment) {
+                  onUpdateSubitem(sub.id, { paymentStatus: "Resolved" });
+                } else if (v !== "Resolved" && sub.paymentStatus === "Resolved" && canResolvePayment) {
+                  onUpdateSubitem(sub.id, { paymentStatus: "" });
+                } else if (v === "Resolved") {
+                  toast.error("Only admins, directors, and developers can resolve a payment.");
+                }
+              }}
+              options={[
+                { value: "✅", color: "#22c55e" },
+                { value: "Underpaid", color: "#ef4444" },
+                { value: "Overpaid", color: "#f59e0b" },
+                { value: "Resolved", color: "#3b82f6" },
+              ]}
               manageLabel="payment status"
-              onUpdateOptionColor={(name, color) =>
-                onUpdateOptionColor?.("payment_status", name, color)
-              }
-              onRenameOption={(oldName, newName) =>
-                onRenameOption?.("payment_status", oldName, newName)
-              }
-              onReorderOptions={(values) => onReorderOptions?.("payment_status", values)}
               small
             />
           </div>
@@ -2311,22 +2326,19 @@ export function SubitemsTable({
       case "totalToPay":
         return (
           <div className="flex justify-center text-xs text-gray-800">
-            {hasCurrency ? formatMoney(totalToPay) : ""}
+            {formatMoney(totalToPay)}
           </div>
         );
       case "paymentAmount":
         return (
-          <EditableCell
-            value={sub.paymentAmount ?? ""}
-            onChange={(v) => onUpdateSubitem(sub.id, { paymentAmount: v })}
-            type="number"
-            readOnly={costLocked}
-          />
+          <div className="flex justify-center text-xs text-gray-800">
+            {formatMoney(paymentAmount)}
+          </div>
         );
       case "difference":
         return (
           <div className="flex justify-center text-xs text-gray-800">
-            {hasCurrency ? formatMoney(difference) : ""}
+            {formatMoney(difference)}
           </div>
         );
       case "paymentRemarks":
@@ -3260,7 +3272,7 @@ export function SubitemsTable({
                   <tr className="bg-slate-50/70">
                     <td colSpan={totalColSpan} className="border-b border-r border-[#D0D4E4] bg-[#fafcff] px-9 py-3">
                       <div className="max-w-[980px] overflow-hidden rounded-md border border-[#D0D4E4] bg-white text-xs text-[#334155] shadow-sm">
-                        <div className="grid grid-cols-[52px_minmax(155px,1fr)_minmax(170px,1fr)_150px_minmax(185px,1fr)_36px] border-b border-[#D0D4E4] bg-[#f4f7fb] text-[11px] font-semibold uppercase tracking-wide text-[#52657f]">
+                        <div className="grid grid-cols-[52px_minmax(155px,1fr)_minmax(170px,1fr)_150px_minmax(185px,1fr)_36px] border-b border-[#D0D4E4] bg-[#f4f7fb] text-[11px] font-semibold tracking-wide text-[#52657f]">
                           <span className="px-3 py-2">#</span>
                           <span className="border-l border-[#D0D4E4] px-3 py-2">Sub-amount</span>
                           <span className="border-l border-[#D0D4E4] px-3 py-2">Order number</span>

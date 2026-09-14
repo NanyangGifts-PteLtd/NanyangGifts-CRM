@@ -179,6 +179,19 @@ export async function POST(request: NextRequest) {
         throw subitemInsertError ?? new Error("Could not copy subitem");
       }
 
+      const { error: initialPaymentRowError } = await supabaseAdmin
+        .from("subitem_payment_rows")
+        .insert({
+          subitem_id: duplicateSubitem.id,
+          position: 0,
+          amount: "",
+          order_number: "",
+          payment_received: null,
+          mode_of_payment: "",
+          mode_of_payment_option_id: null,
+        });
+      if (initialPaymentRowError) throw initialPaymentRowError;
+
       const { data: sourceAssignees, error: sourceAssigneesError } = await supabaseAdmin
         .from("subitem_assignees")
         .select("user_id")

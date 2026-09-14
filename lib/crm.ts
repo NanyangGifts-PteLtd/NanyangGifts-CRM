@@ -682,6 +682,7 @@ async function resolveSystemOption(groupCode: string, systemKey: string) {
         .eq('system_key', systemKey)
         .maybeSingle();
     if (error) throw error;
+
     if (!data) throw new Error(`Required system label ${groupCode}.${systemKey} is not configured.`);
     return { id: data.id, value: data.value };
 }
@@ -946,6 +947,13 @@ export async function createSubitemRow(clientId: string, name: string, currentUs
 
     if (error) throw error;
 
+    const { data: initialPaymentRow, error: initialPaymentRowError } = await supabase
+        .from('subitem_payment_rows')
+        .insert({ subitem_id: data.id, position: 0, amount: '', order_number: '', payment_received: null, mode_of_payment: '', mode_of_payment_option_id: null })
+        .select('id, position, amount, order_number, payment_received, mode_of_payment, mode_of_payment_option_id')
+        .single();
+    if (initialPaymentRowError) throw initialPaymentRowError;
+
     if (currentUserId) {
         const { error: assigneeError } = await supabase
             .from('subitem_assignees')
@@ -960,7 +968,18 @@ export async function createSubitemRow(clientId: string, name: string, currentUs
         action: 'subitem_added',
     });
 
-    return mapSubitems(data as Subitems);
+    return {
+        ...mapSubitems(data as Subitems),
+        paymentRows: [{
+            id: initialPaymentRow.id,
+            position: initialPaymentRow.position ?? 0,
+            amount: initialPaymentRow.amount ?? '',
+            orderNumber: initialPaymentRow.order_number ?? '',
+            paymentReceived: initialPaymentRow.payment_received ?? null,
+            modeOfPayment: initialPaymentRow.mode_of_payment ?? '',
+            modeOfPaymentOptionId: initialPaymentRow.mode_of_payment_option_id ?? null,
+        }],
+    };
 }
 
 export async function duplicateSubitemRow(subitemId: string) {
@@ -1008,6 +1027,11 @@ export async function duplicateSubitemRow(subitemId: string) {
         .select('*')
         .single();
     if (duplicateError) throw duplicateError;
+
+    const { error: initialPaymentRowError } = await supabase
+        .from('subitem_payment_rows')
+        .insert({ subitem_id: duplicate.id, position: 0, amount: '', order_number: '', payment_received: null, mode_of_payment: '', mode_of_payment_option_id: null });
+    if (initialPaymentRowError) throw initialPaymentRowError;
 
     const { data: assignees, error: assigneeFetchError } = await supabase
         .from('subitem_assignees')

@@ -186,6 +186,12 @@ const CLIENT_HEADER_COLS: HeaderCol[] = [
   { key: "followUp", label: "Follow Up", width: 100, minWidth: 7 },
   { key: "status", label: "Status", width: 80, minWidth: 7 },
   {
+    key: "overallPaymentStatus",
+    label: "Overall Payment Status",
+    width: 150,
+    minWidth: 100,
+  },
+  {
     key: "unqualifiedReason",
     label: "Unqualified Reason",
     width: 180,

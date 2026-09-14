@@ -511,6 +511,27 @@ export function ClientRow({
     : hasLinkedOcf
       ? "border-amber-300 bg-amber-300 text-amber-950 hover:bg-amber-400"
       : "border-slate-200 bg-transparent text-slate-500 hover:bg-slate-50";
+  const awardedSubitems = client.subitems.filter(contributesToAwardedTotals);
+  const paidAwardedSubitems = awardedSubitems.filter(
+    (subitem) => subitem.paymentStatus === "Resolved" || (() => {
+      const qty = quickBooksNumber(subitem.qty);
+      const cost = quickBooksNumber(subitem.cost);
+      const multiplier = subitem.currency === "RMB" ? 5 : subitem.currency === "MYR" ? 3 : 1;
+      const totalCost = qty * cost + quickBooksNumber(subitem.manpower) * multiplier + quickBooksNumber(subitem.ls) * multiplier;
+      const totalToPay = totalCost + quickBooksNumber(subitem.sample) * cost;
+      const received = (subitem.paymentRows ?? [])
+        .filter((row) => row.paymentReceived === true)
+        .reduce((sum, row) => sum + quickBooksNumber(row.amount), 0);
+      return Math.abs(received - totalToPay) < 0.005;
+    })(),
+  );
+  const overallPaymentStatus = awardedSubitems.length === 0
+    ? ""
+    : paidAwardedSubitems.length === 0
+      ? "Unpaid"
+      : paidAwardedSubitems.length === awardedSubitems.length
+        ? "Fully Paid"
+        : "Partially Paid";
   const subitemsLocked = client.customFields?.subitemsLocked === "true";
   const [showCloseDialog, setShowCloseDialog] = useState(false);
   const [showMultipleInvoicesDialog, setShowMultipleInvoicesDialog] =
@@ -3171,6 +3192,28 @@ export function ClientRow({
             value={client.unqualifiedReason}
             onChange={(v) => onUpdate({ unqualifiedReason: v })}
             placeholder=""
+          />
+        </div>
+
+        <div
+          data-client-column="overallPaymentStatus"
+          className="overflow-hidden whitespace-nowrap text-ellipsis !text-center border-r border-[#D0D4E4] p-0 h-[33.1px] flex-shrink-0"
+          style={{
+            minWidth: colWidth.overallPaymentStatus,
+            width: colWidth.overallPaymentStatus,
+            order: columnOrderMap.overallPaymentStatus ?? 5.25,
+          }}
+        >
+          <StatusBadge
+            value={overallPaymentStatus}
+            onChange={() => undefined}
+            options={[
+              { value: "Unpaid", color: "#ef4444" },
+              { value: "Partially Paid", color: "#f59e0b" },
+              { value: "Fully Paid", color: "#22c55e" },
+            ]}
+            small
+            readOnly
           />
         </div>
 
