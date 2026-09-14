@@ -120,6 +120,7 @@ const BOARD_OPTION_GROUP_CODES = [
   "progress",
   "payment",
   "payment_status",
+  "overall_payment_status",
   "mode_of_payment",
   "shipper",
   "local_overseas",
@@ -651,6 +652,7 @@ export function CRMBoard({
   const [paymentStatusEntries, setPaymentStatusEntries] = useState<
     OptionEntry[]
   >([]);
+  const [overallPaymentStatusEntries, setOverallPaymentStatusEntries] = useState<OptionEntry[]>([]);
   const [modeOfPaymentEntries, setModeOfPaymentEntries] = useState<
     OptionEntry[]
   >([]);
@@ -1925,6 +1927,7 @@ export function CRMBoard({
       setProgressEntries(optionsFor("progress"));
       setPaymentEntries(optionsFor("payment"));
       setPaymentStatusEntries(optionsFor("payment_status"));
+      setOverallPaymentStatusEntries(optionsFor("overall_payment_status"));
       setModeOfPaymentEntries(optionsFor("mode_of_payment"));
       setShipperEntries(optionsFor("shipper"));
       setLocalOverseasEntries(optionsFor("local_overseas"));
@@ -2265,6 +2268,7 @@ export function CRMBoard({
         progress: setProgressEntries,
         payment: setPaymentEntries,
         payment_status: setPaymentStatusEntries,
+        overall_payment_status: setOverallPaymentStatusEntries,
         mode_of_payment: setModeOfPaymentEntries,
         shipper: setShipperEntries,
         local_overseas: setLocalOverseasEntries,
@@ -2306,6 +2310,7 @@ export function CRMBoard({
         progress: setProgressEntries,
         payment: setPaymentEntries,
         payment_status: setPaymentStatusEntries,
+        overall_payment_status: setOverallPaymentStatusEntries,
         mode_of_payment: setModeOfPaymentEntries,
         shipper: setShipperEntries,
         local_overseas: setLocalOverseasEntries,
@@ -2510,6 +2515,7 @@ export function CRMBoard({
         progress: setProgressEntries,
         payment: setPaymentEntries,
         payment_status: setPaymentStatusEntries,
+        overall_payment_status: setOverallPaymentStatusEntries,
         mode_of_payment: setModeOfPaymentEntries,
         shipper: setShipperEntries,
         local_overseas: setLocalOverseasEntries,
@@ -2695,6 +2701,25 @@ export function CRMBoard({
   const handleDeletePaymentStatus = useCallback(
     async (name: string) => {
       await deleteOptionValue("payment_status", name, setPaymentStatusEntries);
+    },
+    [deleteOptionValue],
+  );
+
+  const handleAddOverallPaymentStatus = useCallback(
+    async (name: string) => {
+      await insertOptionValue(
+        "overall_payment_status",
+        name,
+        overallPaymentStatusEntries,
+        setOverallPaymentStatusEntries,
+      );
+    },
+    [insertOptionValue, overallPaymentStatusEntries],
+  );
+
+  const handleDeleteOverallPaymentStatus = useCallback(
+    async (name: string) => {
+      await deleteOptionValue("overall_payment_status", name, setOverallPaymentStatusEntries);
     },
     [deleteOptionValue],
   );
@@ -8544,6 +8569,7 @@ export function CRMBoard({
                       progressOptions={progressEntries}
                       paymentOptions={paymentEntries}
                       paymentStatusOptions={paymentStatusEntries}
+                      overallPaymentStatusOptions={overallPaymentStatusEntries}
                       modeOfPaymentOptions={modeOfPaymentEntries}
                       shipperOptions={shipperEntries}
                       localOverseasOptions={localOverseasEntries}
@@ -8583,6 +8609,8 @@ export function CRMBoard({
                       onDeletePayment={handleDeletePayment}
                       onAddPaymentStatus={handleAddPaymentStatus}
                       onDeletePaymentStatus={handleDeletePaymentStatus}
+                      onAddOverallPaymentStatus={handleAddOverallPaymentStatus}
+                      onDeleteOverallPaymentStatus={handleDeleteOverallPaymentStatus}
                       onAddModeOfPayment={handleAddModeOfPayment}
                       onDeleteModeOfPayment={handleDeleteModeOfPayment}
                       clientCustomCols={visibleClientCustomCols}

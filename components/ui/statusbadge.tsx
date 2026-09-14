@@ -231,7 +231,7 @@ export function StatusBadge({
   const moveOption = async (targetSection: number, targetName?: string) => {
     if (draggedOption === null || draggedOption === targetName) return;
     const grouped = Array.from({ length: normalizedSectionCount }, (_, section) =>
-      configuredOptions
+      options
         .filter((option) => sectionFor(option) === section)
         .map((option) => option.value),
     );
@@ -258,7 +258,7 @@ export function StatusBadge({
     const isStoredOption = configuredOptions.some(
       (configuredOption) => configuredOption.value === option.value,
     );
-    const canDrag = editingLabels && Boolean(onReorderOptions) && isStoredOption;
+    const canDrag = editingLabels && Boolean(onReorderOptions) && (isStoredOption || option.value === "");
     return (
       <div
         key={option.value || "__empty__"}

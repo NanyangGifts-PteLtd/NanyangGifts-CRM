@@ -7,7 +7,7 @@ const BOARD_OPTION_CODES = new Set([
   "payment", "payment_status", "mode_of_payment", "shipper", "local_overseas",
   "subitem_status", "currency", "subitem_subprogress",
   "tracking_summary", "tracking_invoice_created", "tracking_multiple_invoices",
-  "tracking_payment_status", "tracking_price_invoice_match",
+  "tracking_payment_status", "tracking_price_invoice_match", "overall_payment_status",
 ]);
 
 async function canManageLabels() {
@@ -55,6 +55,24 @@ export async function POST(request: NextRequest) {
     .eq("code", code)
     .maybeSingle();
   if (groupError || !group) return NextResponse.json({ error: groupError?.message ?? "Label group was not found." }, { status: 404 });
+
+  // The Board normally renders a synthetic blank label. Materialise it the
+  // first time it is reordered so its position can be persisted like any
+  // other label.
+  if (values.includes("")) {
+    const { data: blank } = await supabaseAdmin
+      .from("option_values")
+      .select("id")
+      .eq("group_id", group.id)
+      .eq("value", "")
+      .maybeSingle();
+    if (!blank) {
+      const { error: blankError } = await supabaseAdmin
+        .from("option_values")
+        .insert({ group_id: group.id, value: "", color: "#bfc0c2", sort_order: -1, section_index: 0 });
+      if (blankError) return NextResponse.json({ error: blankError.message }, { status: 500 });
+    }
+  }
 
   const { data: options, error: optionsError } = await supabaseAdmin
     .from("option_values")

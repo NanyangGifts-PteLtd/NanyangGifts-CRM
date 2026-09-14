@@ -186,6 +186,13 @@ const FORMULA_RESULT_FIELDS = new Set([
   "paymentAmount",
   "difference",
 ]);
+const PAYMENT_STATUS_LABELS = new Set(["✅", "Underpaid", "Overpaid", "Resolved"]);
+const DEFAULT_PAYMENT_STATUS_OPTIONS: OptionEntry[] = [
+  { value: "✅", color: "#22c55e" },
+  { value: "Underpaid", color: "#ef4444" },
+  { value: "Overpaid", color: "#f59e0b" },
+  { value: "Resolved", color: "#3b82f6" },
+];
 
 const SHIPPER_PUSH_FIELDS: Array<{
   key: keyof Omit<ShipperPushValues, "subitemId">;
@@ -2063,6 +2070,9 @@ export function SubitemsTable({
       ? "✅"
       : difference < 0 ? "Underpaid" : "Overpaid";
     const paymentStatus = sub.paymentStatus === "Resolved" ? "Resolved" : automaticPaymentStatus;
+    const paymentStatusLabelOptions = paymentStatusOptions.filter((option) =>
+      option.value === "" || PAYMENT_STATUS_LABELS.has(option.value),
+    );
     const canResolvePayment = ["admin", "director", "dev"].includes(
       String(currentUserRole ?? "").trim().toLowerCase(),
     );
@@ -2127,12 +2137,12 @@ export function SubitemsTable({
                   toast.error("Only admins, directors, and developers can resolve a payment.");
                 }
               }}
-              options={[
-                { value: "✅", color: "#22c55e" },
-                { value: "Underpaid", color: "#ef4444" },
-                { value: "Overpaid", color: "#f59e0b" },
-                { value: "Resolved", color: "#3b82f6" },
-              ]}
+              options={paymentStatusLabelOptions.length ? paymentStatusLabelOptions : DEFAULT_PAYMENT_STATUS_OPTIONS}
+              onAddOption={canResolvePayment ? onAddPaymentStatus : undefined}
+              onDeleteOption={canResolvePayment ? onDeletePaymentStatus : undefined}
+              onUpdateOptionColor={canResolvePayment ? (name, color) => onUpdateOptionColor?.("payment_status", name, color) : undefined}
+              onRenameOption={canResolvePayment ? (oldName, newName) => onRenameOption?.("payment_status", oldName, newName) : undefined}
+              onReorderOptions={canResolvePayment ? (values) => onReorderOptions?.("payment_status", values) : undefined}
               manageLabel="payment status"
               small
             />

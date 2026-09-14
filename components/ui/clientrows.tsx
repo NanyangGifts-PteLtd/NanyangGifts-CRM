@@ -267,6 +267,9 @@ export type ClientRowProps = {
   onDeleteProgress?: (name: string) => void | Promise<void>;
   paymentOptions: OptionEntry[];
   paymentStatusOptions: OptionEntry[];
+  overallPaymentStatusOptions: OptionEntry[];
+  onAddOverallPaymentStatus?: (name: string) => void | Promise<void>;
+  onDeleteOverallPaymentStatus?: (name: string) => void | Promise<void>;
   modeOfPaymentOptions: OptionEntry[];
   shipperOptions: OptionEntry[];
   localOverseasOptions: OptionEntry[];
@@ -404,6 +407,9 @@ export function ClientRow({
   onDeleteProgress,
   paymentOptions,
   paymentStatusOptions,
+  overallPaymentStatusOptions,
+  onAddOverallPaymentStatus,
+  onDeleteOverallPaymentStatus,
   modeOfPaymentOptions,
   shipperOptions,
   localOverseasOptions,
@@ -496,6 +502,9 @@ export function ClientRow({
       String(currentUserRole ?? "").toLowerCase(),
     );
   const canManageSubitemLock = ["director", "dev"].includes(
+    String(currentUserRole ?? "").trim().toLowerCase(),
+  );
+  const canManagePaymentLabels = ["admin", "director", "dev"].includes(
     String(currentUserRole ?? "").trim().toLowerCase(),
   );
   const hasSignedOcf = (client.activityLog ?? []).some(
@@ -3207,13 +3216,15 @@ export function ClientRow({
           <StatusBadge
             value={overallPaymentStatus}
             onChange={() => undefined}
-            options={[
-              { value: "Unpaid", color: "#ef4444" },
-              { value: "Partially Paid", color: "#f59e0b" },
-              { value: "Fully Paid", color: "#22c55e" },
-            ]}
+            options={overallPaymentStatusOptions}
+            onAddOption={canManagePaymentLabels ? onAddOverallPaymentStatus : undefined}
+            onDeleteOption={canManagePaymentLabels ? onDeleteOverallPaymentStatus : undefined}
+            onUpdateOptionColor={canManagePaymentLabels ? (name, color) => onUpdateOptionColor?.("overall_payment_status", name, color) : undefined}
+            onRenameOption={canManagePaymentLabels ? (oldName, newName) => onRenameOption?.("overall_payment_status", oldName, newName) : undefined}
+            onReorderOptions={canManagePaymentLabels ? (values) => onReorderOptions?.("overall_payment_status", values) : undefined}
+            manageLabel="overall payment status"
             small
-            readOnly
+            readOnly={!canManagePaymentLabels}
           />
         </div>
 
