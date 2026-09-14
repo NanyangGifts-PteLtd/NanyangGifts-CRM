@@ -3,7 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutGrid, Mail, BarChart2, SquareChartGantt, BotMessageSquare, PackageSearch, Users, UserRoundCog, ContactRound } from 'lucide-react';
+import { LayoutGrid, Mail, BarChart2, SquareChartGantt, BotMessageSquare, PackageSearch, Users, UserRoundCog, ContactRound, ReceiptText } from 'lucide-react';
 import logo from "./logo.png";
 import Image from 'next/image';
 
@@ -16,7 +16,8 @@ export type SidePanel =
   | 'team'
   | 'customerprofiles'
   | 'useradmin'
-  | 'shipper';
+  | 'shipper'
+  | 'additionalcosts';
 
 interface SidebarProps {
   activePanel: SidePanel;
@@ -29,6 +30,7 @@ interface SidebarProps {
 
 const navItems: { id: SidePanel; icon: React.ReactNode; label: string; href?: string, external?: boolean }[] = [
   { id: 'crm', icon: <LayoutGrid size={16.5} />, label: 'CRM Board' },
+  { id: 'additionalcosts', icon: <ReceiptText size={16.5} />, label: 'Additional Costs' },
   { id: 'emails', icon: <Mail size={16.5} />, label: 'Emails' },
   { id: 'reports', icon: <BarChart2 size={17.5} />, label: 'Reports & KPI' },
   { id: 'ganttchart', icon: <SquareChartGantt size={17.5} />, label: 'Gantt Chart' },

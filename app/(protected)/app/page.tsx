@@ -16,6 +16,7 @@ import { fetchAllSubitemAssignees } from '@/components/CRMBoard';
 import { TeamPanel } from '@/components/TeamPanel';
 import { UserAdminPanel } from '@/components/UserAdminPanel';
 import { CustomerProfilesPanel } from '@/components/CustomerProfilesPanel';
+import { AdditionalCostsBoard } from '@/components/AdditionalCostsBoard';
 import { AppLiveRefresh } from '@/components/AppLiveRefresh';
 import { boardProtectionDelay, getBoardWriteRevision, isBoardRecordProtected } from '@/lib/board-write-coordinator';
 
@@ -358,6 +359,9 @@ export default function Page() {
           </div>
         );
 
+      case 'additionalcosts':
+        return <AdditionalCostsBoard clients={clients} profiles={profiles} groups={groups} currentUserId={user?.id} currentUserRole={currentUserRole} clientAssignees={clientAssignees} clientPmAssignees={clientPmAssignees} />;
+
       case 'emails':
         return (
           <div className="flex h-full items-center justify-center text-sm text-gray-500">
@@ -431,7 +435,7 @@ export default function Page() {
           onSelectSearchResult={selectSearchResult}
         />
 
-        <main className="min-h-0 flex-1 overflow-y-auto pl-10">
+        <main className="min-h-0 flex-1 overflow-auto pl-10">
           {renderPanel()}
         </main>
       </div>
