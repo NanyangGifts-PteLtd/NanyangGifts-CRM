@@ -367,9 +367,9 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
                         <span>I have a compulsory/strict Need by Date for the item(s).</span>
                     </label>
                     {ocf.strict_need_by_date ? (
-                        <p className="border-t border-amber-300 bg-amber-50 px-4 py-3 text-amber-900">
-                            {ocf.strict_need_by_warning}
-                        </p>
+                        <div className="border-t border-amber-300 bg-amber-50 px-4 py-3 text-amber-900">
+                            <OcfImportantNotes notes={ocf.strict_need_by_warning ?? ""} />
+                        </div>
                     ) : null}
                 </div>
                         

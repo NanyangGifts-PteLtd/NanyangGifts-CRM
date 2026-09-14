@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { X } from "lucide-react";
 import { useEscapeClose } from "./hooks/use-escape-close";
+import OcfRichTextEditor from "./OcfRichTextEditor";
+import { plainTextToOcfHtml } from "@/lib/ocf-rich-text";
 
 type OcfConfigurationSettingsModalProps = {
     open: boolean;
@@ -47,10 +49,12 @@ export default function OcfConfigurationSettingsModal({
                     throw new Error(data.error || "Failed to load OCF settings.");
                 }
 
-                setImportantNotes(data.importantNotes ?? "");
-                setStrictNeedByWarning(data.strictNeedByWarning ?? "");
-                setSavedImportantNotes(data.importantNotes ?? "");
-                setSavedStrictNeedByWarning(data.strictNeedByWarning ?? "");
+                const loadedImportantNotes = plainTextToOcfHtml(data.importantNotes ?? "");
+                const loadedStrictNeedByWarning = plainTextToOcfHtml(data.strictNeedByWarning ?? "");
+                setImportantNotes(loadedImportantNotes);
+                setStrictNeedByWarning(loadedStrictNeedByWarning);
+                setSavedImportantNotes(loadedImportantNotes);
+                setSavedStrictNeedByWarning(loadedStrictNeedByWarning);
             } catch (err: any) {
                 setError(err.message || "Failed to load OCF settings.");
             } finally {
@@ -107,8 +111,8 @@ export default function OcfConfigurationSettingsModal({
 
     return (
         <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/40 px-4">
-            <div className="w-full max-w-3xl rounded-xl bg-white shadow-2xl">
-                <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
+            <div className="flex max-h-[calc(100vh-2rem)] w-full max-w-3xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
+                <div className="shrink-0 flex items-center justify-between border-b border-gray-200 px-5 py-4">
                     <div>
                         <h2 className="text-sm font-semibold text-gray-900">
                             OCF Configuration Settings
@@ -127,7 +131,7 @@ export default function OcfConfigurationSettingsModal({
                     </button>
                 </div>
 
-                <div className="px-5 py-4">
+                <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
                     {loading ? (
                         <p className="text-sm text-gray-500">Loading...</p>
                     ) : (
@@ -135,25 +139,23 @@ export default function OcfConfigurationSettingsModal({
                             <label className="mb-2 block text-xs font-medium text-gray-700">
                                 Important Notes
                             </label>
-                            <textarea
+                            <OcfRichTextEditor
                                 value={importantNotes}
-                                onChange={(e) => setImportantNotes(e.target.value)}
-                                rows={16}
+                                onChange={setImportantNotes}
                                 disabled={!canEdit}
-                                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-[#7BCBD5] disabled:bg-gray-100 disabled:text-gray-500"
                                 placeholder="Default OCF important notes"
+                                minHeight="22rem"
                             />
 
                             <label className="mb-2 mt-5 block text-xs font-medium text-gray-700">
                                 Strict Need by Date warning
                             </label>
-                            <textarea
+                            <OcfRichTextEditor
                                 value={strictNeedByWarning}
-                                onChange={(e) => setStrictNeedByWarning(e.target.value)}
-                                rows={5}
+                                onChange={setStrictNeedByWarning}
                                 disabled={!canEdit}
-                                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-[#7BCBD5] disabled:bg-gray-100 disabled:text-gray-500"
                                 placeholder="Warning shown when the client selects a strict Need by Date"
+                                minHeight="8rem"
                             />
 
                             {!canEdit ? (
@@ -173,7 +175,7 @@ export default function OcfConfigurationSettingsModal({
                     )}
                 </div>
 
-                <div className="flex items-center justify-end gap-2 border-t border-gray-200 px-5 py-4">
+                <div className="flex shrink-0 items-center justify-end gap-2 border-t border-gray-200 px-5 py-4">
                     <button
                         type="button"
                         onClick={onClose}

@@ -1,11 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { DEFAULT_IMPORTANT_NOTES, DEFAULT_STRICT_NEED_BY_WARNING } from "@/components/Important-Notes";
+import { isOcfRichText, sanitizeOcfRichText } from "@/lib/ocf-rich-text";
 
 type SaveOcfImportantNotesBody = {
     importantNotes?: string | null;
     strictNeedByWarning?: string | null;
 };
+
+function normaliseOcfText(value: string | null | undefined, fallback: string) {
+    const trimmed = value?.trim();
+    if (!trimmed) return fallback;
+    return isOcfRichText(trimmed) ? sanitizeOcfRichText(trimmed) || fallback : trimmed;
+}
 
 export async function GET() {
     try {
@@ -71,8 +78,8 @@ export async function POST(req: NextRequest) {
         }
 
         const body = (await req.json()) as SaveOcfImportantNotesBody;
-        const importantNotes = body.importantNotes?.trim() || DEFAULT_IMPORTANT_NOTES;
-        const strictNeedByWarning = body.strictNeedByWarning?.trim() || DEFAULT_STRICT_NEED_BY_WARNING;
+        const importantNotes = normaliseOcfText(body.importantNotes, DEFAULT_IMPORTANT_NOTES);
+        const strictNeedByWarning = normaliseOcfText(body.strictNeedByWarning, DEFAULT_STRICT_NEED_BY_WARNING);
 
         const { error: upsertError } = await supabase
             .from("app_settings")
