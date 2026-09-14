@@ -448,12 +448,20 @@ export function ClientDetailView({
             onClick={blockIfLocked}
             className="min-w-0 flex-1"
           >
-            <input
-              value={client.name}
-              readOnly={!canEdit}
-              onChange={(event) => onUpdate({ name: event.target.value })}
-              className={`w-full rounded border px-2 py-1 text-2xl font-semibold outline-none transition ${hoverName && canEdit ? "border-sky-400 bg-white" : "border-transparent bg-transparent"} ${!canEdit ? "cursor-default" : ""}`}
-            />
+            <div className="flex min-w-0 items-center gap-2">
+              <input
+                value={client.name}
+                readOnly={!canEdit}
+                onChange={(event) => onUpdate({ name: event.target.value })}
+                className={`min-w-[12rem] max-w-[55vw] rounded border px-2 py-1 text-2xl font-semibold outline-none transition ${hoverName && canEdit ? "border-sky-400 bg-white" : "border-transparent bg-transparent"} ${!canEdit ? "cursor-default" : ""}`}
+                style={{ width: `${Math.min(Math.max(client.name.length + 3, 16), 48)}ch` }}
+              />
+              {client.displayId ? (
+                <span title="Client ID" className="shrink-0 rounded border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-medium text-slate-500">
+                  Client ID: <span className="font-mono">{client.displayId}</span>
+                </span>
+              ) : null}
+            </div>
           </div>
           <div className="flex -space-x-2">
             {people.map((profile) => (

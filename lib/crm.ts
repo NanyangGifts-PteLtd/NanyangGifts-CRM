@@ -97,6 +97,7 @@ export async function setSalesRoundRobinActive(userId: string, isActive: boolean
 }
 type Subitems = {
     id: string;
+    display_id?: string | null;
     client_id: string;
     position: number | null;
     created_at: string | null;
@@ -167,6 +168,7 @@ type Subitems = {
 
 type Clients = {
     id: string;
+    display_id?: string | null;
     name: string | null;
     people: string | null;
     reply_status: string | null;
@@ -328,6 +330,7 @@ function mapActivityEntry(row: ActivityLogRow): ActivityEntry {
 function mapSubitems(row: Subitems): Subitem {
     return {
         id: row.id,
+        displayId: row.display_id ?? '',
         createdAt: row.created_at ?? null,
         position: row.position ?? Number.MAX_SAFE_INTEGER,
         name: row.name ?? '',
@@ -403,6 +406,7 @@ function mapSubitems(row: Subitems): Subitem {
 function mapClients(row: Clients): Client {
     return {
         id: row.id,
+        displayId: row.display_id ?? '',
         name: row.name ?? '',
         people: row.people ?? '',
         replyStatus: row.reply_status ?? '',

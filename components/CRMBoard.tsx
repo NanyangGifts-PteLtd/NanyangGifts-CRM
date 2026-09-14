@@ -5388,6 +5388,7 @@ export function CRMBoard({
       );
       const newClient: Client = {
         id: createdClient.id,
+        displayId: createdClient.display_id ?? "",
         name: createdClient.name ?? "",
         people: createdClient.people ?? "",
         replyStatus: createdClient.reply_status ?? "",

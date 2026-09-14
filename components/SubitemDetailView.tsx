@@ -331,12 +331,20 @@ export function SubitemDetailView({
             onClick={lock}
             className="min-w-0 flex-1"
           >
-            <input
-              value={subitem.name}
-              readOnly={!canEdit}
-              onChange={(event) => onUpdate({ name: event.target.value })}
-              className={`w-full rounded border px-2 py-1 text-2xl font-semibold outline-none transition ${hoverName && canEdit ? "border-sky-400 bg-white" : "border-transparent bg-transparent"}`}
-            />
+            <div className="flex min-w-0 items-center gap-2">
+              <input
+                value={subitem.name}
+                readOnly={!canEdit}
+                onChange={(event) => onUpdate({ name: event.target.value })}
+                className={`min-w-[12rem] max-w-[55vw] rounded border px-2 py-1 text-2xl font-semibold outline-none transition ${hoverName && canEdit ? "border-sky-400 bg-white" : "border-transparent bg-transparent"}`}
+                style={{ width: `${Math.min(Math.max(subitem.name.length + 3, 16), 48)}ch` }}
+              />
+              {subitem.displayId ? (
+                <span title="Subitem ID" className="shrink-0 rounded border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-medium text-slate-500">
+                  Subitem ID: <span className="font-mono">{subitem.displayId}</span>
+                </span>
+              ) : null}
+            </div>
           </div>
           <span className="hidden text-sm text-slate-400 sm:block">
             {clientName}

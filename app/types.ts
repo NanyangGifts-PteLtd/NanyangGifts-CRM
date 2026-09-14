@@ -84,6 +84,8 @@ export interface PaymentRow {
 
 export interface Subitem {
   id: string;
+  /** Immutable, human-readable identifier for staff-facing selection. */
+  displayId: string;
   createdAt: string | null;
   /** Persisted order within the owning client. */
   position: number;
@@ -172,6 +174,8 @@ export type ActivityEntry = {
 
 export interface Client {
   id: string;
+  /** Immutable, human-readable identifier for staff-facing selection. */
+  displayId: string;
   name: string;
   people: string;
   replyStatus: string;
