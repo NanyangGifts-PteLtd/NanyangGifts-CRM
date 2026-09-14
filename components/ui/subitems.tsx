@@ -606,7 +606,16 @@ export function SubitemsTable({
 
   const [pushingSubitemId, setPushingSubitemId] = useState<string | null>(null);
   const [pushedSubitemIds, setPushedSubitemIds] = useState<Set<string>>(
-    new Set(),
+    () => new Set(
+      clientActivityLog
+        .filter(
+          (entry) =>
+            entry.action === "shipper_pushed" &&
+            typeof entry.subitemId === "string" &&
+            entry.subitemId.length > 0,
+        )
+        .map((entry) => entry.subitemId as string),
+    ),
   );
   const [pendingPushSubitemId, setPendingPushSubitemId] = useState<
     string | null
