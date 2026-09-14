@@ -3370,7 +3370,7 @@ export function SubitemsTable({
                   <tr className="bg-slate-50/70">
                     <td colSpan={totalColSpan} className="border-b border-r border-[#D0D4E4] bg-[#fafcff] px-9 py-3">
                       <div className="max-w-[980px] overflow-hidden rounded-md border border-[#D0D4E4] bg-white text-xs text-[#334155] shadow-sm">
-                        <div className="grid grid-cols-[52px_minmax(155px,1fr)_minmax(170px,1fr)_150px_minmax(185px,1fr)_36px] border-b border-[#D0D4E4] bg-[#f4f7fb] text-[11px] font-semibold tracking-wide text-[#52657f]">
+                        <div className="grid grid-cols-[52px_minmax(155px,1fr)_minmax(170px,1fr)_150px_minmax(185px,1fr)_36px] border-b border-[#D0D4E4] bg-[#f4f7fb] text-[12.6px] font-semibold text-gray-500">
                           <span className="px-3 py-2">#</span>
                           <span className="border-l border-[#D0D4E4] px-3 py-2">Sub-amount</span>
                           <span className="border-l border-[#D0D4E4] px-3 py-2">Order number</span>
