@@ -144,9 +144,11 @@ export async function GET(request: NextRequest) {
     const shipperId = request.nextUrl.searchParams.get("shipperId");
     if (!shipperId) throw new Error("shipperId is required");
     const { shipper } = await authorize(shipperId);
-    const spreadsheet = await getShipperSpreadsheetRows(shipperId, shipper.name ?? "Shipper");
-    await lockExpiredRows(spreadsheet.workbook.id);
-    return NextResponse.json(await getShipperSpreadsheetRows(shipperId, shipper.name ?? "Shipper"));
+    const workbook = await getOrCreateShipperWorkbook(shipperId, shipper.name ?? "Shipper");
+    await lockExpiredRows(workbook.id);
+    return NextResponse.json(
+      await getShipperSpreadsheetRows(shipperId, shipper.name ?? "Shipper", workbook),
+    );
   } catch (error) {
     return failure(error);
   }

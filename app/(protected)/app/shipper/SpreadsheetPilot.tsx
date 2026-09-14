@@ -9,6 +9,12 @@ import { createClient } from "@/lib/supabase/client";
 import "@glideapps/glide-data-grid/dist/index.css";
 
 type Row = { id: string; values: Record<string, unknown>; cell_fills: Record<string, string>; is_locked: boolean; auto_lock_at: string | null; version: number; row_type: "item" | "blank_spacer"; sort_key: number; shipment_group_id: string | null };
+type WorkbookSnapshot = { workbookId: string | null; rows: Row[] };
+
+// Switching shipper tabs remounts the spreadsheet intentionally. Keep the
+// last known snapshot per workbook so a previously visited tab is visible at
+// once while a background request checks for newer data.
+const workbookSnapshotCache = new Map<string, WorkbookSnapshot>();
 const columns: GridColumn[] = [
   { id: "__lock", title: "", width: 48 },
   { id: "serial_number", title: "序号", width: 100 },
@@ -179,11 +185,12 @@ function RemarksEditor({ value, onFinishedEditing }: { value: GridCell; onFinish
 }
 
 export function SpreadsheetPilot({ shipperId, mode = "internal" }: { shipperId: string; mode?: "internal" | "shipper" }) {
-  const [rows, setRows] = useState<Row[]>([]);
+  const cachedSnapshot = workbookSnapshotCache.get(shipperId);
+  const [rows, setRows] = useState<Row[]>(() => cachedSnapshot?.rows ?? []);
   const [error, setError] = useState<string | null>(null);
   const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
   const [viewportHeight, setViewportHeight] = useState(700);
-  const [workbookId, setWorkbookId] = useState<string | null>(null);
+  const [workbookId, setWorkbookId] = useState<string | null>(() => cachedSnapshot?.workbookId ?? null);
   const [gridSelection, setGridSelection] = useState<GridSelection | undefined>(undefined);
   const [isFillPaletteOpen, setIsFillPaletteOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; row: number; col: number } | null>(null);
@@ -217,6 +224,9 @@ export function SpreadsheetPilot({ shipperId, mode = "internal" }: { shipperId: 
     setRows((current) => JSON.stringify(current) === JSON.stringify(result.rows ?? []) ? current : result.rows ?? []);
   }, [shipperId]);
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    workbookSnapshotCache.set(shipperId, { workbookId, rows });
+  }, [shipperId, workbookId, rows]);
   useEffect(() => {
     if (!workbookId) return;
     const supabase = createClient();

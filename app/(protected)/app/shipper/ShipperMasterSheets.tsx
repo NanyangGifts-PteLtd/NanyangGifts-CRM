@@ -102,7 +102,7 @@ export function ShipperMasterSheets({
       </div>
       <div className={`min-h-0 flex-1 ${view === "spreadsheet" ? "overflow-hidden" : "overflow-auto"}`}>
         {view === "spreadsheet" ? (
-          <SpreadsheetPilot shipperId={activeShipper.id} />
+          <SpreadsheetPilot key={activeShipper.id} shipperId={activeShipper.id} />
         ) : view === "shipments" ? (
           <>
             <div className="p-4">

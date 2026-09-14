@@ -89,8 +89,12 @@ export async function getOrCreateShipperWorkbook(shipperId: string, name: string
   return data;
 }
 
-export async function getShipperSpreadsheetRows(shipperId: string, shipperName: string) {
-  const workbook = await getOrCreateShipperWorkbook(shipperId, shipperName);
+export async function getShipperSpreadsheetRows(
+  shipperId: string,
+  shipperName: string,
+  existingWorkbook?: { id: string; shipper_id: string; name: string },
+) {
+  const workbook = existingWorkbook ?? await getOrCreateShipperWorkbook(shipperId, shipperName);
   const { data, error } = await supabaseAdmin
     .from("shipper_spreadsheet_rows")
     .select("id, workbook_id, row_type, source_type, source_subitem_id, shipment_group_id, planned_for, sort_key, is_locked, auto_lock_at, cell_fills, values, version")
