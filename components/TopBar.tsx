@@ -90,7 +90,9 @@ function searchResults(
       .replace(/^./, (letter) => letter.toUpperCase());
   const profileValues = (id: string) => {
     const profile = profiles.find((candidate) => candidate.id === id);
-    return [profile?.full_name, profile?.email, id].filter(
+    // Profile UUIDs are relation keys only. Names and email addresses are the
+    // useful, user-searchable ways to find an assignee.
+    return [profile?.full_name, profile?.email].filter(
       (value): value is string => Boolean(value),
     );
   };
@@ -104,8 +106,13 @@ function searchResults(
     excluded: Set<string>,
   ) => {
     for (const [field, value] of Object.entries(record)) {
+      // Database identifiers (for example external_id, groupId and shipperId)
+      // are implementation details. Display IDs are deliberately added as
+      // explicit searchable fields above instead.
+      const isInternalIdField = /(^|[_-])id$/i.test(field) || /Id$/.test(field);
       if (
         excluded.has(field) ||
+        isInternalIdField ||
         value === null ||
         value === undefined ||
         typeof value === "object"
@@ -171,7 +178,14 @@ function searchResults(
       client as unknown as Record<string, unknown>,
       // The database UUID is an internal relation key, not a user-facing
       // search term. Human-facing display IDs are added explicitly above.
-      new Set(["id", "subitems", "activityLog", "customFields"]),
+      new Set([
+        "id",
+        "external_id",
+        "externalId",
+        "subitems",
+        "activityLog",
+        "customFields",
+      ]),
     );
     addScalarFields(
       client.id,
