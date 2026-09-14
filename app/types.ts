@@ -62,6 +62,15 @@ export interface TimelineRow {
   dependency: string;
 }
 
+export interface TimelineGroup {
+  id: string;
+  cnTracking: string;
+  sgTracking: string;
+  rows: TimelineRow[];
+  /** The original imported timeline remains protected. */
+  isDefault?: boolean;
+}
+
 export interface PaymentRow {
   id: string;
   position: number;
@@ -131,6 +140,7 @@ export interface Subitem {
 
   // Timeline
   timelineRows: TimelineRow[];
+  timelineGroups: TimelineGroup[];
   showTimeline: boolean;
   showPayments: boolean;
   showSample: boolean;

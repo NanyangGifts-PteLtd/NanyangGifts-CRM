@@ -170,6 +170,7 @@ type CombinedPushPreview = {
       subitemId: string;
       name: string;
       alreadyPushed: boolean;
+      trackingOptions?: string[];
     }
   >;
   shipperName: string;
@@ -4101,6 +4102,9 @@ export function CRMBoard({
           alreadyPushed: Boolean(row.already_pushed),
           previousShipperName: String(row.previous_shipper_name || ""),
           cn_tracking_no: String(row.cn_tracking_no || ""),
+          trackingOptions: Array.isArray(row.tracking_options)
+            ? row.tracking_options.map((value: unknown) => String(value))
+            : [],
           qty: String(row.qty ?? ""),
           up: String(row.up ?? ""),
           samples_by_air: String(row.samples_by_air ?? ""),
@@ -5112,20 +5116,47 @@ export function CRMBoard({
         toast.error("This client's subitems are locked. Check with the director if there are any changes");
         return;
       }
+      // Timeline tracking fields are the source of truth. Mirror their
+      // comma-separated summaries immediately, rather than waiting for the
+      // persisted timeline update and a subsequent client reload.
+      const optimisticUpdates: Partial<Subitem> = updates.timelineGroups
+        ? {
+            ...updates,
+            cnTracking: updates.timelineGroups
+              .map((timeline) => timeline.cnTracking.trim())
+              .filter(Boolean)
+              .join(", "),
+            sgTracking: updates.timelineGroups
+              .map((timeline) => timeline.sgTracking.trim())
+              .filter(Boolean)
+              .join(", "),
+          }
+        : updates;
       setClients((prev) =>
         prev.map((c) => ({
           ...c,
           subitems: c.subitems.map((s) =>
-            s.id === subitemId ? { ...s, ...updates } : s,
+            s.id === subitemId ? { ...s, ...optimisticUpdates } : s,
           ),
         })),
       );
       try {
         await enqueueBoardWrite("subitem", subitemId, () =>
-          updateSubitemRow(subitemId, updates),
+          updateSubitemRow(subitemId, optimisticUpdates),
         );
       } catch (error: any) {
         void reloadClients();
+        const message = error instanceof Error ? error.message : "Please try again.";
+        if (/CN Tracking number.*already used|CN Tracking numbers must be unique/i.test(message)) {
+          toast.error("CN Tracking number must be unique", {
+            description:
+              message.startsWith("CN Tracking number is already used by")
+                ? `${message} Enter a different number.`
+                : "That CN Tracking number is already attached to another timeline. Enter a different number.",
+          });
+          return;
+        }
+        toast.error("Could not save the subitem update", { description: message });
         console.error("Failed to update subitem", error);
       }
     },

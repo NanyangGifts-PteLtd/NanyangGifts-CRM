@@ -10,6 +10,7 @@ type CombinedPushPreview = {
       subitemId: string;
       name: string;
       alreadyPushed: boolean;
+      trackingOptions?: string[];
     }
   >;
   shipperName: string;
@@ -175,11 +176,16 @@ export function CombinedPushPreviewModal({
           )}
           <label className="block text-xs font-medium text-slate-700">
             CN Tracking # *
-            <input
+            <select
               value={item.cn_tracking_no ?? ""}
               onChange={(e) => changeItem("cn_tracking_no", e.target.value)}
               className={`mt-1 w-full rounded border px-3 py-2 text-sm ${required("cn_tracking_no") ? "border-red-300 bg-red-50" : "border-slate-300"}`}
-            />
+            >
+              <option value="">Select a project timeline CN Tracking number</option>
+              {(item.trackingOptions ?? []).map((trackingNumber: string) => (
+                <option key={trackingNumber} value={trackingNumber}>{trackingNumber}</option>
+              ))}
+            </select>
           </label>
           <div className="mt-4 grid gap-5 md:grid-cols-2">
             <div className="space-y-4 border-r border-slate-200 pr-5">

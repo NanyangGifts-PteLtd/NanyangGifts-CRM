@@ -58,11 +58,30 @@ async function syncSgTrackingFromWaybill(values: Record<string, unknown>) {
   if (!cnTrackingNumbers.length) return;
 
   const sgTracking = values.waybill_number == null ? "" : String(values.waybill_number).trim();
-  const { error } = await supabaseAdmin
+  const wanted = new Set(cnTrackingNumbers.map((value) => value.toLowerCase()));
+  const { data: subitems, error: readError } = await supabaseAdmin
     .from("subitems")
-    .update({ sg_tracking: sgTracking })
-    .in("cn_tracking", cnTrackingNumbers);
-  if (error) throw error;
+    .select("id, timeline_groups")
+    .is("deleted_at", null);
+  if (readError) throw readError;
+
+  for (const subitem of subitems ?? []) {
+    if (!Array.isArray(subitem.timeline_groups)) continue;
+    let changed = false;
+    const timelines = subitem.timeline_groups.map((timeline: Record<string, unknown>) => {
+      const matches = wanted.has(String(timeline.cnTracking ?? "").trim().toLowerCase());
+      if (!matches) return timeline;
+      changed = true;
+      return { ...timeline, sgTracking };
+    });
+    if (!changed) continue;
+    const { error } = await supabaseAdmin.from("subitems").update({
+      timeline_groups: timelines,
+      cn_tracking: timelines.map((timeline: Record<string, unknown>) => String(timeline.cnTracking ?? "").trim()).filter(Boolean).join(", "),
+      sg_tracking: timelines.map((timeline: Record<string, unknown>) => String(timeline.sgTracking ?? "").trim()).filter(Boolean).join(", "),
+    }).eq("id", subitem.id);
+    if (error) throw error;
+  }
 }
 
 async function lockExpiredRows(workbookId: string) {

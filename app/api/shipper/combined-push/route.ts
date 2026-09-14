@@ -8,6 +8,13 @@ type PushValue = Record<string, string> & { subitemId: string };
 type Body = { subitemIds: string[]; values: PushValue[]; shared: Record<string, string>; existingMode?: "separate" | "repush"; amendShipmentIdBySubitemId?: Record<string, string> };
 const ALLOWED_ROLES = new Set(["pm", "admin", "director", "dev"]);
 
+function timelineTrackingNumbers(timelineGroups: unknown, fallback: string | null | undefined) {
+    const groups = Array.isArray(timelineGroups) ? timelineGroups : [];
+    const numbers = groups.map((group) => String((group as { cnTracking?: unknown }).cnTracking ?? "").trim()).filter(Boolean);
+    if (numbers.length) return [...new Set(numbers)];
+    return String(fallback ?? "").split(",").map((value) => value.trim()).filter(Boolean);
+}
+
 export async function POST(request: NextRequest) {
     try {
         const supabase = await createClient();
@@ -22,7 +29,7 @@ export async function POST(request: NextRequest) {
 
         const { data: subitems, error } = await supabaseAdmin
             .from("subitems")
-            .select("id, client_id, name, shipper_id, shipper")
+            .select("id, client_id, name, shipper_id, shipper, cn_tracking, timeline_groups")
             .in("id", ids);
         if (error || (subitems?.length ?? 0) !== ids.length) return NextResponse.json({ error: error?.message ?? "One or more selected subitems no longer exist." }, { status: 400 });
 
@@ -48,6 +55,7 @@ export async function POST(request: NextRequest) {
             const value = values.get(id);
             const source = subitems!.find((item) => item.id === id)!;
             if (!value?.cn_tracking_no?.trim() || !value.qty?.trim() || !value.up?.trim()) throw new Error(`Complete CN Tracking, Qty, and Unit Price for ${source.name || "each item"}.`);
+            if (!timelineTrackingNumbers(source.timeline_groups, source.cn_tracking).includes(value.cn_tracking_no.trim())) throw new Error(`Choose a CN Tracking number from one of ${source.name || "this subitem"}'s project timelines.`);
             const qty = Number(value.qty);
             const up = Number(value.up);
             if (!Number.isFinite(qty) || !Number.isFinite(up)) throw new Error("Qty and Unit Price must be numbers.");
@@ -88,7 +96,6 @@ export async function POST(request: NextRequest) {
         }));
         const { error: legacyError } = await supabaseAdmin.from("shipper_view_rows").upsert(legacyProjection, { onConflict: "subitem_id" });
         if (legacyError) throw legacyError;
-        await Promise.all(rowsForWorkbook.map((row) => supabaseAdmin.from("subitems").update({ cn_tracking: row.values.cn_tracking_no }).eq("id", row.sourceSubitemId)));
         await supabaseAdmin.from("activity_log").insert(rowsForWorkbook.map((row) => ({ client_id: subitems!.find((item) => item.id === row.sourceSubitemId)?.client_id ?? null, subitem_id: row.sourceSubitemId, actor_name: workbookActor, action: "shipper_pushed", subitem_name: row.values.item_name, title: "pushed as part of a grouped spreadsheet shipment", meta: { shipperId: targetShipperId, shipperName: workbookShipperName, spreadsheetShipmentGroupId: shipmentGroupId, combined: true }, created_at: new Date().toISOString() })));
         return NextResponse.json({ ok: true, spreadsheetRowsCreated: createdRows.length, spreadsheetPushes: [{ shipperId: targetShipperId, workbookName: `${workbookShipperName} workbook`, rowNumbers: createdRows.map((row) => positions.get(row.id)).filter((row): row is number => typeof row === "number") }] }, { status: 201 });
 
@@ -155,7 +162,6 @@ export async function POST(request: NextRequest) {
             }).eq("shipment_id", shipmentId).eq("subitem_id", subitemId);
             if (itemError) return NextResponse.json({ error: itemError?.message }, { status: 500 });
         }
-        await Promise.all(ids.map((id) => supabaseAdmin.from("subitems").update({ cn_tracking: values.get(id)!.cn_tracking_no }).eq("id", id)));
         const actor = input.ic!;
         const targetShipperName = shippers?.find((shipper) => shipper.id === input.shipperId)?.name ?? "Shipper";
         const spreadsheetRows = await createCrmSpreadsheetRows({

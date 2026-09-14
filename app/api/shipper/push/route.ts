@@ -85,6 +85,15 @@ function validLabelsForShipper(shipperName: string | null | undefined) {
     return name ? [name] : [];
 }
 
+function timelineTrackingNumbers(timelineGroups: unknown, fallback: string | null | undefined) {
+    const groups = Array.isArray(timelineGroups) ? timelineGroups : [];
+    const numbers = groups
+        .map((group) => String((group as { cnTracking?: unknown }).cnTracking ?? "").trim())
+        .filter(Boolean);
+    if (numbers.length) return [...new Set(numbers)];
+    return String(fallback ?? "").split(",").map((value) => value.trim()).filter(Boolean);
+}
+
 export async function POST(req: NextRequest) {
     try {
         const supabase = await createClient();
@@ -172,6 +181,7 @@ export async function POST(req: NextRequest) {
         price,
         up,
         cn_tracking,
+        timeline_groups,
         shipper,
         shipper_id
             `)
@@ -264,6 +274,7 @@ export async function POST(req: NextRequest) {
 
         const defaults: Array<Record<string, any>> = subitems.map((item) => {
             const ocfItem = ocfItemBySubitemId.get(item.id);
+            const trackingOptions = timelineTrackingNumbers(item.timeline_groups, item.cn_tracking);
 
             return {
                 subitem_id: item.id,
@@ -286,7 +297,10 @@ export async function POST(req: NextRequest) {
                 logistics_remarks: null,
                 ic: pushedByName,
                 info_provided_date: pushedDate,
-                cn_tracking_no: item.cn_tracking,
+                // A shipment belongs to one timeline. Never use the comma-separated
+                // CRM summary as a tracking number in the shipper workbook.
+                cn_tracking_no: trackingOptions.length === 1 ? trackingOptions[0] : null,
+                tracking_options: trackingOptions,
                 cartons: null,
                 item_name: item.name ?? null,
                 delivery_info: buildDeliveryInfo(ocfItem) ?? null,
@@ -327,6 +341,8 @@ export async function POST(req: NextRequest) {
 
         const suppliedBySubitemId = new Map((body.values ?? []).map((value) => [value.subitemId, value]));
         const rowsToUpsert: Array<Record<string, any>> = previews.map((preview) => {
+            const shipperRow = { ...preview };
+            delete shipperRow.tracking_options;
             const supplied = suppliedBySubitemId.get(preview.subitem_id);
             const edits = Object.fromEntries(PREVIEW_FIELDS.map((field) => [field, supplied?.[field] ?? preview[field]]));
             const missing = REQUIRED_PREVIEW_FIELDS.filter((field) => {
@@ -334,6 +350,11 @@ export async function POST(req: NextRequest) {
                 return value === null || value === undefined || String(value).trim() === "";
             });
             if (missing.length) throw new Error(`Complete all mandatory fields before pushing: ${missing.join(", ")}`);
+            const source = subitems.find((item) => item.id === preview.subitem_id);
+            const trackingOptions = timelineTrackingNumbers(source?.timeline_groups, source?.cn_tracking);
+            if (!trackingOptions.includes(String(edits.cn_tracking_no ?? "").trim())) {
+                throw new Error("Choose a CN Tracking number from one of this subitem's project timelines.");
+            }
             const qty = Number(edits.qty);
             const up = Number(edits.up);
             if (!Number.isFinite(qty) || !Number.isFinite(up)) throw new Error("Qty and Unit Price must be valid numbers.");
@@ -342,7 +363,7 @@ export async function POST(req: NextRequest) {
             if (!SEA_OR_AIR_VALUES.includes(String(edits.sea_or_air))) throw new Error("Sea or Air must be 空运, 海运, or 海运/小包.");
             if (!TAX_REFUND_VALUES.includes(String(edits.tax_refund))) throw new Error("退税 must be 退 or X.");
             return {
-                ...preview,
+                ...shipperRow,
                 ...edits,
                 qty,
                 up,
@@ -368,12 +389,6 @@ export async function POST(req: NextRequest) {
         // The legacy row remains only as a pushed-status projection for CRM.
         // Its former shipment/item synchronisation is deliberately omitted:
         // the workbook is now the delivery destination for normal pushes.
-
-        // CN Tracking is deliberately a two-way value: the reviewed value is also stored on the CRM subitem.
-        for (const row of rowsToUpsert) {
-            const { error } = await supabase.from("subitems").update({ cn_tracking: row.cn_tracking_no }).eq("id", row.subitem_id);
-            if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-        }
 
         // The workbook grows downward: every confirmed CRM push creates a new
         // row after the final populated spreadsheet row. shipper_view_rows is

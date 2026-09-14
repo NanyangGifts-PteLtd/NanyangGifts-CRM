@@ -249,11 +249,17 @@ function buildSchedulerData(
 
       return rows.map((subitem) => {
         const subitemName = subitem?.name || "No subitems";
-        const timelineRows = Array.isArray(subitem?.timelineRows)
-          ? subitem.timelineRows.filter(
-              (row): row is TimelineRow => !!row && typeof row === "object",
+        const timelineRows = Array.isArray(subitem?.timelineGroups) && subitem.timelineGroups.length
+          ? subitem.timelineGroups.flatMap((timeline, timelineIndex) =>
+              (timeline.rows ?? [])
+                .filter((row): row is TimelineRow => !!row && typeof row === "object")
+                .map((row) => ({ ...row, id: `${timeline.id}::${row.id}`, name: `[Timeline ${timelineIndex + 1}] ${row.name}` })),
             )
-          : [];
+          : Array.isArray(subitem?.timelineRows)
+            ? subitem.timelineRows.filter(
+                (row): row is TimelineRow => !!row && typeof row === "object",
+              )
+            : [];
         const resourceId = `${client.id}::${subitem?.id ?? "empty"}`;
         const items = timelineRows.flatMap((row): SchedulerItem[] => {
           const start = parseDate(row?.timelineStart);

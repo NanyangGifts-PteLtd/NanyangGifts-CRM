@@ -150,6 +150,7 @@ type Subitems = {
         payment_received: boolean | null; mode_of_payment: string | null; mode_of_payment_option_id: string | null;
     }> | null;
     timeline_rows: any[] | null;
+    timeline_groups?: any[] | null;
     show_timeline: boolean | null;
     show_payments: boolean | null;
     show_sample: boolean | null;
@@ -383,6 +384,9 @@ function mapSubitems(row: Subitems): Subitem {
             modeOfPaymentOptionId: paymentRow.mode_of_payment_option_id ?? null,
         })).sort((first, second) => first.position - second.position),
         timelineRows: row.timeline_rows ?? [],
+        timelineGroups: Array.isArray(row.timeline_groups) && row.timeline_groups.length
+            ? row.timeline_groups
+            : [{ id: "default", cnTracking: row.cn_tracking ?? "", sgTracking: row.sg_tracking ?? "", rows: row.timeline_rows ?? [], isDefault: true }],
         showTimeline: row.show_timeline ?? false,
         showPayments: row.show_payments ?? false,
         showSample: row.show_sample ?? false,
@@ -934,6 +938,7 @@ export async function createSubitemRow(clientId: string, name: string, currentUs
             difference: '',
             payment_remarks: '',
             timeline_rows: timelineRows,
+            timeline_groups: [{ id: "default", cnTracking: "", sgTracking: "", rows: timelineRows, isDefault: true }],
             show_timeline: false,
             show_payments: false,
             show_sample: false,
@@ -1105,6 +1110,51 @@ export async function updateSubitemRow(subitemId: string, updates: Partial<Subit
         );
     }
 
+    if (nextUpdates.timelineGroups !== undefined) {
+        const normalizeTracking = (value: unknown) => String(value ?? '').trim().toLowerCase();
+        const existingTimelines = Array.isArray(existing.timeline_groups) && existing.timeline_groups.length
+            ? existing.timeline_groups
+            : [{ id: 'default', cnTracking: existing.cn_tracking ?? '' }];
+        const existingTrackingByTimelineId = new Map(
+            existingTimelines.map((timeline: { id?: unknown; cnTracking?: unknown }) => [
+                String(timeline.id ?? ''),
+                normalizeTracking(timeline.cnTracking),
+            ]),
+        );
+        // Older records may already contain duplicate legacy tracking values.
+        // They should not prevent an unrelated timeline edit. Validate values
+        // only when they are new or have actually changed.
+        const changedTracking = nextUpdates.timelineGroups
+            .map((timeline) => ({
+                id: String(timeline.id ?? ''),
+                value: normalizeTracking(timeline.cnTracking),
+            }))
+            .filter((timeline) => timeline.value && existingTrackingByTimelineId.get(timeline.id) !== timeline.value);
+        for (const changed of changedTracking) {
+            if (nextUpdates.timelineGroups.some((timeline) =>
+                String(timeline.id ?? '') !== changed.id &&
+                normalizeTracking(timeline.cnTracking) === changed.value,
+            )) {
+                throw new Error('CN Tracking numbers must be unique within a subitem.');
+            }
+        }
+        if (changedTracking.length) {
+            const { data: otherSubitems, error: trackingReadError } = await supabase
+                .from('subitems')
+                .select('id, name, timeline_groups')
+                .neq('id', subitemId)
+                .is('deleted_at', null);
+            if (trackingReadError) throw trackingReadError;
+            const requestedSet = new Set(changedTracking.map((timeline) => timeline.value));
+            for (const other of otherSubitems ?? []) {
+                const otherTimelines = Array.isArray(other.timeline_groups) ? other.timeline_groups : [];
+                if (otherTimelines.some((timeline: { cnTracking?: unknown }) => requestedSet.has(normalizeTracking(timeline.cnTracking)))) {
+                    throw new Error(`CN Tracking number is already used by ${other.name ?? 'another subitem'}.`);
+                }
+            }
+        }
+    }
+
     if ("qty" in updates || "up" in updates) {
         const qty = Number(updates.qty ?? 0);
         const up = Number(updates.up ?? 0);
@@ -1190,6 +1240,12 @@ export async function updateSubitemRow(subitemId: string, updates: Partial<Subit
             ...(nextUpdates.difference !== undefined ? { difference: nextUpdates.difference } : {}),
             ...(nextUpdates.paymentRemarks !== undefined ? { payment_remarks: nextUpdates.paymentRemarks } : {}),
             ...(nextUpdates.timelineRows !== undefined ? { timeline_rows: nextUpdates.timelineRows } : {}),
+            ...(nextUpdates.timelineGroups !== undefined ? {
+                timeline_groups: nextUpdates.timelineGroups,
+                timeline_rows: nextUpdates.timelineGroups[0]?.rows ?? [],
+                cn_tracking: nextUpdates.timelineGroups.map((timeline) => timeline.cnTracking.trim()).filter(Boolean).join(', '),
+                sg_tracking: nextUpdates.timelineGroups.map((timeline) => timeline.sgTracking.trim()).filter(Boolean).join(', '),
+            } : {}),
             ...(nextUpdates.showTimeline !== undefined ? { show_timeline: nextUpdates.showTimeline } : {}),
             ...(nextUpdates.showPayments !== undefined ? { show_payments: nextUpdates.showPayments } : {}),
             ...(nextUpdates.showSample !== undefined ? { show_sample: nextUpdates.showSample } : {}),
@@ -1214,7 +1270,7 @@ export async function updateSubitemRow(subitemId: string, updates: Partial<Subit
         });
     }
 
-    const ignoredFields = new Set(['showTimeline', 'showPayments', 'showSample', 'customFields', 'timelineRows']);
+    const ignoredFields = new Set(['showTimeline', 'showPayments', 'showSample', 'customFields', 'timelineRows', 'timelineGroups']);
     const fieldMap: Record<string, string> = {
         replyStatus: 'reply_status', localOverseas: 'local_overseas', paymentStatus: 'payment_status',
         totalUc: 'total_uc', lsRmb: 'ls_rmb', totalC: 'total_c', modeOfPayment: 'mode_of_payment',

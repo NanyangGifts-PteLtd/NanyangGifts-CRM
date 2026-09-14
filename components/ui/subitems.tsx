@@ -6,6 +6,7 @@ import type {
   Profile,
   Subitem,
   TimelineRow,
+  TimelineGroup,
   PaymentRow,
 } from "../../app/types";
 import { createSubitemPaymentRow, updateSubitemPaymentRow, deleteSubitemPaymentRow } from "@/lib/crm";
@@ -179,6 +180,8 @@ const FORMULA_RESULT_FIELDS = new Set([
   "markup",
   "percentMarkup",
   "priceToSet",
+  "cnTracking",
+  "sgTracking",
   "quantityProduced",
   "qtyTotal",
   "qtyFor",
@@ -629,6 +632,7 @@ export function SubitemsTable({
     null,
   );
   const [pushPreviewShipperName, setPushPreviewShipperName] = useState("");
+  const [pushPreviewTrackingOptions, setPushPreviewTrackingOptions] = useState<string[]>([]);
   const [pushPreviewHistory, setPushPreviewHistory] = useState<{
     alreadyPushed: boolean;
     differentShipper: boolean;
@@ -642,6 +646,11 @@ export function SubitemsTable({
   const [undoneActivityIds, setUndoneActivityIds] = useState<Set<string>>(
     new Set(),
   );
+  const [pendingTimelineRemoval, setPendingTimelineRemoval] = useState<{
+    subitemId: string;
+    timelineId: string;
+    timelineNumber: number;
+  } | null>(null);
   const hasSubitemEditPermission = (subitemId: string) =>
     !!currentUserId &&
     (String(currentUserRole ?? "").trim().toLowerCase() === "director" ||
@@ -1465,6 +1474,16 @@ export function SubitemsTable({
       const row = result?.rows?.[0];
       if (!row)
         throw new Error("No shipper data was available for this subitem.");
+      const trackingOptions = Array.isArray(row.tracking_options)
+        ? row.tracking_options
+            .map((value: unknown) => String(value).trim())
+            .filter(Boolean)
+        : [];
+      if (!trackingOptions.length) {
+        throw new Error(
+          "Add a CN Tracking number to one of this subitem's Project Timelines before pushing.",
+        );
+      }
       const singaporeNow = new Date(Date.now() + 8 * 60 * 60 * 1000);
       const today = `${singaporeNow.getUTCFullYear()}-${String(singaporeNow.getUTCMonth() + 1).padStart(2, "0")}-${String(singaporeNow.getUTCDate()).padStart(2, "0")}`;
       setPushPreview({
@@ -1480,6 +1499,7 @@ export function SubitemsTable({
           ]),
         ),
       } as ShipperPushValues);
+      setPushPreviewTrackingOptions(trackingOptions);
       setPushPreviewShipperName(String(row.shipper_name || "Selected shipper"));
       setPushPreviewHistory({
         alreadyPushed: Boolean(row.already_pushed),
@@ -1529,7 +1549,20 @@ export function SubitemsTable({
     const invalid = !!field?.required && !value.trim();
     const className = `mt-1 w-full rounded-md border px-3 py-2 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-cyan-200 ${invalid ? "border-red-300 bg-red-50" : "border-slate-300"}`;
     const control =
-      key === "sea_or_air" ? (
+      key === "cn_tracking_no" ? (
+        <select
+          value={value}
+          onChange={(event) => updatePushPreview(key, event.target.value)}
+          className={className}
+        >
+          <option value="">Select a project timeline CN Tracking number</option>
+          {pushPreviewTrackingOptions.map((trackingNumber) => (
+            <option key={trackingNumber} value={trackingNumber}>
+              {trackingNumber}
+            </option>
+          ))}
+        </select>
+      ) : key === "sea_or_air" ? (
         <select
           value={value}
           onChange={(event) => updatePushPreview(key, event.target.value)}
@@ -1595,15 +1628,13 @@ export function SubitemsTable({
       const result = await response.json();
       if (!response.ok)
         throw new Error(result?.error || "Failed to push to shipper view.");
-      onUpdateSubitem(pushPreview.subitemId, {
-        cnTracking: pushPreview.cn_tracking_no,
-      });
       window.localStorage.setItem("shipper-spreadsheet-refresh", `${Date.now()}-${Math.random()}`);
       setPushedSubitemIds((previous) =>
         new Set(previous).add(pushPreview.subitemId),
       );
       setPushPreview(null);
       setPushPreviewShipperName("");
+      setPushPreviewTrackingOptions([]);
       setPushPreviewHistory(null);
       const destinations = (result?.spreadsheetPushes ?? []).map((push: { workbookName?: string; rowNumbers?: number[] }) => `${push.workbookName ?? "Shipper workbook"}: row${(push.rowNumbers?.length ?? 0) === 1 ? "" : "s"} ${(push.rowNumbers ?? []).join(", ")}`).join(" · ");
       toast.success("Pushed to shipper workbook", {
@@ -2045,14 +2076,16 @@ export function SubitemsTable({
         return (
           <EditableCell
             value={sub.cnTracking}
-            onChange={(v) => onUpdateSubitem(sub.id, { cnTracking: v })}
+            onChange={() => undefined}
+            readOnly
           />
         );
       case "sgTracking":
         return (
           <EditableCell
             value={sub.sgTracking}
-            onChange={(v) => onUpdateSubitem(sub.id, { sgTracking: v })}
+            onChange={() => undefined}
+            readOnly
           />
         );
       default:
@@ -2196,14 +2229,16 @@ export function SubitemsTable({
         return (
           <EditableCell
             value={sub.cnTracking}
-            onChange={(v) => onUpdateSubitem(sub.id, { cnTracking: v })}
+            onChange={() => undefined}
+            readOnly
           />
         );
       case "sgTracking":
         return (
           <EditableCell
             value={sub.sgTracking}
-            onChange={(v) => onUpdateSubitem(sub.id, { sgTracking: v })}
+            onChange={() => undefined}
+            readOnly
           />
         );
       case "supplier":
@@ -2513,6 +2548,34 @@ export function SubitemsTable({
         </AlertDialogContent>
       </AlertDialog>
 
+      <AlertDialog
+        open={!!pendingTimelineRemoval}
+        onOpenChange={(open) => !open && setPendingTimelineRemoval(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove this timeline?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Remove Project Timeline {pendingTimelineRemoval?.timelineNumber}? Its tracking numbers and all timeline processes will be removed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700"
+              onClick={() => {
+                if (!pendingTimelineRemoval || !canEditSubitem(pendingTimelineRemoval.subitemId)) return;
+                const subitem = subitems.find((candidate) => candidate.id === pendingTimelineRemoval.subitemId);
+                if (subitem) onUpdateSubitem(subitem.id, { timelineGroups: (subitem.timelineGroups ?? []).filter((timeline) => timeline.id !== pendingTimelineRemoval.timelineId) });
+                setPendingTimelineRemoval(null);
+              }}
+            >
+              Remove timeline
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {pushPreview && (
         <div
           className="fixed inset-0 z-[150] flex items-center justify-center bg-slate-950/40 p-4"
@@ -2539,6 +2602,7 @@ export function SubitemsTable({
                 onClick={() => {
                   setPushPreview(null);
                   setPushPreviewShipperName("");
+                  setPushPreviewTrackingOptions([]);
                   setPushPreviewHistory(null);
                 }}
                 disabled={pushingSubitemId === pushPreview.subitemId}
@@ -2609,7 +2673,7 @@ export function SubitemsTable({
             </div>
             <div className="flex items-center justify-between border-t border-slate-200 px-5 py-4">
               <p className="text-xs text-slate-500">
-                CN Tracking # will also update the CRM Board.
+                Choose the CN Tracking number from the project timeline being shipped.
               </p>
               <div className="flex gap-2">
                 <button
@@ -2617,6 +2681,7 @@ export function SubitemsTable({
                   onClick={() => {
                     setPushPreview(null);
                     setPushPreviewShipperName("");
+                    setPushPreviewTrackingOptions([]);
                     setPushPreviewHistory(null);
                   }}
                   disabled={pushingSubitemId === pushPreview.subitemId}
@@ -3331,42 +3396,31 @@ export function SubitemsTable({
 
                 {tableMode === "payment" && activeSubitemView(sub) === "timeline" && hasReachedAwardedPhase(sub.status) && (
                   <ExpandedRow colSpan={totalColSpan} tone="blue">
-                    <TimelineSection
-                      rows={
-                        sub.timelineRows?.length
-                          ? sub.timelineRows
-                          : DEFAULT_TIMELINE_ROWS
-                      }
-                      onUpdate={(rows) =>
-                        onUpdateSubitem(sub.id, {
-                          timelineRows: updateTimelineRowsWithDependencies(
-                            sub.timelineRows?.length
-                              ? sub.timelineRows
-                              : DEFAULT_TIMELINE_ROWS,
-                            rows,
-                          ),
-                        })
-                      }
-                      timelineProgressOptions={subitemSubprogressOptions}
-                      onAddTimelineProgress={onAddSubitemSubprogress}
-                      onDeleteTimelineProgress={onDeleteSubitemSubprogress}
-                      onUpdateOptionColor={(name, color) =>
-                        onUpdateOptionColor?.(
-                          "subitem_subprogress",
-                          name,
-                          color,
-                        )
-                      }
-                      onRenameOption={(oldName, newName) =>
-                        onRenameOption?.(
-                          "subitem_subprogress",
-                          oldName,
-                          newName,
-                        )
-                      }
-                      onReorderOptions={(values) => onReorderOptions?.("subitem_subprogress", values)}
-                      readOnly={!canEditSubitem(sub.id)}
-                    />
+                    <div className="flex items-start gap-3 overflow-x-auto px-0 py-1">
+                      {(sub.timelineGroups?.length ? sub.timelineGroups : [{ id: "default", cnTracking: sub.cnTracking, sgTracking: sub.sgTracking, rows: sub.timelineRows?.length ? sub.timelineRows : DEFAULT_TIMELINE_ROWS, isDefault: true }]).map((timeline: TimelineGroup, index) => (
+                        <TimelineSection
+                          key={timeline.id}
+                          title={`Project Timeline ${index + 1}`}
+                          rows={timeline.rows}
+                          cnTracking={timeline.cnTracking}
+                          sgTracking={timeline.sgTracking}
+                          onTrackingChange={(tracking) => onUpdateSubitem(sub.id, { timelineGroups: (sub.timelineGroups?.length ? sub.timelineGroups : [{ id: "default", cnTracking: sub.cnTracking, sgTracking: sub.sgTracking, rows: sub.timelineRows?.length ? sub.timelineRows : DEFAULT_TIMELINE_ROWS, isDefault: true }]).map((candidate) => candidate.id === timeline.id ? { ...candidate, ...tracking } : candidate) })}
+                          onRemoveTimeline={timeline.isDefault || !canEditSubitem(sub.id) ? undefined : () => setPendingTimelineRemoval({ subitemId: sub.id, timelineId: timeline.id, timelineNumber: index + 1 })}
+                          onUpdate={(rows) => onUpdateSubitem(sub.id, { timelineGroups: (sub.timelineGroups?.length ? sub.timelineGroups : [{ id: "default", cnTracking: sub.cnTracking, sgTracking: sub.sgTracking, rows: sub.timelineRows?.length ? sub.timelineRows : DEFAULT_TIMELINE_ROWS, isDefault: true }]).map((candidate) => candidate.id === timeline.id ? { ...candidate, rows: updateTimelineRowsWithDependencies(candidate.rows, rows) } : candidate) })}
+                          timelineProgressOptions={subitemSubprogressOptions}
+                          onAddTimelineProgress={onAddSubitemSubprogress}
+                          onDeleteTimelineProgress={onDeleteSubitemSubprogress}
+                          onUpdateOptionColor={(name, color) => onUpdateOptionColor?.("subitem_subprogress", name, color)}
+                          onRenameOption={(oldName, newName) => onRenameOption?.("subitem_subprogress", oldName, newName)}
+                          onReorderOptions={(values) => onReorderOptions?.("subitem_subprogress", values)}
+                          readOnly={!canEditSubitem(sub.id)}
+                        />
+                      ))}
+                      <button type="button" disabled={!canEditSubitem(sub.id)} onClick={() => {
+                        const current = sub.timelineGroups?.length ? sub.timelineGroups : [{ id: "default", cnTracking: sub.cnTracking, sgTracking: sub.sgTracking, rows: sub.timelineRows?.length ? sub.timelineRows : DEFAULT_TIMELINE_ROWS, isDefault: true }];
+                        onUpdateSubitem(sub.id, { timelineGroups: [...current, { id: crypto.randomUUID(), cnTracking: "", sgTracking: "", rows: DEFAULT_TIMELINE_ROWS.map((row) => ({ ...row, id: crypto.randomUUID() })), isDefault: false }] });
+                      }} className="mt-1 flex min-h-[340px] w-40 shrink-0 items-center justify-center rounded-lg border-2 border-dashed border-[#7BCBD5] bg-white px-4 text-sm font-semibold text-[#318d98] hover:bg-[#eefbfc] disabled:cursor-not-allowed disabled:opacity-50">+ Add timeline</button>
+                    </div>
                   </ExpandedRow>
                 )}
 

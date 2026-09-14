@@ -17,6 +17,7 @@ type AwardedSubitem = Pick<
   | "sl"
   | "customFields"
   | "timelineRows"
+  | "timelineGroups"
 >;
 type FinalArtwork = { name: string; url: string; mimeType?: string };
 
@@ -97,10 +98,15 @@ function dateInputValue(value?: string | null) {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? "" : date.toISOString().slice(0, 10);
 }
-function nbdTimelineRow(subitem: Pick<Subitem, "timelineRows">) {
-  return (subitem.timelineRows ?? []).find(
-    (row) => row.name.trim().toLowerCase() === "nbd",
-  );
+function nbdTimelineRow(subitem: Pick<Subitem, "timelineRows" | "timelineGroups">) {
+  const rows = subitem.timelineGroups?.length
+    ? subitem.timelineGroups.flatMap((timeline) => timeline.rows ?? [])
+    : subitem.timelineRows ?? [];
+  const nbdRows = rows.filter((row) => row.name.trim().toLowerCase() === "nbd");
+  return nbdRows
+    .filter((row) => Boolean(dateInputValue(row.timelineStart)))
+    .sort((left, right) => dateInputValue(right.timelineStart).localeCompare(dateInputValue(left.timelineStart)))[0]
+    ?? nbdRows[0];
 }
 export function GenerateOcfModal({
   open,
@@ -139,6 +145,7 @@ export function GenerateOcfModal({
       sl: s.sl,
       customFields: s.customFields,
       timelineRows: s.timelineRows,
+      timelineGroups: s.timelineGroups,
     }));
 
     setAwardedSubitems(mappedAwarded);

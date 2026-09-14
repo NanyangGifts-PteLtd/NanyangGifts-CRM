@@ -2,7 +2,7 @@
 
 import { TimelineRow } from "../../app/types";
 import { EditableCell } from "./editablecell";
-import { Calendar, GripVertical, Plus, Trash2 } from "lucide-react";
+import { Calendar, ExternalLink, GripVertical, Plus, Trash2 } from "lucide-react";
 import { StatusBadge } from "./statusbadge";
 import { toast } from "sonner";
 import { useEffect, useState } from "react";
@@ -123,6 +123,11 @@ export const DEFAULT_TIMELINE_ROWS = [
 export function TimelineSection({
   rows,
   onUpdate,
+  title = "Project Timeline 1",
+  cnTracking = "",
+  sgTracking = "",
+  onTrackingChange,
+  onRemoveTimeline,
   timelineProgressOptions,
   onAddTimelineProgress,
   onDeleteTimelineProgress,
@@ -133,6 +138,11 @@ export function TimelineSection({
 }: {
   rows: TimelineRow[];
   onUpdate: (rows: TimelineRow[]) => void;
+  title?: string;
+  cnTracking?: string;
+  sgTracking?: string;
+  onTrackingChange?: (values: { cnTracking: string; sgTracking: string }) => void;
+  onRemoveTimeline?: () => void;
   timelineProgressOptions: OptionEntry[];
   onAddTimelineProgress?: (name: string) => void | Promise<void>;
   onDeleteTimelineProgress?: (name: string) => void | Promise<void>;
@@ -151,6 +161,21 @@ export function TimelineSection({
   const [pendingRowRemovalId, setPendingRowRemovalId] = useState<string | null>(
     null,
   );
+  const [draftCnTracking, setDraftCnTracking] = useState(cnTracking);
+  const [draftSgTracking, setDraftSgTracking] = useState(sgTracking);
+
+  useEffect(() => setDraftCnTracking(cnTracking), [cnTracking]);
+  useEffect(() => setDraftSgTracking(sgTracking), [sgTracking]);
+
+  const saveTracking = (field: "cn" | "sg") => {
+    const nextCnTracking = field === "cn" ? draftCnTracking : cnTracking;
+    const nextSgTracking = field === "sg" ? draftSgTracking : sgTracking;
+    if (nextCnTracking === cnTracking && nextSgTracking === sgTracking) return;
+    onTrackingChange?.({
+      cnTracking: nextCnTracking,
+      sgTracking: nextSgTracking,
+    });
+  };
   useEffect(() => {
     if (readOnly) return;
 
@@ -389,7 +414,7 @@ export function TimelineSection({
           ? "You can only edit items that are assigned to you"
           : undefined
       }
-      className="ml-8 mr-2 mb-2 w-fit max-w-[1500px] overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm"
+      className="mb-2 w-fit max-w-[1500px] overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm"
     >
       {permissionNotice && (
         <div
@@ -425,11 +450,46 @@ export function TimelineSection({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      <div className="flex items-center gap-2 bg-gradient-to-r from-[#9bd9e0] to-[#7BCBD5] px-3 py-1.5">
+      <div className="flex min-h-12 flex-wrap items-center gap-3 bg-gradient-to-r from-[#9bd9e0] to-[#7BCBD5] px-3 py-2">
         <Calendar size={12} className="text-white" />
         <span className="text-xs font-semibold text-white">
-          Project Timeline
+          {title}
         </span>
+        <label className="ml-auto flex items-center gap-1 text-[11px] font-medium text-white">
+          CN Tracking
+          <input
+            value={draftCnTracking}
+            disabled={readOnly}
+            onChange={(event) => setDraftCnTracking(event.target.value)}
+            onBlur={() => saveTracking("cn")}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") event.currentTarget.blur();
+            }}
+            className="h-7 w-36 rounded border border-white/60 bg-white px-2 text-xs text-slate-700 outline-none disabled:cursor-not-allowed"
+          />
+        </label>
+        <label className="flex items-center gap-1 text-[11px] font-medium text-white">
+          SG Tracking
+          <input
+            value={draftSgTracking}
+            disabled={readOnly}
+            onChange={(event) => setDraftSgTracking(event.target.value)}
+            onBlur={() => saveTracking("sg")}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") event.currentTarget.blur();
+            }}
+            className="h-7 w-36 rounded border border-white/60 bg-white px-2 text-xs text-slate-700 outline-none disabled:cursor-not-allowed"
+          />
+        </label>
+        <button
+          type="button"
+          onClick={() => toast.info("CN shipper tracking-site links will be connected in a future update.")}
+          className="flex h-7 items-center gap-1 rounded border border-white/60 bg-white/15 px-2 text-[11px] font-semibold text-white hover:bg-white/25"
+          title="Placeholder for the CN shipper tracking website"
+        >
+          CN Shipper Tracking site <ExternalLink size={13} />
+        </button>
+        {onRemoveTimeline && !readOnly ? <button type="button" onClick={onRemoveTimeline} className="rounded p-1 text-white/90 hover:bg-white/20" title="Remove this timeline"><Trash2 size={15} /></button> : null}
       </div>
 
       <div className="max-w-full overflow-x-auto">
