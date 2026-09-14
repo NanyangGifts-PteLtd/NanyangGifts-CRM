@@ -111,6 +111,7 @@ export interface Subitem {
   owner: string;
   payment: string;
   paymentStatus: string;
+  paymentStatusOptionId?: string | null;
   totalUc: string;
   lsRmb: string;
   manpowerRmb: string;

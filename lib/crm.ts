@@ -130,6 +130,7 @@ type Subitems = {
     owner: string | null;
     payment: string | null;
     payment_status: string | null;
+    payment_status_option_id?: string | null;
     total_uc: string | null;
     ls_rmb: string | null;
     total_c: string | null;
@@ -357,6 +358,7 @@ function mapSubitems(row: Subitems): Subitem {
         owner: row.owner ?? '',
         payment: row.payment ?? '',
         paymentStatus: row.payment_status ?? '',
+        paymentStatusOptionId: row.payment_status_option_id ?? null,
         totalUc: row.total_uc ?? '',
         lsRmb: row.ls_rmb ?? '',
         totalC: row.total_c ?? '',

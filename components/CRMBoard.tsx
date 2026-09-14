@@ -103,7 +103,7 @@ import { uploadCrmFiles } from "@/lib/crm-files";
 import { CombinedPushPreviewModal } from "./shipper/CombinedPushPreviewModal";
 import { useEscapeClose } from "./hooks/use-escape-close";
 
-type OptionEntry = { value: string; color: string; section?: number };
+type OptionEntry = { id?: string; systemKey?: string | null; value: string; color: string; section?: number };
 type PendingOptionDeletion = {
   code: string;
   name: string;
@@ -1891,7 +1891,7 @@ export function CRMBoard({
       const { data: values, error: valuesError } = groupIds.length
         ? await supabase
             .from("option_values")
-            .select("group_id, value, color, section_index")
+            .select("id, group_id, system_key, value, color, section_index")
             .in("group_id", groupIds)
             .order("sort_order")
         : { data: [], error: null };
@@ -1905,6 +1905,8 @@ export function CRMBoard({
       for (const value of values ?? []) {
         const entries = valuesByGroupId.get(value.group_id) ?? [];
         entries.push({
+          id: value.id,
+          systemKey: value.system_key,
           value: value.value,
           color: value.color,
           section: value.section_index ?? 0,

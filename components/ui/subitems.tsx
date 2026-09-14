@@ -167,7 +167,7 @@ export const PAYMENT_COLS: ColumnDef[] = [
 ];
 
 type TableMode = "subitem" | "payment" | "timeline";
-type OptionEntry = { value: string; color: string; section?: number };
+type OptionEntry = { id?: string; systemKey?: string | null; value: string; color: string; section?: number };
 type ShipperPushValues = Record<string, string> & { subitemId: string };
 const CUSTOM_COL_WIDTH = 120;
 const FORMULA_RESULT_FIELDS = new Set([
@@ -186,7 +186,12 @@ const FORMULA_RESULT_FIELDS = new Set([
   "paymentAmount",
   "difference",
 ]);
-const PAYMENT_STATUS_LABELS = new Set(["✅", "Underpaid", "Overpaid", "Resolved"]);
+const PAYMENT_STATUS_SYSTEM_KEYS = new Set([
+  "payment_status_paid",
+  "payment_status_underpaid",
+  "payment_status_overpaid",
+  "payment_status_resolved",
+]);
 const DEFAULT_PAYMENT_STATUS_OPTIONS: OptionEntry[] = [
   { value: "✅", color: "#22c55e" },
   { value: "Underpaid", color: "#ef4444" },
@@ -2075,12 +2080,21 @@ export function SubitemsTable({
       .filter((row) => row.paymentReceived === true)
       .reduce((sum, row) => sum + parseNumber(row.amount), 0);
     const difference = paymentAmount - totalToPay;
+    const paymentStatusOption = (systemKey: string, fallback: string) =>
+      paymentStatusOptions.find((option) => option.systemKey === systemKey) ?? { value: fallback, color: "#d1d5db" };
+    const paidOption = paymentStatusOption("payment_status_paid", "✅");
+    const underpaidOption = paymentStatusOption("payment_status_underpaid", "Underpaid");
+    const overpaidOption = paymentStatusOption("payment_status_overpaid", "Overpaid");
+    const resolvedOption = paymentStatusOption("payment_status_resolved", "Resolved");
     const automaticPaymentStatus = Math.abs(difference) < 0.005
-      ? "✅"
-      : difference < 0 ? "Underpaid" : "Overpaid";
-    const paymentStatus = sub.paymentStatus === "Resolved" ? "Resolved" : automaticPaymentStatus;
+      ? paidOption.value
+      : difference < 0 ? underpaidOption.value : overpaidOption.value;
+    const paymentStatus = sub.paymentStatusOptionId === resolvedOption.id ||
+      (!resolvedOption.id && sub.paymentStatus === resolvedOption.value)
+      ? resolvedOption.value
+      : automaticPaymentStatus;
     const paymentStatusLabelOptions = paymentStatusOptions.filter((option) =>
-      option.value === "" || PAYMENT_STATUS_LABELS.has(option.value),
+      option.value === "" || PAYMENT_STATUS_SYSTEM_KEYS.has(option.systemKey ?? ""),
     );
     const canResolvePayment = ["admin", "director", "dev"].includes(
       String(currentUserRole ?? "").trim().toLowerCase(),
@@ -2138,11 +2152,11 @@ export function SubitemsTable({
             <StatusBadge
               value={paymentStatus}
               onChange={(v) => {
-                if (v === "Resolved" && canResolvePayment) {
-                  onUpdateSubitem(sub.id, { paymentStatus: "Resolved" });
-                } else if (v !== "Resolved" && sub.paymentStatus === "Resolved" && canResolvePayment) {
+                if (v === resolvedOption.value && canResolvePayment) {
+                  onUpdateSubitem(sub.id, { paymentStatus: resolvedOption.value });
+                } else if (v !== resolvedOption.value && sub.paymentStatusOptionId === resolvedOption.id && canResolvePayment) {
                   onUpdateSubitem(sub.id, { paymentStatus: "" });
-                } else if (v === "Resolved") {
+                } else if (v === resolvedOption.value) {
                   toast.error("Only admins, directors, and developers can resolve a payment.");
                 }
               }}

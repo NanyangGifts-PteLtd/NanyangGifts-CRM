@@ -29,6 +29,10 @@ const TRACKING_CUSTOM_FIELD_BY_CODE: Record<string, string> = {
   tracking_payment_status: "trackingPaymentStatus",
   tracking_price_invoice_match: "trackingPriceInvoiceMatch",
 };
+const AUTOMATED_LABELS: Record<string, Set<string>> = {
+  payment_status: new Set(["✅", "Underpaid", "Overpaid", "Resolved"]),
+  overall_payment_status: new Set(["Unpaid", "Partially Paid", "Fully Paid"]),
+};
 
 async function canManageLabels() {
   const caller = await createClient();
@@ -156,12 +160,19 @@ export async function POST(request: NextRequest) {
   const body = await request.json() as { action?: "preview" | "delete"; code?: string; name?: string };
   const code = body.code?.trim() ?? "";
   const name = body.name?.trim() ?? "";
-  if (!code || !name || ![...Object.keys(LABEL_FIELDS), "subitem_subprogress", ...Object.keys(TRACKING_CUSTOM_FIELD_BY_CODE)].includes(code)) {
+  if (!code || !name || ![...Object.keys(LABEL_FIELDS), "overall_payment_status", "subitem_subprogress", ...Object.keys(TRACKING_CUSTOM_FIELD_BY_CODE)].includes(code)) {
     return NextResponse.json({ error: "Invalid label option." }, { status: 400 });
   }
 
   const found = await findOption(code, name);
   if ("error" in found) return NextResponse.json({ error: found.error }, { status: 404 });
+  if (AUTOMATED_LABELS[code]?.has(name)) {
+    return NextResponse.json({
+      error: `“${name}” is produced by the ${code.replaceAll("_", " ")} calculation and cannot be deleted.`,
+      protected: true,
+      reason: "calculated_label",
+    }, { status: 409 });
+  }
   if (found.option.system_key) {
     return NextResponse.json({
       error: `“${name}” is required by backend automation (${code}.${found.option.system_key}) and cannot be deleted. You may rename or recolour it without interrupting the automation.`,

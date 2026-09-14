@@ -50,7 +50,7 @@ import { FilePreview } from "./file-preview";
 import { toast } from "sonner";
 import { useEscapeClose } from "@/components/hooks/use-escape-close";
 
-type OptionEntry = { value: string; color: string; section?: number };
+type OptionEntry = { id?: string; systemKey?: string | null; value: string; color: string; section?: number };
 type AttachmentItem = {
   id: string;
   kind: "file" | "link";
@@ -520,9 +520,15 @@ export function ClientRow({
     : hasLinkedOcf
       ? "border-amber-300 bg-amber-300 text-amber-950 hover:bg-amber-400"
       : "border-slate-200 bg-transparent text-slate-500 hover:bg-slate-50";
+  const paymentStatusOption = (systemKey: string, fallback: string) =>
+    paymentStatusOptions.find((option) => option.systemKey === systemKey) ?? { value: fallback, color: "#d1d5db" };
+  const resolvedPaymentOption = paymentStatusOption("payment_status_resolved", "Resolved");
+  const overallPaymentOption = (systemKey: string, fallback: string) =>
+    overallPaymentStatusOptions.find((option) => option.systemKey === systemKey) ?? { value: fallback, color: "#d1d5db" };
   const awardedSubitems = client.subitems.filter(contributesToAwardedTotals);
   const paidAwardedSubitems = awardedSubitems.filter(
-    (subitem) => subitem.paymentStatus === "Resolved" || (() => {
+    (subitem) => subitem.paymentStatusOptionId === resolvedPaymentOption.id ||
+      (!resolvedPaymentOption.id && subitem.paymentStatus === resolvedPaymentOption.value) || (() => {
       const qty = quickBooksNumber(subitem.qty);
       const cost = quickBooksNumber(subitem.cost);
       const multiplier = subitem.currency === "RMB" ? 5 : subitem.currency === "MYR" ? 3 : 1;
@@ -537,10 +543,10 @@ export function ClientRow({
   const overallPaymentStatus = awardedSubitems.length === 0
     ? ""
     : paidAwardedSubitems.length === 0
-      ? "Unpaid"
+      ? overallPaymentOption("overall_payment_status_unpaid", "Unpaid").value
       : paidAwardedSubitems.length === awardedSubitems.length
-        ? "Fully Paid"
-        : "Partially Paid";
+        ? overallPaymentOption("overall_payment_status_fully_paid", "Fully Paid").value
+        : overallPaymentOption("overall_payment_status_partially_paid", "Partially Paid").value;
   const subitemsLocked = client.customFields?.subitemsLocked === "true";
   const [showCloseDialog, setShowCloseDialog] = useState(false);
   const [showMultipleInvoicesDialog, setShowMultipleInvoicesDialog] =
