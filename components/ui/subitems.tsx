@@ -9,7 +9,12 @@ import type {
   TimelineGroup,
   PaymentRow,
 } from "../../app/types";
-import { createSubitemPaymentRow, updateSubitemPaymentRow, deleteSubitemPaymentRow } from "@/lib/crm";
+import {
+  createSubitemPaymentRow,
+  updateSubitemPaymentRow,
+  deleteSubitemPaymentRow,
+  isAdditionalCostSubitem,
+} from "@/lib/crm";
 import {
   Calendar,
   CreditCard,
@@ -168,7 +173,13 @@ export const PAYMENT_COLS: ColumnDef[] = [
 ];
 
 type TableMode = "subitem" | "payment" | "timeline";
-type OptionEntry = { id?: string; systemKey?: string | null; value: string; color: string; section?: number };
+type OptionEntry = {
+  id?: string;
+  systemKey?: string | null;
+  value: string;
+  color: string;
+  section?: number;
+};
 type ShipperPushValues = Record<string, string> & { subitemId: string };
 const CUSTOM_COL_WIDTH = 120;
 const FORMULA_RESULT_FIELDS = new Set([
@@ -304,7 +315,10 @@ type SubitemProps = {
     oldName: string,
     newName: string,
   ) => void | Promise<void>;
-  onReorderOptions?: (code: string, layout: Array<{ value: string; section: number }>) => void | Promise<void>;
+  onReorderOptions?: (
+    code: string,
+    layout: Array<{ value: string; section: number }>,
+  ) => void | Promise<void>;
   onFilterColumn?: (column: string) => void;
   onSortColumn?: (
     category: "subitem" | "payment",
@@ -550,7 +564,8 @@ export function SubitemsTable({
     }
     if (!hasPaymentEligibleSubitems) {
       toast.warning("No eligible payment rows", {
-        description: "Payment columns are available once a subitem reaches the Awarded phase.",
+        description:
+          "Payment columns are available once a subitem reaches the Awarded phase.",
       });
       return;
     }
@@ -614,16 +629,17 @@ export function SubitemsTable({
 
   const [pushingSubitemId, setPushingSubitemId] = useState<string | null>(null);
   const [pushedSubitemIds, setPushedSubitemIds] = useState<Set<string>>(
-    () => new Set(
-      clientActivityLog
-        .filter(
-          (entry) =>
-            entry.action === "shipper_pushed" &&
-            typeof entry.subitemId === "string" &&
-            entry.subitemId.length > 0,
-        )
-        .map((entry) => entry.subitemId as string),
-    ),
+    () =>
+      new Set(
+        clientActivityLog
+          .filter(
+            (entry) =>
+              entry.action === "shipper_pushed" &&
+              typeof entry.subitemId === "string" &&
+              entry.subitemId.length > 0,
+          )
+          .map((entry) => entry.subitemId as string),
+      ),
   );
   const [pendingPushSubitemId, setPendingPushSubitemId] = useState<
     string | null
@@ -632,7 +648,9 @@ export function SubitemsTable({
     null,
   );
   const [pushPreviewShipperName, setPushPreviewShipperName] = useState("");
-  const [pushPreviewTrackingOptions, setPushPreviewTrackingOptions] = useState<string[]>([]);
+  const [pushPreviewTrackingOptions, setPushPreviewTrackingOptions] = useState<
+    string[]
+  >([]);
   const [pushPreviewHistory, setPushPreviewHistory] = useState<{
     alreadyPushed: boolean;
     differentShipper: boolean;
@@ -653,7 +671,9 @@ export function SubitemsTable({
   } | null>(null);
   const hasSubitemEditPermission = (subitemId: string) =>
     !!currentUserId &&
-    (String(currentUserRole ?? "").trim().toLowerCase() === "director" ||
+    (String(currentUserRole ?? "")
+      .trim()
+      .toLowerCase() === "director" ||
       clientAssignedIds.includes(currentUserId) ||
       clientPmAssignedIds.includes(currentUserId) ||
       (subitemAssigneeMap[subitemId] ?? []).includes(currentUserId));
@@ -1398,7 +1418,14 @@ export function SubitemsTable({
     }
     try {
       setPushingSubitemId(subitemId);
-      let pushResult: { spreadsheetPushes?: Array<{ workbookName?: string; rowNumbers?: number[] }> } | undefined;
+      let pushResult:
+        | {
+            spreadsheetPushes?: Array<{
+              workbookName?: string;
+              rowNumbers?: number[];
+            }>;
+          }
+        | undefined;
 
       if (onPushToShipperView) {
         await onPushToShipperView(subitemId);
@@ -1428,16 +1455,28 @@ export function SubitemsTable({
       }
 
       setPushedSubitemIds((previous) => new Set(previous).add(subitemId));
-      window.localStorage.setItem("shipper-spreadsheet-refresh", `${Date.now()}-${Math.random()}`);
+      window.localStorage.setItem(
+        "shipper-spreadsheet-refresh",
+        `${Date.now()}-${Math.random()}`,
+      );
 
-      const destinations = (pushResult?.spreadsheetPushes ?? []).map((push) => `${push.workbookName ?? "Shipper workbook"}: row${(push.rowNumbers?.length ?? 0) === 1 ? "" : "s"} ${(push.rowNumbers ?? []).join(", ")}`).join(" · ");
+      const destinations = (pushResult?.spreadsheetPushes ?? [])
+        .map(
+          (push) =>
+            `${push.workbookName ?? "Shipper workbook"}: row${(push.rowNumbers?.length ?? 0) === 1 ? "" : "s"} ${(push.rowNumbers ?? []).join(", ")}`,
+        )
+        .join(" · ");
       toast.success("Pushed to shipper workbook", {
-        description: destinations || "The shipping record was added to the shipper workbook.",
+        description:
+          destinations ||
+          "The shipping record was added to the shipper workbook.",
         action: {
           label: "Details",
           onClick: () =>
             toast("Push details", {
-              description: destinations || "The CRM record was added as a new workbook row.",
+              description:
+                destinations ||
+                "The CRM record was added as a new workbook row.",
             }),
         },
       });
@@ -1628,7 +1667,10 @@ export function SubitemsTable({
       const result = await response.json();
       if (!response.ok)
         throw new Error(result?.error || "Failed to push to shipper view.");
-      window.localStorage.setItem("shipper-spreadsheet-refresh", `${Date.now()}-${Math.random()}`);
+      window.localStorage.setItem(
+        "shipper-spreadsheet-refresh",
+        `${Date.now()}-${Math.random()}`,
+      );
       setPushedSubitemIds((previous) =>
         new Set(previous).add(pushPreview.subitemId),
       );
@@ -1636,9 +1678,16 @@ export function SubitemsTable({
       setPushPreviewShipperName("");
       setPushPreviewTrackingOptions([]);
       setPushPreviewHistory(null);
-      const destinations = (result?.spreadsheetPushes ?? []).map((push: { workbookName?: string; rowNumbers?: number[] }) => `${push.workbookName ?? "Shipper workbook"}: row${(push.rowNumbers?.length ?? 0) === 1 ? "" : "s"} ${(push.rowNumbers ?? []).join(", ")}`).join(" · ");
+      const destinations = (result?.spreadsheetPushes ?? [])
+        .map(
+          (push: { workbookName?: string; rowNumbers?: number[] }) =>
+            `${push.workbookName ?? "Shipper workbook"}: row${(push.rowNumbers?.length ?? 0) === 1 ? "" : "s"} ${(push.rowNumbers ?? []).join(", ")}`,
+        )
+        .join(" · ");
       toast.success("Pushed to shipper workbook", {
-        description: destinations || "The reviewed shipping record was added as a new workbook row.",
+        description:
+          destinations ||
+          "The reviewed shipping record was added as a new workbook row.",
       });
     } catch (error: any) {
       toast.error("Push to shipper view failed", {
@@ -1651,9 +1700,13 @@ export function SubitemsTable({
 
   const renderNameCell = (sub: Subitem) => (
     <div
-      draggable={Boolean(onSubitemDragStart) && canEditSubitem(sub.id)}
+      draggable={
+        Boolean(onSubitemDragStart) &&
+        canEditSubitem(sub.id) &&
+        !isAdditionalCostSubitem(sub)
+      }
       onDragStart={(event) => {
-        if (!canEditSubitem(sub.id)) {
+        if (!canEditSubitem(sub.id) || isAdditionalCostSubitem(sub)) {
           event.preventDefault();
           return;
         }
@@ -1679,105 +1732,113 @@ export function SubitemsTable({
         onChange={(v) => onUpdateSubitem(sub.id, { name: v })}
         placeholder="Subitem name"
         className="!justify-start"
+        readOnly={isAdditionalCostSubitem(sub)}
       />
 
-      <div className="ml-auto flex items-center gap-1 shrink-0">
-        <button
-          type="button"
-          data-view-action
-          onClick={() => toggleClientTimelines(sub)}
-          className={`flex items-center justify-center rounded-sm border p-1 transition active:scale-95 ${
-            tableMode === "payment" && activeSubitemView(sub) === "timeline"
-              ? "border-[#7BCBD5] bg-[#7BCBD5] text-white"
-              : "border-teal-200 bg-transparent text-[#6db6bf] hover:bg-teal-100"
-          }`}
-          title="Timeline"
-        >
-          <Calendar size={15} />
-        </button>
+      {!isAdditionalCostSubitem(sub) && (
+        <div className="ml-auto flex items-center gap-1 shrink-0">
+          <button
+            type="button"
+            data-view-action
+            onClick={() => toggleClientTimelines(sub)}
+            className={`flex items-center justify-center rounded-sm border p-1 transition active:scale-95 ${
+              tableMode === "payment" && activeSubitemView(sub) === "timeline"
+                ? "border-[#7BCBD5] bg-[#7BCBD5] text-white"
+                : "border-teal-200 bg-transparent text-[#6db6bf] hover:bg-teal-100"
+            }`}
+            title="Timeline"
+          >
+            <Calendar size={15} />
+          </button>
 
-        <button
-          type="button"
-          data-view-action
-          onClick={togglePaymentView}
-          disabled={!hasPaymentEligibleSubitems}
-          className={`flex items-center justify-center rounded-sm border p-1 transition active:scale-95 ${
-            tableMode === "payment"
-              ? "border-[#f291b6] bg-[#f291b6] text-white"
-              : "border-pink-200 bg-transparent text-[#e87da6] hover:bg-pink-100"
-          }`}
-          title={hasPaymentEligibleSubitems ? "Payments" : "No awarded subitems for payment columns"}
-        >
-          <CreditCard size={15} />
-        </button>
+          <button
+            type="button"
+            data-view-action
+            onClick={togglePaymentView}
+            disabled={!hasPaymentEligibleSubitems}
+            className={`flex items-center justify-center rounded-sm border p-1 transition active:scale-95 ${
+              tableMode === "payment"
+                ? "border-[#f291b6] bg-[#f291b6] text-white"
+                : "border-pink-200 bg-transparent text-[#e87da6] hover:bg-pink-100"
+            }`}
+            title={
+              hasPaymentEligibleSubitems
+                ? "Payments"
+                : "No awarded subitems for payment columns"
+            }
+          >
+            <CreditCard size={15} />
+          </button>
 
-        <button
-          type="button"
-          data-view-action
-          onClick={() => toggleSubitemView(sub, "sample")}
-          className={`flex items-center justify-center rounded-sm border p-1 transition active:scale-95 ${
-            activeSubitemView(sub) === "sample"
-              ? "border-[#d5a5ec] bg-[#d5a5ec] text-white"
-              : "border-purple-200 bg-transparent text-[#ac7ec2] hover:bg-purple-100"
-          }`}
-          title="Samples"
-        >
-          <Package size={15} />
-        </button>
+          <button
+            type="button"
+            data-view-action
+            onClick={() => toggleSubitemView(sub, "sample")}
+            className={`flex items-center justify-center rounded-sm border p-1 transition active:scale-95 ${
+              activeSubitemView(sub) === "sample"
+                ? "border-[#d5a5ec] bg-[#d5a5ec] text-white"
+                : "border-purple-200 bg-transparent text-[#ac7ec2] hover:bg-purple-100"
+            }`}
+            title="Samples"
+          >
+            <Package size={15} />
+          </button>
 
-        <button
-          type="button"
-          data-view-action
-          onClick={() => setActivitySubitem(sub)}
-          className="flex items-center justify-center rounded-sm border border-cyan-200 p-1 text-cyan-500 transition hover:bg-cyan-50"
-          title="Activity log"
-        >
-          <Activity size={15} />
-        </button>
+          <button
+            type="button"
+            data-view-action
+            onClick={() => setActivitySubitem(sub)}
+            className="flex items-center justify-center rounded-sm border border-cyan-200 p-1 text-cyan-500 transition hover:bg-cyan-50"
+            title="Activity log"
+          >
+            <Activity size={15} />
+          </button>
 
-        {canAccessPush
-          ? (() => {
-              const wasPushed = pushedSubitemIds.has(sub.id);
-              return (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    void openPushPreview(sub.id);
-                  }}
-                  disabled={
-                    pushingSubitemId === sub.id ||
-                    preparingPushSubitemId === sub.id ||
-                    !canEditSubitem(sub.id)
-                  }
-                  className={`rounded px-2 py-1 text-[11px] font-medium transition disabled:cursor-not-allowed disabled:opacity-60 ${
-                    wasPushed
-                      ? "border-slate-200 bg-slate-100 text-slate-400 shadow-none"
-                      : "border border-teal-600 bg-teal-600 text-white shadow-sm hover:bg-teal-700"
-                  }`}
-                  title={
-                    !canEditSubitem(sub.id)
-                      ? subitemEditBlockMessage(sub.id)
+          {canAccessPush
+            ? (() => {
+                const wasPushed = pushedSubitemIds.has(sub.id);
+                return (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void openPushPreview(sub.id);
+                    }}
+                    disabled={
+                      pushingSubitemId === sub.id ||
+                      preparingPushSubitemId === sub.id ||
+                      !canEditSubitem(sub.id)
+                    }
+                    className={`rounded px-2 py-1 text-[11px] font-medium transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                      wasPushed
+                        ? "border-slate-200 bg-slate-100 text-slate-400 shadow-none"
+                        : "border border-teal-600 bg-teal-600 text-white shadow-sm hover:bg-teal-700"
+                    }`}
+                    title={
+                      !canEditSubitem(sub.id)
+                        ? subitemEditBlockMessage(sub.id)
+                        : wasPushed
+                          ? "Already pushed. Edit shipment details from the Shipper view."
+                          : "Push to shipper view"
+                    }
+                  >
+                    {pushingSubitemId === sub.id ||
+                    preparingPushSubitemId === sub.id
+                      ? "Preparing..."
                       : wasPushed
-                        ? "Already pushed. Edit shipment details from the Shipper view."
-                        : "Push to shipper view"
-                  }
-                >
-                  {pushingSubitemId === sub.id ||
-                  preparingPushSubitemId === sub.id
-                    ? "Preparing..."
-                    : wasPushed
-                      ? "Pushed"
-                      : "Push"}
-                </button>
-              );
-            })()
-          : null}
-      </div>
+                        ? "Pushed"
+                        : "Push"}
+                  </button>
+                );
+              })()
+            : null}
+        </div>
+      )}
     </div>
   );
 
   const renderSubitemCell = (sub: Subitem, key: string) => {
+    const additionalCostLinked = isAdditionalCostSubitem(sub);
     const costLocked = isCostLocked(sub) && LOCKED_COST_INPUTS.has(key);
     const {
       quantity: qty,
@@ -1842,7 +1903,9 @@ export function SubitemsTable({
               onRenameOption={(oldName, newName) =>
                 onRenameOption?.("local_overseas", oldName, newName)
               }
-              onReorderOptions={(values) => onReorderOptions?.("local_overseas", values)}
+              onReorderOptions={(values) =>
+                onReorderOptions?.("local_overseas", values)
+              }
               small
             />
           </div>
@@ -1863,8 +1926,11 @@ export function SubitemsTable({
               onRenameOption={(oldName, newName) =>
                 onRenameOption?.("subitem_status", oldName, newName)
               }
-              onReorderOptions={(values) => onReorderOptions?.("subitem_status", values)}
+              onReorderOptions={(values) =>
+                onReorderOptions?.("subitem_status", values)
+              }
               small
+              readOnly={additionalCostLinked}
             />
           </div>
         );
@@ -1874,7 +1940,7 @@ export function SubitemsTable({
             value={sub.qty}
             onChange={(v) => onUpdateSubitem(sub.id, { qty: v })}
             type="number"
-            readOnly={costLocked}
+            readOnly={costLocked || additionalCostLinked}
           />
         );
       case "description":
@@ -1910,7 +1976,9 @@ export function SubitemsTable({
               onRenameOption={(oldName, newName) =>
                 onRenameOption?.("shipper", oldName, newName)
               }
-              onReorderOptions={(values) => onReorderOptions?.("shipper", values)}
+              onReorderOptions={(values) =>
+                onReorderOptions?.("shipper", values)
+              }
               small
             />
           </div>
@@ -1947,8 +2015,10 @@ export function SubitemsTable({
               onRenameOption={(oldName, newName) =>
                 onRenameOption?.("currency", oldName, newName)
               }
-              onReorderOptions={(values) => onReorderOptions?.("currency", values)}
-              readOnly={costLocked}
+              onReorderOptions={(values) =>
+                onReorderOptions?.("currency", values)
+              }
+              readOnly={costLocked || additionalCostLinked}
               small
             />
           </div>
@@ -2114,23 +2184,43 @@ export function SubitemsTable({
       .reduce((sum, row) => sum + parseNumber(row.amount), 0);
     const difference = paymentAmount - totalToPay;
     const paymentStatusOption = (systemKey: string, fallback: string) =>
-      paymentStatusOptions.find((option) => option.systemKey === systemKey) ?? { value: fallback, color: "#d1d5db" };
+      paymentStatusOptions.find((option) => option.systemKey === systemKey) ?? {
+        value: fallback,
+        color: "#d1d5db",
+      };
     const paidOption = paymentStatusOption("payment_status_paid", "✅");
-    const underpaidOption = paymentStatusOption("payment_status_underpaid", "Underpaid");
-    const overpaidOption = paymentStatusOption("payment_status_overpaid", "Overpaid");
-    const resolvedOption = paymentStatusOption("payment_status_resolved", "Resolved");
-    const automaticPaymentStatus = Math.abs(difference) < 0.005
-      ? paidOption.value
-      : difference < 0 ? underpaidOption.value : overpaidOption.value;
-    const paymentStatus = sub.paymentStatusOptionId === resolvedOption.id ||
+    const underpaidOption = paymentStatusOption(
+      "payment_status_underpaid",
+      "Underpaid",
+    );
+    const overpaidOption = paymentStatusOption(
+      "payment_status_overpaid",
+      "Overpaid",
+    );
+    const resolvedOption = paymentStatusOption(
+      "payment_status_resolved",
+      "Resolved",
+    );
+    const automaticPaymentStatus =
+      Math.abs(difference) < 0.005
+        ? paidOption.value
+        : difference < 0
+          ? underpaidOption.value
+          : overpaidOption.value;
+    const paymentStatus =
+      sub.paymentStatusOptionId === resolvedOption.id ||
       (!resolvedOption.id && sub.paymentStatus === resolvedOption.value)
-      ? resolvedOption.value
-      : automaticPaymentStatus;
-    const paymentStatusLabelOptions = paymentStatusOptions.filter((option) =>
-      option.value === "" || PAYMENT_STATUS_SYSTEM_KEYS.has(option.systemKey ?? ""),
+        ? resolvedOption.value
+        : automaticPaymentStatus;
+    const paymentStatusLabelOptions = paymentStatusOptions.filter(
+      (option) =>
+        option.value === "" ||
+        PAYMENT_STATUS_SYSTEM_KEYS.has(option.systemKey ?? ""),
     );
     const canResolvePayment = ["admin", "director", "dev"].includes(
-      String(currentUserRole ?? "").trim().toLowerCase(),
+      String(currentUserRole ?? "")
+        .trim()
+        .toLowerCase(),
     );
 
     switch (key) {
@@ -2152,7 +2242,9 @@ export function SubitemsTable({
               onRenameOption={(oldName, newName) =>
                 onRenameOption?.("payment", oldName, newName)
               }
-              onReorderOptions={(values) => onReorderOptions?.("payment", values)}
+              onReorderOptions={(values) =>
+                onReorderOptions?.("payment", values)
+              }
               sectionCount={4}
               small
             />
@@ -2174,7 +2266,9 @@ export function SubitemsTable({
               onRenameOption={(oldName, newName) =>
                 onRenameOption?.("subitem_status", oldName, newName)
               }
-              onReorderOptions={(values) => onReorderOptions?.("subitem_status", values)}
+              onReorderOptions={(values) =>
+                onReorderOptions?.("subitem_status", values)
+              }
               small
             />
           </div>
@@ -2186,19 +2280,47 @@ export function SubitemsTable({
               value={paymentStatus}
               onChange={(v) => {
                 if (v === resolvedOption.value && canResolvePayment) {
-                  onUpdateSubitem(sub.id, { paymentStatus: resolvedOption.value });
-                } else if (v !== resolvedOption.value && sub.paymentStatusOptionId === resolvedOption.id && canResolvePayment) {
+                  onUpdateSubitem(sub.id, {
+                    paymentStatus: resolvedOption.value,
+                  });
+                } else if (
+                  v !== resolvedOption.value &&
+                  sub.paymentStatusOptionId === resolvedOption.id &&
+                  canResolvePayment
+                ) {
                   onUpdateSubitem(sub.id, { paymentStatus: "" });
                 } else if (v === resolvedOption.value) {
-                  toast.error("Only admins, directors, and developers can resolve a payment.");
+                  toast.error(
+                    "Only admins, directors, and developers can resolve a payment.",
+                  );
                 }
               }}
-              options={paymentStatusLabelOptions.length ? paymentStatusLabelOptions : DEFAULT_PAYMENT_STATUS_OPTIONS}
+              options={
+                paymentStatusLabelOptions.length
+                  ? paymentStatusLabelOptions
+                  : DEFAULT_PAYMENT_STATUS_OPTIONS
+              }
               onAddOption={canResolvePayment ? onAddPaymentStatus : undefined}
-              onDeleteOption={canResolvePayment ? onDeletePaymentStatus : undefined}
-              onUpdateOptionColor={canResolvePayment ? (name, color) => onUpdateOptionColor?.("payment_status", name, color) : undefined}
-              onRenameOption={canResolvePayment ? (oldName, newName) => onRenameOption?.("payment_status", oldName, newName) : undefined}
-              onReorderOptions={canResolvePayment ? (values) => onReorderOptions?.("payment_status", values) : undefined}
+              onDeleteOption={
+                canResolvePayment ? onDeletePaymentStatus : undefined
+              }
+              onUpdateOptionColor={
+                canResolvePayment
+                  ? (name, color) =>
+                      onUpdateOptionColor?.("payment_status", name, color)
+                  : undefined
+              }
+              onRenameOption={
+                canResolvePayment
+                  ? (oldName, newName) =>
+                      onRenameOption?.("payment_status", oldName, newName)
+                  : undefined
+              }
+              onReorderOptions={
+                canResolvePayment
+                  ? (values) => onReorderOptions?.("payment_status", values)
+                  : undefined
+              }
               manageLabel="payment status"
               small
             />
@@ -2220,7 +2342,9 @@ export function SubitemsTable({
               onRenameOption={(oldName, newName) =>
                 onRenameOption?.("shipper", oldName, newName)
               }
-              onReorderOptions={(values) => onReorderOptions?.("shipper", values)}
+              onReorderOptions={(values) =>
+                onReorderOptions?.("shipper", values)
+              }
               small
             />
           </div>
@@ -2273,7 +2397,9 @@ export function SubitemsTable({
               onRenameOption={(oldName, newName) =>
                 onRenameOption?.("currency", oldName, newName)
               }
-              onReorderOptions={(values) => onReorderOptions?.("currency", values)}
+              onReorderOptions={(values) =>
+                onReorderOptions?.("currency", values)
+              }
               readOnly={costLocked}
               small
             />
@@ -2337,7 +2463,9 @@ export function SubitemsTable({
               onRenameOption={(oldName, newName) =>
                 onRenameOption?.("mode_of_payment", oldName, newName)
               }
-              onReorderOptions={(values) => onReorderOptions?.("mode_of_payment", values)}
+              onReorderOptions={(values) =>
+                onReorderOptions?.("mode_of_payment", values)
+              }
               small
             />
           </div>
@@ -2504,6 +2632,9 @@ export function SubitemsTable({
   };
 
   const totalColSpan = 1 + cols.length + subitemCustomCols.length + 1;
+  const selectableSubitems = displayedSubitems.filter(
+    (subitem) => !isAdditionalCostSubitem(subitem),
+  );
 
   return (
     <div
@@ -2528,8 +2659,8 @@ export function SubitemsTable({
           <AlertDialogHeader>
             <AlertDialogTitle>Push this subitem again?</AlertDialogTitle>
             <AlertDialogDescription>
-              This subitem has been pushed before. It was previously sent to
-              its shipper workbook; confirming will add a new row.
+              This subitem has been pushed before. It was previously sent to its
+              shipper workbook; confirming will add a new row.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -2556,7 +2687,8 @@ export function SubitemsTable({
           <AlertDialogHeader>
             <AlertDialogTitle>Remove this timeline?</AlertDialogTitle>
             <AlertDialogDescription>
-              Remove Project Timeline {pendingTimelineRemoval?.timelineNumber}? Its tracking numbers and all timeline processes will be removed.
+              Remove Project Timeline {pendingTimelineRemoval?.timelineNumber}?
+              Its tracking numbers and all timeline processes will be removed.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -2564,9 +2696,22 @@ export function SubitemsTable({
             <AlertDialogAction
               className="bg-red-600 hover:bg-red-700"
               onClick={() => {
-                if (!pendingTimelineRemoval || !canEditSubitem(pendingTimelineRemoval.subitemId)) return;
-                const subitem = subitems.find((candidate) => candidate.id === pendingTimelineRemoval.subitemId);
-                if (subitem) onUpdateSubitem(subitem.id, { timelineGroups: (subitem.timelineGroups ?? []).filter((timeline) => timeline.id !== pendingTimelineRemoval.timelineId) });
+                if (
+                  !pendingTimelineRemoval ||
+                  !canEditSubitem(pendingTimelineRemoval.subitemId)
+                )
+                  return;
+                const subitem = subitems.find(
+                  (candidate) =>
+                    candidate.id === pendingTimelineRemoval.subitemId,
+                );
+                if (subitem)
+                  onUpdateSubitem(subitem.id, {
+                    timelineGroups: (subitem.timelineGroups ?? []).filter(
+                      (timeline) =>
+                        timeline.id !== pendingTimelineRemoval.timelineId,
+                    ),
+                  });
                 setPendingTimelineRemoval(null);
               }}
             >
@@ -2630,11 +2775,13 @@ export function SubitemsTable({
                     <>
                       It was previously pushed to{" "}
                       <strong>{pushPreviewHistory.previousShipperName}</strong>.
-                      It was previously sent to <strong>{pushPreviewHistory.previousShipperName}</strong>.
+                      It was previously sent to{" "}
+                      <strong>{pushPreviewHistory.previousShipperName}</strong>.
                     </>
                   ) : (
                     <>
-                      It was previously sent to <strong>{pushPreviewHistory.previousShipperName}</strong>.
+                      It was previously sent to{" "}
+                      <strong>{pushPreviewHistory.previousShipperName}</strong>.
                     </>
                   )}
                 </p>
@@ -2673,7 +2820,8 @@ export function SubitemsTable({
             </div>
             <div className="flex items-center justify-between border-t border-slate-200 px-5 py-4">
               <p className="text-xs text-slate-500">
-                Choose the CN Tracking number from the project timeline being shipped.
+                Choose the CN Tracking number from the project timeline being
+                shipped.
               </p>
               <div className="flex gap-2">
                 <button
@@ -2827,7 +2975,9 @@ export function SubitemsTable({
                               }}
                               title={
                                 !canEditSubitem(entry.subitemId ?? "")
-                                  ? subitemEditBlockMessage(entry.subitemId ?? "")
+                                  ? subitemEditBlockMessage(
+                                      entry.subitemId ?? "",
+                                    )
                                   : undoneActivityIds.has(entry.id)
                                     ? "The action has already been undone"
                                     : "Undo this action"
@@ -2869,14 +3019,14 @@ export function SubitemsTable({
                 <input
                   type="checkbox"
                   checked={
-                    displayedSubitems.length > 0 &&
-                    displayedSubitems.every((subitem) =>
+                    selectableSubitems.length > 0 &&
+                    selectableSubitems.every((subitem) =>
                       selectedSubitemIds.includes(subitem.id),
                     )
                   }
                   onChange={() =>
                     onToggleAllSubitems(
-                      displayedSubitems.map((subitem) => subitem.id),
+                      selectableSubitems.map((subitem) => subitem.id),
                     )
                   }
                   disabled={clientIsSelected}
@@ -3223,8 +3373,14 @@ export function SubitemsTable({
               <React.Fragment key={sub.id}>
                 <tr
                   data-subitem-id={sub.id}
-                  onDragOver={(event) => onSubitemRowDragOver?.(event, sub.id)}
-                  onDrop={(event) => onSubitemRowDrop?.(event, sub.id)}
+                  onDragOver={(event) =>
+                    !isAdditionalCostSubitem(sub) &&
+                    onSubitemRowDragOver?.(event, sub.id)
+                  }
+                  onDrop={(event) =>
+                    !isAdditionalCostSubitem(sub) &&
+                    onSubitemRowDrop?.(event, sub.id)
+                  }
                   onContextMenu={(event) => {
                     event.preventDefault();
                     window.dispatchEvent(
@@ -3276,6 +3432,7 @@ export function SubitemsTable({
                         onMoveSubitemAction(sub.id, targetClientId)
                       }
                       onDelete={() => onDeleteSubitem(sub.id)}
+                      hideMoveAndDuplicate={isAdditionalCostSubitem(sub)}
                     />
                     <input
                       data-selection-control
@@ -3283,16 +3440,21 @@ export function SubitemsTable({
                       checked={selectedSubitemIds.includes(sub.id)}
                       onClick={(e) => {
                         e.stopPropagation();
-                        if (!clientIsSelected) onToggleSubitemSelection(sub.id);
+                        if (!clientIsSelected && !isAdditionalCostSubitem(sub))
+                          onToggleSubitemSelection(sub.id);
                       }}
                       onChange={() => {}}
-                      disabled={clientIsSelected}
-                      title={
-                        clientIsSelected
-                          ? "Clients and subitems cannot be selected together"
-                          : "Select subitem"
+                      disabled={
+                        clientIsSelected || isAdditionalCostSubitem(sub)
                       }
-                      className={`h-3 w-3 rounded accent-[#7BCBD5] ${clientIsSelected ? "cursor-not-allowed opacity-40" : "cursor-pointer"}`}
+                      title={
+                        isAdditionalCostSubitem(sub)
+                          ? "Additional Cost subitems cannot be moved or duplicated"
+                          : clientIsSelected
+                            ? "Clients and subitems cannot be selected together"
+                            : "Select subitem"
+                      }
+                      className={`h-3 w-3 rounded accent-[#7BCBD5] ${clientIsSelected || isAdditionalCostSubitem(sub) ? "cursor-not-allowed opacity-40" : "cursor-pointer"}`}
                     />
                   </td>
 
@@ -3366,63 +3528,344 @@ export function SubitemsTable({
                   </td>
                 </tr>
 
-                {tableMode === "payment" && hasReachedAwardedPhase(sub.status) && (
-                  <tr className="bg-slate-50/70">
-                    <td colSpan={totalColSpan} className="border-b border-r border-[#D0D4E4] bg-[#fafcff] px-9 py-3">
-                      <div className="max-w-[980px] overflow-hidden rounded-md border border-[#D0D4E4] bg-white text-xs text-[#334155] shadow-sm">
-                        <div className="grid grid-cols-[52px_minmax(155px,1fr)_minmax(170px,1fr)_150px_minmax(185px,1fr)_36px] border-b border-[#D0D4E4] bg-[#f4f7fb] text-[12.6px] font-semibold text-gray-500">
-                          <span className="px-3 py-2">#</span>
-                          <span className="border-l border-[#D0D4E4] px-3 py-2">Sub-amount</span>
-                          <span className="border-l border-[#D0D4E4] px-3 py-2">Order number</span>
-                          <span className="border-l border-[#D0D4E4] px-3 py-2">Payment received?</span>
-                          <span className="border-l border-[#D0D4E4] px-3 py-2">Mode of payment</span>
-                          <span className="border-l border-slate-200" />
-                        </div>
-                        {(sub.paymentRows ?? []).map((paymentRow: PaymentRow, paymentIndex) => (
-                          <div key={paymentRow.id} className="grid grid-cols-[52px_minmax(155px,1fr)_minmax(170px,1fr)_150px_minmax(185px,1fr)_36px] border-b border-[#e2e8f0] last:border-b-0">
-                            <div className="flex items-center justify-center px-3 py-2 font-medium text-slate-500">{paymentIndex + 1}</div>
-                            <div className="border-l border-[#e2e8f0]"><EditableCell readOnly={!canEditSubitem(sub.id)} value={paymentRow.amount} type="number" onChange={(value) => void updateSubitemPaymentRow(sub.id, paymentRow.id, { amount: value }).then((updated) => onPaymentRowsChanged?.(sub.id, sub.paymentRows.map((row) => row.id === updated.id ? updated : row)))} className="!justify-start px-3 py-2" /></div>
-                            <div className="border-l border-[#e2e8f0]"><EditableCell readOnly={!canEditSubitem(sub.id)} value={paymentRow.orderNumber} onChange={(value) => void updateSubitemPaymentRow(sub.id, paymentRow.id, { orderNumber: value }).then((updated) => onPaymentRowsChanged?.(sub.id, sub.paymentRows.map((row) => row.id === updated.id ? updated : row)))} className="!justify-start px-3 py-2" /></div>
-                            <div className="border-l border-[#e2e8f0] overflow-hidden"><StatusBadge value={paymentRow.paymentReceived === null ? "" : paymentRow.paymentReceived ? "Yes" : "No"} onChange={(value) => void updateSubitemPaymentRow(sub.id, paymentRow.id, { paymentReceived: value === "Yes" }).then((updated) => onPaymentRowsChanged?.(sub.id, sub.paymentRows.map((row) => row.id === updated.id ? updated : row)))} options={[{ value: "Yes", color: "#22c55e" }, { value: "No", color: "#ef4444" }]} small readOnly={!canEditSubitem(sub.id)} /></div>
-                            <div className="border-l border-[#e2e8f0] overflow-hidden"><StatusBadge value={paymentRow.modeOfPayment} onChange={(value) => void updateSubitemPaymentRow(sub.id, paymentRow.id, { modeOfPayment: value }).then((updated) => onPaymentRowsChanged?.(sub.id, sub.paymentRows.map((row) => row.id === updated.id ? updated : row)))} options={modeOfPaymentOptions} onAddOption={onAddModeOfPayment} onDeleteOption={onDeleteModeOfPayment} manageLabel="mode of payment" small readOnly={!canEditSubitem(sub.id)} /></div>
-                            <button type="button" disabled={!canEditSubitem(sub.id)} onClick={() => { if (window.confirm("Remove this payment row?")) void deleteSubitemPaymentRow(sub.id, paymentRow.id).then(() => onPaymentRowsChanged?.(sub.id, sub.paymentRows.filter((row) => row.id !== paymentRow.id))); }} className="border-l border-[#e2e8f0] text-slate-300 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-40" title="Remove payment row"><Trash2 size={15} className="mx-auto" /></button>
+                {tableMode === "payment" &&
+                  hasReachedAwardedPhase(sub.status) && (
+                    <tr className="bg-slate-50/70">
+                      <td
+                        colSpan={totalColSpan}
+                        className="border-b border-r border-[#D0D4E4] bg-[#fafcff] px-9 py-3"
+                      >
+                        <div className="max-w-[980px] overflow-hidden rounded-md border border-[#D0D4E4] bg-white text-xs text-[#334155] shadow-sm">
+                          <div className="grid grid-cols-[52px_minmax(155px,1fr)_minmax(170px,1fr)_150px_minmax(185px,1fr)_36px] border-b border-[#D0D4E4] bg-[#f4f7fb] text-[12.6px] font-semibold text-gray-500">
+                            <span className="px-3 py-2">#</span>
+                            <span className="border-l border-[#D0D4E4] px-3 py-2">
+                              Sub-amount
+                            </span>
+                            <span className="border-l border-[#D0D4E4] px-3 py-2">
+                              Order number
+                            </span>
+                            <span className="border-l border-[#D0D4E4] px-3 py-2">
+                              Payment received?
+                            </span>
+                            <span className="border-l border-[#D0D4E4] px-3 py-2">
+                              Mode of payment
+                            </span>
+                            <span className="border-l border-slate-200" />
                           </div>
-                        ))}
-                        <button type="button" disabled={!canEditSubitem(sub.id)} onClick={() => void createSubitemPaymentRow(sub.id).then((created) => onPaymentRowsChanged?.(sub.id, [...sub.paymentRows, created]))} className="flex w-full items-center gap-1.5 px-3 py-2 text-left text-xs font-medium text-[#318d98] hover:bg-[#eefbfc] disabled:cursor-not-allowed disabled:opacity-50"><Plus size={15} /> Add payment</button>
-                      </div>
-                    </td>
-                  </tr>
-                )}
+                          {(sub.paymentRows ?? []).map(
+                            (paymentRow: PaymentRow, paymentIndex) => (
+                              <div
+                                key={paymentRow.id}
+                                className="grid grid-cols-[52px_minmax(155px,1fr)_minmax(170px,1fr)_150px_minmax(185px,1fr)_36px] border-b border-[#e2e8f0] last:border-b-0"
+                              >
+                                <div className="flex items-center justify-center px-3 py-2 font-medium text-slate-500">
+                                  {paymentIndex + 1}
+                                </div>
+                                <div className="border-l border-[#e2e8f0]">
+                                  <EditableCell
+                                    readOnly={!canEditSubitem(sub.id)}
+                                    value={paymentRow.amount}
+                                    type="number"
+                                    onChange={(value) =>
+                                      void updateSubitemPaymentRow(
+                                        sub.id,
+                                        paymentRow.id,
+                                        { amount: value },
+                                      ).then((updated) =>
+                                        onPaymentRowsChanged?.(
+                                          sub.id,
+                                          sub.paymentRows.map((row) =>
+                                            row.id === updated.id
+                                              ? updated
+                                              : row,
+                                          ),
+                                        ),
+                                      )
+                                    }
+                                    className="!justify-start px-3 py-2"
+                                  />
+                                </div>
+                                <div className="border-l border-[#e2e8f0]">
+                                  <EditableCell
+                                    readOnly={!canEditSubitem(sub.id)}
+                                    value={paymentRow.orderNumber}
+                                    onChange={(value) =>
+                                      void updateSubitemPaymentRow(
+                                        sub.id,
+                                        paymentRow.id,
+                                        { orderNumber: value },
+                                      ).then((updated) =>
+                                        onPaymentRowsChanged?.(
+                                          sub.id,
+                                          sub.paymentRows.map((row) =>
+                                            row.id === updated.id
+                                              ? updated
+                                              : row,
+                                          ),
+                                        ),
+                                      )
+                                    }
+                                    className="!justify-start px-3 py-2"
+                                  />
+                                </div>
+                                <div className="border-l border-[#e2e8f0] overflow-hidden">
+                                  <StatusBadge
+                                    value={
+                                      paymentRow.paymentReceived === null
+                                        ? ""
+                                        : paymentRow.paymentReceived
+                                          ? "Yes"
+                                          : "No"
+                                    }
+                                    onChange={(value) =>
+                                      void updateSubitemPaymentRow(
+                                        sub.id,
+                                        paymentRow.id,
+                                        { paymentReceived: value === "Yes" },
+                                      ).then((updated) =>
+                                        onPaymentRowsChanged?.(
+                                          sub.id,
+                                          sub.paymentRows.map((row) =>
+                                            row.id === updated.id
+                                              ? updated
+                                              : row,
+                                          ),
+                                        ),
+                                      )
+                                    }
+                                    options={[
+                                      { value: "Yes", color: "#22c55e" },
+                                      { value: "No", color: "#ef4444" },
+                                    ]}
+                                    small
+                                    readOnly={!canEditSubitem(sub.id)}
+                                  />
+                                </div>
+                                <div className="border-l border-[#e2e8f0] overflow-hidden">
+                                  <StatusBadge
+                                    value={paymentRow.modeOfPayment}
+                                    onChange={(value) =>
+                                      void updateSubitemPaymentRow(
+                                        sub.id,
+                                        paymentRow.id,
+                                        { modeOfPayment: value },
+                                      ).then((updated) =>
+                                        onPaymentRowsChanged?.(
+                                          sub.id,
+                                          sub.paymentRows.map((row) =>
+                                            row.id === updated.id
+                                              ? updated
+                                              : row,
+                                          ),
+                                        ),
+                                      )
+                                    }
+                                    options={modeOfPaymentOptions}
+                                    onAddOption={onAddModeOfPayment}
+                                    onDeleteOption={onDeleteModeOfPayment}
+                                    manageLabel="mode of payment"
+                                    small
+                                    readOnly={!canEditSubitem(sub.id)}
+                                  />
+                                </div>
+                                <button
+                                  type="button"
+                                  disabled={!canEditSubitem(sub.id)}
+                                  onClick={() => {
+                                    if (
+                                      window.confirm("Remove this payment row?")
+                                    )
+                                      void deleteSubitemPaymentRow(
+                                        sub.id,
+                                        paymentRow.id,
+                                      ).then(() =>
+                                        onPaymentRowsChanged?.(
+                                          sub.id,
+                                          sub.paymentRows.filter(
+                                            (row) => row.id !== paymentRow.id,
+                                          ),
+                                        ),
+                                      );
+                                  }}
+                                  className="border-l border-[#e2e8f0] text-slate-300 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-40"
+                                  title="Remove payment row"
+                                >
+                                  <Trash2 size={15} className="mx-auto" />
+                                </button>
+                              </div>
+                            ),
+                          )}
+                          <button
+                            type="button"
+                            disabled={!canEditSubitem(sub.id)}
+                            onClick={() =>
+                              void createSubitemPaymentRow(sub.id).then(
+                                (created) =>
+                                  onPaymentRowsChanged?.(sub.id, [
+                                    ...sub.paymentRows,
+                                    created,
+                                  ]),
+                              )
+                            }
+                            className="flex w-full items-center gap-1.5 px-3 py-2 text-left text-xs font-medium text-[#318d98] hover:bg-[#eefbfc] disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            <Plus size={15} /> Add payment
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
 
-                {tableMode === "payment" && activeSubitemView(sub) === "timeline" && hasReachedAwardedPhase(sub.status) && (
-                  <ExpandedRow colSpan={totalColSpan} tone="blue">
-                    <div className="flex items-start gap-3 overflow-x-auto px-0 py-1">
-                      {(sub.timelineGroups?.length ? sub.timelineGroups : [{ id: "default", cnTracking: sub.cnTracking, sgTracking: sub.sgTracking, rows: sub.timelineRows?.length ? sub.timelineRows : DEFAULT_TIMELINE_ROWS, isDefault: true }]).map((timeline: TimelineGroup, index) => (
-                        <TimelineSection
-                          key={timeline.id}
-                          title={`Project Timeline ${index + 1}`}
-                          rows={timeline.rows}
-                          cnTracking={timeline.cnTracking}
-                          sgTracking={timeline.sgTracking}
-                          onTrackingChange={(tracking) => onUpdateSubitem(sub.id, { timelineGroups: (sub.timelineGroups?.length ? sub.timelineGroups : [{ id: "default", cnTracking: sub.cnTracking, sgTracking: sub.sgTracking, rows: sub.timelineRows?.length ? sub.timelineRows : DEFAULT_TIMELINE_ROWS, isDefault: true }]).map((candidate) => candidate.id === timeline.id ? { ...candidate, ...tracking } : candidate) })}
-                          onRemoveTimeline={timeline.isDefault || !canEditSubitem(sub.id) ? undefined : () => setPendingTimelineRemoval({ subitemId: sub.id, timelineId: timeline.id, timelineNumber: index + 1 })}
-                          onUpdate={(rows) => onUpdateSubitem(sub.id, { timelineGroups: (sub.timelineGroups?.length ? sub.timelineGroups : [{ id: "default", cnTracking: sub.cnTracking, sgTracking: sub.sgTracking, rows: sub.timelineRows?.length ? sub.timelineRows : DEFAULT_TIMELINE_ROWS, isDefault: true }]).map((candidate) => candidate.id === timeline.id ? { ...candidate, rows: updateTimelineRowsWithDependencies(candidate.rows, rows) } : candidate) })}
-                          timelineProgressOptions={subitemSubprogressOptions}
-                          onAddTimelineProgress={onAddSubitemSubprogress}
-                          onDeleteTimelineProgress={onDeleteSubitemSubprogress}
-                          onUpdateOptionColor={(name, color) => onUpdateOptionColor?.("subitem_subprogress", name, color)}
-                          onRenameOption={(oldName, newName) => onRenameOption?.("subitem_subprogress", oldName, newName)}
-                          onReorderOptions={(values) => onReorderOptions?.("subitem_subprogress", values)}
-                          readOnly={!canEditSubitem(sub.id)}
-                        />
-                      ))}
-                      <button type="button" disabled={!canEditSubitem(sub.id)} onClick={() => {
-                        const current = sub.timelineGroups?.length ? sub.timelineGroups : [{ id: "default", cnTracking: sub.cnTracking, sgTracking: sub.sgTracking, rows: sub.timelineRows?.length ? sub.timelineRows : DEFAULT_TIMELINE_ROWS, isDefault: true }];
-                        onUpdateSubitem(sub.id, { timelineGroups: [...current, { id: crypto.randomUUID(), cnTracking: "", sgTracking: "", rows: DEFAULT_TIMELINE_ROWS.map((row) => ({ ...row, id: crypto.randomUUID() })), isDefault: false }] });
-                      }} className="mt-1 flex min-h-[340px] w-40 shrink-0 items-center justify-center rounded-lg border-2 border-dashed border-[#7BCBD5] bg-white px-4 text-sm font-semibold text-[#318d98] hover:bg-[#eefbfc] disabled:cursor-not-allowed disabled:opacity-50">+ Add timeline</button>
-                    </div>
-                  </ExpandedRow>
-                )}
+                {tableMode === "payment" &&
+                  activeSubitemView(sub) === "timeline" &&
+                  hasReachedAwardedPhase(sub.status) && (
+                    <ExpandedRow colSpan={totalColSpan} tone="blue">
+                      <div className="flex items-start gap-3 overflow-x-auto px-0 py-1">
+                        {(sub.timelineGroups?.length
+                          ? sub.timelineGroups
+                          : [
+                              {
+                                id: "default",
+                                cnTracking: sub.cnTracking,
+                                sgTracking: sub.sgTracking,
+                                rows: sub.timelineRows?.length
+                                  ? sub.timelineRows
+                                  : DEFAULT_TIMELINE_ROWS,
+                                isDefault: true,
+                              },
+                            ]
+                        ).map((timeline: TimelineGroup, index) => (
+                          <TimelineSection
+                            key={timeline.id}
+                            title={`Project Timeline ${index + 1}`}
+                            rows={timeline.rows}
+                            cnTracking={timeline.cnTracking}
+                            sgTracking={timeline.sgTracking}
+                            onTrackingChange={(tracking) =>
+                              onUpdateSubitem(sub.id, {
+                                timelineGroups: (sub.timelineGroups?.length
+                                  ? sub.timelineGroups
+                                  : [
+                                      {
+                                        id: "default",
+                                        cnTracking: sub.cnTracking,
+                                        sgTracking: sub.sgTracking,
+                                        rows: sub.timelineRows?.length
+                                          ? sub.timelineRows
+                                          : DEFAULT_TIMELINE_ROWS,
+                                        isDefault: true,
+                                      },
+                                    ]
+                                ).map((candidate) =>
+                                  candidate.id === timeline.id
+                                    ? { ...candidate, ...tracking }
+                                    : candidate,
+                                ),
+                              })
+                            }
+                            onRemoveTimeline={
+                              timeline.isDefault || !canEditSubitem(sub.id)
+                                ? undefined
+                                : () =>
+                                    setPendingTimelineRemoval({
+                                      subitemId: sub.id,
+                                      timelineId: timeline.id,
+                                      timelineNumber: index + 1,
+                                    })
+                            }
+                            onUpdate={(rows) =>
+                              onUpdateSubitem(sub.id, {
+                                timelineGroups: (sub.timelineGroups?.length
+                                  ? sub.timelineGroups
+                                  : [
+                                      {
+                                        id: "default",
+                                        cnTracking: sub.cnTracking,
+                                        sgTracking: sub.sgTracking,
+                                        rows: sub.timelineRows?.length
+                                          ? sub.timelineRows
+                                          : DEFAULT_TIMELINE_ROWS,
+                                        isDefault: true,
+                                      },
+                                    ]
+                                ).map((candidate) =>
+                                  candidate.id === timeline.id
+                                    ? {
+                                        ...candidate,
+                                        rows: updateTimelineRowsWithDependencies(
+                                          candidate.rows,
+                                          rows,
+                                        ),
+                                      }
+                                    : candidate,
+                                ),
+                              })
+                            }
+                            timelineProgressOptions={subitemSubprogressOptions}
+                            onAddTimelineProgress={onAddSubitemSubprogress}
+                            onDeleteTimelineProgress={
+                              onDeleteSubitemSubprogress
+                            }
+                            onUpdateOptionColor={(name, color) =>
+                              onUpdateOptionColor?.(
+                                "subitem_subprogress",
+                                name,
+                                color,
+                              )
+                            }
+                            onRenameOption={(oldName, newName) =>
+                              onRenameOption?.(
+                                "subitem_subprogress",
+                                oldName,
+                                newName,
+                              )
+                            }
+                            onReorderOptions={(values) =>
+                              onReorderOptions?.("subitem_subprogress", values)
+                            }
+                            readOnly={!canEditSubitem(sub.id)}
+                          />
+                        ))}
+                        <button
+                          type="button"
+                          disabled={!canEditSubitem(sub.id)}
+                          onClick={() => {
+                            const current = sub.timelineGroups?.length
+                              ? sub.timelineGroups
+                              : [
+                                  {
+                                    id: "default",
+                                    cnTracking: sub.cnTracking,
+                                    sgTracking: sub.sgTracking,
+                                    rows: sub.timelineRows?.length
+                                      ? sub.timelineRows
+                                      : DEFAULT_TIMELINE_ROWS,
+                                    isDefault: true,
+                                  },
+                                ];
+                            onUpdateSubitem(sub.id, {
+                              timelineGroups: [
+                                ...current,
+                                {
+                                  id: crypto.randomUUID(),
+                                  cnTracking: "",
+                                  sgTracking: "",
+                                  rows: DEFAULT_TIMELINE_ROWS.map((row) => ({
+                                    ...row,
+                                    id: crypto.randomUUID(),
+                                  })),
+                                  isDefault: false,
+                                },
+                              ],
+                            });
+                          }}
+                          className="mt-1 flex min-h-[340px] w-40 shrink-0 items-center justify-center rounded-lg border-2 border-dashed border-[#7BCBD5] bg-white px-4 text-sm font-semibold text-[#318d98] hover:bg-[#eefbfc] disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          + Add timeline
+                        </button>
+                      </div>
+                    </ExpandedRow>
+                  )}
 
                 {activeSubitemView(sub) === "sample" && (
                   <ExpandedRow colSpan={totalColSpan} tone="purple">

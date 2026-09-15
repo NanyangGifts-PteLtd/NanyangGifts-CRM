@@ -67,6 +67,89 @@ async function resolveLabel(code: string, value: unknown) {
   return { value: data.value, id: data.id };
 }
 
+const ADDITIONAL_COST_STATUS = "[Variation] Cost Difference";
+const ADDITIONAL_COST_STATUS_KEY = "subitem_status_variation_cost_difference";
+
+async function ensureAdditionalCostStatus() {
+  const { data: group, error: groupError } = await supabaseAdmin
+    .from("option_groups")
+    .select("id")
+    .eq("code", "subitem_status")
+    .maybeSingle();
+  if (groupError || !group) {
+    throw new Error(
+      "The standard Subitem Status labels could not be identified.",
+    );
+  }
+  const { data: systemOption, error: systemOptionError } = await supabaseAdmin
+    .from("option_values")
+    .select("id, value")
+    .eq("group_id", group.id)
+    .eq("system_key", ADDITIONAL_COST_STATUS_KEY)
+    .maybeSingle();
+  if (systemOptionError) throw systemOptionError;
+  if (systemOption) return { id: systemOption.id, value: systemOption.value };
+  const { data: existing, error: existingError } = await supabaseAdmin
+    .from("option_values")
+    .select("id, value")
+    .eq("group_id", group.id)
+    .eq("value", ADDITIONAL_COST_STATUS)
+    .maybeSingle();
+  if (existingError) throw existingError;
+  if (existing) return { id: existing.id, value: existing.value };
+
+  const { data: latest, error: latestError } = await supabaseAdmin
+    .from("option_values")
+    .select("sort_order")
+    .eq("group_id", group.id)
+    .order("sort_order", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (latestError) throw latestError;
+  const { data: created, error: createError } = await supabaseAdmin
+    .from("option_values")
+    .insert({
+      group_id: group.id,
+      value: ADDITIONAL_COST_STATUS,
+      color: "#64748b",
+      system_key: ADDITIONAL_COST_STATUS_KEY,
+      sort_order: Number(latest?.sort_order ?? -1) + 1,
+      section_index: 0,
+    })
+    .select("id, value")
+    .single();
+  if (createError) throw createError;
+  return created;
+}
+
+async function addActivityLog(params: {
+  clientId: string;
+  subitemId: string | null;
+  subitemName: string;
+  actorId: string;
+  action: "subitem_added" | "subitem_deleted";
+  title: string;
+}) {
+  const { data: profile } = await supabaseAdmin
+    .from("profiles")
+    .select("full_name, email")
+    .eq("id", params.actorId)
+    .maybeSingle();
+  const actorName =
+    profile?.full_name?.trim() || profile?.email || "Unknown user";
+  const { error } = await supabaseAdmin.from("activity_log").insert({
+    client_id: params.clientId,
+    subitem_id: params.subitemId,
+    subitem_name: params.subitemName,
+    actor_name: actorName,
+    action: params.action,
+    title: params.title,
+    meta: { linkedEntity: "additional_cost" },
+    created_at: new Date().toISOString(),
+  });
+  if (error) throw error;
+}
+
 export async function GET() {
   try {
     await authorize();
@@ -117,6 +200,8 @@ export async function POST(request: NextRequest) {
         );
       }
     }
+    const createdAt = new Date().toISOString();
+    const status = await ensureAdditionalCostStatus();
     const { data: latest, error: latestError } = await supabaseAdmin
       .from("additional_costs")
       .select("position")
@@ -131,10 +216,59 @@ export async function POST(request: NextRequest) {
         client_id: client.id,
         position: Number(latest?.position ?? -1) + 1,
         created_by: user.id,
+        created_at: createdAt,
       })
       .select("*")
       .single();
     if (error) throw error;
+    try {
+      const { data: lastSubitem, error: lastSubitemError } = await supabaseAdmin
+        .from("subitems")
+        .select("position")
+        .eq("client_id", client.id)
+        .order("position", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (lastSubitemError) throw lastSubitemError;
+      const { data: subitem, error: subitemError } = await supabaseAdmin
+        .from("subitems")
+        .insert({
+          client_id: client.id,
+          position: Number(lastSubitem?.position ?? -1) + 1,
+          created_at: createdAt,
+          name: "Additional Cost",
+          status: status.value,
+          status_option_id: status.id,
+          qty: "1",
+          currency: "SGD",
+          custom_fields: {
+            additionalCostId: data.id,
+            additionalCostLinked: "true",
+          },
+        })
+        .select("id, name")
+        .single();
+      if (subitemError) throw subitemError;
+      const { error: assignmentError } = await supabaseAdmin
+        .from("subitem_assignees")
+        .insert({
+          subitem_id: subitem.id,
+          user_id: user.id,
+          assigned_by: user.id,
+        });
+      if (assignmentError) throw assignmentError;
+      await addActivityLog({
+        clientId: client.id,
+        subitemId: subitem.id,
+        subitemName: subitem.name ?? "Additional Cost",
+        actorId: user.id,
+        action: "subitem_added",
+        title: "added an Additional Cost subitem",
+      });
+    } catch (creationError) {
+      await supabaseAdmin.from("additional_costs").delete().eq("id", data.id);
+      throw creationError;
+    }
     return NextResponse.json({ row: data }, { status: 201 });
   } catch (error) {
     return failure(error);
@@ -197,11 +331,30 @@ export async function DELETE(request: NextRequest) {
   try {
     const { user, role } = await authorize();
     const id = request.nextUrl.searchParams.get("id");
-    if (!id) throw new Error("An additional cost is required.");
+    const subitemId = request.nextUrl.searchParams.get("subitemId");
+    if (!id && !subitemId) throw new Error("An additional cost is required.");
+    let linkedSubitem: {
+      id: string;
+      client_id: string;
+      name: string | null;
+    } | null = null;
+    let additionalCostId = id;
+    if (subitemId) {
+      const { data: subitem, error: subitemError } = await supabaseAdmin
+        .from("subitems")
+        .select("id, client_id, name, custom_fields")
+        .eq("id", subitemId)
+        .maybeSingle();
+      if (subitemError || !subitem)
+        throw new Error("Linked Additional Cost subitem not found.");
+      additionalCostId = String(subitem.custom_fields?.additionalCostId ?? "");
+      if (!additionalCostId)
+        throw new Error("This subitem is not linked to an Additional Cost.");
+    }
     const { data: record, error: recordError } = await supabaseAdmin
       .from("additional_costs")
-      .select("client_id")
-      .eq("id", id)
+      .select("id, client_id")
+      .eq("id", additionalCostId ?? "")
       .maybeSingle();
     if (recordError || !record) throw new Error("Additional cost not found.");
     // Match the CRM Board's deletion rule: admins/directors can delete any
@@ -221,11 +374,50 @@ export async function DELETE(request: NextRequest) {
           "You can only delete additional costs for clients assigned to you.",
         );
     }
+    if (id) {
+      const { data: subitem, error: subitemError } = await supabaseAdmin
+        .from("subitems")
+        .select("id, client_id, name")
+        .eq("client_id", record.client_id)
+        .contains("custom_fields", { additionalCostId: record.id })
+        .is("deleted_at", null)
+        .maybeSingle();
+      if (subitemError) throw subitemError;
+      linkedSubitem = subitem;
+    }
+    const deletedAt = new Date().toISOString();
+    if (linkedSubitem) {
+      const { error: subitemDeleteError } = await supabaseAdmin
+        .from("subitems")
+        .update({
+          deleted_at: deletedAt,
+          deleted_by: user.id,
+          deleted_with_client_id: null,
+        })
+        .eq("id", linkedSubitem.id);
+      if (subitemDeleteError) throw subitemDeleteError;
+      await addActivityLog({
+        clientId: linkedSubitem.client_id,
+        subitemId: null,
+        subitemName: linkedSubitem.name ?? "Additional Cost",
+        actorId: user.id,
+        action: "subitem_deleted",
+        title: "moved linked Additional Cost subitem to the Bin",
+      });
+    }
     const { error } = await supabaseAdmin
       .from("additional_costs")
       .delete()
-      .eq("id", id);
-    if (error) throw error;
+      .eq("id", record.id);
+    if (error) {
+      if (linkedSubitem) {
+        await supabaseAdmin
+          .from("subitems")
+          .update({ deleted_at: null, deleted_by: null })
+          .eq("id", linkedSubitem.id);
+      }
+      throw error;
+    }
     return NextResponse.json({ ok: true });
   } catch (error) {
     return failure(error);

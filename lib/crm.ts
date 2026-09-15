@@ -4,553 +4,752 @@
 // maps & fetches activity log
 // exposes crud functions
 
-import { createClient } from '@/lib/supabase/client';
-import type { TimelineRow, Client, Subitem, ActivityEntry, PaymentRow } from '@/app/types';
-import { addClientAssignee } from './assignments';
-import { capitaliseFirstCharacter } from './text-format';
-
+import { createClient } from "@/lib/supabase/client";
+import type {
+  TimelineRow,
+  Client,
+  Subitem,
+  ActivityEntry,
+  PaymentRow,
+} from "@/app/types";
+import { addClientAssignee } from "./assignments";
+import { capitaliseFirstCharacter } from "./text-format";
 
 const supabase = createClient();
 
 const CLIENT_LOG_IGNORE_FIELDS = new Set<keyof Client>([
-    'expanded',
-    'activityLog',
-    'color',
-    'subitems',
-    'customFields'
+  "expanded",
+  "activityLog",
+  "color",
+  "subitems",
+  "customFields",
 ]);
 
 const SUBITEM_LOG_IGNORE_FIELDS = new Set<keyof Subitem>([
-    'showTimeline',
-    'showPayments',
-    'showSample',
-    'customFields'
+  "showTimeline",
+  "showPayments",
+  "showSample",
+  "customFields",
 ]);
 
-
-
+export const isAdditionalCostSubitem = (
+  subitem: Pick<Subitem, "customFields">,
+) => subitem.customFields?.additionalCostLinked === "true";
 
 export type RoundRobinQueueRow = {
-    user_id: string;
-    full_name: string | null;
-    email: string | null;
-    position: number;
-    is_active: boolean;
-    is_current: boolean;
-    list_name?: 'sales' | 'whatsapp' | 'out';
-}
+  user_id: string;
+  full_name: string | null;
+  email: string | null;
+  position: number;
+  is_active: boolean;
+  is_current: boolean;
+  list_name?: "sales" | "whatsapp" | "out";
+};
 
 export type RoundRobinQueueResponse = {
-    queue: RoundRobinQueueRow[];
-    canEdit: boolean;
-    members: Array<{
-        id: string;
-        full_name: string | null;
-        email: string | null;
-        avatar_url?: string | null;
-        role?: string | null;
-    }>;
-}
+  queue: RoundRobinQueueRow[];
+  canEdit: boolean;
+  members: Array<{
+    id: string;
+    full_name: string | null;
+    email: string | null;
+    avatar_url?: string | null;
+    role?: string | null;
+  }>;
+};
 
-export async function saveSalesRoundRobinLayout(rows: Array<{ user_id: string; list_name: 'sales' | 'whatsapp' | 'out'; position: number }>) {
-    const response = await fetch('/api/round-robin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'save-layout', layout: rows }) });
-    if (!response.ok) throw new Error((await response.json()).error ?? 'Could not save round robin layout.');
+export async function saveSalesRoundRobinLayout(
+  rows: Array<{
+    user_id: string;
+    list_name: "sales" | "whatsapp" | "out";
+    position: number;
+  }>,
+) {
+  const response = await fetch("/api/round-robin", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "save-layout", layout: rows }),
+  });
+  if (!response.ok)
+    throw new Error(
+      (await response.json()).error ?? "Could not save round robin layout.",
+    );
 }
 
 export async function getSalesRoundRobinPointer() {
-    const response = await fetch('/api/round-robin');
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.error ?? 'Could not load round robin.');
-    return Number(result.pointer ?? 0);
+  const response = await fetch("/api/round-robin");
+  const result = await response.json();
+  if (!response.ok)
+    throw new Error(result.error ?? "Could not load round robin.");
+  return Number(result.pointer ?? 0);
 }
 
 export async function setSalesRoundRobinPointer(position: number) {
-    const response = await fetch('/api/round-robin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'set-pointer', position }) });
-    if (!response.ok) throw new Error((await response.json()).error ?? 'Could not set round robin pointer.');
+  const response = await fetch("/api/round-robin", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "set-pointer", position }),
+  });
+  if (!response.ok)
+    throw new Error(
+      (await response.json()).error ?? "Could not set round robin pointer.",
+    );
 }
 
 export async function getSalesRoundRobinQueue() {
-    const response = await fetch('/api/round-robin');
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.error ?? 'Could not load round robin.');
-    return {
-        queue: (result.queue ?? []) as RoundRobinQueueRow[],
-        canEdit: result.canEdit === true,
-        members: result.members ?? [],
-    } satisfies RoundRobinQueueResponse;
+  const response = await fetch("/api/round-robin");
+  const result = await response.json();
+  if (!response.ok)
+    throw new Error(result.error ?? "Could not load round robin.");
+  return {
+    queue: (result.queue ?? []) as RoundRobinQueueRow[],
+    canEdit: result.canEdit === true,
+    members: result.members ?? [],
+  } satisfies RoundRobinQueueResponse;
 }
 
 export async function getNextSalesAssignee() {
-    const response = await fetch('/api/round-robin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'get-next' }) });
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.error ?? 'Could not load round robin.');
-    return (result.next ?? null) as { user_id: string; position: number } | null;
+  const response = await fetch("/api/round-robin", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "get-next" }),
+  });
+  const result = await response.json();
+  if (!response.ok)
+    throw new Error(result.error ?? "Could not load round robin.");
+  return (result.next ?? null) as { user_id: string; position: number } | null;
 }
 
-export async function swapSalesRoundRobinFunctions(firstUserId: string, secondUserId: string) {
-    const response = await fetch('/api/round-robin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'swap', firstUserId, secondUserId }) });
-    if (!response.ok) throw new Error((await response.json()).error ?? 'Could not swap round robin positions.');
+export async function swapSalesRoundRobinFunctions(
+  firstUserId: string,
+  secondUserId: string,
+) {
+  const response = await fetch("/api/round-robin", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "swap", firstUserId, secondUserId }),
+  });
+  if (!response.ok)
+    throw new Error(
+      (await response.json()).error ?? "Could not swap round robin positions.",
+    );
 }
 
-export async function setSalesRoundRobinActive(userId: string, isActive: boolean) {
-    const response = await fetch('/api/round-robin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'set-active', userId, isActive }) });
-    if (!response.ok) throw new Error((await response.json()).error ?? 'Could not update round robin member.');
+export async function setSalesRoundRobinActive(
+  userId: string,
+  isActive: boolean,
+) {
+  const response = await fetch("/api/round-robin", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "set-active", userId, isActive }),
+  });
+  if (!response.ok)
+    throw new Error(
+      (await response.json()).error ?? "Could not update round robin member.",
+    );
 }
 type Subitems = {
+  id: string;
+  display_id?: string | null;
+  client_id: string;
+  position: number | null;
+  created_at: string | null;
+  waiting_started_at: string | null;
+  name: string | null;
+  people: string | null;
+  status: string | null;
+  local_overseas: string | null;
+  qty: string | null;
+  description: string | null;
+  remarks: string | null;
+  shipper: string | null;
+  supplier: string | null;
+  cost: string | null;
+  manpower: string | null;
+  manpower_rmb: string | null;
+  ls: string | null;
+  os: string | null;
+  currency: string | null;
+  c_sgd: string | null;
+  tc: string | null;
+  uc: string | null;
+  tc_sgd: string | null;
+  price: string | null;
+  up: string | null;
+  num_of_cartons: string | null;
+  cn_tracking: string | null;
+  sg_tracking: string | null;
+  pl: string | null;
+  sl: string | null;
+  owner: string | null;
+  payment: string | null;
+  payment_status: string | null;
+  payment_status_option_id?: string | null;
+  total_uc: string | null;
+  ls_rmb: string | null;
+  total_c: string | null;
+  mode_of_payment: string | null;
+  order_number: string | null;
+  quantity_produced: string | null;
+  qty_free: string | null;
+  sample: string | null;
+  qty_total: string | null;
+  qty_we_keep: string | null;
+  qty_for: string | null;
+  payment_amount: string | null;
+  difference: string | null;
+  payment_remarks: string | null;
+  payment_rows?: Array<{
     id: string;
-    display_id?: string | null;
-    client_id: string;
     position: number | null;
-    created_at: string | null;
-    waiting_started_at: string | null;
-    name: string | null;
-    people: string | null;
-    status: string | null;
-    local_overseas: string | null;
-    qty: string | null;
-    description: string | null;
-    remarks: string | null;
-    shipper: string | null;
-    supplier: string | null;
-    cost: string | null;
-    manpower: string | null;
-    manpower_rmb: string | null,
-    ls: string | null;
-    os: string | null;
-    currency: string | null;
-    c_sgd: string | null;
-    tc: string | null;
-    uc: string | null;
-    tc_sgd: string | null;
-    price: string | null;
-    up: string | null;
-    num_of_cartons: string | null;
-    cn_tracking: string | null;
-    sg_tracking: string | null;
-    pl: string | null;
-    sl: string | null;
-    owner: string | null;
-    payment: string | null;
-    payment_status: string | null;
-    payment_status_option_id?: string | null;
-    total_uc: string | null;
-    ls_rmb: string | null;
-    total_c: string | null;
-    mode_of_payment: string | null;
+    amount: string | null;
     order_number: string | null;
-    quantity_produced: string | null;
-    qty_free: string | null;
-    sample: string | null;
-    qty_total: string | null;
-    qty_we_keep: string | null;
-    qty_for: string | null;
-    payment_amount: string | null;
-    difference: string | null;
-    payment_remarks: string | null;
-    payment_rows?: Array<{
-        id: string; position: number | null; amount: string | null; order_number: string | null;
-        payment_received: boolean | null; mode_of_payment: string | null; mode_of_payment_option_id: string | null;
-    }> | null;
-    timeline_rows: any[] | null;
-    timeline_groups?: any[] | null;
-    show_timeline: boolean | null;
-    show_payments: boolean | null;
-    show_sample: boolean | null;
-    sample_rows: any[] | null;
-    sample_order_status: string | null;
-    sample_status: string | null;
-    sample_type: string | null;
-    custom_fields?: Record<string, string>;
-    shipper_id: string | null;
-    deleted_at?: string | null;
-    deleted_by?: string | null;
-    deleted_with_client_id?: string | null;
+    payment_received: boolean | null;
+    mode_of_payment: string | null;
+    mode_of_payment_option_id: string | null;
+  }> | null;
+  timeline_rows: any[] | null;
+  timeline_groups?: any[] | null;
+  show_timeline: boolean | null;
+  show_payments: boolean | null;
+  show_sample: boolean | null;
+  sample_rows: any[] | null;
+  sample_order_status: string | null;
+  sample_status: string | null;
+  sample_type: string | null;
+  custom_fields?: Record<string, string>;
+  shipper_id: string | null;
+  deleted_at?: string | null;
+  deleted_by?: string | null;
+  deleted_with_client_id?: string | null;
 };
 
 type Clients = {
-    id: string;
-    display_id?: string | null;
-    name: string | null;
-    people: string | null;
-    reply_status: string | null;
-    follow_up: string | null;
-    status: string | null;
-    channel: string | null;
-    importance: string | null;
-    progress: string | null;
-    company: string | null;
-    email: string | null;
-    phone: string | null;
-    requirements: string | null;
-    unqualified_reason: string | null;
-    qty: string | null;
-    nbd: string | null;
-    total_price: string | null;
-    billing_address: string | null;
-    created_at: string | null;
-    waiting_started_at: string | null;
-    group_id: string;
-    expanded: boolean | null;
-    color: string | null;
-    activity_log?: ActivityLogRow[] | null;
-    subitems?: Subitems[];
-    custom_fields?: Record<string, string>;
-    deleted_at?: string | null;
-    deleted_by?: string | null;
+  id: string;
+  display_id?: string | null;
+  name: string | null;
+  people: string | null;
+  reply_status: string | null;
+  follow_up: string | null;
+  status: string | null;
+  channel: string | null;
+  importance: string | null;
+  progress: string | null;
+  company: string | null;
+  email: string | null;
+  phone: string | null;
+  requirements: string | null;
+  unqualified_reason: string | null;
+  qty: string | null;
+  nbd: string | null;
+  total_price: string | null;
+  billing_address: string | null;
+  created_at: string | null;
+  waiting_started_at: string | null;
+  group_id: string;
+  expanded: boolean | null;
+  color: string | null;
+  activity_log?: ActivityLogRow[] | null;
+  subitems?: Subitems[];
+  custom_fields?: Record<string, string>;
+  deleted_at?: string | null;
+  deleted_by?: string | null;
 };
 
 export type DeletedBinItem = {
-    id: string;
-    type: 'client' | 'subitem';
-    name: string;
-    clientId?: string;
-    clientName?: string;
-    deletedAt: string;
-    expiresAt: string;
-    subitemCount?: number;
-    parentDeleted?: boolean;
+  id: string;
+  type: "client" | "subitem";
+  name: string;
+  clientId?: string;
+  clientName?: string;
+  deletedAt: string;
+  expiresAt: string;
+  subitemCount?: number;
+  parentDeleted?: boolean;
 };
 
 type ActivityLogRow = {
-    id: string;
-    client_id: string;
-    subitem_id: string | null;
-    actor_name: string | null;
-    action: string;
-    field_name: string | null;
-    old_value: string | null;
-    new_value: string | null;
-    subitem_name: string | null;
-    created_at: string;
-    link: string | null;
-    title: string | null;
-    description: string | null;
-    meta: Record<string, any> | null;
+  id: string;
+  client_id: string;
+  subitem_id: string | null;
+  actor_name: string | null;
+  action: string;
+  field_name: string | null;
+  old_value: string | null;
+  new_value: string | null;
+  subitem_name: string | null;
+  created_at: string;
+  link: string | null;
+  title: string | null;
+  description: string | null;
+  meta: Record<string, any> | null;
 };
 
 const TIMELINE_LOG_FIELDS: Array<keyof TimelineRow> = [
-    'person',
-    'remarks',
-    'subProgress',
-    'timelineStart',
-    'timelineEnd',
-    'duration',
-    'dependency'
-]
+  "person",
+  "remarks",
+  "subProgress",
+  "timelineStart",
+  "timelineEnd",
+  "duration",
+  "dependency",
+];
 const BIN_RETENTION_MS = 30 * 86_400_000;
 function isEqualForLog(a: unknown, b: unknown) {
-    return JSON.stringify(a) === JSON.stringify(b);
+  return JSON.stringify(a) === JSON.stringify(b);
 }
 
 function formatValueForLog(value: unknown): unknown {
-    if (value == null) return null;
+  if (value == null) return null;
 
-    if (Array.isArray(value)) {
-        return value;
-    }
-
+  if (Array.isArray(value)) {
     return value;
+  }
+
+  return value;
 }
 async function logTimelineRowDiffs(params: {
-    clientId: string;
-    subitemId: string;
-    subitemName: string;
-    oldRows: TimelineRow[];
-    newRows: TimelineRow[];
+  clientId: string;
+  subitemId: string;
+  subitemName: string;
+  oldRows: TimelineRow[];
+  newRows: TimelineRow[];
 }) {
-    const oldMap = new Map(params.oldRows.map((row) => [row.id, row]));
-    const newMap = new Map(params.newRows.map((row) => [row.id, row]));
+  const oldMap = new Map(params.oldRows.map((row) => [row.id, row]));
+  const newMap = new Map(params.newRows.map((row) => [row.id, row]));
 
-    for (const [rowId, newRow] of newMap.entries()) {
-        const oldRow = oldMap.get(rowId);
+  for (const [rowId, newRow] of newMap.entries()) {
+    const oldRow = oldMap.get(rowId);
 
-        if (!oldRow) {
-            await insertActivityLog({
-                clientId: params.clientId,
-                subitemId: params.subitemId,
-                subitemName: params.subitemName,
-                action: 'subitem_field_changed',
-                fieldName: `timeline row ${newRow.name ?? rowId} added`,
-                oldValue: null,
-                newValue: newRow,
-            });
-            continue;
-        }
-
-        for (const field of TIMELINE_LOG_FIELDS) {
-            const oldValue = oldRow[field] ?? '';
-            const newValue = newRow[field] ?? '';
-
-            if (isEqualForLog(oldValue, newValue)) continue;
-
-            await insertActivityLog({
-                clientId: params.clientId,
-                subitemId: params.subitemId,
-                subitemName: params.subitemName,
-                action: 'subitem_field_changed',
-                fieldName: `timeline:${newRow.name ?? rowId}:${String(field)}`,
-                oldValue,
-                newValue
-            });
-        }
+    if (!oldRow) {
+      await insertActivityLog({
+        clientId: params.clientId,
+        subitemId: params.subitemId,
+        subitemName: params.subitemName,
+        action: "subitem_field_changed",
+        fieldName: `timeline row ${newRow.name ?? rowId} added`,
+        oldValue: null,
+        newValue: newRow,
+      });
+      continue;
     }
-    for (const [rowId, oldRow] of oldMap.entries()) {
-        if (newMap.has(rowId)) continue;
 
-        await insertActivityLog({
-            clientId: params.clientId,
-            subitemId: params.subitemId,
-            subitemName: params.subitemName,
-            action: 'subitem_field_changed',
-            fieldName: `timeline row ${oldRow.name ?? rowId} removed`,
-            oldValue: oldRow,
-            newValue: null,
-        });
+    for (const field of TIMELINE_LOG_FIELDS) {
+      const oldValue = oldRow[field] ?? "";
+      const newValue = newRow[field] ?? "";
+
+      if (isEqualForLog(oldValue, newValue)) continue;
+
+      await insertActivityLog({
+        clientId: params.clientId,
+        subitemId: params.subitemId,
+        subitemName: params.subitemName,
+        action: "subitem_field_changed",
+        fieldName: `timeline:${newRow.name ?? rowId}:${String(field)}`,
+        oldValue,
+        newValue,
+      });
     }
+  }
+  for (const [rowId, oldRow] of oldMap.entries()) {
+    if (newMap.has(rowId)) continue;
+
+    await insertActivityLog({
+      clientId: params.clientId,
+      subitemId: params.subitemId,
+      subitemName: params.subitemName,
+      action: "subitem_field_changed",
+      fieldName: `timeline row ${oldRow.name ?? rowId} removed`,
+      oldValue: oldRow,
+      newValue: null,
+    });
+  }
 }
-
 
 function mapActivityEntry(row: ActivityLogRow): ActivityEntry {
-    return {
-        id: row.id,
-        clientId: row.client_id,
-        actorName: row.actor_name ?? 'Unknown user',
-        action: row.action as ActivityEntry['action'],
-        fieldName: row.field_name ?? '',
-        oldValue: row.old_value ?? '',
-        newValue: row.new_value ?? '',
-        subitemId: row.subitem_id ?? undefined,
-        subitemName: row.subitem_name ?? '',
-        createdAt: row.created_at,
-        link: row.link ?? null,
-        title: row.title ?? null,
-        description: row.description ?? null,
-        meta: row.meta ?? null,
-    };
+  return {
+    id: row.id,
+    clientId: row.client_id,
+    actorName: row.actor_name ?? "Unknown user",
+    action: row.action as ActivityEntry["action"],
+    fieldName: row.field_name ?? "",
+    oldValue: row.old_value ?? "",
+    newValue: row.new_value ?? "",
+    subitemId: row.subitem_id ?? undefined,
+    subitemName: row.subitem_name ?? "",
+    createdAt: row.created_at,
+    link: row.link ?? null,
+    title: row.title ?? null,
+    description: row.description ?? null,
+    meta: row.meta ?? null,
+  };
 }
 function mapSubitems(row: Subitems): Subitem {
-    return {
-        id: row.id,
-        displayId: row.display_id ?? '',
-        createdAt: row.created_at ?? null,
-        position: row.position ?? Number.MAX_SAFE_INTEGER,
-        name: row.name ?? '',
-        people: row.people ?? '',
-        status: row.status ?? '',
-        localOverseas: row.local_overseas ?? 'Local',
-        qty: row.qty ?? '',
-        description: row.description ?? '',
-        remarks: row.remarks ?? '',
-        shipper: row.shipper ?? '',
-        supplier: row.supplier ?? '',
-        cost: row.cost ?? '',
-        manpower: row.manpower ?? '',
-        manpowerRmb: row.manpower_rmb ?? '',
-        ls: row.ls ?? '',
-        os: row.os ?? '',
-        currency: row.currency ?? '',
-        cSgd: row.c_sgd ?? '',
-        tc: row.tc ?? '',
-        uc: row.uc ?? '',
-        tcSgd: row.tc_sgd ?? '',
-        price: row.price ?? '',
-        up: row.up ?? '',
-        numOfCartons: row.num_of_cartons ?? '',
-        cnTracking: row.cn_tracking ?? '',
-        sgTracking: row.sg_tracking ?? '',
-        pl: row.pl ?? '',
-        sl: row.sl ?? '',
-        owner: row.owner ?? '',
-        payment: row.payment ?? '',
-        paymentStatus: row.payment_status ?? '',
-        paymentStatusOptionId: row.payment_status_option_id ?? null,
-        totalUc: row.total_uc ?? '',
-        lsRmb: row.ls_rmb ?? '',
-        totalC: row.total_c ?? '',
-        modeOfPayment: row.mode_of_payment ?? '',
-        orderNumber: row.order_number ?? '',
-        quantityProduced: row.quantity_produced ?? '',
-        qtyFree: row.qty_free ?? '',
-        sample: row.sample ?? '',
-        qtyTotal: row.qty_total ?? '',
-        qtyWeKeep: row.qty_we_keep ?? '',
-        qtyFor: row.qty_for ?? '',
-        paymentAmount: row.payment_amount ?? '',
-        difference: row.difference ?? '',
-        paymentRemarks: row.payment_remarks ?? '',
-        paymentRows: (row.payment_rows ?? []).map((paymentRow) => ({
-            id: paymentRow.id,
-            position: paymentRow.position ?? 0,
-            amount: paymentRow.amount ?? '',
-            orderNumber: paymentRow.order_number ?? '',
-            paymentReceived: paymentRow.payment_received ?? null,
-            modeOfPayment: paymentRow.mode_of_payment ?? '',
-            modeOfPaymentOptionId: paymentRow.mode_of_payment_option_id ?? null,
-        })).sort((first, second) => first.position - second.position),
-        timelineRows: row.timeline_rows ?? [],
-        timelineGroups: Array.isArray(row.timeline_groups) && row.timeline_groups.length
-            ? row.timeline_groups
-            : [{ id: "default", cnTracking: row.cn_tracking ?? "", sgTracking: row.sg_tracking ?? "", rows: row.timeline_rows ?? [], isDefault: true }],
-        showTimeline: row.show_timeline ?? false,
-        showPayments: row.show_payments ?? false,
-        showSample: row.show_sample ?? false,
-        sampleRows: row.sample_rows ?? [],
-        sampleOrderStatus: row.sample_order_status ?? '',
-        sampleStatus: row.sample_status ?? '',
-        sampleType: row.sample_type ?? '',
-        customFields: row.custom_fields ?? {},
-        shipperId: row.shipper_id ?? null
-
-    };
+  return {
+    id: row.id,
+    displayId: row.display_id ?? "",
+    createdAt: row.created_at ?? null,
+    position: row.position ?? Number.MAX_SAFE_INTEGER,
+    name: row.name ?? "",
+    people: row.people ?? "",
+    status: row.status ?? "",
+    localOverseas: row.local_overseas ?? "Local",
+    qty: row.qty ?? "",
+    description: row.description ?? "",
+    remarks: row.remarks ?? "",
+    shipper: row.shipper ?? "",
+    supplier: row.supplier ?? "",
+    cost: row.cost ?? "",
+    manpower: row.manpower ?? "",
+    manpowerRmb: row.manpower_rmb ?? "",
+    ls: row.ls ?? "",
+    os: row.os ?? "",
+    currency: row.currency ?? "",
+    cSgd: row.c_sgd ?? "",
+    tc: row.tc ?? "",
+    uc: row.uc ?? "",
+    tcSgd: row.tc_sgd ?? "",
+    price: row.price ?? "",
+    up: row.up ?? "",
+    numOfCartons: row.num_of_cartons ?? "",
+    cnTracking: row.cn_tracking ?? "",
+    sgTracking: row.sg_tracking ?? "",
+    pl: row.pl ?? "",
+    sl: row.sl ?? "",
+    owner: row.owner ?? "",
+    payment: row.payment ?? "",
+    paymentStatus: row.payment_status ?? "",
+    paymentStatusOptionId: row.payment_status_option_id ?? null,
+    totalUc: row.total_uc ?? "",
+    lsRmb: row.ls_rmb ?? "",
+    totalC: row.total_c ?? "",
+    modeOfPayment: row.mode_of_payment ?? "",
+    orderNumber: row.order_number ?? "",
+    quantityProduced: row.quantity_produced ?? "",
+    qtyFree: row.qty_free ?? "",
+    sample: row.sample ?? "",
+    qtyTotal: row.qty_total ?? "",
+    qtyWeKeep: row.qty_we_keep ?? "",
+    qtyFor: row.qty_for ?? "",
+    paymentAmount: row.payment_amount ?? "",
+    difference: row.difference ?? "",
+    paymentRemarks: row.payment_remarks ?? "",
+    paymentRows: (row.payment_rows ?? [])
+      .map((paymentRow) => ({
+        id: paymentRow.id,
+        position: paymentRow.position ?? 0,
+        amount: paymentRow.amount ?? "",
+        orderNumber: paymentRow.order_number ?? "",
+        paymentReceived: paymentRow.payment_received ?? null,
+        modeOfPayment: paymentRow.mode_of_payment ?? "",
+        modeOfPaymentOptionId: paymentRow.mode_of_payment_option_id ?? null,
+      }))
+      .sort((first, second) => first.position - second.position),
+    timelineRows: row.timeline_rows ?? [],
+    timelineGroups:
+      Array.isArray(row.timeline_groups) && row.timeline_groups.length
+        ? row.timeline_groups
+        : [
+            {
+              id: "default",
+              cnTracking: row.cn_tracking ?? "",
+              sgTracking: row.sg_tracking ?? "",
+              rows: row.timeline_rows ?? [],
+              isDefault: true,
+            },
+          ],
+    showTimeline: row.show_timeline ?? false,
+    showPayments: row.show_payments ?? false,
+    showSample: row.show_sample ?? false,
+    sampleRows: row.sample_rows ?? [],
+    sampleOrderStatus: row.sample_order_status ?? "",
+    sampleStatus: row.sample_status ?? "",
+    sampleType: row.sample_type ?? "",
+    customFields: row.custom_fields ?? {},
+    shipperId: row.shipper_id ?? null,
+  };
 }
 
 function mapClients(row: Clients): Client {
-    return {
-        id: row.id,
-        displayId: row.display_id ?? '',
-        name: row.name ?? '',
-        people: row.people ?? '',
-        replyStatus: row.reply_status ?? '',
-        followUp: row.follow_up ?? '',
-        status: (row.status as Client['status']) ?? 'New Lead',
-        channel: row.channel ?? '',
-        importance: row.importance ?? '',
-        progress: row.progress ?? '',
-        company: row.company ?? '',
-        email: row.email ?? '',
-        phone: row.phone ?? '',
-        requirements: row.requirements ?? '',
-        unqualifiedReason: row.unqualified_reason ?? '',
-        nbd: row.nbd ?? '',
-        totalPrice: row.total_price ?? '',
-        billingAddress: row.billing_address ?? '',
-        createdAt: row.created_at ?? '',
-        waitingStartedAt: row.waiting_started_at ?? null,
-        groupId: row.group_id ?? null,
-        expanded: row.expanded ?? false,
-        color: row.color ?? '#7BCBD5',
-        activityLog: (row.activity_log ?? []).map(mapActivityEntry),
-        subitems: (row.subitems ?? []).filter((subitem) => !subitem.deleted_at).map(mapSubitems).sort((first, second) => first.position - second.position || (first.createdAt ?? '').localeCompare(second.createdAt ?? '')),
-        customFields: row.custom_fields ?? {},
-
-    };
+  return {
+    id: row.id,
+    displayId: row.display_id ?? "",
+    name: row.name ?? "",
+    people: row.people ?? "",
+    replyStatus: row.reply_status ?? "",
+    followUp: row.follow_up ?? "",
+    status: (row.status as Client["status"]) ?? "New Lead",
+    channel: row.channel ?? "",
+    importance: row.importance ?? "",
+    progress: row.progress ?? "",
+    company: row.company ?? "",
+    email: row.email ?? "",
+    phone: row.phone ?? "",
+    requirements: row.requirements ?? "",
+    unqualifiedReason: row.unqualified_reason ?? "",
+    nbd: row.nbd ?? "",
+    totalPrice: row.total_price ?? "",
+    billingAddress: row.billing_address ?? "",
+    createdAt: row.created_at ?? "",
+    waitingStartedAt: row.waiting_started_at ?? null,
+    groupId: row.group_id ?? null,
+    expanded: row.expanded ?? false,
+    color: row.color ?? "#7BCBD5",
+    activityLog: (row.activity_log ?? []).map(mapActivityEntry),
+    subitems: (row.subitems ?? [])
+      .filter((subitem) => !subitem.deleted_at)
+      .map(mapSubitems)
+      .sort(
+        (first, second) =>
+          first.position - second.position ||
+          (first.createdAt ?? "").localeCompare(second.createdAt ?? ""),
+      ),
+    customFields: row.custom_fields ?? {},
+  };
 }
 
 async function insertActivityLog(params: {
-    clientId: string;
-    subitemId?: string | null;
-        action: 'field_changed' | 'assignment_changed' | 'client_added' | 'client_deleted' | 'client_restored' | 'subitem_added' | 'subitem_deleted' | 'subitem_restored' | 'subitem_field_changed' | 'ocf_created' | 'ocf_signed' | 'ocf_updated' | 'estimate_created' | 'file_uploaded' | 'file_replaced' | 'file_removed' | 'shipper_pushed';
-    fieldName?: string | null;
-    oldValue?: unknown;
-    newValue?: unknown;
-    subitemName?: string | null;
-    link?: string | null;
-    title?: string | null;
-    description?: string | null;
-    meta?: Record<string, any> | null;
+  clientId: string;
+  subitemId?: string | null;
+  action:
+    | "field_changed"
+    | "assignment_changed"
+    | "client_added"
+    | "client_deleted"
+    | "client_restored"
+    | "subitem_added"
+    | "subitem_deleted"
+    | "subitem_restored"
+    | "subitem_field_changed"
+    | "ocf_created"
+    | "ocf_signed"
+    | "ocf_updated"
+    | "estimate_created"
+    | "file_uploaded"
+    | "file_replaced"
+    | "file_removed"
+    | "shipper_pushed";
+  fieldName?: string | null;
+  oldValue?: unknown;
+  newValue?: unknown;
+  subitemName?: string | null;
+  link?: string | null;
+  title?: string | null;
+  description?: string | null;
+  meta?: Record<string, any> | null;
 }) {
-    const {
-        data: { user },
-    } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-    const { data: actorProfile } = user
-        ? await supabase.from('profiles').select('full_name, email').eq('id', user.id).maybeSingle()
-        : { data: null };
-    const actorName = actorProfile?.full_name?.trim() || actorProfile?.email || user?.email || 'Unknown user';
+  const { data: actorProfile } = user
+    ? await supabase
+        .from("profiles")
+        .select("full_name, email")
+        .eq("id", user.id)
+        .maybeSingle()
+    : { data: null };
+  const actorName =
+    actorProfile?.full_name?.trim() ||
+    actorProfile?.email ||
+    user?.email ||
+    "Unknown user";
 
-    const { data, error } = await supabase
-        .from('activity_log')
-        .insert({
-            client_id: params.clientId,
-            subitem_id: params.subitemId ?? null,
-            actor_name: actorName,
-            action: params.action,
-            field_name: params.fieldName ?? null,
-            old_value: params.oldValue ?? null,
-            new_value: params.newValue ?? null,
-            subitem_name: params.subitemName ?? null,
-            link: params.link ?? null,
-            title: params.title ?? null,
-            description: params.description ?? null,
-            meta: params.meta ?? null,
-            created_at: new Date().toISOString(),
-        })
-        .select('*')
-        .single();
+  const { data, error } = await supabase
+    .from("activity_log")
+    .insert({
+      client_id: params.clientId,
+      subitem_id: params.subitemId ?? null,
+      actor_name: actorName,
+      action: params.action,
+      field_name: params.fieldName ?? null,
+      old_value: params.oldValue ?? null,
+      new_value: params.newValue ?? null,
+      subitem_name: params.subitemName ?? null,
+      link: params.link ?? null,
+      title: params.title ?? null,
+      description: params.description ?? null,
+      meta: params.meta ?? null,
+      created_at: new Date().toISOString(),
+    })
+    .select("*")
+    .single();
 
-    if (error) {
-        console.error('insertActivityLog error:', error);
-        throw error;
-    }
-    return data;
+  if (error) {
+    console.error("insertActivityLog error:", error);
+    throw error;
+  }
+  return data;
 }
 
-type LoggedAttachment = { id?: string; name: string; url: string; storagePath?: string };
+type LoggedAttachment = {
+  id?: string;
+  name: string;
+  url: string;
+  storagePath?: string;
+};
 
 function fileAttachmentsForLog(value: unknown): LoggedAttachment[] {
-    if (typeof value !== 'string' || !value.trim()) return [];
-    try {
-        const parsed = JSON.parse(value) as unknown;
-        const items = Array.isArray(parsed) ? parsed : [parsed];
-        return items.filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object' && typeof (item as Record<string, unknown>).url === 'string'))
-            .map((item) => ({ id: typeof item.id === 'string' ? item.id : undefined, name: typeof item.name === 'string' ? item.name : 'File', url: String(item.url), storagePath: typeof item.storagePath === 'string' ? item.storagePath : undefined }));
-    } catch {
-        return [];
-    }
+  if (typeof value !== "string" || !value.trim()) return [];
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    const items = Array.isArray(parsed) ? parsed : [parsed];
+    return items
+      .filter((item): item is Record<string, unknown> =>
+        Boolean(
+          item &&
+          typeof item === "object" &&
+          typeof (item as Record<string, unknown>).url === "string",
+        ),
+      )
+      .map((item) => ({
+        id: typeof item.id === "string" ? item.id : undefined,
+        name: typeof item.name === "string" ? item.name : "File",
+        url: String(item.url),
+        storagePath:
+          typeof item.storagePath === "string" ? item.storagePath : undefined,
+      }));
+  } catch {
+    return [];
+  }
 }
 
-async function logFileAttachmentDiffs(params: { clientId: string; subitemId?: string | null; subitemName?: string | null; before?: Record<string, unknown> | null; after?: Record<string, unknown> | null }) {
-    const before = params.before ?? {};
-    const after = params.after ?? {};
-    for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
-        const oldFiles = fileAttachmentsForLog(before[key]);
-        const newFiles = fileAttachmentsForLog(after[key]);
-        if (!oldFiles.length && !newFiles.length) continue;
-        const oldByIdentity = new Map(oldFiles.map((file) => [file.id ?? file.url, file]));
-        const newByIdentity = new Map(newFiles.map((file) => [file.id ?? file.url, file]));
-        if (oldFiles.length === 1 && newFiles.length === 1 && !oldByIdentity.has(newFiles[0].id ?? newFiles[0].url)) {
-            const retire = supabase.from('activity_log').update({ link: null, description: 'File has been replaced' }).eq('client_id', params.clientId);
-            if (oldFiles[0].storagePath) await retire.contains('meta', { storagePath: oldFiles[0].storagePath });
-            else await retire.eq('field_name', key).contains('meta', { fileName: oldFiles[0].name });
-            await insertActivityLog({ clientId: params.clientId, subitemId: params.subitemId, subitemName: params.subitemName, action: 'file_replaced', fieldName: key, title: `replaced ${oldFiles[0].name} with ${newFiles[0].name}`, link: newFiles[0].url, meta: { field: key, previousFileName: oldFiles[0].name, fileName: newFiles[0].name, storagePath: newFiles[0].storagePath } });
-            continue;
-        }
-        for (const file of newFiles) {
-            const previous = oldByIdentity.get(file.id ?? file.url);
-            if (!previous) await insertActivityLog({ clientId: params.clientId, subitemId: params.subitemId, subitemName: params.subitemName, action: 'file_uploaded', fieldName: key, title: `uploaded ${file.name}`, link: file.url, meta: { field: key, fileName: file.name, storagePath: file.storagePath } });
-            else if (previous.url !== file.url || previous.name !== file.name) await insertActivityLog({ clientId: params.clientId, subitemId: params.subitemId, subitemName: params.subitemName, action: 'file_replaced', fieldName: key, title: `replaced ${previous.name} with ${file.name}`, link: file.url, meta: { field: key, previousFileName: previous.name, fileName: file.name, storagePath: file.storagePath } });
-        }
-        for (const file of oldFiles) {
-            if (newByIdentity.has(file.id ?? file.url)) continue;
-            // Retire prior activity links so a removed attachment cannot still be opened from its old log entry.
-            const retire = supabase.from('activity_log').update({ link: null, description: 'File has been removed' }).eq('client_id', params.clientId);
-            if (file.storagePath) await retire.contains('meta', { storagePath: file.storagePath });
-            else await retire.eq('field_name', key).contains('meta', { fileName: file.name });
-            await insertActivityLog({ clientId: params.clientId, subitemId: params.subitemId, subitemName: params.subitemName, action: 'file_removed', fieldName: key, title: `removed ${file.name}`, meta: { field: key, fileName: file.name, storagePath: file.storagePath } });
-        }
+async function logFileAttachmentDiffs(params: {
+  clientId: string;
+  subitemId?: string | null;
+  subitemName?: string | null;
+  before?: Record<string, unknown> | null;
+  after?: Record<string, unknown> | null;
+}) {
+  const before = params.before ?? {};
+  const after = params.after ?? {};
+  for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
+    const oldFiles = fileAttachmentsForLog(before[key]);
+    const newFiles = fileAttachmentsForLog(after[key]);
+    if (!oldFiles.length && !newFiles.length) continue;
+    const oldByIdentity = new Map(
+      oldFiles.map((file) => [file.id ?? file.url, file]),
+    );
+    const newByIdentity = new Map(
+      newFiles.map((file) => [file.id ?? file.url, file]),
+    );
+    if (
+      oldFiles.length === 1 &&
+      newFiles.length === 1 &&
+      !oldByIdentity.has(newFiles[0].id ?? newFiles[0].url)
+    ) {
+      const retire = supabase
+        .from("activity_log")
+        .update({ link: null, description: "File has been replaced" })
+        .eq("client_id", params.clientId);
+      if (oldFiles[0].storagePath)
+        await retire.contains("meta", { storagePath: oldFiles[0].storagePath });
+      else
+        await retire
+          .eq("field_name", key)
+          .contains("meta", { fileName: oldFiles[0].name });
+      await insertActivityLog({
+        clientId: params.clientId,
+        subitemId: params.subitemId,
+        subitemName: params.subitemName,
+        action: "file_replaced",
+        fieldName: key,
+        title: `replaced ${oldFiles[0].name} with ${newFiles[0].name}`,
+        link: newFiles[0].url,
+        meta: {
+          field: key,
+          previousFileName: oldFiles[0].name,
+          fileName: newFiles[0].name,
+          storagePath: newFiles[0].storagePath,
+        },
+      });
+      continue;
     }
+    for (const file of newFiles) {
+      const previous = oldByIdentity.get(file.id ?? file.url);
+      if (!previous)
+        await insertActivityLog({
+          clientId: params.clientId,
+          subitemId: params.subitemId,
+          subitemName: params.subitemName,
+          action: "file_uploaded",
+          fieldName: key,
+          title: `uploaded ${file.name}`,
+          link: file.url,
+          meta: {
+            field: key,
+            fileName: file.name,
+            storagePath: file.storagePath,
+          },
+        });
+      else if (previous.url !== file.url || previous.name !== file.name)
+        await insertActivityLog({
+          clientId: params.clientId,
+          subitemId: params.subitemId,
+          subitemName: params.subitemName,
+          action: "file_replaced",
+          fieldName: key,
+          title: `replaced ${previous.name} with ${file.name}`,
+          link: file.url,
+          meta: {
+            field: key,
+            previousFileName: previous.name,
+            fileName: file.name,
+            storagePath: file.storagePath,
+          },
+        });
+    }
+    for (const file of oldFiles) {
+      if (newByIdentity.has(file.id ?? file.url)) continue;
+      // Retire prior activity links so a removed attachment cannot still be opened from its old log entry.
+      const retire = supabase
+        .from("activity_log")
+        .update({ link: null, description: "File has been removed" })
+        .eq("client_id", params.clientId);
+      if (file.storagePath)
+        await retire.contains("meta", { storagePath: file.storagePath });
+      else
+        await retire
+          .eq("field_name", key)
+          .contains("meta", { fileName: file.name });
+      await insertActivityLog({
+        clientId: params.clientId,
+        subitemId: params.subitemId,
+        subitemName: params.subitemName,
+        action: "file_removed",
+        fieldName: key,
+        title: `removed ${file.name}`,
+        meta: {
+          field: key,
+          fileName: file.name,
+          storagePath: file.storagePath,
+        },
+      });
+    }
+  }
 }
 
 export async function logOcfCreated(params: {
-    clientId: string;
-    ocfId: string;
-    title?: string;
-    description?: string;
+  clientId: string;
+  ocfId: string;
+  title?: string;
+  description?: string;
 }) {
-    return insertActivityLog({
-        clientId: params.clientId,
-        action: 'ocf_created',
-        title: 'generated an Order Confirmation Form',
-        link: `/order-confirmations/${params.ocfId}`,
-        meta: { ocfId: params.ocfId },
-    });
+  return insertActivityLog({
+    clientId: params.clientId,
+    action: "ocf_created",
+    title: "generated an Order Confirmation Form",
+    link: `/order-confirmations/${params.ocfId}`,
+    meta: { ocfId: params.ocfId },
+  });
 }
 
-
 export async function fetchClientsWithSubitems() {
-    const { data: clientsData, error: clientsError } = await supabase
-        .from('clients')
-        .select(`
+  const { data: clientsData, error: clientsError } = await supabase
+    .from("clients")
+    .select(
+      `
     *,
     subitems!subitems_client_id_fkey (
       *,
@@ -568,930 +767,1537 @@ export async function fetchClientsWithSubitems() {
         avatar_url
         )
     )
-    `)
-        .is('deleted_at', null)
-        .order('created_at', { ascending: true });
+    `,
+    )
+    .is("deleted_at", null)
+    .order("created_at", { ascending: true });
 
-    if (clientsError) {
-        console.error('fetchClientsWithSubitems clients error:', clientsError);
-        throw clientsError;
-    }
+  if (clientsError) {
+    console.error("fetchClientsWithSubitems clients error:", clientsError);
+    throw clientsError;
+  }
 
-    const { data: activityData, error: activityError } = await supabase
-        .from('activity_log')
-        .select('*')
-        .order('created_at', { ascending: false });
+  const { data: activityData, error: activityError } = await supabase
+    .from("activity_log")
+    .select("*")
+    .order("created_at", { ascending: false });
 
-    if (activityError) {
-        console.error('fetchClientsWithSubitems activity error:', activityError);
-        throw activityError;
-    }
+  if (activityError) {
+    console.error("fetchClientsWithSubitems activity error:", activityError);
+    throw activityError;
+  }
 
-    const activityByClientId = new Map<string, ActivityLogRow[]>();
+  const activityByClientId = new Map<string, ActivityLogRow[]>();
 
-    for (const row of activityData ?? []) {
-        const list = activityByClientId.get(row.client_id) ?? [];
-        list.push(row as ActivityLogRow);
-        activityByClientId.set(row.client_id, list);
-    }
+  for (const row of activityData ?? []) {
+    const list = activityByClientId.get(row.client_id) ?? [];
+    list.push(row as ActivityLogRow);
+    activityByClientId.set(row.client_id, list);
+  }
 
-    return (clientsData ?? []).map((row) =>
-        mapClients({
-            ...(row as Clients),
-            activity_log: activityByClientId.get((row as Clients).id) ?? [],
-        })
-    );
+  return (clientsData ?? []).map((row) =>
+    mapClients({
+      ...(row as Clients),
+      activity_log: activityByClientId.get((row as Clients).id) ?? [],
+    }),
+  );
 }
 
 export async function fetchDeletedBinItems(): Promise<DeletedBinItem[]> {
-    const [clientsResult, subitemsResult] = await Promise.all([
-        supabase.from('clients').select('id, name, deleted_at, subitems!subitems_client_id_fkey(id, deleted_at)').not('deleted_at', 'is', null).order('deleted_at', { ascending: false }),
-        supabase.from('subitems').select('id, name, client_id, deleted_at, deleted_with_client_id, clients!subitems_client_id_fkey(name, deleted_at)').not('deleted_at', 'is', null).order('deleted_at', { ascending: false }),
-    ]);
-    if (clientsResult.error) throw clientsResult.error;
-    if (subitemsResult.error) throw subitemsResult.error;
-    const expiresAt = (value: string) => {
-        const date = new Date(value);
-        date.setUTCDate(date.getUTCDate() + 30);
-        return date.toISOString();
-    };
-    const clientItems: DeletedBinItem[] = (clientsResult.data ?? []).map((client: any) => ({
-        id: client.id, type: 'client', name: client.name ?? 'Unnamed client',
-        deletedAt: client.deleted_at, expiresAt: expiresAt(client.deleted_at),
-        subitemCount: (client.subitems ?? []).filter((subitem: any) => Boolean(subitem.deleted_at)).length,
+  const [clientsResult, subitemsResult] = await Promise.all([
+    supabase
+      .from("clients")
+      .select(
+        "id, name, deleted_at, subitems!subitems_client_id_fkey(id, deleted_at)",
+      )
+      .not("deleted_at", "is", null)
+      .order("deleted_at", { ascending: false }),
+    supabase
+      .from("subitems")
+      .select(
+        "id, name, client_id, deleted_at, deleted_with_client_id, clients!subitems_client_id_fkey(name, deleted_at)",
+      )
+      .not("deleted_at", "is", null)
+      .order("deleted_at", { ascending: false }),
+  ]);
+  if (clientsResult.error) throw clientsResult.error;
+  if (subitemsResult.error) throw subitemsResult.error;
+  const expiresAt = (value: string) => {
+    const date = new Date(value);
+    date.setUTCDate(date.getUTCDate() + 30);
+    return date.toISOString();
+  };
+  const clientItems: DeletedBinItem[] = (clientsResult.data ?? []).map(
+    (client: any) => ({
+      id: client.id,
+      type: "client",
+      name: client.name ?? "Unnamed client",
+      deletedAt: client.deleted_at,
+      expiresAt: expiresAt(client.deleted_at),
+      subitemCount: (client.subitems ?? []).filter((subitem: any) =>
+        Boolean(subitem.deleted_at),
+      ).length,
+    }),
+  );
+  const subitemItems: DeletedBinItem[] = (subitemsResult.data ?? [])
+    .filter((subitem: any) => !subitem.deleted_with_client_id)
+    .map((subitem: any) => ({
+      id: subitem.id,
+      type: "subitem",
+      name: subitem.name ?? "Unnamed subitem",
+      clientId: subitem.client_id,
+      clientName: subitem.clients?.name ?? "Deleted client",
+      deletedAt: subitem.deleted_at,
+      expiresAt: expiresAt(subitem.deleted_at),
+      parentDeleted: Boolean(subitem.clients?.deleted_at),
     }));
-    const subitemItems: DeletedBinItem[] = (subitemsResult.data ?? [])
-        .filter((subitem: any) => !subitem.deleted_with_client_id)
-        .map((subitem: any) => ({
-            id: subitem.id, type: 'subitem', name: subitem.name ?? 'Unnamed subitem',
-            clientId: subitem.client_id, clientName: subitem.clients?.name ?? 'Deleted client',
-            deletedAt: subitem.deleted_at, expiresAt: expiresAt(subitem.deleted_at),
-            parentDeleted: Boolean(subitem.clients?.deleted_at),
-        }));
-    return [...clientItems, ...subitemItems].sort((first, second) => new Date(second.deletedAt).getTime() - new Date(first.deletedAt).getTime());
+  return [...clientItems, ...subitemItems].sort(
+    (first, second) =>
+      new Date(second.deletedAt).getTime() -
+      new Date(first.deletedAt).getTime(),
+  );
 }
 
 export async function createClientRow(
-    currentUserId?: string | null,
-    groupId?: string | null,
-    name?: string | null,
+  currentUserId?: string | null,
+  groupId?: string | null,
+  name?: string | null,
 ) {
-    const [waitingLabel, newLeadLabel] = await Promise.all([
-        resolveSystemOption('reply_status', 'waiting'),
-        resolveSystemOption('client_status', 'new_lead'),
-    ]);
-    const { data, error } = await supabase
-        .from('clients')
-        .insert({
-            name: capitaliseFirstCharacter(name?.trim() || 'New Client'),
-            people: '',
-            reply_status: waitingLabel.value,
-            reply_status_option_id: waitingLabel.id,
-            follow_up: '',
-            status: newLeadLabel.value,
-            status_option_id: newLeadLabel.id,
-            channel: '',
-            importance: '',
-            progress: '',
-            company: '',
-            email: '',
-            phone: '',
-            requirements: '',
-            unqualified_reason: '',
-            nbd: '',
-            total_price: '',
-            billing_address: '',
-            group_id: groupId ?? null,
-            expanded: true,
-            color: '#7BCBD5',
-            activity_log: [],
-            custom_fields: {}
-        })
-        .select('*')
-        .single();
+  const [waitingLabel, newLeadLabel] = await Promise.all([
+    resolveSystemOption("reply_status", "waiting"),
+    resolveSystemOption("client_status", "new_lead"),
+  ]);
+  const { data, error } = await supabase
+    .from("clients")
+    .insert({
+      name: capitaliseFirstCharacter(name?.trim() || "New Client"),
+      people: "",
+      reply_status: waitingLabel.value,
+      reply_status_option_id: waitingLabel.id,
+      follow_up: "",
+      status: newLeadLabel.value,
+      status_option_id: newLeadLabel.id,
+      channel: "",
+      importance: "",
+      progress: "",
+      company: "",
+      email: "",
+      phone: "",
+      requirements: "",
+      unqualified_reason: "",
+      nbd: "",
+      total_price: "",
+      billing_address: "",
+      group_id: groupId ?? null,
+      expanded: true,
+      color: "#7BCBD5",
+      activity_log: [],
+      custom_fields: {},
+    })
+    .select("*")
+    .single();
 
-    if (error) throw error;
+  if (error) throw error;
 
-    if (currentUserId) {
-        await addClientAssignee(data.id, currentUserId, currentUserId);
-    }
+  if (currentUserId) {
+    await addClientAssignee(data.id, currentUserId, currentUserId);
+  }
 
-    await insertActivityLog({
-        clientId: data.id,
-        action: 'client_added',
-        title: 'created this client',
-    });
+  await insertActivityLog({
+    clientId: data.id,
+    action: "client_added",
+    title: "created this client",
+  });
 
-    return data;
+  return data;
 }
 
 async function resolveSystemOption(groupCode: string, systemKey: string) {
-    const { data, error } = await supabase
-        .from('option_values')
-        .select('id, value, option_groups!inner(code)')
-        .eq('option_groups.code', groupCode)
-        .eq('system_key', systemKey)
-        .maybeSingle();
-    if (error) throw error;
+  const { data, error } = await supabase
+    .from("option_values")
+    .select("id, value, option_groups!inner(code)")
+    .eq("option_groups.code", groupCode)
+    .eq("system_key", systemKey)
+    .maybeSingle();
+  if (error) throw error;
 
-    if (!data) throw new Error(`Required system label ${groupCode}.${systemKey} is not configured.`);
-    return { id: data.id, value: data.value };
+  if (!data)
+    throw new Error(
+      `Required system label ${groupCode}.${systemKey} is not configured.`,
+    );
+  return { id: data.id, value: data.value };
 }
 
 async function resolveOptionId(groupCode: string, value: string) {
-    const normalized = value.trim();
-    if (!normalized) return null;
-    const { data, error } = await supabase
-        .from('option_values')
-        .select('id, option_groups!inner(code)')
-        .eq('option_groups.code', groupCode)
-        .eq('value', normalized)
-        .maybeSingle();
-    if (error) throw error;
-    if (!data) throw new Error(`“${normalized}” is not a valid ${groupCode.replaceAll('_', ' ')} label.`);
-    return data.id;
+  const normalized = value.trim();
+  if (!normalized) return null;
+  const { data, error } = await supabase
+    .from("option_values")
+    .select("id, option_groups!inner(code)")
+    .eq("option_groups.code", groupCode)
+    .eq("value", normalized)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data)
+    throw new Error(
+      `“${normalized}” is not a valid ${groupCode.replaceAll("_", " ")} label.`,
+    );
+  return data.id;
 }
 
 export async function updateClientRow(
-    clientId: string,
-    updates: Partial<Client> & { customFields?: Record<string, string>; },
-    activityMeta?: Record<string, any>,
+  clientId: string,
+  updates: Partial<Client> & { customFields?: Record<string, string> },
+  activityMeta?: Record<string, any>,
 ) {
-    const { data: existing, error: fetchError } = await supabase
-        .from('clients')
-        .select('*')
-        .eq('id', clientId)
-        .single();
+  const { data: existing, error: fetchError } = await supabase
+    .from("clients")
+    .select("*")
+    .eq("id", clientId)
+    .single();
 
-    if (fetchError) throw fetchError;
+  if (fetchError) throw fetchError;
 
-    const nextUpdates = { ...updates } as Partial<Client>;
-    if (nextUpdates.name !== undefined)
-        nextUpdates.name = capitaliseFirstCharacter(nextUpdates.name);
-    if (nextUpdates.company !== undefined)
-        nextUpdates.company = capitaliseFirstCharacter(nextUpdates.company);
-    const mapped = {
-        ...updates,
-        group_id: updates.groupId,
-    };
-    delete mapped.groupId;
+  const nextUpdates = { ...updates } as Partial<Client>;
+  if (nextUpdates.name !== undefined)
+    nextUpdates.name = capitaliseFirstCharacter(nextUpdates.name);
+  if (nextUpdates.company !== undefined)
+    nextUpdates.company = capitaliseFirstCharacter(nextUpdates.company);
+  const mapped = {
+    ...updates,
+    group_id: updates.groupId,
+  };
+  delete mapped.groupId;
 
-    const clientLabelFields = [
-        ["replyStatus", "reply_status", "reply_status_option_id", "reply_status"],
-        ["status", "status", "status_option_id", "client_status"],
-        ["channel", "channel", "channel_option_id", "channel"],
-        ["importance", "importance", "importance_option_id", "importance"],
-        ["progress", "progress", "progress_option_id", "progress"],
-    ] as const;
-    const clientOptionIds: Record<string, string | null> = {};
-    for (const [modelKey, , idColumn, groupCode] of clientLabelFields) {
-        const value = nextUpdates[modelKey];
-        if (value === undefined) continue;
-        clientOptionIds[idColumn] = await resolveOptionId(groupCode, String(value));
-    }
-    if (updates.replyStatus !== undefined && updates.replyStatus !== existing.reply_status) {
-        const waitingLabel = await resolveSystemOption('reply_status', 'waiting');
-        nextUpdates.waitingStartedAt = clientOptionIds.reply_status_option_id === waitingLabel.id
-            ? new Date().toISOString()
-            : null;
-    }
+  const clientLabelFields = [
+    ["replyStatus", "reply_status", "reply_status_option_id", "reply_status"],
+    ["status", "status", "status_option_id", "client_status"],
+    ["channel", "channel", "channel_option_id", "channel"],
+    ["importance", "importance", "importance_option_id", "importance"],
+    ["progress", "progress", "progress_option_id", "progress"],
+  ] as const;
+  const clientOptionIds: Record<string, string | null> = {};
+  for (const [modelKey, , idColumn, groupCode] of clientLabelFields) {
+    const value = nextUpdates[modelKey];
+    if (value === undefined) continue;
+    clientOptionIds[idColumn] = await resolveOptionId(groupCode, String(value));
+  }
+  if (
+    updates.replyStatus !== undefined &&
+    updates.replyStatus !== existing.reply_status
+  ) {
+    const waitingLabel = await resolveSystemOption("reply_status", "waiting");
+    nextUpdates.waitingStartedAt =
+      clientOptionIds.reply_status_option_id === waitingLabel.id
+        ? new Date().toISOString()
+        : null;
+  }
 
-    const payload = {
-        ...(nextUpdates.name !== undefined ? { name: nextUpdates.name } : {}),
-        ...(updates.people !== undefined ? { people: updates.people } : {}),
-        ...(nextUpdates.replyStatus !== undefined ? { reply_status: nextUpdates.replyStatus } : {}),
-        ...(updates.followUp !== undefined ? { follow_up: updates.followUp } : {}),
-        ...(updates.status !== undefined ? { status: updates.status } : {}),
-        ...(updates.channel !== undefined ? { channel: updates.channel } : {}),
-        ...(updates.importance !== undefined ? { importance: updates.importance } : {}),
-        ...(updates.progress !== undefined ? { progress: updates.progress } : {}),
-        ...(nextUpdates.company !== undefined ? { company: nextUpdates.company } : {}),
-        ...(updates.email !== undefined ? { email: updates.email } : {}),
-        ...(updates.phone !== undefined ? { phone: updates.phone } : {}),
-        ...(updates.requirements !== undefined ? { requirements: updates.requirements } : {}),
-        ...(updates.unqualifiedReason !== undefined ? { unqualified_reason: updates.unqualifiedReason } : {}),
-        ...(updates.nbd !== undefined ? { nbd: updates.nbd } : {}),
-        ...(updates.totalPrice !== undefined ? { total_price: updates.totalPrice } : {}),
-        ...(updates.billingAddress !== undefined ? { billing_address: updates.billingAddress } : {}),
-        ...(updates.groupId !== undefined ? { group_id: updates.groupId } : {}),
-        ...(updates.expanded !== undefined ? { expanded: updates.expanded } : {}),
-        ...(updates.color !== undefined ? { color: updates.color } : {}),
-        ...(updates.activityLog !== undefined ? { activity_log: updates.activityLog } : {}),
-        ...(updates.customFields !== undefined ? { custom_fields: updates.customFields } : {}),
-        ...(nextUpdates.waitingStartedAt !== undefined ? { waiting_started_at: nextUpdates.waitingStartedAt } : {}),
-        ...clientOptionIds,
-    };
+  const payload = {
+    ...(nextUpdates.name !== undefined ? { name: nextUpdates.name } : {}),
+    ...(updates.people !== undefined ? { people: updates.people } : {}),
+    ...(nextUpdates.replyStatus !== undefined
+      ? { reply_status: nextUpdates.replyStatus }
+      : {}),
+    ...(updates.followUp !== undefined ? { follow_up: updates.followUp } : {}),
+    ...(updates.status !== undefined ? { status: updates.status } : {}),
+    ...(updates.channel !== undefined ? { channel: updates.channel } : {}),
+    ...(updates.importance !== undefined
+      ? { importance: updates.importance }
+      : {}),
+    ...(updates.progress !== undefined ? { progress: updates.progress } : {}),
+    ...(nextUpdates.company !== undefined
+      ? { company: nextUpdates.company }
+      : {}),
+    ...(updates.email !== undefined ? { email: updates.email } : {}),
+    ...(updates.phone !== undefined ? { phone: updates.phone } : {}),
+    ...(updates.requirements !== undefined
+      ? { requirements: updates.requirements }
+      : {}),
+    ...(updates.unqualifiedReason !== undefined
+      ? { unqualified_reason: updates.unqualifiedReason }
+      : {}),
+    ...(updates.nbd !== undefined ? { nbd: updates.nbd } : {}),
+    ...(updates.totalPrice !== undefined
+      ? { total_price: updates.totalPrice }
+      : {}),
+    ...(updates.billingAddress !== undefined
+      ? { billing_address: updates.billingAddress }
+      : {}),
+    ...(updates.groupId !== undefined ? { group_id: updates.groupId } : {}),
+    ...(updates.expanded !== undefined ? { expanded: updates.expanded } : {}),
+    ...(updates.color !== undefined ? { color: updates.color } : {}),
+    ...(updates.activityLog !== undefined
+      ? { activity_log: updates.activityLog }
+      : {}),
+    ...(updates.customFields !== undefined
+      ? { custom_fields: updates.customFields }
+      : {}),
+    ...(nextUpdates.waitingStartedAt !== undefined
+      ? { waiting_started_at: nextUpdates.waitingStartedAt }
+      : {}),
+    ...clientOptionIds,
+  };
 
-    const { error } = await supabase
-        .from('clients')
-        .update(payload)
-        .eq('id', clientId);
+  const { error } = await supabase
+    .from("clients")
+    .update(payload)
+    .eq("id", clientId);
 
-    if (error) throw error;
+  if (error) throw error;
 
-    for (const [key, value] of Object.entries(nextUpdates) as [keyof Client, unknown][]) {
-        if (CLIENT_LOG_IGNORE_FIELDS.has(key)) continue;
+  for (const [key, value] of Object.entries(nextUpdates) as [
+    keyof Client,
+    unknown,
+  ][]) {
+    if (CLIENT_LOG_IGNORE_FIELDS.has(key)) continue;
 
+    const oldValue =
+      existing[
+        key === "replyStatus"
+          ? "reply_status"
+          : key === "followUp"
+            ? "follow_up"
+            : key === "totalPrice"
+              ? "total_price"
+              : key === "billingAddress"
+                ? "billing_address"
+                : key === "unqualifiedReason"
+                  ? "unqualified_reason"
+                  : key === "createdAt"
+                    ? "created_at"
+                    : key === "groupId"
+                      ? "group_id"
+                      : key
+      ];
 
-        const oldValue =
-            existing[
-            key === 'replyStatus' ? 'reply_status' :
-                key === 'followUp' ? 'follow_up' :
-                    key === 'totalPrice' ? 'total_price' :
-                        key === 'billingAddress' ? 'billing_address' :
-                            key === 'unqualifiedReason' ? 'unqualified_reason' :
-                            key === 'createdAt' ? 'created_at' :
-                                key === 'groupId' ? 'group_id' :
-                                    key
-            ];
+    if (isEqualForLog(oldValue, value)) continue;
 
-        if (isEqualForLog(oldValue, value)) continue;
-
-        await insertActivityLog({
-            clientId,
-            action: 'field_changed',
-            fieldName: key,
-            oldValue: formatValueForLog(oldValue),
-            newValue: formatValueForLog(value),
-            meta: activityMeta,
-        });
-    }
-    if (updates.customFields !== undefined) await logFileAttachmentDiffs({ clientId, before: existing.custom_fields, after: updates.customFields });
+    await insertActivityLog({
+      clientId,
+      action: "field_changed",
+      fieldName: key,
+      oldValue: formatValueForLog(oldValue),
+      newValue: formatValueForLog(value),
+      meta: activityMeta,
+    });
+  }
+  if (updates.customFields !== undefined)
+    await logFileAttachmentDiffs({
+      clientId,
+      before: existing.custom_fields,
+      after: updates.customFields,
+    });
 }
 
-async function assertDeletionAllowed(table: 'clients' | 'subitems', id: string) {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error('You must be signed in to delete this item.');
+async function assertDeletionAllowed(
+  table: "clients" | "subitems",
+  id: string,
+) {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("You must be signed in to delete this item.");
 
-    const { data: profile, error: profileError } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', user.id)
-        .single();
-    if (profileError) throw profileError;
-    if (['director', 'dev'].includes(String(profile?.role ?? '').toLowerCase())) return;
+  const { data: profile, error: profileError } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+  if (profileError) throw profileError;
+  if (["director", "dev"].includes(String(profile?.role ?? "").toLowerCase()))
+    return;
 
-    const { data: item, error: itemError } = await supabase
-        .from(table)
-        .select('created_at, deletion_owner_id')
-        .eq('id', id)
-        .single();
-    if (itemError) throw itemError;
+  const { data: item, error: itemError } = await supabase
+    .from(table)
+    .select("created_at, deletion_owner_id")
+    .eq("id", id)
+    .single();
+  if (itemError) throw itemError;
 
-    const createdAt = item.created_at;
-    if (!createdAt) throw new Error('This item has no creation date and cannot be deleted by this role.');
-    const ageInHours = (Date.now() - new Date(createdAt).getTime()) / 3_600_000;
-    if (ageInHours >= 72) throw new Error('This item is more than 72 hours old and can only be deleted by a director or dev.');
+  const createdAt = item.created_at;
+  if (!createdAt)
+    throw new Error(
+      "This item has no creation date and cannot be deleted by this role.",
+    );
+  const ageInHours = (Date.now() - new Date(createdAt).getTime()) / 3_600_000;
+  if (ageInHours >= 72)
+    throw new Error(
+      "This item is more than 72 hours old and can only be deleted by a director or dev.",
+    );
 
-    if (!item.deletion_owner_id || item.deletion_owner_id !== user.id) {
-        throw new Error('You can only delete items created by you, unless you are a director or developer.');
-    }
+  if (!item.deletion_owner_id || item.deletion_owner_id !== user.id) {
+    throw new Error(
+      "You can only delete items created by you, unless you are a director or developer.",
+    );
+  }
 }
 
 export async function deleteClientRow(clientId: string) {
-    await assertDeletionAllowed('clients', clientId);
-    const deletedAt = new Date().toISOString();
-    const { data: { user } } = await supabase.auth.getUser();
-    const { error } = await supabase
-        .from('clients')
-        .update({ deleted_at: deletedAt, deleted_by: user?.id ?? null })
-        .eq('id', clientId);
-    if (error) throw error;
-    const { error: subitemsError } = await supabase
-        .from('subitems')
-        .update({ deleted_at: deletedAt, deleted_by: user?.id ?? null, deleted_with_client_id: clientId })
-        .eq('client_id', clientId)
-        .is('deleted_at', null);
-    if (subitemsError) throw subitemsError;
-    await insertActivityLog({ clientId, action: 'client_deleted', title: 'moved this client to the Bin', meta: { deletedEntity: 'client', deletedId: clientId, deletedAt } });
+  await assertDeletionAllowed("clients", clientId);
+  const deletedAt = new Date().toISOString();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const { error } = await supabase
+    .from("clients")
+    .update({ deleted_at: deletedAt, deleted_by: user?.id ?? null })
+    .eq("id", clientId);
+  if (error) throw error;
+  const { error: subitemsError } = await supabase
+    .from("subitems")
+    .update({
+      deleted_at: deletedAt,
+      deleted_by: user?.id ?? null,
+      deleted_with_client_id: clientId,
+    })
+    .eq("client_id", clientId)
+    .is("deleted_at", null);
+  if (subitemsError) throw subitemsError;
+  await insertActivityLog({
+    clientId,
+    action: "client_deleted",
+    title: "moved this client to the Bin",
+    meta: { deletedEntity: "client", deletedId: clientId, deletedAt },
+  });
 }
 
 export async function restoreClientRow(clientId: string) {
-    await assertDeletionAllowed('clients', clientId);
-    const { data: client, error: fetchError } = await supabase.from('clients').select('id, deleted_at').eq('id', clientId).single();
-    if (fetchError) throw fetchError;
-    if (!client.deleted_at) throw new Error('This client is no longer in the Bin.');
-    if (Date.now() - new Date(client.deleted_at).getTime() >= BIN_RETENTION_MS) throw new Error('The 30-day Bin retention period has ended.');
-    const { error } = await supabase.from('clients').update({ deleted_at: null, deleted_by: null }).eq('id', clientId);
-    if (error) throw error;
-    const { error: subitemsError } = await supabase.from('subitems').update({ deleted_at: null, deleted_by: null, deleted_with_client_id: null }).eq('deleted_with_client_id', clientId);
-    if (subitemsError) throw subitemsError;
-    await insertActivityLog({ clientId, action: 'client_restored', title: 'restored this client from the Bin', meta: { deletedEntity: 'client', deletedId: clientId } });
+  await assertDeletionAllowed("clients", clientId);
+  const { data: client, error: fetchError } = await supabase
+    .from("clients")
+    .select("id, deleted_at")
+    .eq("id", clientId)
+    .single();
+  if (fetchError) throw fetchError;
+  if (!client.deleted_at)
+    throw new Error("This client is no longer in the Bin.");
+  if (Date.now() - new Date(client.deleted_at).getTime() >= BIN_RETENTION_MS)
+    throw new Error("The 30-day Bin retention period has ended.");
+  const { error } = await supabase
+    .from("clients")
+    .update({ deleted_at: null, deleted_by: null })
+    .eq("id", clientId);
+  if (error) throw error;
+  const { error: subitemsError } = await supabase
+    .from("subitems")
+    .update({
+      deleted_at: null,
+      deleted_by: null,
+      deleted_with_client_id: null,
+    })
+    .eq("deleted_with_client_id", clientId);
+  if (subitemsError) throw subitemsError;
+  await insertActivityLog({
+    clientId,
+    action: "client_restored",
+    title: "restored this client from the Bin",
+    meta: { deletedEntity: "client", deletedId: clientId },
+  });
 }
 
 // subitem functions
-export async function createSubitemRow(clientId: string, name: string, currentUserId?: string | null) {
-    const { data: lastSubitem, error: lastSubitemError } = await supabase
-        .from('subitems')
-        .select('position')
-        .eq('client_id', clientId)
-        .order('position', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-    if (lastSubitemError) throw lastSubitemError;
-    const position = Number(lastSubitem?.position ?? -1) + 1;
-    const timelineRows = [
-        { id: crypto.randomUUID(), name: 'Sample', person: '', remarks: '', subProgress: '', timelineStart: '', timelineEnd: '', duration: '', dependency: '' },
-        { id: crypto.randomUUID(), name: 'Production 📦', person: '', remarks: '', subProgress: '', timelineStart: '', timelineEnd: '', duration: '', dependency: 'Sample' },
-        { id: crypto.randomUUID(), name: 'Check Production Status (+3 from production start)', person: '', remarks: '', subProgress: '', timelineStart: '', timelineEnd: '', duration: '', dependency: '' },
-        { id: crypto.randomUUID(), name: 'Local Shipping 🚚', person: '', remarks: '', subProgress: '', timelineStart: '', timelineEnd: '', duration: '', dependency: 'Production 📦' },
-        { id: crypto.randomUUID(), name: 'Sea/Air Freight ⛵✈️', person: '', remarks: '', subProgress: '', timelineStart: '', timelineEnd: '', duration: '', dependency: 'Local Shipping 🚚' },
-        { id: crypto.randomUUID(), name: 'Check Shipment Status (+3 from shipment start)', person: '', remarks: '', subProgress: '', timelineStart: '', timelineEnd: '', duration: '', dependency: '' },
-        { id: crypto.randomUUID(), name: 'NBD', person: '', remarks: '', subProgress: '', timelineStart: '', timelineEnd: '', duration: '', dependency: '', status: '' },
-    ];
-
-    const { data, error } = await supabase
-        .from('subitems')
-        .insert({
-            client_id: clientId,
-            position,
-            name: name.trim(),
-            people: '',
-            status: '',
-            local_overseas: 'Local',
-            qty: '',
-            description: '',
-            remarks: '',
-            shipper: '',
-            supplier: '',
-            cost: '',
-            manpower: '',
-            manpower_rmb: '',
-            ls: '',
-            os: '',
-            currency: '',
-            c_sgd: '',
-            tc: '',
-            uc: '',
-            tc_sgd: '',
-            price: '',
-            up: '',
-            num_of_cartons: '',
-            cn_tracking: '',
-            sg_tracking: '',
-            owner: '',
-            payment: '',
-            payment_status: '',
-            total_uc: '',
-            ls_rmb: '',
-            total_c: '',
-            mode_of_payment: '',
-            order_number: '',
-            quantity_produced: '',
-            qty_free: '',
-            sample: '',
-            qty_total: '',
-            qty_we_keep: '',
-            qty_for: '',
-            payment_amount: '',
-            difference: '',
-            payment_remarks: '',
-            timeline_rows: timelineRows,
-            timeline_groups: [{ id: "default", cnTracking: "", sgTracking: "", rows: timelineRows, isDefault: true }],
-            show_timeline: false,
-            show_payments: false,
-            show_sample: false,
-            sample_rows: [],
-            sample_order_status: '',
-            sample_status: '',
-            sample_type: '',
-            custom_fields: {},
-            shipper_id: null
-        })
-        .select('*')
-        .single();
-
-    if (error) throw error;
-
-    const { data: initialPaymentRow, error: initialPaymentRowError } = await supabase
-        .from('subitem_payment_rows')
-        .insert({ subitem_id: data.id, position: 0, amount: '', order_number: '', payment_received: null, mode_of_payment: '', mode_of_payment_option_id: null })
-        .select('id, position, amount, order_number, payment_received, mode_of_payment, mode_of_payment_option_id')
-        .single();
-    if (initialPaymentRowError) throw initialPaymentRowError;
-
-    if (currentUserId) {
-        const { error: assigneeError } = await supabase
-            .from('subitem_assignees')
-            .insert({ subitem_id: data.id, user_id: currentUserId, assigned_by: currentUserId });
-        if (assigneeError) throw assigneeError;
+export async function createSubitemRow(
+  clientId: string,
+  name: string,
+  currentUserId?: string | null,
+) {
+  const { data: existingSubitems, error: existingSubitemsError } =
+    await supabase
+      .from("subitems")
+      .select("id, position, custom_fields")
+      .eq("client_id", clientId)
+      .is("deleted_at", null)
+      .order("position", { ascending: true });
+  if (existingSubitemsError) throw existingSubitemsError;
+  const firstAdditionalCost = (existingSubitems ?? []).find(
+    (subitem) => subitem.custom_fields?.additionalCostLinked === "true",
+  );
+  const position = firstAdditionalCost
+    ? Number(firstAdditionalCost.position ?? 0)
+    : Math.max(
+        -1,
+        ...(existingSubitems ?? []).map((subitem) =>
+          Number(subitem.position ?? -1),
+        ),
+      ) + 1;
+  if (firstAdditionalCost) {
+    const rowsToShift = (existingSubitems ?? [])
+      .filter((subitem) => Number(subitem.position ?? -1) >= position)
+      .sort(
+        (first, second) =>
+          Number(second.position ?? -1) - Number(first.position ?? -1),
+      );
+    for (const subitem of rowsToShift) {
+      const { error: shiftError } = await supabase
+        .from("subitems")
+        .update({ position: Number(subitem.position ?? -1) + 1 })
+        .eq("id", subitem.id);
+      if (shiftError) throw shiftError;
     }
+  }
+  const timelineRows = [
+    {
+      id: crypto.randomUUID(),
+      name: "Sample",
+      person: "",
+      remarks: "",
+      subProgress: "",
+      timelineStart: "",
+      timelineEnd: "",
+      duration: "",
+      dependency: "",
+    },
+    {
+      id: crypto.randomUUID(),
+      name: "Production 📦",
+      person: "",
+      remarks: "",
+      subProgress: "",
+      timelineStart: "",
+      timelineEnd: "",
+      duration: "",
+      dependency: "Sample",
+    },
+    {
+      id: crypto.randomUUID(),
+      name: "Check Production Status (+3 from production start)",
+      person: "",
+      remarks: "",
+      subProgress: "",
+      timelineStart: "",
+      timelineEnd: "",
+      duration: "",
+      dependency: "",
+    },
+    {
+      id: crypto.randomUUID(),
+      name: "Local Shipping 🚚",
+      person: "",
+      remarks: "",
+      subProgress: "",
+      timelineStart: "",
+      timelineEnd: "",
+      duration: "",
+      dependency: "Production 📦",
+    },
+    {
+      id: crypto.randomUUID(),
+      name: "Sea/Air Freight ⛵✈️",
+      person: "",
+      remarks: "",
+      subProgress: "",
+      timelineStart: "",
+      timelineEnd: "",
+      duration: "",
+      dependency: "Local Shipping 🚚",
+    },
+    {
+      id: crypto.randomUUID(),
+      name: "Check Shipment Status (+3 from shipment start)",
+      person: "",
+      remarks: "",
+      subProgress: "",
+      timelineStart: "",
+      timelineEnd: "",
+      duration: "",
+      dependency: "",
+    },
+    {
+      id: crypto.randomUUID(),
+      name: "NBD",
+      person: "",
+      remarks: "",
+      subProgress: "",
+      timelineStart: "",
+      timelineEnd: "",
+      duration: "",
+      dependency: "",
+      status: "",
+    },
+  ];
 
-    await insertActivityLog({
-        clientId,
-        subitemId: data.id,
-        subitemName: data.name,
-        action: 'subitem_added',
-    });
+  const { data, error } = await supabase
+    .from("subitems")
+    .insert({
+      client_id: clientId,
+      position,
+      name: name.trim(),
+      people: "",
+      status: "",
+      local_overseas: "Local",
+      qty: "",
+      description: "",
+      remarks: "",
+      shipper: "",
+      supplier: "",
+      cost: "",
+      manpower: "",
+      manpower_rmb: "",
+      ls: "",
+      os: "",
+      currency: "",
+      c_sgd: "",
+      tc: "",
+      uc: "",
+      tc_sgd: "",
+      price: "",
+      up: "",
+      num_of_cartons: "",
+      cn_tracking: "",
+      sg_tracking: "",
+      owner: "",
+      payment: "",
+      payment_status: "",
+      total_uc: "",
+      ls_rmb: "",
+      total_c: "",
+      mode_of_payment: "",
+      order_number: "",
+      quantity_produced: "",
+      qty_free: "",
+      sample: "",
+      qty_total: "",
+      qty_we_keep: "",
+      qty_for: "",
+      payment_amount: "",
+      difference: "",
+      payment_remarks: "",
+      timeline_rows: timelineRows,
+      timeline_groups: [
+        {
+          id: "default",
+          cnTracking: "",
+          sgTracking: "",
+          rows: timelineRows,
+          isDefault: true,
+        },
+      ],
+      show_timeline: false,
+      show_payments: false,
+      show_sample: false,
+      sample_rows: [],
+      sample_order_status: "",
+      sample_status: "",
+      sample_type: "",
+      custom_fields: {},
+      shipper_id: null,
+    })
+    .select("*")
+    .single();
 
-    return {
-        ...mapSubitems(data as Subitems),
-        paymentRows: [{
-            id: initialPaymentRow.id,
-            position: initialPaymentRow.position ?? 0,
-            amount: initialPaymentRow.amount ?? '',
-            orderNumber: initialPaymentRow.order_number ?? '',
-            paymentReceived: initialPaymentRow.payment_received ?? null,
-            modeOfPayment: initialPaymentRow.mode_of_payment ?? '',
-            modeOfPaymentOptionId: initialPaymentRow.mode_of_payment_option_id ?? null,
-        }],
-    };
+  if (error) throw error;
+
+  const { data: initialPaymentRow, error: initialPaymentRowError } =
+    await supabase
+      .from("subitem_payment_rows")
+      .insert({
+        subitem_id: data.id,
+        position: 0,
+        amount: "",
+        order_number: "",
+        payment_received: null,
+        mode_of_payment: "",
+        mode_of_payment_option_id: null,
+      })
+      .select(
+        "id, position, amount, order_number, payment_received, mode_of_payment, mode_of_payment_option_id",
+      )
+      .single();
+  if (initialPaymentRowError) throw initialPaymentRowError;
+
+  if (currentUserId) {
+    const { error: assigneeError } = await supabase
+      .from("subitem_assignees")
+      .insert({
+        subitem_id: data.id,
+        user_id: currentUserId,
+        assigned_by: currentUserId,
+      });
+    if (assigneeError) throw assigneeError;
+  }
+
+  await insertActivityLog({
+    clientId,
+    subitemId: data.id,
+    subitemName: data.name,
+    action: "subitem_added",
+  });
+
+  return {
+    ...mapSubitems(data as Subitems),
+    paymentRows: [
+      {
+        id: initialPaymentRow.id,
+        position: initialPaymentRow.position ?? 0,
+        amount: initialPaymentRow.amount ?? "",
+        orderNumber: initialPaymentRow.order_number ?? "",
+        paymentReceived: initialPaymentRow.payment_received ?? null,
+        modeOfPayment: initialPaymentRow.mode_of_payment ?? "",
+        modeOfPaymentOptionId:
+          initialPaymentRow.mode_of_payment_option_id ?? null,
+      },
+    ],
+  };
 }
 
 export async function duplicateSubitemRow(subitemId: string) {
-    const { data: existing, error: fetchError } = await supabase
-        .from('subitems')
-        .select('*')
-        .eq('id', subitemId)
-        .single();
-    if (fetchError) throw fetchError;
+  const { data: existing, error: fetchError } = await supabase
+    .from("subitems")
+    .select("*")
+    .eq("id", subitemId)
+    .single();
+  if (fetchError) throw fetchError;
+  if (existing.custom_fields?.additionalCostLinked === "true") {
+    throw new Error("Additional Cost subitems cannot be duplicated.");
+  }
 
-    const copy = { ...existing };
-    delete copy.id;
-    delete copy.created_at;
-    delete copy.waiting_started_at;
-    if (copy.custom_fields && typeof copy.custom_fields === 'object' && !Array.isArray(copy.custom_fields)) {
-        copy.custom_fields = Object.fromEntries(
-            Object.entries(copy.custom_fields as Record<string, unknown>)
-                .filter(([key]) => {
-                    const tokens = key.replace(/([a-z])([A-Z])/g, '$1_$2').toLowerCase().split(/[^a-z0-9]+/);
-                    return !tokens.some((token) => ['file', 'files', 'attachment', 'attachments', 'artwork'].includes(token));
-                }),
-        );
-    }
-    const duplicateTimelineRows = Array.isArray(copy.timeline_rows)
-        ? copy.timeline_rows.map((row: TimelineRow) => ({ ...row, id: crypto.randomUUID() }))
-        : [];
+  const copy = { ...existing };
+  delete copy.id;
+  delete copy.created_at;
+  delete copy.waiting_started_at;
+  if (
+    copy.custom_fields &&
+    typeof copy.custom_fields === "object" &&
+    !Array.isArray(copy.custom_fields)
+  ) {
+    copy.custom_fields = Object.fromEntries(
+      Object.entries(copy.custom_fields as Record<string, unknown>).filter(
+        ([key]) => {
+          const tokens = key
+            .replace(/([a-z])([A-Z])/g, "$1_$2")
+            .toLowerCase()
+            .split(/[^a-z0-9]+/);
+          return !tokens.some((token) =>
+            ["file", "files", "attachment", "attachments", "artwork"].includes(
+              token,
+            ),
+          );
+        },
+      ),
+    );
+  }
+  const duplicateTimelineRows = Array.isArray(copy.timeline_rows)
+    ? copy.timeline_rows.map((row: TimelineRow) => ({
+        ...row,
+        id: crypto.randomUUID(),
+      }))
+    : [];
 
-    const { data: lastSubitem, error: lastSubitemError } = await supabase
-        .from('subitems')
-        .select('position')
-        .eq('client_id', existing.client_id)
-        .order('position', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-    if (lastSubitemError) throw lastSubitemError;
+  const { data: lastSubitem, error: lastSubitemError } = await supabase
+    .from("subitems")
+    .select("position")
+    .eq("client_id", existing.client_id)
+    .order("position", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (lastSubitemError) throw lastSubitemError;
 
-    const { data: duplicate, error: duplicateError } = await supabase
-        .from('subitems')
-        .insert({
-            ...copy,
-            name: `${existing.name ?? 'New Item'} (Copy)`,
-            position: Number(lastSubitem?.position ?? -1) + 1,
-            timeline_rows: duplicateTimelineRows,
-        })
-        .select('*')
-        .single();
-    if (duplicateError) throw duplicateError;
+  const { data: duplicate, error: duplicateError } = await supabase
+    .from("subitems")
+    .insert({
+      ...copy,
+      name: `${existing.name ?? "New Item"} (Copy)`,
+      position: Number(lastSubitem?.position ?? -1) + 1,
+      timeline_rows: duplicateTimelineRows,
+    })
+    .select("*")
+    .single();
+  if (duplicateError) throw duplicateError;
 
-    const { error: initialPaymentRowError } = await supabase
-        .from('subitem_payment_rows')
-        .insert({ subitem_id: duplicate.id, position: 0, amount: '', order_number: '', payment_received: null, mode_of_payment: '', mode_of_payment_option_id: null });
-    if (initialPaymentRowError) throw initialPaymentRowError;
-
-    const { data: assignees, error: assigneeFetchError } = await supabase
-        .from('subitem_assignees')
-        .select('user_id')
-        .eq('subitem_id', subitemId);
-    if (assigneeFetchError) throw assigneeFetchError;
-
-    if (assignees?.length) {
-        const { error: assigneeCopyError } = await supabase
-            .from('subitem_assignees')
-            .insert(assignees.map((assignee) => ({
-                subitem_id: duplicate.id,
-                user_id: assignee.user_id,
-                assigned_by: null,
-            })));
-        if (assigneeCopyError) throw assigneeCopyError;
-    }
-
-    await insertActivityLog({
-        clientId: duplicate.client_id,
-        subitemId: duplicate.id,
-        subitemName: duplicate.name,
-        action: 'subitem_added',
-        title: 'duplicated this subitem',
+  const { error: initialPaymentRowError } = await supabase
+    .from("subitem_payment_rows")
+    .insert({
+      subitem_id: duplicate.id,
+      position: 0,
+      amount: "",
+      order_number: "",
+      payment_received: null,
+      mode_of_payment: "",
+      mode_of_payment_option_id: null,
     });
+  if (initialPaymentRowError) throw initialPaymentRowError;
 
-    return duplicate;
+  const { data: assignees, error: assigneeFetchError } = await supabase
+    .from("subitem_assignees")
+    .select("user_id")
+    .eq("subitem_id", subitemId);
+  if (assigneeFetchError) throw assigneeFetchError;
+
+  if (assignees?.length) {
+    const { error: assigneeCopyError } = await supabase
+      .from("subitem_assignees")
+      .insert(
+        assignees.map((assignee) => ({
+          subitem_id: duplicate.id,
+          user_id: assignee.user_id,
+          assigned_by: null,
+        })),
+      );
+    if (assigneeCopyError) throw assigneeCopyError;
+  }
+
+  await insertActivityLog({
+    clientId: duplicate.client_id,
+    subitemId: duplicate.id,
+    subitemName: duplicate.name,
+    action: "subitem_added",
+    title: "duplicated this subitem",
+  });
+
+  return duplicate;
 }
 
-export async function fetchOptionsByGroupCode(code: string): Promise<{ value: string; color: string }[]> {
-    const supabase = createClient()
-    const { data: group } = await supabase
-        .from('option_groups')
-        .select('id')
-        .eq('code', code)
-        .single()
+export async function fetchOptionsByGroupCode(
+  code: string,
+): Promise<{ value: string; color: string }[]> {
+  const supabase = createClient();
+  const { data: group } = await supabase
+    .from("option_groups")
+    .select("id")
+    .eq("code", code)
+    .single();
 
-    if (!group) return []
+  if (!group) return [];
 
-    const { data } = await supabase
-        .from('option_values')
-        .select('value, color')
-        .eq('group_id', group.id)
-        .order('sort_order')
+  const { data } = await supabase
+    .from("option_values")
+    .select("value, color")
+    .eq("group_id", group.id)
+    .order("sort_order");
 
-    return data ?? []
+  return data ?? [];
 }
 
-export async function updateSubitemRow(subitemId: string, updates: Partial<Subitem>) {
-    const { data: existing, error: fetchError } = await supabase
-        .from('subitems')
-        .select('*')
-        .eq('id', subitemId)
-        .single();
+export async function updateSubitemRow(
+  subitemId: string,
+  updates: Partial<Subitem>,
+) {
+  const { data: existing, error: fetchError } = await supabase
+    .from("subitems")
+    .select("*")
+    .eq("id", subitemId)
+    .single();
 
-    if (fetchError) throw fetchError;
+  if (fetchError) throw fetchError;
+  if (
+    existing.custom_fields?.additionalCostLinked === "true" &&
+    ["name", "status", "qty", "currency"].some(
+      (field) => updates[field as keyof Subitem] !== undefined,
+    )
+  ) {
+    throw new Error(
+      "The name, Status, Qty, and Currency of an Additional Cost subitem are managed automatically.",
+    );
+  }
 
-    const nextUpdates: Partial<Subitem> = { ...updates };
+  const nextUpdates: Partial<Subitem> = { ...updates };
 
-    // A duration without either boundary needs an anchor. Apply this here so
-    // timeline edits from every CRM surface behave consistently.
-    if (nextUpdates.timelineRows !== undefined) {
-        const singaporeNow = new Date(Date.now() + 8 * 60 * 60 * 1000);
-        const today = `${singaporeNow.getUTCFullYear()}-${String(singaporeNow.getUTCMonth() + 1).padStart(2, '0')}-${String(singaporeNow.getUTCDate()).padStart(2, '0')}`;
-        nextUpdates.timelineRows = nextUpdates.timelineRows.map((row) =>
-            String(row.duration ?? '').trim() && !String(row.timelineStart ?? '').trim() && !String(row.timelineEnd ?? '').trim()
-                ? { ...row, timelineStart: today }
-                : row
-        );
+  // A duration without either boundary needs an anchor. Apply this here so
+  // timeline edits from every CRM surface behave consistently.
+  if (nextUpdates.timelineRows !== undefined) {
+    const singaporeNow = new Date(Date.now() + 8 * 60 * 60 * 1000);
+    const today = `${singaporeNow.getUTCFullYear()}-${String(singaporeNow.getUTCMonth() + 1).padStart(2, "0")}-${String(singaporeNow.getUTCDate()).padStart(2, "0")}`;
+    nextUpdates.timelineRows = nextUpdates.timelineRows.map((row) =>
+      String(row.duration ?? "").trim() &&
+      !String(row.timelineStart ?? "").trim() &&
+      !String(row.timelineEnd ?? "").trim()
+        ? { ...row, timelineStart: today }
+        : row,
+    );
+  }
+
+  if (nextUpdates.timelineGroups !== undefined) {
+    const normalizeTracking = (value: unknown) =>
+      String(value ?? "")
+        .trim()
+        .toLowerCase();
+    const existingTimelines =
+      Array.isArray(existing.timeline_groups) && existing.timeline_groups.length
+        ? existing.timeline_groups
+        : [{ id: "default", cnTracking: existing.cn_tracking ?? "" }];
+    const existingTrackingByTimelineId = new Map(
+      existingTimelines.map(
+        (timeline: { id?: unknown; cnTracking?: unknown }) => [
+          String(timeline.id ?? ""),
+          normalizeTracking(timeline.cnTracking),
+        ],
+      ),
+    );
+    // Older records may already contain duplicate legacy tracking values.
+    // They should not prevent an unrelated timeline edit. Validate values
+    // only when they are new or have actually changed.
+    const changedTracking = nextUpdates.timelineGroups
+      .map((timeline) => ({
+        id: String(timeline.id ?? ""),
+        value: normalizeTracking(timeline.cnTracking),
+      }))
+      .filter(
+        (timeline) =>
+          timeline.value &&
+          existingTrackingByTimelineId.get(timeline.id) !== timeline.value,
+      );
+    for (const changed of changedTracking) {
+      if (
+        nextUpdates.timelineGroups.some(
+          (timeline) =>
+            String(timeline.id ?? "") !== changed.id &&
+            normalizeTracking(timeline.cnTracking) === changed.value,
+        )
+      ) {
+        throw new Error("CN Tracking numbers must be unique within a subitem.");
+      }
     }
-
-    if (nextUpdates.timelineGroups !== undefined) {
-        const normalizeTracking = (value: unknown) => String(value ?? '').trim().toLowerCase();
-        const existingTimelines = Array.isArray(existing.timeline_groups) && existing.timeline_groups.length
-            ? existing.timeline_groups
-            : [{ id: 'default', cnTracking: existing.cn_tracking ?? '' }];
-        const existingTrackingByTimelineId = new Map(
-            existingTimelines.map((timeline: { id?: unknown; cnTracking?: unknown }) => [
-                String(timeline.id ?? ''),
-                normalizeTracking(timeline.cnTracking),
-            ]),
-        );
-        // Older records may already contain duplicate legacy tracking values.
-        // They should not prevent an unrelated timeline edit. Validate values
-        // only when they are new or have actually changed.
-        const changedTracking = nextUpdates.timelineGroups
-            .map((timeline) => ({
-                id: String(timeline.id ?? ''),
-                value: normalizeTracking(timeline.cnTracking),
-            }))
-            .filter((timeline) => timeline.value && existingTrackingByTimelineId.get(timeline.id) !== timeline.value);
-        for (const changed of changedTracking) {
-            if (nextUpdates.timelineGroups.some((timeline) =>
-                String(timeline.id ?? '') !== changed.id &&
-                normalizeTracking(timeline.cnTracking) === changed.value,
-            )) {
-                throw new Error('CN Tracking numbers must be unique within a subitem.');
-            }
-        }
-        if (changedTracking.length) {
-            const { data: otherSubitems, error: trackingReadError } = await supabase
-                .from('subitems')
-                .select('id, name, timeline_groups')
-                .neq('id', subitemId)
-                .is('deleted_at', null);
-            if (trackingReadError) throw trackingReadError;
-            const requestedSet = new Set(changedTracking.map((timeline) => timeline.value));
-            for (const other of otherSubitems ?? []) {
-                const otherTimelines = Array.isArray(other.timeline_groups) ? other.timeline_groups : [];
-                if (otherTimelines.some((timeline: { cnTracking?: unknown }) => requestedSet.has(normalizeTracking(timeline.cnTracking)))) {
-                    throw new Error(`CN Tracking number is already used by ${other.name ?? 'another subitem'}.`);
-                }
-            }
-        }
-    }
-
-    if ("qty" in updates || "up" in updates) {
-        const qty = Number(updates.qty ?? 0);
-        const up = Number(updates.up ?? 0);
-        nextUpdates.price = String(qty * up);
-    }
-
-    if (nextUpdates.shipper !== undefined) {
-        const { data: shippers, error: shippersError } = await supabase
-            .from('shippers')
-            .select('id, name');
-        if (shippersError) throw shippersError;
-
-        const normalizedLabel = nextUpdates.shipper.trim().toLowerCase();
-        const baseName = normalizedLabel.replace(/\s+-\s+(sea|air)\s*$/i, '').trim();
-        const matchingShipper = (shippers ?? []).find((shipper) => {
-            const normalizedName = (shipper.name ?? '').trim().toLowerCase();
-            return normalizedName === normalizedLabel || normalizedName === baseName;
-        });
-        nextUpdates.shipperId = matchingShipper?.id ?? null;
-    }
-
-    const subitemLabelFields = [
-        ["status", "status_option_id", "subitem_status"],
-        ["shipper", "shipper_option_id", "shipper"],
-        ["currency", "currency_option_id", "currency"],
-        ["payment", "payment_option_id", "payment"],
-        ["paymentStatus", "payment_status_option_id", "payment_status"],
-        ["modeOfPayment", "mode_of_payment_option_id", "mode_of_payment"],
-        ["localOverseas", "local_overseas_option_id", "local_overseas"],
-    ] as const;
-    const subitemOptionIds: Record<string, string | null> = {};
-    for (const [modelKey, idColumn, groupCode] of subitemLabelFields) {
-        const value = nextUpdates[modelKey];
-        if (value === undefined) continue;
-        subitemOptionIds[idColumn] = await resolveOptionId(groupCode, String(value));
-    }
-
-    const { error } = await supabase
+    if (changedTracking.length) {
+      const { data: otherSubitems, error: trackingReadError } = await supabase
         .from("subitems")
-        .update({
-            ...(nextUpdates.status !== undefined ? { status: nextUpdates.status } : {}),
-            ...(nextUpdates.shipperId !== undefined ? { shipper_id: nextUpdates.shipperId } : {}),
-            ...(nextUpdates.shipper !== undefined ? { shipper: nextUpdates.shipper } : {}),
-            ...(nextUpdates.price !== undefined ? { price: nextUpdates.price } : {}),
-            ...(nextUpdates.qty !== undefined ? { qty: nextUpdates.qty } : {}),
-            ...(nextUpdates.up !== undefined ? { up: nextUpdates.up } : {}),
-            ...(nextUpdates.name !== undefined ? { name: nextUpdates.name } : {}),
-            ...(nextUpdates.people !== undefined ? { people: nextUpdates.people } : {}),
-            ...(nextUpdates.localOverseas !== undefined ? { local_overseas: nextUpdates.localOverseas } : {}),
-            ...(nextUpdates.description !== undefined ? { description: nextUpdates.description } : {}),
-            ...(nextUpdates.remarks !== undefined ? { remarks: nextUpdates.remarks } : {}),
-            ...(nextUpdates.supplier !== undefined ? { supplier: nextUpdates.supplier } : {}),
-            ...(nextUpdates.cost !== undefined ? { cost: nextUpdates.cost } : {}),
-            ...(nextUpdates.manpower !== undefined ? { manpower: nextUpdates.manpower } : {}),
-            ...(nextUpdates.manpowerRmb !== undefined ? { manpower_rmb: nextUpdates.manpowerRmb } : {}),
-            ...(nextUpdates.ls !== undefined ? { ls: nextUpdates.ls } : {}),
-            ...(nextUpdates.os !== undefined ? { os: nextUpdates.os } : {}),
-            ...(nextUpdates.currency !== undefined ? { currency: nextUpdates.currency } : {}),
-            ...(nextUpdates.cSgd !== undefined ? { c_sgd: nextUpdates.cSgd } : {}),
-            ...(nextUpdates.tc !== undefined ? { tc: nextUpdates.tc } : {}),
-            ...(nextUpdates.uc !== undefined ? { uc: nextUpdates.uc } : {}),
-            ...(nextUpdates.tcSgd !== undefined ? { tc_sgd: nextUpdates.tcSgd } : {}),
-            ...(nextUpdates.pl !== undefined ? { pl: nextUpdates.pl } : {}),
-            ...(nextUpdates.sl !== undefined ? { sl: nextUpdates.sl } : {}),
-            ...(nextUpdates.numOfCartons !== undefined ? { num_of_cartons: nextUpdates.numOfCartons } : {}),
-            ...(nextUpdates.cnTracking !== undefined ? { cn_tracking: nextUpdates.cnTracking } : {}),
-            ...(nextUpdates.sgTracking !== undefined ? { sg_tracking: nextUpdates.sgTracking } : {}),
-            ...(nextUpdates.owner !== undefined ? { owner: nextUpdates.owner } : {}),
-            ...(nextUpdates.payment !== undefined ? { payment: nextUpdates.payment } : {}),
-            ...(nextUpdates.paymentStatus !== undefined ? { payment_status: nextUpdates.paymentStatus } : {}),
-            ...(nextUpdates.totalUc !== undefined ? { total_uc: nextUpdates.totalUc } : {}),
-            ...(nextUpdates.lsRmb !== undefined ? { ls_rmb: nextUpdates.lsRmb } : {}),
-            ...(nextUpdates.totalC !== undefined ? { total_c: nextUpdates.totalC } : {}),
-            ...(nextUpdates.modeOfPayment !== undefined ? { mode_of_payment: nextUpdates.modeOfPayment } : {}),
-            ...(nextUpdates.orderNumber !== undefined ? { order_number: nextUpdates.orderNumber } : {}),
-            ...(nextUpdates.quantityProduced !== undefined ? { quantity_produced: nextUpdates.quantityProduced } : {}),
-            ...(nextUpdates.qtyFree !== undefined ? { qty_free: nextUpdates.qtyFree } : {}),
-            ...(nextUpdates.sample !== undefined ? { sample: nextUpdates.sample } : {}),
-            ...(nextUpdates.qtyTotal !== undefined ? { qty_total: nextUpdates.qtyTotal } : {}),
-            ...(nextUpdates.qtyWeKeep !== undefined ? { qty_we_keep: nextUpdates.qtyWeKeep } : {}),
-            ...(nextUpdates.qtyFor !== undefined ? { qty_for: nextUpdates.qtyFor } : {}),
-            ...(nextUpdates.paymentAmount !== undefined ? { payment_amount: nextUpdates.paymentAmount } : {}),
-            ...(nextUpdates.difference !== undefined ? { difference: nextUpdates.difference } : {}),
-            ...(nextUpdates.paymentRemarks !== undefined ? { payment_remarks: nextUpdates.paymentRemarks } : {}),
-            ...(nextUpdates.timelineRows !== undefined ? { timeline_rows: nextUpdates.timelineRows } : {}),
-            ...(nextUpdates.timelineGroups !== undefined ? {
-                timeline_groups: nextUpdates.timelineGroups,
-                timeline_rows: nextUpdates.timelineGroups[0]?.rows ?? [],
-                cn_tracking: nextUpdates.timelineGroups.map((timeline) => timeline.cnTracking.trim()).filter(Boolean).join(', '),
-                sg_tracking: nextUpdates.timelineGroups.map((timeline) => timeline.sgTracking.trim()).filter(Boolean).join(', '),
-            } : {}),
-            ...(nextUpdates.showTimeline !== undefined ? { show_timeline: nextUpdates.showTimeline } : {}),
-            ...(nextUpdates.showPayments !== undefined ? { show_payments: nextUpdates.showPayments } : {}),
-            ...(nextUpdates.showSample !== undefined ? { show_sample: nextUpdates.showSample } : {}),
-            ...(nextUpdates.sampleRows !== undefined ? { sample_rows: nextUpdates.sampleRows } : {}),
-            ...(nextUpdates.sampleOrderStatus !== undefined ? { sample_order_status: nextUpdates.sampleOrderStatus } : {}),
-            ...(nextUpdates.sampleStatus !== undefined ? { sample_status: nextUpdates.sampleStatus } : {}),
-            ...(nextUpdates.sampleType !== undefined ? { sample_type: nextUpdates.sampleType } : {}),
-            ...(nextUpdates.customFields !== undefined ? { custom_fields: nextUpdates.customFields } : {}),
-            ...subitemOptionIds,
-        })
-        .eq("id", subitemId);
-
-    if (error) throw error;
-
-    if (nextUpdates.timelineRows !== undefined) {
-        await logTimelineRowDiffs({
-            clientId: existing.client_id,
-            subitemId,
-            subitemName: existing.name,
-            oldRows: existing.timeline_rows ?? [],
-            newRows: nextUpdates.timelineRows,
-        });
+        .select("id, name, timeline_groups")
+        .neq("id", subitemId)
+        .is("deleted_at", null);
+      if (trackingReadError) throw trackingReadError;
+      const requestedSet = new Set(
+        changedTracking.map((timeline) => timeline.value),
+      );
+      for (const other of otherSubitems ?? []) {
+        const otherTimelines = Array.isArray(other.timeline_groups)
+          ? other.timeline_groups
+          : [];
+        if (
+          otherTimelines.some((timeline: { cnTracking?: unknown }) =>
+            requestedSet.has(normalizeTracking(timeline.cnTracking)),
+          )
+        ) {
+          throw new Error(
+            `CN Tracking number is already used by ${other.name ?? "another subitem"}.`,
+          );
+        }
+      }
     }
+  }
 
-    const ignoredFields = new Set(['showTimeline', 'showPayments', 'showSample', 'customFields', 'timelineRows', 'timelineGroups']);
-    const fieldMap: Record<string, string> = {
-        replyStatus: 'reply_status', localOverseas: 'local_overseas', paymentStatus: 'payment_status',
-        totalUc: 'total_uc', lsRmb: 'ls_rmb', totalC: 'total_c', modeOfPayment: 'mode_of_payment',
-        orderNumber: 'order_number', quantityProduced: 'quantity_produced', qtyFree: 'qty_free', sample: 'sample', qtyTotal: 'qty_total', qtyWeKeep: 'qty_we_keep', qtyFor: 'qty_for',
-        paymentAmount: 'payment_amount', paymentRemarks: 'payment_remarks', timelineRows: 'timeline_rows',
-        sampleRows: 'sample_rows', sampleOrderStatus: 'sample_order_status', sampleStatus: 'sample_status',
-        sampleType: 'sample_type', cSgd: 'c_sgd', tcSgd: 'tc_sgd', numOfCartons: 'num_of_cartons',
-        cnTracking: 'cn_tracking', sgTracking: 'sg_tracking', shipperId: 'shipper_id',
-    };
+  if ("qty" in updates || "up" in updates) {
+    const qty = Number(updates.qty ?? 0);
+    const up = Number(updates.up ?? 0);
+    nextUpdates.price = String(qty * up);
+  }
 
-    for (const [key, value] of Object.entries(updates)) {
-        if (ignoredFields.has(key)) continue;
-        const databaseKey = fieldMap[key] ?? key;
-        const oldValue = existing[databaseKey];
-        if (isEqualForLog(oldValue, value)) continue;
+  if (nextUpdates.shipper !== undefined) {
+    const { data: shippers, error: shippersError } = await supabase
+      .from("shippers")
+      .select("id, name");
+    if (shippersError) throw shippersError;
 
-        await insertActivityLog({
-            clientId: existing.client_id,
-            subitemId,
-            subitemName: existing.name,
-            action: 'subitem_field_changed',
-            fieldName: key,
-            oldValue: formatValueForLog(oldValue),
-            newValue: formatValueForLog(value),
-        });
-    }
-    if (updates.customFields !== undefined) await logFileAttachmentDiffs({ clientId: existing.client_id, subitemId, subitemName: existing.name, before: existing.custom_fields, after: updates.customFields });
+    const normalizedLabel = nextUpdates.shipper.trim().toLowerCase();
+    const baseName = normalizedLabel
+      .replace(/\s+-\s+(sea|air)\s*$/i, "")
+      .trim();
+    const matchingShipper = (shippers ?? []).find((shipper) => {
+      const normalizedName = (shipper.name ?? "").trim().toLowerCase();
+      return normalizedName === normalizedLabel || normalizedName === baseName;
+    });
+    nextUpdates.shipperId = matchingShipper?.id ?? null;
+  }
+
+  const subitemLabelFields = [
+    ["status", "status_option_id", "subitem_status"],
+    ["shipper", "shipper_option_id", "shipper"],
+    ["currency", "currency_option_id", "currency"],
+    ["payment", "payment_option_id", "payment"],
+    ["paymentStatus", "payment_status_option_id", "payment_status"],
+    ["modeOfPayment", "mode_of_payment_option_id", "mode_of_payment"],
+    ["localOverseas", "local_overseas_option_id", "local_overseas"],
+  ] as const;
+  const subitemOptionIds: Record<string, string | null> = {};
+  for (const [modelKey, idColumn, groupCode] of subitemLabelFields) {
+    const value = nextUpdates[modelKey];
+    if (value === undefined) continue;
+    subitemOptionIds[idColumn] = await resolveOptionId(
+      groupCode,
+      String(value),
+    );
+  }
+
+  const { error } = await supabase
+    .from("subitems")
+    .update({
+      ...(nextUpdates.status !== undefined
+        ? { status: nextUpdates.status }
+        : {}),
+      ...(nextUpdates.shipperId !== undefined
+        ? { shipper_id: nextUpdates.shipperId }
+        : {}),
+      ...(nextUpdates.shipper !== undefined
+        ? { shipper: nextUpdates.shipper }
+        : {}),
+      ...(nextUpdates.price !== undefined ? { price: nextUpdates.price } : {}),
+      ...(nextUpdates.qty !== undefined ? { qty: nextUpdates.qty } : {}),
+      ...(nextUpdates.up !== undefined ? { up: nextUpdates.up } : {}),
+      ...(nextUpdates.name !== undefined ? { name: nextUpdates.name } : {}),
+      ...(nextUpdates.people !== undefined
+        ? { people: nextUpdates.people }
+        : {}),
+      ...(nextUpdates.localOverseas !== undefined
+        ? { local_overseas: nextUpdates.localOverseas }
+        : {}),
+      ...(nextUpdates.description !== undefined
+        ? { description: nextUpdates.description }
+        : {}),
+      ...(nextUpdates.remarks !== undefined
+        ? { remarks: nextUpdates.remarks }
+        : {}),
+      ...(nextUpdates.supplier !== undefined
+        ? { supplier: nextUpdates.supplier }
+        : {}),
+      ...(nextUpdates.cost !== undefined ? { cost: nextUpdates.cost } : {}),
+      ...(nextUpdates.manpower !== undefined
+        ? { manpower: nextUpdates.manpower }
+        : {}),
+      ...(nextUpdates.manpowerRmb !== undefined
+        ? { manpower_rmb: nextUpdates.manpowerRmb }
+        : {}),
+      ...(nextUpdates.ls !== undefined ? { ls: nextUpdates.ls } : {}),
+      ...(nextUpdates.os !== undefined ? { os: nextUpdates.os } : {}),
+      ...(nextUpdates.currency !== undefined
+        ? { currency: nextUpdates.currency }
+        : {}),
+      ...(nextUpdates.cSgd !== undefined ? { c_sgd: nextUpdates.cSgd } : {}),
+      ...(nextUpdates.tc !== undefined ? { tc: nextUpdates.tc } : {}),
+      ...(nextUpdates.uc !== undefined ? { uc: nextUpdates.uc } : {}),
+      ...(nextUpdates.tcSgd !== undefined ? { tc_sgd: nextUpdates.tcSgd } : {}),
+      ...(nextUpdates.pl !== undefined ? { pl: nextUpdates.pl } : {}),
+      ...(nextUpdates.sl !== undefined ? { sl: nextUpdates.sl } : {}),
+      ...(nextUpdates.numOfCartons !== undefined
+        ? { num_of_cartons: nextUpdates.numOfCartons }
+        : {}),
+      ...(nextUpdates.cnTracking !== undefined
+        ? { cn_tracking: nextUpdates.cnTracking }
+        : {}),
+      ...(nextUpdates.sgTracking !== undefined
+        ? { sg_tracking: nextUpdates.sgTracking }
+        : {}),
+      ...(nextUpdates.owner !== undefined ? { owner: nextUpdates.owner } : {}),
+      ...(nextUpdates.payment !== undefined
+        ? { payment: nextUpdates.payment }
+        : {}),
+      ...(nextUpdates.paymentStatus !== undefined
+        ? { payment_status: nextUpdates.paymentStatus }
+        : {}),
+      ...(nextUpdates.totalUc !== undefined
+        ? { total_uc: nextUpdates.totalUc }
+        : {}),
+      ...(nextUpdates.lsRmb !== undefined ? { ls_rmb: nextUpdates.lsRmb } : {}),
+      ...(nextUpdates.totalC !== undefined
+        ? { total_c: nextUpdates.totalC }
+        : {}),
+      ...(nextUpdates.modeOfPayment !== undefined
+        ? { mode_of_payment: nextUpdates.modeOfPayment }
+        : {}),
+      ...(nextUpdates.orderNumber !== undefined
+        ? { order_number: nextUpdates.orderNumber }
+        : {}),
+      ...(nextUpdates.quantityProduced !== undefined
+        ? { quantity_produced: nextUpdates.quantityProduced }
+        : {}),
+      ...(nextUpdates.qtyFree !== undefined
+        ? { qty_free: nextUpdates.qtyFree }
+        : {}),
+      ...(nextUpdates.sample !== undefined
+        ? { sample: nextUpdates.sample }
+        : {}),
+      ...(nextUpdates.qtyTotal !== undefined
+        ? { qty_total: nextUpdates.qtyTotal }
+        : {}),
+      ...(nextUpdates.qtyWeKeep !== undefined
+        ? { qty_we_keep: nextUpdates.qtyWeKeep }
+        : {}),
+      ...(nextUpdates.qtyFor !== undefined
+        ? { qty_for: nextUpdates.qtyFor }
+        : {}),
+      ...(nextUpdates.paymentAmount !== undefined
+        ? { payment_amount: nextUpdates.paymentAmount }
+        : {}),
+      ...(nextUpdates.difference !== undefined
+        ? { difference: nextUpdates.difference }
+        : {}),
+      ...(nextUpdates.paymentRemarks !== undefined
+        ? { payment_remarks: nextUpdates.paymentRemarks }
+        : {}),
+      ...(nextUpdates.timelineRows !== undefined
+        ? { timeline_rows: nextUpdates.timelineRows }
+        : {}),
+      ...(nextUpdates.timelineGroups !== undefined
+        ? {
+            timeline_groups: nextUpdates.timelineGroups,
+            timeline_rows: nextUpdates.timelineGroups[0]?.rows ?? [],
+            cn_tracking: nextUpdates.timelineGroups
+              .map((timeline) => timeline.cnTracking.trim())
+              .filter(Boolean)
+              .join(", "),
+            sg_tracking: nextUpdates.timelineGroups
+              .map((timeline) => timeline.sgTracking.trim())
+              .filter(Boolean)
+              .join(", "),
+          }
+        : {}),
+      ...(nextUpdates.showTimeline !== undefined
+        ? { show_timeline: nextUpdates.showTimeline }
+        : {}),
+      ...(nextUpdates.showPayments !== undefined
+        ? { show_payments: nextUpdates.showPayments }
+        : {}),
+      ...(nextUpdates.showSample !== undefined
+        ? { show_sample: nextUpdates.showSample }
+        : {}),
+      ...(nextUpdates.sampleRows !== undefined
+        ? { sample_rows: nextUpdates.sampleRows }
+        : {}),
+      ...(nextUpdates.sampleOrderStatus !== undefined
+        ? { sample_order_status: nextUpdates.sampleOrderStatus }
+        : {}),
+      ...(nextUpdates.sampleStatus !== undefined
+        ? { sample_status: nextUpdates.sampleStatus }
+        : {}),
+      ...(nextUpdates.sampleType !== undefined
+        ? { sample_type: nextUpdates.sampleType }
+        : {}),
+      ...(nextUpdates.customFields !== undefined
+        ? { custom_fields: nextUpdates.customFields }
+        : {}),
+      ...subitemOptionIds,
+    })
+    .eq("id", subitemId);
+
+  if (error) throw error;
+
+  if (nextUpdates.timelineRows !== undefined) {
+    await logTimelineRowDiffs({
+      clientId: existing.client_id,
+      subitemId,
+      subitemName: existing.name,
+      oldRows: existing.timeline_rows ?? [],
+      newRows: nextUpdates.timelineRows,
+    });
+  }
+
+  const ignoredFields = new Set([
+    "showTimeline",
+    "showPayments",
+    "showSample",
+    "customFields",
+    "timelineRows",
+    "timelineGroups",
+  ]);
+  const fieldMap: Record<string, string> = {
+    replyStatus: "reply_status",
+    localOverseas: "local_overseas",
+    paymentStatus: "payment_status",
+    totalUc: "total_uc",
+    lsRmb: "ls_rmb",
+    totalC: "total_c",
+    modeOfPayment: "mode_of_payment",
+    orderNumber: "order_number",
+    quantityProduced: "quantity_produced",
+    qtyFree: "qty_free",
+    sample: "sample",
+    qtyTotal: "qty_total",
+    qtyWeKeep: "qty_we_keep",
+    qtyFor: "qty_for",
+    paymentAmount: "payment_amount",
+    paymentRemarks: "payment_remarks",
+    timelineRows: "timeline_rows",
+    sampleRows: "sample_rows",
+    sampleOrderStatus: "sample_order_status",
+    sampleStatus: "sample_status",
+    sampleType: "sample_type",
+    cSgd: "c_sgd",
+    tcSgd: "tc_sgd",
+    numOfCartons: "num_of_cartons",
+    cnTracking: "cn_tracking",
+    sgTracking: "sg_tracking",
+    shipperId: "shipper_id",
+  };
+
+  for (const [key, value] of Object.entries(updates)) {
+    if (ignoredFields.has(key)) continue;
+    const databaseKey = fieldMap[key] ?? key;
+    const oldValue = existing[databaseKey];
+    if (isEqualForLog(oldValue, value)) continue;
+
+    await insertActivityLog({
+      clientId: existing.client_id,
+      subitemId,
+      subitemName: existing.name,
+      action: "subitem_field_changed",
+      fieldName: key,
+      oldValue: formatValueForLog(oldValue),
+      newValue: formatValueForLog(value),
+    });
+  }
+  if (updates.customFields !== undefined)
+    await logFileAttachmentDiffs({
+      clientId: existing.client_id,
+      subitemId,
+      subitemName: existing.name,
+      before: existing.custom_fields,
+      after: updates.customFields,
+    });
 }
 
-export async function moveSubitemRow(subitemId: string, targetClientId: string) {
-    const { data: existing, error: fetchError } = await supabase
-        .from('subitems')
-        .select('id, name, client_id')
-        .eq('id', subitemId)
-        .single();
-    if (fetchError) throw fetchError;
-    if (existing.client_id === targetClientId) return;
+export async function moveSubitemRow(
+  subitemId: string,
+  targetClientId: string,
+) {
+  const { data: existing, error: fetchError } = await supabase
+    .from("subitems")
+    .select("id, name, client_id, custom_fields")
+    .eq("id", subitemId)
+    .single();
+  if (fetchError) throw fetchError;
+  if (existing.custom_fields?.additionalCostLinked === "true") {
+    throw new Error(
+      "Additional Cost subitems cannot be moved to another client.",
+    );
+  }
+  if (existing.client_id === targetClientId) return;
 
-    const { data: clients, error: clientsError } = await supabase
-        .from('clients')
-        .select('id, name')
-        .in('id', [existing.client_id, targetClientId]);
-    if (clientsError) throw clientsError;
+  const { data: clients, error: clientsError } = await supabase
+    .from("clients")
+    .select("id, name")
+    .in("id", [existing.client_id, targetClientId]);
+  if (clientsError) throw clientsError;
 
-    const oldClientName = clients?.find((client) => client.id === existing.client_id)?.name ?? existing.client_id;
-    const newClientName = clients?.find((client) => client.id === targetClientId)?.name ?? targetClientId;
+  const oldClientName =
+    clients?.find((client) => client.id === existing.client_id)?.name ??
+    existing.client_id;
+  const newClientName =
+    clients?.find((client) => client.id === targetClientId)?.name ??
+    targetClientId;
 
-    const { data: lastTargetSubitem, error: lastTargetSubitemError } = await supabase
-        .from('subitems')
-        .select('position')
-        .eq('client_id', targetClientId)
-        .order('position', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-    if (lastTargetSubitemError) throw lastTargetSubitemError;
+  const { data: lastTargetSubitem, error: lastTargetSubitemError } =
+    await supabase
+      .from("subitems")
+      .select("position")
+      .eq("client_id", targetClientId)
+      .order("position", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+  if (lastTargetSubitemError) throw lastTargetSubitemError;
 
-    const { error } = await supabase
-        .from('subitems')
-        .update({ client_id: targetClientId, position: Number(lastTargetSubitem?.position ?? -1) + 1 })
-        .eq('id', subitemId);
+  const { error } = await supabase
+    .from("subitems")
+    .update({
+      client_id: targetClientId,
+      position: Number(lastTargetSubitem?.position ?? -1) + 1,
+    })
+    .eq("id", subitemId);
 
-    if (error) throw error;
+  if (error) throw error;
 
-    const { error: activityMoveError } = await supabase
-        .from('activity_log')
-        .update({ client_id: targetClientId })
-        .eq('subitem_id', subitemId);
-    if (activityMoveError) throw activityMoveError;
+  const { error: activityMoveError } = await supabase
+    .from("activity_log")
+    .update({ client_id: targetClientId })
+    .eq("subitem_id", subitemId);
+  if (activityMoveError) throw activityMoveError;
 
-    await insertActivityLog({
-        clientId: existing.client_id,
-        subitemId: null,
-        subitemName: existing.name,
-        action: 'subitem_deleted',
-        oldValue: { id: existing.id, name: existing.name },
-        description: `Subitem moved to ${newClientName}`,
-    });
+  await insertActivityLog({
+    clientId: existing.client_id,
+    subitemId: null,
+    subitemName: existing.name,
+    action: "subitem_deleted",
+    oldValue: { id: existing.id, name: existing.name },
+    description: `Subitem moved to ${newClientName}`,
+  });
 
-    await insertActivityLog({
-        clientId: targetClientId,
-        subitemId,
-        subitemName: existing.name,
-        action: 'subitem_added',
-        description: `Subitem moved from ${oldClientName}`,
-    });
-    await insertActivityLog({
-        clientId: targetClientId,
-        subitemId,
-        subitemName: existing.name,
-        action: 'subitem_field_changed',
-        fieldName: 'parentClient',
-        oldValue: oldClientName,
-        newValue: newClientName,
-        meta: { oldClientId: existing.client_id, newClientId: targetClientId },
-    });
+  await insertActivityLog({
+    clientId: targetClientId,
+    subitemId,
+    subitemName: existing.name,
+    action: "subitem_added",
+    description: `Subitem moved from ${oldClientName}`,
+  });
+  await insertActivityLog({
+    clientId: targetClientId,
+    subitemId,
+    subitemName: existing.name,
+    action: "subitem_field_changed",
+    fieldName: "parentClient",
+    oldValue: oldClientName,
+    newValue: newClientName,
+    meta: { oldClientId: existing.client_id, newClientId: targetClientId },
+  });
 }
 
 export async function deleteSubitemRow(subitemId: string) {
-    await assertDeletionAllowed('subitems', subitemId);
-    const { data: existing, error: fetchError } = await supabase
-        .from('subitems')
-        .select('*')
-        .eq('id', subitemId)
-        .single();
+  await assertDeletionAllowed("subitems", subitemId);
+  const { data: existing, error: fetchError } = await supabase
+    .from("subitems")
+    .select("*")
+    .eq("id", subitemId)
+    .single();
 
-    if (fetchError) throw fetchError;
+  if (fetchError) throw fetchError;
 
-    try {
-        const deletedAt = new Date().toISOString();
-        await insertActivityLog({
-            clientId: existing.client_id,
-            subitemId: null,
-            subitemName: existing.name,
-            action: 'subitem_deleted',
-            title: 'moved this subitem to the Bin',
-            oldValue: {
-                id: existing.id,
-                name: existing.name,
-                qty: existing.qty,
-                remarks: existing.remarks ?? null,
-            },
-            meta: { deletedEntity: 'subitem', deletedId: existing.id, deletedAt },
-        });
-    } catch (logError: any) {
-        console.error('Failed to insert delete activity log', {
-            error: logError,
-            message: logError?.message,
-            details: logError?.details,
-            hint: logError?.hint,
-            code: logError?.code,
-        });
+  if (existing.custom_fields?.additionalCostLinked === "true") {
+    const response = await fetch(
+      `/api/additional-costs?subitemId=${encodeURIComponent(subitemId)}`,
+      { method: "DELETE" },
+    );
+    const result = await response.json();
+    if (!response.ok) {
+      throw new Error(
+        result.error ?? "The linked Additional Cost could not be deleted.",
+      );
     }
+  }
 
+  try {
     const deletedAt = new Date().toISOString();
-    const { data: { user } } = await supabase.auth.getUser();
-    const { error } = await supabase
-        .from('subitems')
-        .update({ deleted_at: deletedAt, deleted_by: user?.id ?? null, deleted_with_client_id: null })
-        .eq('id', subitemId);
+    await insertActivityLog({
+      clientId: existing.client_id,
+      subitemId: null,
+      subitemName: existing.name,
+      action: "subitem_deleted",
+      title: "moved this subitem to the Bin",
+      oldValue: {
+        id: existing.id,
+        name: existing.name,
+        qty: existing.qty,
+        remarks: existing.remarks ?? null,
+      },
+      meta: { deletedEntity: "subitem", deletedId: existing.id, deletedAt },
+    });
+  } catch (logError: any) {
+    console.error("Failed to insert delete activity log", {
+      error: logError,
+      message: logError?.message,
+      details: logError?.details,
+      hint: logError?.hint,
+      code: logError?.code,
+    });
+  }
 
-    if (error) throw error;
+  const deletedAt = new Date().toISOString();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const { error } = await supabase
+    .from("subitems")
+    .update({
+      deleted_at: deletedAt,
+      deleted_by: user?.id ?? null,
+      deleted_with_client_id: null,
+    })
+    .eq("id", subitemId);
+
+  if (error) throw error;
 }
 
 export async function restoreSubitemRow(subitemId: string) {
-    await assertDeletionAllowed('subitems', subitemId);
-    const { data: subitem, error: fetchError } = await supabase.from('subitems').select('id, client_id, name, deleted_at').eq('id', subitemId).single();
-    if (fetchError) throw fetchError;
-    if (!subitem.deleted_at) throw new Error('This subitem is no longer in the Bin.');
-    if (Date.now() - new Date(subitem.deleted_at).getTime() >= BIN_RETENTION_MS) throw new Error('The 30-day Bin retention period has ended.');
-    const { error } = await supabase.from('subitems').update({ deleted_at: null, deleted_by: null, deleted_with_client_id: null }).eq('id', subitemId);
-    if (error) throw error;
-    await insertActivityLog({ clientId: subitem.client_id, subitemId, subitemName: subitem.name, action: 'subitem_restored', title: 'restored this subitem from the Bin', meta: { deletedEntity: 'subitem', deletedId: subitemId } });
+  await assertDeletionAllowed("subitems", subitemId);
+  const { data: subitem, error: fetchError } = await supabase
+    .from("subitems")
+    .select("id, client_id, name, deleted_at")
+    .eq("id", subitemId)
+    .single();
+  if (fetchError) throw fetchError;
+  if (!subitem.deleted_at)
+    throw new Error("This subitem is no longer in the Bin.");
+  if (Date.now() - new Date(subitem.deleted_at).getTime() >= BIN_RETENTION_MS)
+    throw new Error("The 30-day Bin retention period has ended.");
+  const { error } = await supabase
+    .from("subitems")
+    .update({
+      deleted_at: null,
+      deleted_by: null,
+      deleted_with_client_id: null,
+    })
+    .eq("id", subitemId);
+  if (error) throw error;
+  await insertActivityLog({
+    clientId: subitem.client_id,
+    subitemId,
+    subitemName: subitem.name,
+    action: "subitem_restored",
+    title: "restored this subitem from the Bin",
+    meta: { deletedEntity: "subitem", deletedId: subitemId },
+  });
 }
 
 export async function createSubitemPaymentRow(subitemId: string) {
-    const { data: subitem, error: subitemError } = await supabase.from('subitems').select('id, client_id, name').eq('id', subitemId).single();
-    if (subitemError) throw subitemError;
-    const { data: lastRow, error: lastRowError } = await supabase.from('subitem_payment_rows').select('position').eq('subitem_id', subitemId).order('position', { ascending: false }).limit(1).maybeSingle();
-    if (lastRowError) throw lastRowError;
-    const { data: created, error } = await supabase.from('subitem_payment_rows').insert({ subitem_id: subitemId, position: Number(lastRow?.position ?? -1) + 1, amount: '', order_number: '', payment_received: null, mode_of_payment: '', mode_of_payment_option_id: null }).select('id, position, amount, order_number, payment_received, mode_of_payment, mode_of_payment_option_id').single();
-    if (error) throw error;
-    void insertActivityLog({ clientId: subitem.client_id, subitemId, subitemName: subitem.name, action: 'subitem_field_changed', fieldName: 'payment row added' });
-    return { id: created.id, position: created.position ?? 0, amount: created.amount ?? '', orderNumber: created.order_number ?? '', paymentReceived: created.payment_received ?? null, modeOfPayment: created.mode_of_payment ?? '', modeOfPaymentOptionId: created.mode_of_payment_option_id ?? null } satisfies PaymentRow;
+  const { data: subitem, error: subitemError } = await supabase
+    .from("subitems")
+    .select("id, client_id, name")
+    .eq("id", subitemId)
+    .single();
+  if (subitemError) throw subitemError;
+  const { data: lastRow, error: lastRowError } = await supabase
+    .from("subitem_payment_rows")
+    .select("position")
+    .eq("subitem_id", subitemId)
+    .order("position", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (lastRowError) throw lastRowError;
+  const { data: created, error } = await supabase
+    .from("subitem_payment_rows")
+    .insert({
+      subitem_id: subitemId,
+      position: Number(lastRow?.position ?? -1) + 1,
+      amount: "",
+      order_number: "",
+      payment_received: null,
+      mode_of_payment: "",
+      mode_of_payment_option_id: null,
+    })
+    .select(
+      "id, position, amount, order_number, payment_received, mode_of_payment, mode_of_payment_option_id",
+    )
+    .single();
+  if (error) throw error;
+  void insertActivityLog({
+    clientId: subitem.client_id,
+    subitemId,
+    subitemName: subitem.name,
+    action: "subitem_field_changed",
+    fieldName: "payment row added",
+  });
+  return {
+    id: created.id,
+    position: created.position ?? 0,
+    amount: created.amount ?? "",
+    orderNumber: created.order_number ?? "",
+    paymentReceived: created.payment_received ?? null,
+    modeOfPayment: created.mode_of_payment ?? "",
+    modeOfPaymentOptionId: created.mode_of_payment_option_id ?? null,
+  } satisfies PaymentRow;
 }
 
-export async function updateSubitemPaymentRow(subitemId: string, paymentRowId: string, updates: Partial<Omit<PaymentRow, 'id' | 'position'>>) {
-    const { data: subitem, error: subitemError } = await supabase.from('subitems').select('client_id, name').eq('id', subitemId).single();
-    if (subitemError) throw subitemError;
-    const { data: existing, error: existingError } = await supabase.from('subitem_payment_rows').select('*').eq('id', paymentRowId).eq('subitem_id', subitemId).single();
-    if (existingError) throw existingError;
-    const modeOfPaymentOptionId = updates.modeOfPayment === undefined ? undefined : await resolveOptionId('mode_of_payment', updates.modeOfPayment);
-    const payload = {
-        ...(updates.amount !== undefined ? { amount: updates.amount } : {}),
-        ...(updates.orderNumber !== undefined ? { order_number: updates.orderNumber } : {}),
-        ...(updates.paymentReceived !== undefined ? { payment_received: updates.paymentReceived } : {}),
-        ...(updates.modeOfPayment !== undefined ? { mode_of_payment: updates.modeOfPayment, mode_of_payment_option_id: modeOfPaymentOptionId } : {}),
-    };
-    const { data: updated, error } = await supabase.from('subitem_payment_rows').update(payload).eq('id', paymentRowId).eq('subitem_id', subitemId).select('id, position, amount, order_number, payment_received, mode_of_payment, mode_of_payment_option_id').single();
-    if (error) throw error;
-    for (const [field, value] of Object.entries(payload)) {
-        const oldValue = existing[field];
-        if (isEqualForLog(oldValue, value)) continue;
-        void insertActivityLog({ clientId: subitem.client_id, subitemId, subitemName: subitem.name, action: 'subitem_field_changed', fieldName: `payment row:${paymentRowId}:${field}`, oldValue, newValue: value });
-    }
-    return { id: updated.id, position: updated.position ?? 0, amount: updated.amount ?? '', orderNumber: updated.order_number ?? '', paymentReceived: updated.payment_received ?? null, modeOfPayment: updated.mode_of_payment ?? '', modeOfPaymentOptionId: updated.mode_of_payment_option_id ?? null } satisfies PaymentRow;
-}
-
-export async function deleteSubitemPaymentRow(subitemId: string, paymentRowId: string) {
-    const { data: subitem, error: subitemError } = await supabase.from('subitems').select('client_id, name').eq('id', subitemId).single();
-    if (subitemError) throw subitemError;
-    const { data: row, error: rowError } = await supabase.from('subitem_payment_rows').select('*').eq('id', paymentRowId).eq('subitem_id', subitemId).single();
-    if (rowError) throw rowError;
-    const { error } = await supabase.from('subitem_payment_rows').delete().eq('id', paymentRowId).eq('subitem_id', subitemId);
-    if (error) throw error;
-    void insertActivityLog({ clientId: subitem.client_id, subitemId, subitemName: subitem.name, action: 'subitem_field_changed', fieldName: 'payment row removed', oldValue: row });
-}
-
-export async function reorderSubitemRows(clientId: string, orderedSubitemIds: string[]) {
-    const { error } = await supabase.rpc('reorder_client_subitems', {
-        target_client_id: clientId,
-        ordered_subitem_ids: orderedSubitemIds,
+export async function updateSubitemPaymentRow(
+  subitemId: string,
+  paymentRowId: string,
+  updates: Partial<Omit<PaymentRow, "id" | "position">>,
+) {
+  const { data: subitem, error: subitemError } = await supabase
+    .from("subitems")
+    .select("client_id, name")
+    .eq("id", subitemId)
+    .single();
+  if (subitemError) throw subitemError;
+  const { data: existing, error: existingError } = await supabase
+    .from("subitem_payment_rows")
+    .select("*")
+    .eq("id", paymentRowId)
+    .eq("subitem_id", subitemId)
+    .single();
+  if (existingError) throw existingError;
+  const modeOfPaymentOptionId =
+    updates.modeOfPayment === undefined
+      ? undefined
+      : await resolveOptionId("mode_of_payment", updates.modeOfPayment);
+  const payload = {
+    ...(updates.amount !== undefined ? { amount: updates.amount } : {}),
+    ...(updates.orderNumber !== undefined
+      ? { order_number: updates.orderNumber }
+      : {}),
+    ...(updates.paymentReceived !== undefined
+      ? { payment_received: updates.paymentReceived }
+      : {}),
+    ...(updates.modeOfPayment !== undefined
+      ? {
+          mode_of_payment: updates.modeOfPayment,
+          mode_of_payment_option_id: modeOfPaymentOptionId,
+        }
+      : {}),
+  };
+  const { data: updated, error } = await supabase
+    .from("subitem_payment_rows")
+    .update(payload)
+    .eq("id", paymentRowId)
+    .eq("subitem_id", subitemId)
+    .select(
+      "id, position, amount, order_number, payment_received, mode_of_payment, mode_of_payment_option_id",
+    )
+    .single();
+  if (error) throw error;
+  for (const [field, value] of Object.entries(payload)) {
+    const oldValue = existing[field];
+    if (isEqualForLog(oldValue, value)) continue;
+    void insertActivityLog({
+      clientId: subitem.client_id,
+      subitemId,
+      subitemName: subitem.name,
+      action: "subitem_field_changed",
+      fieldName: `payment row:${paymentRowId}:${field}`,
+      oldValue,
+      newValue: value,
     });
-    if (error) throw error;
+  }
+  return {
+    id: updated.id,
+    position: updated.position ?? 0,
+    amount: updated.amount ?? "",
+    orderNumber: updated.order_number ?? "",
+    paymentReceived: updated.payment_received ?? null,
+    modeOfPayment: updated.mode_of_payment ?? "",
+    modeOfPaymentOptionId: updated.mode_of_payment_option_id ?? null,
+  } satisfies PaymentRow;
 }
 
-export async function duplicateClientRow(clientId: string, includeSubitems: boolean) {
-    const response = await fetch('/api/clients/duplicate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ clientId, includeSubitems }),
-    });
-    const result = await response.json();
-    if (!response.ok) throw new Error(result?.error ?? 'Could not duplicate client');
-    return result.client;
+export async function deleteSubitemPaymentRow(
+  subitemId: string,
+  paymentRowId: string,
+) {
+  const { data: subitem, error: subitemError } = await supabase
+    .from("subitems")
+    .select("client_id, name")
+    .eq("id", subitemId)
+    .single();
+  if (subitemError) throw subitemError;
+  const { data: row, error: rowError } = await supabase
+    .from("subitem_payment_rows")
+    .select("*")
+    .eq("id", paymentRowId)
+    .eq("subitem_id", subitemId)
+    .single();
+  if (rowError) throw rowError;
+  const { error } = await supabase
+    .from("subitem_payment_rows")
+    .delete()
+    .eq("id", paymentRowId)
+    .eq("subitem_id", subitemId);
+  if (error) throw error;
+  void insertActivityLog({
+    clientId: subitem.client_id,
+    subitemId,
+    subitemName: subitem.name,
+    action: "subitem_field_changed",
+    fieldName: "payment row removed",
+    oldValue: row,
+  });
+}
+
+export async function reorderSubitemRows(
+  clientId: string,
+  orderedSubitemIds: string[],
+) {
+  const { error } = await supabase.rpc("reorder_client_subitems", {
+    target_client_id: clientId,
+    ordered_subitem_ids: orderedSubitemIds,
+  });
+  if (error) throw error;
+}
+
+export async function duplicateClientRow(
+  clientId: string,
+  includeSubitems: boolean,
+) {
+  const response = await fetch("/api/clients/duplicate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ clientId, includeSubitems }),
+  });
+  const result = await response.json();
+  if (!response.ok)
+    throw new Error(result?.error ?? "Could not duplicate client");
+  return result.client;
 }

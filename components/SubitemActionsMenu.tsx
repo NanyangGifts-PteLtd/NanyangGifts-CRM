@@ -19,6 +19,7 @@ export function SubitemActionsMenu({
   onDuplicate,
   onMove,
   onDelete,
+  hideMoveAndDuplicate = false,
   alwaysVisible = false,
 }: {
   subitemId: string;
@@ -32,6 +33,7 @@ export function SubitemActionsMenu({
   onDuplicate: () => void | Promise<void>;
   onMove: (clientId: string) => void | Promise<void>;
   onDelete: () => void;
+  hideMoveAndDuplicate?: boolean;
   alwaysVisible?: boolean;
 }) {
   const [open, setOpen] = useState(false);
@@ -106,93 +108,103 @@ export function SubitemActionsMenu({
               <ExternalLink size={14} /> Open Subitem
             </button>
           )}
-          <button
-            type="button"
-            disabled={!canEdit || !!processing}
-            onClick={() => void run("duplicate", onDuplicate)}
-            className="flex w-full items-center gap-2 rounded px-2 py-2 text-xs text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-400"
-            title={
-              !canEdit
-                ? "You can only edit items that are assigned to you"
-                : "Duplicate subitem"
-            }
-          >
-            <Copy size={14} />{" "}
-            {processing === "duplicate" ? "Duplicating…" : "Duplicate"}
-          </button>
-          <div className="relative">
+          {!hideMoveAndDuplicate && (
             <button
               type="button"
               disabled={!canEdit || !!processing}
-              onClick={() => setMoving((value) => !value)}
+              onClick={() => void run("duplicate", onDuplicate)}
               className="flex w-full items-center gap-2 rounded px-2 py-2 text-xs text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-400"
               title={
                 !canEdit
                   ? "You can only edit items that are assigned to you"
-                  : "Move subitem"
+                  : "Duplicate subitem"
               }
             >
-              <MoveRight size={14} />{" "}
-              {processing === "move" ? "Moving…" : "Move"}
+              <Copy size={14} />{" "}
+              {processing === "duplicate" ? "Duplicating…" : "Duplicate"}
             </button>
-            {moving && (
-              <div className="absolute left-full top-0 ml-1 max-h-72 w-80 overflow-auto rounded-xl border border-slate-200 bg-white p-3 shadow-2xl">
-                <div className="mb-3 text-sm font-medium text-slate-800">
-                  Choose a new parent
-                </div>
-                <div className="relative mb-3">
-                  <Search
-                    size={14}
-                    className="absolute left-2.5 top-2.5 text-slate-400"
-                  />
-                  <input
-                    autoFocus
-                    value={search}
-                    onChange={(event) => setSearch(event.target.value)}
-                    placeholder="Search clients"
-                    className="h-9 w-full rounded border border-slate-200 pl-8 pr-2 text-xs outline-none focus:border-sky-400"
-                  />
-                </div>
-                {targetGroups.map((group) => {
-                  const clients = group.clients.filter((client) =>
-                    `${client.name} ${client.displayId ?? ""}`
-                      .toLowerCase()
-                      .includes(search.toLowerCase()),
-                  );
-                  return clients.length ? (
-                    <div key={group.name} className="mb-3">
-                      <div className="px-1 py-1 text-xs font-medium text-sky-600">
-                        {group.name}
+          )}
+          {!hideMoveAndDuplicate && (
+            <div className="relative">
+              <button
+                type="button"
+                disabled={!canEdit || !!processing}
+                onClick={() => setMoving((value) => !value)}
+                className="flex w-full items-center gap-2 rounded px-2 py-2 text-xs text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-400"
+                title={
+                  !canEdit
+                    ? "You can only edit items that are assigned to you"
+                    : "Move subitem"
+                }
+              >
+                <MoveRight size={14} />{" "}
+                {processing === "move" ? "Moving…" : "Move"}
+              </button>
+              {moving && (
+                <div className="absolute left-full top-0 ml-1 max-h-72 w-80 overflow-auto rounded-xl border border-slate-200 bg-white p-3 shadow-2xl">
+                  <div className="mb-3 text-sm font-medium text-slate-800">
+                    Choose a new parent
+                  </div>
+                  <div className="relative mb-3">
+                    <Search
+                      size={14}
+                      className="absolute left-2.5 top-2.5 text-slate-400"
+                    />
+                    <input
+                      autoFocus
+                      value={search}
+                      onChange={(event) => setSearch(event.target.value)}
+                      placeholder="Search clients"
+                      className="h-9 w-full rounded border border-slate-200 pl-8 pr-2 text-xs outline-none focus:border-sky-400"
+                    />
+                  </div>
+                  {targetGroups.map((group) => {
+                    const clients = group.clients.filter((client) =>
+                      `${client.name} ${client.displayId ?? ""}`
+                        .toLowerCase()
+                        .includes(search.toLowerCase()),
+                    );
+                    return clients.length ? (
+                      <div key={group.name} className="mb-3">
+                        <div className="px-1 py-1 text-xs font-medium text-sky-600">
+                          {group.name}
+                        </div>
+                        {clients.map((client) => (
+                          <button
+                            disabled={!!processing}
+                            key={client.id}
+                            type="button"
+                            onClick={() =>
+                              void run("move", () => onMove(client.id))
+                            }
+                            className="block w-full rounded px-2 py-2 text-left text-sm text-slate-700 hover:bg-sky-50 disabled:opacity-50"
+                          >
+                            {client.name}
+                            {client.displayId ? (
+                              <span className="ml-1 font-mono text-xs text-slate-400">
+                                · {client.displayId}
+                              </span>
+                            ) : null}
+                          </button>
+                        ))}
                       </div>
-                      {clients.map((client) => (
-                        <button
-                          disabled={!!processing}
-                          key={client.id}
-                          type="button"
-                          onClick={() =>
-                            void run("move", () => onMove(client.id))
-                          }
-                          className="block w-full rounded px-2 py-2 text-left text-sm text-slate-700 hover:bg-sky-50 disabled:opacity-50"
-                        >
-                          {client.name}
-                          {client.displayId ? <span className="ml-1 font-mono text-xs text-slate-400">· {client.displayId}</span> : null}
-                        </button>
-                      ))}
-                    </div>
-                  ) : null;
-                })}
-                {!targetGroups.some((group) =>
-                  group.clients.some((client) =>
-                    `${client.name} ${client.displayId ?? ""}`.toLowerCase().includes(search.toLowerCase()),
-                  ),
-                ) && (
-                  <p className="px-2 py-4 text-center text-xs text-slate-400">
-                    No clients found.
-                  </p>
-                )}
-              </div>
-            )}
-          </div>
+                    ) : null;
+                  })}
+                  {!targetGroups.some((group) =>
+                    group.clients.some((client) =>
+                      `${client.name} ${client.displayId ?? ""}`
+                        .toLowerCase()
+                        .includes(search.toLowerCase()),
+                    ),
+                  ) && (
+                    <p className="px-2 py-4 text-center text-xs text-slate-400">
+                      No clients found.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
           <button
             type="button"
             disabled={!canEdit || !!processing}
