@@ -3,28 +3,50 @@ import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
 const BOARD_OPTION_CODES = new Set([
-  "reply_status", "client_status", "channel", "importance", "progress",
-  "payment", "payment_status", "mode_of_payment", "shipper", "local_overseas",
-  "subitem_status", "currency", "subitem_subprogress",
-  "tracking_summary", "tracking_invoice_created", "tracking_multiple_invoices",
-  "tracking_payment_status", "tracking_price_invoice_match", "overall_payment_status",
+  "reply_status",
+  "client_status",
+  "channel",
+  "importance",
+  "progress",
+  "payment",
+  "payment_status",
+  "mode_of_payment",
+  "shipper",
+  "local_overseas",
+  "subitem_status",
+  "currency",
+  "subitem_subprogress",
+  "tracking_summary",
+  "tracking_invoice_created",
+  "tracking_multiple_invoices",
+  "tracking_payment_status",
+  "tracking_price_invoice_match",
+  "overall_payment_status",
+  "additional_cost_status",
+  "additional_cost_reason",
+  "additional_cost_courier",
 ]);
 
 async function canManageLabels() {
   const caller = await createClient();
-  const { data: { user } } = await caller.auth.getUser();
+  const {
+    data: { user },
+  } = await caller.auth.getUser();
   if (!user) return false;
   const { data: profile } = await supabaseAdmin
     .from("profiles")
     .select("role")
     .eq("id", user.id)
     .maybeSingle();
-  return ["admin", "director", "dev"].includes(profile?.role?.trim().toLowerCase() ?? "");
+  return ["admin", "director", "dev"].includes(
+    profile?.role?.trim().toLowerCase() ?? "",
+  );
 }
 
 export async function POST(request: NextRequest) {
-  if (!(await canManageLabels())) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  const body = await request.json() as {
+  if (!(await canManageLabels()))
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const body = (await request.json()) as {
     code?: string;
     values?: string[];
     layout?: Array<{ value?: string; section?: number }>;
@@ -33,20 +55,28 @@ export async function POST(request: NextRequest) {
   const layout = Array.isArray(body.layout)
     ? body.layout.map((item) => ({
         value: item.value?.trim() ?? "",
-        section: Number.isInteger(item.section) && Number(item.section) >= 0
-          ? Number(item.section)
-          : 0,
+        section:
+          Number.isInteger(item.section) && Number(item.section) >= 0
+            ? Number(item.section)
+            : 0,
       }))
-    : (Array.isArray(body.values) ? body.values : []).map((value) => ({ value: value.trim(), section: 0 }));
+    : (Array.isArray(body.values) ? body.values : []).map((value) => ({
+        value: value.trim(),
+        section: 0,
+      }));
   const values = layout.map((item) => item.value);
-  const sectionCount = code === "client_status" ? 5 : code === "payment" ? 4 : 1;
+  const sectionCount =
+    code === "client_status" ? 5 : code === "payment" ? 4 : 1;
   if (
     !BOARD_OPTION_CODES.has(code) ||
     values.length === 0 ||
     new Set(values).size !== values.length ||
     layout.some((item) => item.section >= sectionCount)
   ) {
-    return NextResponse.json({ error: "Invalid label order." }, { status: 400 });
+    return NextResponse.json(
+      { error: "Invalid label order." },
+      { status: 400 },
+    );
   }
 
   const { data: group, error: groupError } = await supabaseAdmin
@@ -54,7 +84,11 @@ export async function POST(request: NextRequest) {
     .select("id")
     .eq("code", code)
     .maybeSingle();
-  if (groupError || !group) return NextResponse.json({ error: groupError?.message ?? "Label group was not found." }, { status: 404 });
+  if (groupError || !group)
+    return NextResponse.json(
+      { error: groupError?.message ?? "Label group was not found." },
+      { status: 404 },
+    );
 
   // The Board normally renders a synthetic blank label. Materialise it the
   // first time it is reordered so its position can be persisted like any
@@ -69,8 +103,18 @@ export async function POST(request: NextRequest) {
     if (!blank) {
       const { error: blankError } = await supabaseAdmin
         .from("option_values")
-        .insert({ group_id: group.id, value: "", color: "#bfc0c2", sort_order: -1, section_index: 0 });
-      if (blankError) return NextResponse.json({ error: blankError.message }, { status: 500 });
+        .insert({
+          group_id: group.id,
+          value: "",
+          color: "#bfc0c2",
+          sort_order: -1,
+          section_index: 0,
+        });
+      if (blankError)
+        return NextResponse.json(
+          { error: blankError.message },
+          { status: 500 },
+        );
     }
   }
 
@@ -78,10 +122,19 @@ export async function POST(request: NextRequest) {
     .from("option_values")
     .select("id, value")
     .eq("group_id", group.id);
-  if (optionsError) return NextResponse.json({ error: optionsError.message }, { status: 500 });
-  const idsByValue = new Map((options ?? []).map((option) => [option.value, option.id]));
-  if (values.length !== idsByValue.size || values.some((value) => !idsByValue.has(value))) {
-    return NextResponse.json({ error: "The label list changed. Refresh and try again." }, { status: 409 });
+  if (optionsError)
+    return NextResponse.json({ error: optionsError.message }, { status: 500 });
+  const idsByValue = new Map(
+    (options ?? []).map((option) => [option.value, option.id]),
+  );
+  if (
+    values.length !== idsByValue.size ||
+    values.some((value) => !idsByValue.has(value))
+  ) {
+    return NextResponse.json(
+      { error: "The label list changed. Refresh and try again." },
+      { status: 409 },
+    );
   }
 
   const results = await Promise.all(
@@ -93,6 +146,7 @@ export async function POST(request: NextRequest) {
     ),
   );
   const error = results.find((result) => result.error)?.error;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error)
+    return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true });
 }
