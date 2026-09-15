@@ -3545,7 +3545,7 @@ export function SubitemsTable({
                               Order number
                             </span>
                             <span className="border-l border-[#D0D4E4] px-3 py-2">
-                              Payment received?
+                              Payment done?
                             </span>
                             <span className="border-l border-[#D0D4E4] px-3 py-2">
                               Mode of payment
