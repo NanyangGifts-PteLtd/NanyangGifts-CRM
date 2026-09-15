@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
 type LabelField = {
-  table: "clients" | "subitems";
+  table: "clients" | "subitems" | "subitem_payment_rows";
   valueColumn: string;
   optionIdColumn?: string;
 };
@@ -68,6 +68,11 @@ const LABEL_FIELDS: Record<string, LabelField> = {
     table: "subitems",
     valueColumn: "currency",
     optionIdColumn: "currency_option_id",
+  },
+  payment_received: {
+    table: "subitem_payment_rows",
+    valueColumn: "payment_received_label",
+    optionIdColumn: "payment_received_option_id",
   },
   additional_cost_status: {
     table: "additional_costs" as "clients",
@@ -234,6 +239,7 @@ async function clearUsage(code: string, name: string, optionId: string) {
   if (!field) return null;
   const values: Record<string, string | null> = { [field.valueColumn]: "" };
   if (field.optionIdColumn) values[field.optionIdColumn] = null;
+  if (code === "payment_received") values.payment_received = null;
   const textResult = await supabaseAdmin
     .from(field.table)
     .update(values)

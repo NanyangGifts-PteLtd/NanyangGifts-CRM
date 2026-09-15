@@ -2,7 +2,13 @@
 
 import { TimelineRow } from "../../app/types";
 import { EditableCell } from "./editablecell";
-import { Calendar, ExternalLink, GripVertical, Plus, Trash2 } from "lucide-react";
+import {
+  Calendar,
+  ExternalLink,
+  GripVertical,
+  Plus,
+  Trash2,
+} from "lucide-react";
 import { StatusBadge } from "./statusbadge";
 import { toast } from "sonner";
 import { useEffect, useState } from "react";
@@ -141,14 +147,19 @@ export function TimelineSection({
   title?: string;
   cnTracking?: string;
   sgTracking?: string;
-  onTrackingChange?: (values: { cnTracking: string; sgTracking: string }) => void;
+  onTrackingChange?: (values: {
+    cnTracking: string;
+    sgTracking: string;
+  }) => void;
   onRemoveTimeline?: () => void;
   timelineProgressOptions: OptionEntry[];
   onAddTimelineProgress?: (name: string) => void | Promise<void>;
   onDeleteTimelineProgress?: (name: string) => void | Promise<void>;
   onUpdateOptionColor?: (name: string, color: string) => void | Promise<void>;
   onRenameOption?: (oldName: string, newName: string) => void | Promise<void>;
-  onReorderOptions?: (layout: Array<{ value: string; section: number }>) => void | Promise<void>;
+  onReorderOptions?: (
+    layout: Array<{ id?: string; value: string; section: number }>,
+  ) => void | Promise<void>;
   readOnly?: boolean;
 }) {
   const [permissionNotice, setPermissionNotice] = useState<{
@@ -335,7 +346,8 @@ export function TimelineSection({
     if (!name) return;
     if (
       rows.some(
-        (row) => row.name.trim().toLocaleLowerCase() === name.toLocaleLowerCase(),
+        (row) =>
+          row.name.trim().toLocaleLowerCase() === name.toLocaleLowerCase(),
       )
     ) {
       toast.error("Process names must be unique", {
@@ -433,8 +445,8 @@ export function TimelineSection({
           <AlertDialogHeader>
             <AlertDialogTitle>Remove timeline process?</AlertDialogTitle>
             <AlertDialogDescription>
-              Remove “{pendingRowRemoval?.name}” from this timeline? Any
-              process depending on it will have its dependency cleared.
+              Remove “{pendingRowRemoval?.name}” from this timeline? Any process
+              depending on it will have its dependency cleared.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -452,9 +464,7 @@ export function TimelineSection({
       </AlertDialog>
       <div className="flex min-h-12 flex-wrap items-center gap-3 bg-gradient-to-r from-[#9bd9e0] to-[#7BCBD5] px-3 py-2">
         <Calendar size={12} className="text-white" />
-        <span className="text-xs font-semibold text-white">
-          {title}
-        </span>
+        <span className="text-xs font-semibold text-white">{title}</span>
         <label className="ml-auto flex items-center gap-1 text-[11px] font-medium text-white">
           CN Tracking
           <input
@@ -483,13 +493,26 @@ export function TimelineSection({
         </label>
         <button
           type="button"
-          onClick={() => toast.info("CN shipper tracking-site links will be connected in a future update.")}
+          onClick={() =>
+            toast.info(
+              "CN shipper tracking-site links will be connected in a future update.",
+            )
+          }
           className="flex h-7 items-center gap-1 rounded border border-white/60 bg-white/15 px-2 text-[11px] font-semibold text-white hover:bg-white/25"
           title="Placeholder for the CN shipper tracking website"
         >
           CN Shipper Tracking site <ExternalLink size={13} />
         </button>
-        {onRemoveTimeline && !readOnly ? <button type="button" onClick={onRemoveTimeline} className="rounded p-1 text-white/90 hover:bg-white/20" title="Remove this timeline"><Trash2 size={15} /></button> : null}
+        {onRemoveTimeline && !readOnly ? (
+          <button
+            type="button"
+            onClick={onRemoveTimeline}
+            className="rounded p-1 text-white/90 hover:bg-white/20"
+            title="Remove this timeline"
+          >
+            <Trash2 size={15} />
+          </button>
+        ) : null}
       </div>
 
       <div className="max-w-full overflow-x-auto">
@@ -557,7 +580,9 @@ export function TimelineSection({
                           setDropTargetId(null);
                         }}
                         className={`shrink-0 touch-none ${readOnly ? "cursor-not-allowed text-gray-200" : "cursor-grab text-gray-300 active:cursor-grabbing"}`}
-                        title={readOnly ? undefined : "Drag to rearrange process"}
+                        title={
+                          readOnly ? undefined : "Drag to rearrange process"
+                        }
                         aria-label="Drag to rearrange process"
                       >
                         <GripVertical size={14} aria-hidden="true" />

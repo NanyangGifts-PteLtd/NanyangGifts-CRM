@@ -50,7 +50,13 @@ import { FilePreview } from "./file-preview";
 import { toast } from "sonner";
 import { useEscapeClose } from "@/components/hooks/use-escape-close";
 
-type OptionEntry = { id?: string; systemKey?: string | null; value: string; color: string; section?: number };
+type OptionEntry = {
+  id?: string;
+  systemKey?: string | null;
+  value: string;
+  color: string;
+  section?: number;
+};
 type AttachmentItem = {
   id: string;
   kind: "file" | "link";
@@ -81,7 +87,11 @@ function contributesToAwardedTotals(subitem: Subitem) {
 }
 
 const quickBooksNumber = (value: unknown) => {
-  const parsed = Number(String(value ?? "").replace(/,/g, "").trim());
+  const parsed = Number(
+    String(value ?? "")
+      .replace(/,/g, "")
+      .trim(),
+  );
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
@@ -119,12 +129,14 @@ function QuickBooksPaymentTermField({
   disabled?: boolean;
   accent?: "amber" | "emerald";
 }) {
-  const isCustom = Boolean(value) && !standardQuickBooksPaymentTerms.includes(value);
+  const isCustom =
+    Boolean(value) && !standardQuickBooksPaymentTerms.includes(value);
   const selectedValue = isCustom ? customPaymentTermOption : value;
   const customValue = value === customPaymentTermOption ? "" : value;
-  const focusClass = accent === "amber"
-    ? "focus:border-amber-400 focus:ring-amber-100"
-    : "focus:border-emerald-400 focus:ring-emerald-100";
+  const focusClass =
+    accent === "amber"
+      ? "focus:border-amber-400 focus:ring-amber-100"
+      : "focus:border-emerald-400 focus:ring-emerald-100";
   const controlClassName = `h-9 rounded border border-slate-200 bg-white px-2 text-sm font-normal normal-case text-slate-700 outline-none focus:ring-2 ${focusClass}`;
 
   return (
@@ -137,13 +149,17 @@ function QuickBooksPaymentTermField({
       >
         <option value="">Select payment terms</option>
         {quickBooksPaymentTerms.map((term) => (
-          <option key={term} value={term}>{term}</option>
+          <option key={term} value={term}>
+            {term}
+          </option>
         ))}
       </select>
       {selectedValue === customPaymentTermOption && (
         <input
           value={customValue}
-          onChange={(event) => onChange(event.target.value || customPaymentTermOption)}
+          onChange={(event) =>
+            onChange(event.target.value || customPaymentTermOption)
+          }
           disabled={disabled}
           placeholder="Specify payment terms"
           aria-label="Custom payment terms"
@@ -267,6 +283,7 @@ export type ClientRowProps = {
   onDeleteProgress?: (name: string) => void | Promise<void>;
   paymentOptions: OptionEntry[];
   paymentStatusOptions: OptionEntry[];
+  paymentReceivedOptions: OptionEntry[];
   overallPaymentStatusOptions: OptionEntry[];
   onAddOverallPaymentStatus?: (name: string) => void | Promise<void>;
   onDeleteOverallPaymentStatus?: (name: string) => void | Promise<void>;
@@ -297,6 +314,8 @@ export type ClientRowProps = {
   onDeletePayment?: (name: string) => void | Promise<void>;
   onAddPaymentStatus?: (name: string) => void | Promise<void>;
   onDeletePaymentStatus?: (name: string) => void | Promise<void>;
+  onAddPaymentReceived?: (name: string) => void | Promise<void>;
+  onDeletePaymentReceived?: (name: string) => void | Promise<void>;
   onAddModeOfPayment?: (name: string) => void | Promise<void>;
   onDeleteModeOfPayment?: (name: string) => void | Promise<void>;
   onUpdateOptionColor?: (
@@ -309,7 +328,10 @@ export type ClientRowProps = {
     oldName: string,
     newName: string,
   ) => void | Promise<void>;
-  onReorderOptions?: (code: string, layout: Array<{ value: string; section: number }>) => void | Promise<void>;
+  onReorderOptions?: (
+    code: string,
+    layout: Array<{ id?: string; value: string; section: number }>,
+  ) => void | Promise<void>;
   onFilterColumn?: (column: string) => void;
   onSortColumn?: (
     category: "subitem" | "payment",
@@ -347,7 +369,10 @@ export type ClientRowProps = {
     targetClientId: string,
   ) => void | Promise<void>;
   onOpenSubitemDetail?: (subitemId: string) => void;
-  onPaymentRowsChanged?: (subitemId: string, rows: import("../../app/types").PaymentRow[]) => void;
+  onPaymentRowsChanged?: (
+    subitemId: string,
+    rows: import("../../app/types").PaymentRow[],
+  ) => void;
   trackingMode?: boolean;
 };
 
@@ -407,6 +432,7 @@ export function ClientRow({
   onDeleteProgress,
   paymentOptions,
   paymentStatusOptions,
+  paymentReceivedOptions,
   overallPaymentStatusOptions,
   onAddOverallPaymentStatus,
   onDeleteOverallPaymentStatus,
@@ -437,6 +463,8 @@ export function ClientRow({
   onDeletePayment,
   onAddPaymentStatus,
   onDeletePaymentStatus,
+  onAddPaymentReceived,
+  onDeletePaymentReceived,
   onAddModeOfPayment,
   onDeleteModeOfPayment,
   onUpdateOptionColor,
@@ -489,7 +517,9 @@ export function ClientRow({
   );
   const pmAssignedIds = clientPmAssignedIds;
   const canEditWithoutAssignment = ["admin", "director"].includes(
-    String(currentUserRole ?? "").trim().toLowerCase(),
+    String(currentUserRole ?? "")
+      .trim()
+      .toLowerCase(),
   );
   const canEditClient =
     !!currentUserId &&
@@ -502,10 +532,14 @@ export function ClientRow({
       String(currentUserRole ?? "").toLowerCase(),
     );
   const canManageSubitemLock = ["director", "dev"].includes(
-    String(currentUserRole ?? "").trim().toLowerCase(),
+    String(currentUserRole ?? "")
+      .trim()
+      .toLowerCase(),
   );
   const canManagePaymentLabels = ["admin", "director", "dev"].includes(
-    String(currentUserRole ?? "").trim().toLowerCase(),
+    String(currentUserRole ?? "")
+      .trim()
+      .toLowerCase(),
   );
   const hasSignedOcf = (client.activityLog ?? []).some(
     (entry) => entry.action === "ocf_signed",
@@ -513,7 +547,8 @@ export function ClientRow({
   const hasLinkedOcf =
     hasSignedOcf ||
     (client.activityLog ?? []).some(
-      (entry) => entry.action === "ocf_created" || entry.action === "ocf_updated",
+      (entry) =>
+        entry.action === "ocf_created" || entry.action === "ocf_updated",
     );
   const ocfButtonClassName = hasSignedOcf
     ? "border-emerald-500 bg-emerald-500 text-white hover:bg-emerald-600"
@@ -521,32 +556,54 @@ export function ClientRow({
       ? "border-amber-300 bg-amber-300 text-amber-950 hover:bg-amber-400"
       : "border-slate-200 bg-transparent text-slate-500 hover:bg-slate-50";
   const paymentStatusOption = (systemKey: string, fallback: string) =>
-    paymentStatusOptions.find((option) => option.systemKey === systemKey) ?? { value: fallback, color: "#d1d5db" };
-  const resolvedPaymentOption = paymentStatusOption("payment_status_resolved", "Resolved");
+    paymentStatusOptions.find((option) => option.systemKey === systemKey) ?? {
+      value: fallback,
+      color: "#d1d5db",
+    };
+  const resolvedPaymentOption = paymentStatusOption(
+    "payment_status_resolved",
+    "Resolved",
+  );
   const overallPaymentOption = (systemKey: string, fallback: string) =>
-    overallPaymentStatusOptions.find((option) => option.systemKey === systemKey) ?? { value: fallback, color: "#d1d5db" };
+    overallPaymentStatusOptions.find(
+      (option) => option.systemKey === systemKey,
+    ) ?? { value: fallback, color: "#d1d5db" };
   const awardedSubitems = client.subitems.filter(contributesToAwardedTotals);
   const paidAwardedSubitems = awardedSubitems.filter(
-    (subitem) => subitem.paymentStatusOptionId === resolvedPaymentOption.id ||
-      (!resolvedPaymentOption.id && subitem.paymentStatus === resolvedPaymentOption.value) || (() => {
-      const qty = quickBooksNumber(subitem.qty);
-      const cost = quickBooksNumber(subitem.cost);
-      const multiplier = subitem.currency === "RMB" ? 5 : subitem.currency === "MYR" ? 3 : 1;
-      const totalCost = qty * cost + quickBooksNumber(subitem.manpower) * multiplier + quickBooksNumber(subitem.ls) * multiplier;
-      const totalToPay = totalCost + quickBooksNumber(subitem.sample) * cost;
-      const received = (subitem.paymentRows ?? [])
-        .filter((row) => row.paymentReceived === true)
-        .reduce((sum, row) => sum + quickBooksNumber(row.amount), 0);
-      return Math.abs(received - totalToPay) < 0.005;
-    })(),
+    (subitem) =>
+      subitem.paymentStatusOptionId === resolvedPaymentOption.id ||
+      (!resolvedPaymentOption.id &&
+        subitem.paymentStatus === resolvedPaymentOption.value) ||
+      (() => {
+        const qty = quickBooksNumber(subitem.qty);
+        const cost = quickBooksNumber(subitem.cost);
+        const multiplier =
+          subitem.currency === "RMB" ? 5 : subitem.currency === "MYR" ? 3 : 1;
+        const totalCost =
+          qty * cost +
+          quickBooksNumber(subitem.manpower) * multiplier +
+          quickBooksNumber(subitem.ls) * multiplier;
+        const totalToPay = totalCost + quickBooksNumber(subitem.sample) * cost;
+        const received = (subitem.paymentRows ?? [])
+          .filter((row) => row.paymentReceived === true)
+          .reduce((sum, row) => sum + quickBooksNumber(row.amount), 0);
+        return Math.abs(received - totalToPay) < 0.005;
+      })(),
   );
-  const overallPaymentStatus = awardedSubitems.length === 0
-    ? ""
-    : paidAwardedSubitems.length === 0
-      ? overallPaymentOption("overall_payment_status_unpaid", "Unpaid").value
-      : paidAwardedSubitems.length === awardedSubitems.length
-        ? overallPaymentOption("overall_payment_status_fully_paid", "Fully Paid").value
-        : overallPaymentOption("overall_payment_status_partially_paid", "Partially Paid").value;
+  const overallPaymentStatus =
+    awardedSubitems.length === 0
+      ? ""
+      : paidAwardedSubitems.length === 0
+        ? overallPaymentOption("overall_payment_status_unpaid", "Unpaid").value
+        : paidAwardedSubitems.length === awardedSubitems.length
+          ? overallPaymentOption(
+              "overall_payment_status_fully_paid",
+              "Fully Paid",
+            ).value
+          : overallPaymentOption(
+              "overall_payment_status_partially_paid",
+              "Partially Paid",
+            ).value;
   const subitemsLocked = client.customFields?.subitemsLocked === "true";
   const [showCloseDialog, setShowCloseDialog] = useState(false);
   const [showMultipleInvoicesDialog, setShowMultipleInvoicesDialog] =
@@ -615,7 +672,11 @@ export function ClientRow({
     "choice" | "quickbooks" | "sample" | "update"
   >("choice");
   const [updateEstimates, setUpdateEstimates] = useState<
-    Array<{ id: string; quickbooks_estimate_doc_number: string | null; created_at: string }>
+    Array<{
+      id: string;
+      quickbooks_estimate_doc_number: string | null;
+      created_at: string;
+    }>
   >([]);
   const [selectedEstimateGenerationId, setSelectedEstimateGenerationId] =
     useState("");
@@ -625,16 +686,40 @@ export function ClientRow({
       customer?: string;
       total: number;
       paymentTerm: string;
-      lines: Array<{ id?: string; name: string; description: string; qty: number; unitPrice: number; amount: number; taxCode: string }>;
+      lines: Array<{
+        id?: string;
+        name: string;
+        description: string;
+        qty: number;
+        unitPrice: number;
+        amount: number;
+        taxCode: string;
+      }>;
     };
-    incoming: { total: number; lines: Array<{ id: string; name: string; description: string; qty: number; unitPrice: number; amount: number; taxCode: string }> };
+    incoming: {
+      total: number;
+      lines: Array<{
+        id: string;
+        name: string;
+        description: string;
+        qty: number;
+        unitPrice: number;
+        amount: number;
+        taxCode: string;
+      }>;
+    };
     isInvoiced: boolean;
     invoiceDocNumbers: string[];
   } | null>(null);
-  const [updateEstimateError, setUpdateEstimateError] = useState<string | null>(null);
-  const [isLoadingUpdateEstimates, setIsLoadingUpdateEstimates] = useState(false);
+  const [updateEstimateError, setUpdateEstimateError] = useState<string | null>(
+    null,
+  );
+  const [isLoadingUpdateEstimates, setIsLoadingUpdateEstimates] =
+    useState(false);
   const [isUpdatingEstimate, setIsUpdatingEstimate] = useState(false);
-  const [updateEstimateResult, setUpdateEstimateResult] = useState<{ docNumber?: string | null } | null>(null);
+  const [updateEstimateResult, setUpdateEstimateResult] = useState<{
+    docNumber?: string | null;
+  } | null>(null);
   const [quickBooksDefaults, setQuickBooksDefaults] = useState<{
     salesperson: string;
     paymentTermSource: string | null;
@@ -666,7 +751,7 @@ export function ClientRow({
     Record<string, SampleArtworkUpload>
   >({});
   const attachmentLinkDraft = attachmentLinkDialog
-    ? attachmentDrafts[attachmentLinkDialog] ?? ""
+    ? (attachmentDrafts[attachmentLinkDialog] ?? "")
     : "";
   useEscapeClose({
     open: Boolean(attachmentSourceMenu),
@@ -676,7 +761,10 @@ export function ClientRow({
     open: Boolean(attachmentLinkDialog),
     onClose: () => {
       if (attachmentLinkDialog) {
-        setAttachmentDrafts((current) => ({ ...current, [attachmentLinkDialog]: "" }));
+        setAttachmentDrafts((current) => ({
+          ...current,
+          [attachmentLinkDialog]: "",
+        }));
       }
       setAttachmentLinkDialog(null);
     },
@@ -718,7 +806,9 @@ export function ClientRow({
         client.customFields?.trackingEstimateGenerationId ?? "";
       if (
         selectedGenerationId &&
-        !estimates.some((estimate: { id: string }) => estimate.id === selectedGenerationId)
+        !estimates.some(
+          (estimate: { id: string }) => estimate.id === selectedGenerationId,
+        )
       ) {
         setTrackingInvoiceRows([]);
         setIsTrackingInvoicesExpanded(false);
@@ -784,7 +874,9 @@ export function ClientRow({
       setTrackingInvoiceRows(result.invoices ?? []);
     } catch (error) {
       setTrackingInvoiceError(
-        error instanceof Error ? error.message : "Could not load linked invoices",
+        error instanceof Error
+          ? error.message
+          : "Could not load linked invoices",
       );
     } finally {
       setIsLoadingTrackingInvoices(false);
@@ -846,8 +938,7 @@ export function ClientRow({
       const totalPrice = client.subitems
         .filter(contributesToAwardedTotals)
         .reduce(
-          (total, subitem) =>
-            total + calculateSubitemFinancials(subitem).price,
+          (total, subitem) => total + calculateSubitemFinancials(subitem).price,
           0,
         );
       const priceDifference = Math.abs(totalPrice - invoiceSubtotal);
@@ -860,7 +951,8 @@ export function ClientRow({
         setTrackingInvoiceNotice("No invoices found");
         window.setTimeout(() => setTrackingInvoiceNotice(null), 4500);
         toast("No invoices found", {
-          description: "QuickBooks has no invoices linked to the selected quote.",
+          description:
+            "QuickBooks has no invoices linked to the selected quote.",
         });
       }
       onUpdate({
@@ -899,13 +991,21 @@ export function ClientRow({
     ["Quoted", "Shortlisted", "Awarded"].includes(subitem.status?.trim()),
   );
   const editableQuoteTaxLineIds = [
-    ...estimateEligibleSubitems.map((subitem) => ({ id: subitem.id, name: subitem.name })),
-    ...(updateEstimatePreview?.incoming.lines ?? []).map((line) => ({ id: line.id, name: line.name })),
-  ].filter(
-    (line, index, lines) =>
-      !isFreightLine(line.name) &&
-      lines.findIndex((candidate) => candidate.id === line.id) === index,
-  ).map((line) => line.id);
+    ...estimateEligibleSubitems.map((subitem) => ({
+      id: subitem.id,
+      name: subitem.name,
+    })),
+    ...(updateEstimatePreview?.incoming.lines ?? []).map((line) => ({
+      id: line.id,
+      name: line.name,
+    })),
+  ]
+    .filter(
+      (line, index, lines) =>
+        !isFreightLine(line.name) &&
+        lines.findIndex((candidate) => candidate.id === line.id) === index,
+    )
+    .map((line) => line.id);
   const setQuoteTaxDestination = (
     subitemId: string,
     destination: "singapore" | "other",
@@ -948,7 +1048,7 @@ export function ClientRow({
         const freight = isFreightLine(subitem.name);
         const delivery = freight
           ? "other"
-          : quoteDeliveryBySubitem[subitem.id] ?? "";
+          : (quoteDeliveryBySubitem[subitem.id] ?? "");
         return {
           id: subitem.id,
           name: subitem.name || "Unnamed item",
@@ -987,7 +1087,8 @@ export function ClientRow({
         `/api/quickbooks/estimate-defaults?clientId=${encodeURIComponent(client.id)}`,
       );
       const result = await response.json();
-      if (!response.ok) throw new Error(result?.error || "Could not load quote defaults");
+      if (!response.ok)
+        throw new Error(result?.error || "Could not load quote defaults");
       setQuickBooksDefaults({
         salesperson: String(result.salesperson ?? "CRM user"),
         paymentTermSource: result.paymentTermSource ?? null,
@@ -996,7 +1097,10 @@ export function ClientRow({
       setQuickBooksCompanyName(client.company ?? "");
       setQuickBooksPaymentTerm(String(result.paymentTerm ?? ""));
     } catch (error) {
-      setQuickBooksDefaults({ salesperson: "CRM user", paymentTermSource: null });
+      setQuickBooksDefaults({
+        salesperson: "CRM user",
+        paymentTermSource: null,
+      });
       setQuickBooksSalesperson("CRM user");
       setQuickBooksPaymentTerm("");
     } finally {
@@ -1034,7 +1138,7 @@ export function ClientRow({
             subitem.id,
             isFreightLine(subitem.name)
               ? "other"
-              : quoteDeliveryBySubitem[subitem.id] as "singapore" | "other",
+              : (quoteDeliveryBySubitem[subitem.id] as "singapore" | "other"),
           ]),
         ),
       )) as {
@@ -1055,10 +1159,13 @@ export function ClientRow({
         `/api/quickbooks/estimate-update?clientId=${encodeURIComponent(client.id)}`,
       );
       const result = await response.json();
-      if (!response.ok) throw new Error(result?.error || "Could not load quotes");
+      if (!response.ok)
+        throw new Error(result?.error || "Could not load quotes");
       setUpdateEstimates(result.estimates ?? []);
     } catch (error) {
-      setUpdateEstimateError(error instanceof Error ? error.message : "Could not load quotes");
+      setUpdateEstimateError(
+        error instanceof Error ? error.message : "Could not load quotes",
+      );
     } finally {
       setIsLoadingUpdateEstimates(false);
     }
@@ -1075,7 +1182,8 @@ export function ClientRow({
         `/api/quickbooks/estimate-update?generationId=${encodeURIComponent(generationId)}`,
       );
       const result = await response.json();
-      if (!response.ok) throw new Error(result?.error || "Could not load quote preview");
+      if (!response.ok)
+        throw new Error(result?.error || "Could not load quote preview");
       setUpdateEstimatePreview({
         current: result.current,
         incoming: result.incoming,
@@ -1083,7 +1191,9 @@ export function ClientRow({
         invoiceDocNumbers: result.invoiceDocNumbers ?? [],
       });
     } catch (error) {
-      setUpdateEstimateError(error instanceof Error ? error.message : "Could not load quote preview");
+      setUpdateEstimateError(
+        error instanceof Error ? error.message : "Could not load quote preview",
+      );
     }
   };
   const updateQuickBooksEstimate = async () => {
@@ -1092,7 +1202,9 @@ export function ClientRow({
       !quickBooksPaymentTerm.trim() ||
       quickBooksPaymentTerm === customPaymentTermOption
     ) {
-      setUpdateEstimateError("Payment terms are required for the QuickBooks quote.");
+      setUpdateEstimateError(
+        "Payment terms are required for the QuickBooks quote.",
+      );
       return;
     }
     setIsUpdatingEstimate(true);
@@ -1115,10 +1227,13 @@ export function ClientRow({
         }),
       });
       const result = await response.json();
-      if (!response.ok) throw new Error(result?.error || "Could not update quote");
+      if (!response.ok)
+        throw new Error(result?.error || "Could not update quote");
       setUpdateEstimateResult(result);
     } catch (error) {
-      setUpdateEstimateError(error instanceof Error ? error.message : "Could not update quote");
+      setUpdateEstimateError(
+        error instanceof Error ? error.message : "Could not update quote",
+      );
     } finally {
       setIsUpdatingEstimate(false);
     }
@@ -1480,9 +1595,8 @@ export function ClientRow({
     try {
       const parsed = JSON.parse(rawValue) as unknown;
       if (Array.isArray(parsed)) {
-        items = parsed.filter(
-          (item): item is AttachmentItem =>
-            Boolean(item && typeof item === "object" && "url" in item),
+        items = parsed.filter((item): item is AttachmentItem =>
+          Boolean(item && typeof item === "object" && "url" in item),
         );
       }
     } catch {
@@ -1716,7 +1830,9 @@ export function ClientRow({
             }
             if (
               hasUnsavedQuoteDraft &&
-              !window.confirm("Discard this unsaved quote preview and close it?")
+              !window.confirm(
+                "Discard this unsaved quote preview and close it?",
+              )
             ) {
               event.preventDefault();
             }
@@ -1726,7 +1842,7 @@ export function ClientRow({
               ? "max-h-[92vh] w-[96vw] max-w-[1100px] overflow-y-auto sm:max-w-[1100px]"
               : estimateMode === "choice"
                 ? "w-[96vw] max-w-[880px] sm:max-w-[880px]"
-              : undefined
+                : undefined
           }
         >
           <AlertDialogHeader>
@@ -1743,11 +1859,11 @@ export function ClientRow({
                     ? updateEstimateResult
                       ? "QuickBooks quote updated"
                       : "Update QuickBooks quote"
-                  : estimateResult
-                    ? "QuickBooks quote created"
-                    : estimateError
-                      ? "Could not create QuickBooks quote"
-                      : "Generate QuickBooks quote?"}
+                    : estimateResult
+                      ? "QuickBooks quote created"
+                      : estimateError
+                        ? "Could not create QuickBooks quote"
+                        : "Generate QuickBooks quote?"}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {estimateMode === "choice" ? (
@@ -1772,7 +1888,8 @@ export function ClientRow({
                     QuickBooks quote
                     {updateEstimateResult.docNumber ? (
                       <>
-                        {" "}<strong>{updateEstimateResult.docNumber}</strong>
+                        {" "}
+                        <strong>{updateEstimateResult.docNumber}</strong>
                       </>
                     ) : null}{" "}
                     was updated with the current CRM subitem details.
@@ -1803,8 +1920,8 @@ export function ClientRow({
                 <>
                   This will find or create the QuickBooks customer for{" "}
                   <strong>{client.company || "this client"}</strong> and create
-                  a quote using the {estimateEligibleSubitems.length}{" "}
-                  eligible subitem
+                  a quote using the {estimateEligibleSubitems.length} eligible
+                  subitem
                   {estimateEligibleSubitems.length === 1 ? "" : "s"}.
                 </>
               )}
@@ -1870,50 +1987,81 @@ export function ClientRow({
                   <select
                     value={selectedEstimateGenerationId}
                     disabled={isLoadingUpdateEstimates || isUpdatingEstimate}
-                    onChange={(event) => void loadUpdatePreview(event.target.value)}
+                    onChange={(event) =>
+                      void loadUpdatePreview(event.target.value)
+                    }
                     className="h-9 rounded border border-slate-200 bg-white px-2 text-sm text-slate-700 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
                   >
                     <option value="">
-                      {isLoadingUpdateEstimates ? "Loading quotes…" : "Select a quote"}
+                      {isLoadingUpdateEstimates
+                        ? "Loading quotes…"
+                        : "Select a quote"}
                     </option>
                     {updateEstimates.map((estimate) => (
                       <option key={estimate.id} value={estimate.id}>
-                        Quote {estimate.quickbooks_estimate_doc_number ?? "(no document number)"} · {new Date(estimate.created_at).toLocaleDateString("en-GB")}
+                        Quote{" "}
+                        {estimate.quickbooks_estimate_doc_number ??
+                          "(no document number)"}{" "}
+                        ·{" "}
+                        {new Date(estimate.created_at).toLocaleDateString(
+                          "en-GB",
+                        )}
                       </option>
                     ))}
                   </select>
                 </label>
               </div>
-              {!isLoadingUpdateEstimates && !updateEstimates.length && !updateEstimateError && (
-                <p className="rounded border border-amber-200 bg-white p-3 text-amber-800">
-                  No QuickBooks quotes previously generated from this client were found.
-                </p>
-              )}
+              {!isLoadingUpdateEstimates &&
+                !updateEstimates.length &&
+                !updateEstimateError && (
+                  <p className="rounded border border-amber-200 bg-white p-3 text-amber-800">
+                    No QuickBooks quotes previously generated from this client
+                    were found.
+                  </p>
+                )}
               {updateEstimateError && (
-                <p role="alert" className="rounded border border-red-200 bg-red-50 p-3 text-red-700">
+                <p
+                  role="alert"
+                  className="rounded border border-red-200 bg-red-50 p-3 text-red-700"
+                >
                   {updateEstimateError}
                 </p>
               )}
-              {selectedEstimateGenerationId && !updateEstimatePreview && !updateEstimateError && (
-                <p className="text-slate-500">Loading the current QuickBooks quote…</p>
-              )}
-              {updateEstimatePreview && (
-                updateEstimatePreview.isInvoiced ? (
+              {selectedEstimateGenerationId &&
+                !updateEstimatePreview &&
+                !updateEstimateError && (
+                  <p className="text-slate-500">
+                    Loading the current QuickBooks quote…
+                  </p>
+                )}
+              {updateEstimatePreview &&
+                (updateEstimatePreview.isInvoiced ? (
                   <p className="rounded border border-red-200 bg-red-50 p-3 font-medium text-red-700">
                     This quote already has invoice
-                    {updateEstimatePreview.invoiceDocNumbers.length === 1 ? " " : "s "}
-                    {updateEstimatePreview.invoiceDocNumbers.join(", ") || "linked"}.
-                    It cannot be updated from the CRM.
+                    {updateEstimatePreview.invoiceDocNumbers.length === 1
+                      ? " "
+                      : "s "}
+                    {updateEstimatePreview.invoiceDocNumbers.join(", ") ||
+                      "linked"}
+                    . It cannot be updated from the CRM.
                   </p>
-                ) : null
-              )}
+                ) : null)}
               {updateEstimatePreview && (
                 <div className="grid gap-4 lg:grid-cols-2">
                   {[
-                    ["Current QuickBooks quote", updateEstimatePreview.current, "border-slate-200 bg-white"],
-                    ["New CRM details", updateEstimatePreview.incoming, "border-emerald-200 bg-emerald-50/30"],
+                    [
+                      "Current QuickBooks quote",
+                      updateEstimatePreview.current,
+                      "border-slate-200 bg-white",
+                    ],
+                    [
+                      "New CRM details",
+                      updateEstimatePreview.incoming,
+                      "border-emerald-200 bg-emerald-50/30",
+                    ],
                   ].map(([title, preview, className]) => {
-                    const details = preview as typeof updateEstimatePreview.current;
+                    const details =
+                      preview as typeof updateEstimatePreview.current;
                     const isIncoming = title === "New CRM details";
                     const displayedTotal = isIncoming
                       ? details.lines.reduce(
@@ -1929,16 +2077,26 @@ export function ClientRow({
                         )
                       : details.total;
                     return (
-                      <section key={title as string} className={`overflow-hidden rounded border ${className as string}`}>
+                      <section
+                        key={title as string}
+                        className={`overflow-hidden rounded border ${className as string}`}
+                      >
                         <div className="flex items-center justify-between border-b border-inherit px-3 py-2">
-                          <p className="font-semibold text-slate-900">{title as string}</p>
-                          <p className="font-semibold text-slate-900">{formatQuickBooksAmount(displayedTotal)}</p>
+                          <p className="font-semibold text-slate-900">
+                            {title as string}
+                          </p>
+                          <p className="font-semibold text-slate-900">
+                            {formatQuickBooksAmount(displayedTotal)}
+                          </p>
                         </div>
                         {title === "Current QuickBooks quote" ? (
                           <div className="border-b border-slate-100 px-3 py-2">
-                            <p className="text-[10px] font-medium uppercase tracking-wide text-slate-500">Payment Terms</p>
+                            <p className="text-[10px] font-medium uppercase tracking-wide text-slate-500">
+                              Payment Terms
+                            </p>
                             <p className="mt-1 text-sm text-slate-800">
-                              {updateEstimatePreview.current.paymentTerm || "Not set"}
+                              {updateEstimatePreview.current.paymentTerm ||
+                                "Not set"}
                             </p>
                           </div>
                         ) : (
@@ -1975,7 +2133,11 @@ export function ClientRow({
                                         <input
                                           type="checkbox"
                                           checked={sameQuoteTaxForAll}
-                                          onChange={(event) => toggleSameQuoteTaxForAll(event.target.checked)}
+                                          onChange={(event) =>
+                                            toggleSameQuoteTaxForAll(
+                                              event.target.checked,
+                                            )
+                                          }
                                           className="h-3 w-3 accent-emerald-500"
                                         />
                                         Same for all
@@ -1987,34 +2149,59 @@ export function ClientRow({
                             </thead>
                             <tbody>
                               {details.lines.map((line, index) => (
-                                <tr key={`${line.name}-${index}`} className="border-t border-slate-100 align-top">
+                                <tr
+                                  key={`${line.name}-${index}`}
+                                  className="border-t border-slate-100 align-top"
+                                >
                                   <td className="px-3 py-2">
-                                    <p className="font-medium text-slate-800">{line.name}</p>
-                                    {line.description && line.description !== line.name ? <p className="mt-0.5 text-slate-500">{line.description}</p> : null}
+                                    <p className="font-medium text-slate-800">
+                                      {line.name}
+                                    </p>
+                                    {line.description &&
+                                    line.description !== line.name ? (
+                                      <p className="mt-0.5 text-slate-500">
+                                        {line.description}
+                                      </p>
+                                    ) : null}
                                   </td>
-                                  <td className="px-2 py-2 text-right">{line.qty}</td>
-                                  <td className="px-2 py-2 text-right">{formatQuickBooksAmount(line.unitPrice)}</td>
-                                  <td className="px-3 py-2 text-right font-medium">{formatQuickBooksAmount(line.amount)}</td>
+                                  <td className="px-2 py-2 text-right">
+                                    {line.qty}
+                                  </td>
+                                  <td className="px-2 py-2 text-right">
+                                    {formatQuickBooksAmount(line.unitPrice)}
+                                  </td>
+                                  <td className="px-3 py-2 text-right font-medium">
+                                    {formatQuickBooksAmount(line.amount)}
+                                  </td>
                                   <td className="px-3 py-2">
                                     {isIncoming && line.id ? (
                                       <select
                                         value={
                                           isFreightLine(line.name)
                                             ? "other"
-                                            : quoteDeliveryBySubitem[line.id] ?? ""
+                                            : (quoteDeliveryBySubitem[
+                                                line.id
+                                              ] ?? "")
                                         }
                                         disabled={isFreightLine(line.name)}
                                         onChange={(event) =>
                                           setQuoteTaxDestination(
                                             line.id as string,
-                                            event.target.value as "singapore" | "other",
+                                            event.target.value as
+                                              "singapore" | "other",
                                           )
                                         }
                                         className="w-full rounded border border-slate-200 bg-white px-1 py-1 text-[10px] text-slate-700"
                                       >
-                                        <option value="">Select destination</option>
-                                        <option value="singapore">GST 9% — Deliver to Singapore</option>
-                                        <option value="other">GST Free — Deliver to other countries</option>
+                                        <option value="">
+                                          Select destination
+                                        </option>
+                                        <option value="singapore">
+                                          GST 9% — Deliver to Singapore
+                                        </option>
+                                        <option value="other">
+                                          GST Free — Deliver to other countries
+                                        </option>
                                       </select>
                                     ) : line.taxCode === "59" ? (
                                       "GST 9%"
@@ -2034,7 +2221,9 @@ export function ClientRow({
               )}
               {updateEstimatePreview && (
                 <p className="text-[11px] text-slate-500">
-                  Updating replaces the quote&apos;s item lines with the current eligible CRM subitems. QuickBooks tax and totals are recalculated there.
+                  Updating replaces the quote&apos;s item lines with the current
+                  eligible CRM subitems. QuickBooks tax and totals are
+                  recalculated there.
                 </p>
               )}
             </div>
@@ -2095,12 +2284,34 @@ export function ClientRow({
                 <div className="grid gap-5 border-b border-emerald-100 bg-white px-4 py-3 sm:grid-cols-2">
                   <div className="contents">
                     <div className="sm:order-1">
-                      <p className="font-semibold text-slate-900">Client information</p>
+                      <p className="font-semibold text-slate-900">
+                        Client information
+                      </p>
                       <div className="mt-2 space-y-1.5 text-slate-600">
-                        <p><span className="font-medium text-slate-800">Client:</span> {client.name || "Not set"}</p>
-                        <p><span className="font-medium text-slate-800">Email:</span> {client.email || "Not set"}</p>
-                        <p><span className="font-medium text-slate-800">Phone:</span> {client.phone || "Not set"}</p>
-                        <p><span className="font-medium text-slate-800">Billing address:</span> {client.billingAddress || "Not set"}</p>
+                        <p>
+                          <span className="font-medium text-slate-800">
+                            Client:
+                          </span>{" "}
+                          {client.name || "Not set"}
+                        </p>
+                        <p>
+                          <span className="font-medium text-slate-800">
+                            Email:
+                          </span>{" "}
+                          {client.email || "Not set"}
+                        </p>
+                        <p>
+                          <span className="font-medium text-slate-800">
+                            Phone:
+                          </span>{" "}
+                          {client.phone || "Not set"}
+                        </p>
+                        <p>
+                          <span className="font-medium text-slate-800">
+                            Billing address:
+                          </span>{" "}
+                          {client.billingAddress || "Not set"}
+                        </p>
                       </div>
                     </div>
                     <label className="grid gap-1 text-[11px] font-medium text-slate-600 sm:order-3">
@@ -2108,25 +2319,38 @@ export function ClientRow({
                       <select
                         value={quickBooksSalesperson}
                         disabled={quickBooksDefaultsLoading}
-                        onChange={(event) => setQuickBooksSalesperson(event.target.value)}
+                        onChange={(event) =>
+                          setQuickBooksSalesperson(event.target.value)
+                        }
                         className="h-9 rounded border border-slate-200 bg-white px-2 text-sm text-slate-700 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
                       >
                         {quickBooksSalesperson &&
                           !profiles.some(
                             (profile) =>
-                              (profile.full_name?.trim() || profile.email || "") ===
-                              quickBooksSalesperson,
+                              (profile.full_name?.trim() ||
+                                profile.email ||
+                                "") === quickBooksSalesperson,
                           ) && (
-                            <option value={quickBooksSalesperson}>{quickBooksSalesperson}</option>
+                            <option value={quickBooksSalesperson}>
+                              {quickBooksSalesperson}
+                            </option>
                           )}
                         {profiles
                           .filter(
                             (profile) =>
-                              profile.id && profile.role?.toLowerCase() !== "shipper",
+                              profile.id &&
+                              profile.role?.toLowerCase() !== "shipper",
                           )
                           .map((profile) => {
-                            const name = profile.full_name?.trim() || profile.email || "Unnamed user";
-                            return <option key={profile.id} value={name}>{name}</option>;
+                            const name =
+                              profile.full_name?.trim() ||
+                              profile.email ||
+                              "Unnamed user";
+                            return (
+                              <option key={profile.id} value={name}>
+                                {name}
+                              </option>
+                            );
                           })}
                       </select>
                     </label>
@@ -2136,7 +2360,9 @@ export function ClientRow({
                       Company Name *
                       <input
                         value={quickBooksCompanyName}
-                        onChange={(event) => setQuickBooksCompanyName(event.target.value)}
+                        onChange={(event) =>
+                          setQuickBooksCompanyName(event.target.value)
+                        }
                         placeholder="Enter company name"
                         className="h-9 rounded border border-slate-200 bg-white px-2 text-sm text-slate-700 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
                       />
@@ -2159,9 +2385,7 @@ export function ClientRow({
                 </div>
                 <div className="p-4">
                   <div className="mb-2 flex items-end justify-between gap-3">
-                    <p className="font-semibold text-slate-900">
-                      Quote lines
-                    </p>
+                    <p className="font-semibold text-slate-900">Quote lines</p>
                     <p className="text-slate-500">
                       {quickBooksEstimatePreview.lines.length} item(s)
                     </p>
@@ -2170,7 +2394,9 @@ export function ClientRow({
                     <table className="w-full table-fixed text-left">
                       <thead className="bg-slate-100 text-[10px] uppercase tracking-wide text-slate-500">
                         <tr>
-                          <th className="w-[34%] px-3 py-2">Item / description</th>
+                          <th className="w-[34%] px-3 py-2">
+                            Item / description
+                          </th>
                           <th className="px-2 py-2 text-right">Qty</th>
                           <th className="px-2 py-2 text-right">Unit price</th>
                           <th className="px-2 py-2 text-right">Amount</th>
@@ -2181,7 +2407,11 @@ export function ClientRow({
                                 <input
                                   type="checkbox"
                                   checked={sameQuoteTaxForAll}
-                                  onChange={(event) => toggleSameQuoteTaxForAll(event.target.checked)}
+                                  onChange={(event) =>
+                                    toggleSameQuoteTaxForAll(
+                                      event.target.checked,
+                                    )
+                                  }
                                   className="h-3 w-3 accent-emerald-500"
                                 />
                                 Same for all
@@ -2206,9 +2436,7 @@ export function ClientRow({
                                 </p>
                               )}
                             </td>
-                            <td className="px-2 py-2 text-right">
-                              {line.qty}
-                            </td>
+                            <td className="px-2 py-2 text-right">{line.qty}</td>
                             <td className="px-2 py-2 text-right">
                               {formatQuickBooksAmount(line.unitPrice)}
                             </td>
@@ -2229,8 +2457,12 @@ export function ClientRow({
                                 aria-label={`Tax destination for ${line.name}`}
                               >
                                 <option value="">Select destination</option>
-                                <option value="singapore">GST 9% — Deliver to Singapore</option>
-                                <option value="other">GST Free — Deliver to other countries</option>
+                                <option value="singapore">
+                                  GST 9% — Deliver to Singapore
+                                </option>
+                                <option value="other">
+                                  GST Free — Deliver to other countries
+                                </option>
                               </select>
                             </td>
                           </tr>
@@ -2241,7 +2473,9 @@ export function ClientRow({
                   <div className="ml-auto mt-3 grid w-64 grid-cols-2 gap-y-1 text-sm">
                     <span className="text-slate-500">Subtotal</span>
                     <span className="text-right">
-                      {formatQuickBooksAmount(quickBooksEstimatePreview.subtotal)}
+                      {formatQuickBooksAmount(
+                        quickBooksEstimatePreview.subtotal,
+                      )}
                     </span>
                     <span className="text-slate-500">GST</span>
                     <span className="text-right">
@@ -2304,7 +2538,8 @@ export function ClientRow({
                   Update QuickBooks quote
                 </strong>
                 <span className="mt-4 block text-[11px] leading-relaxed text-slate-500">
-                  Compare a prior QuickBooks quote with current CRM details, then update it.
+                  Compare a prior QuickBooks quote with current CRM details,
+                  then update it.
                 </span>
               </button>
             </div>
@@ -2388,7 +2623,9 @@ export function ClientRow({
                 </AlertDialogAction>
               ) : (
                 <>
-                  <AlertDialogCancel disabled={isUpdatingEstimate}>Cancel</AlertDialogCancel>
+                  <AlertDialogCancel disabled={isUpdatingEstimate}>
+                    Cancel
+                  </AlertDialogCancel>
                   <AlertDialogAction
                     disabled={
                       isUpdatingEstimate ||
@@ -2408,7 +2645,9 @@ export function ClientRow({
                       void updateQuickBooksEstimate();
                     }}
                   >
-                    {isUpdatingEstimate ? "Updating QuickBooks…" : "Confirm update in QuickBooks"}
+                    {isUpdatingEstimate
+                      ? "Updating QuickBooks…"
+                      : "Confirm update in QuickBooks"}
                   </AlertDialogAction>
                 </>
               )
@@ -2648,33 +2887,33 @@ export function ClientRow({
           <div className="ml-auto flex items-center justify-start gap-1 flex-shrink-0">
             {trackingMode && (
               <>
-              <button
-                type="button"
-                data-view-action
-                disabled={
-                  !canManageClient ||
-                  !client.customFields?.trackingEstimateGenerationId ||
-                  isPullingInvoices
-                }
-                onClick={(event) => {
-                  event.stopPropagation();
-                  void pullTrackingInvoices();
-                }}
-                title={
-                  trackingInvoiceError ??
-                  trackingInvoiceNotice ??
-                  (!canManageClient
-                    ? "You do not have permission to update this client"
-                    : !client.customFields?.trackingEstimateGenerationId
-                    ? "Select a QuickBooks quote first"
-                    : "Pull invoices linked to this QuickBooks quote")
-                }
-                className="rounded border border-sky-300 bg-sky-50 px-2 py-1 text-[10px] font-semibold text-sky-700 hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {isPullingInvoices
-                  ? "Pulling…"
-                  : trackingInvoiceNotice ?? "Pull Invoice"}
-              </button>
+                <button
+                  type="button"
+                  data-view-action
+                  disabled={
+                    !canManageClient ||
+                    !client.customFields?.trackingEstimateGenerationId ||
+                    isPullingInvoices
+                  }
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    void pullTrackingInvoices();
+                  }}
+                  title={
+                    trackingInvoiceError ??
+                    trackingInvoiceNotice ??
+                    (!canManageClient
+                      ? "You do not have permission to update this client"
+                      : !client.customFields?.trackingEstimateGenerationId
+                        ? "Select a QuickBooks quote first"
+                        : "Pull invoices linked to this QuickBooks quote")
+                  }
+                  className="rounded border border-sky-300 bg-sky-50 px-2 py-1 text-[10px] font-semibold text-sky-700 hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {isPullingInvoices
+                    ? "Pulling…"
+                    : (trackingInvoiceNotice ?? "Pull Invoice")}
+                </button>
               </>
             )}
             {!trackingMode && (
@@ -2798,103 +3037,106 @@ export function ClientRow({
                             30 * 86_400_000 <=
                             Date.now();
                         return (
-                        <div
-                          key={entry.id}
-                          className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2"
-                        >
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <p className="text-sm text-gray-800">
-                                {entry.actorName ? (
-                                  <>
-                                    <span className="font-medium">
-                                      {entry.actorName}
-                                    </span>{" "}
-                                  </>
+                          <div
+                            key={entry.id}
+                            className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2"
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <p className="text-sm text-gray-800">
+                                  {entry.actorName ? (
+                                    <>
+                                      <span className="font-medium">
+                                        {entry.actorName}
+                                      </span>{" "}
+                                    </>
+                                  ) : null}
+                                  {renderActivityText(entry)}
+                                </p>
+                                <p className="mt-1 text-[12.6px] text-gray-500">
+                                  {new Date(entry.createdAt).toLocaleString(
+                                    "en-GB",
+                                  )}
+                                </p>
+                              </div>
+                              <div className="flex shrink-0 items-start gap-2">
+                                {entry.link ? (
+                                  <a
+                                    href={entry.link}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center rounded-md bg-teal-100 px-2 py-1 text-[12.6px] font-medium text-teal-500 hover:bg-teal-200"
+                                  >
+                                    {entry.action === "estimate_created" ||
+                                    String(
+                                      entry.meta?.fileName ?? "",
+                                    ).startsWith("Sample Estimate") ||
+                                    String(
+                                      entry.meta?.fileName ?? "",
+                                    ).startsWith("Sample Quote")
+                                      ? "Open Quote"
+                                      : "Open OCF"}
+                                  </a>
                                 ) : null}
-                                {renderActivityText(entry)}
-                              </p>
-                              <p className="mt-1 text-[12.6px] text-gray-500">
-                                {new Date(entry.createdAt).toLocaleString(
-                                  "en-GB",
-                                )}
-                              </p>
-                            </div>
-                            <div className="flex shrink-0 items-start gap-2">
-                              {entry.link ? (
-                                <a
-                                  href={entry.link}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="inline-flex items-center rounded-md bg-teal-100 px-2 py-1 text-[12.6px] font-medium text-teal-500 hover:bg-teal-200"
-                                >
-                                  {entry.action === "estimate_created" ||
-                                  String(
-                                    entry.meta?.fileName ?? "",
-                                  ).startsWith("Sample Estimate") ||
-                                  String(
-                                    entry.meta?.fileName ?? "",
-                                  ).startsWith("Sample Quote")
-                                    ? "Open Quote"
-                                    : "Open OCF"}
-                                </a>
-                              ) : null}
-                              {entry.description === "File has been removed" ? (
-                                <span
-                                  className="inline-flex items-center rounded-md bg-slate-100 px-2 py-1 text-[12.6px] font-medium text-slate-500"
-                                  title="This file is no longer available"
-                                >
-                                  File has been removed
-                                </span>
-                              ) : entry.description === "File has been replaced" ? (
-                                <span
-                                  className="inline-flex items-center rounded-md bg-slate-100 px-2 py-1 text-[12.6px] font-medium text-slate-500"
-                                  title="This file has been replaced"
-                                >
-                                  File has been replaced
-                                </span>
-                              ) : null}
-                              {(entry.action === "field_changed" ||
-                                entry.action === "subitem_field_changed" ||
-                                entry.action === "client_deleted" ||
-                                entry.action === "subitem_deleted") &&
-                                (entry.action === "client_deleted" ||
-                                  entry.action === "subitem_deleted" ||
-                                  (entry.oldValue !== undefined &&
-                                    entry.oldValue !== null)) && (
-                                <button
-                                  type="button"
-                                  disabled={
-                                    undoneActivityIds.has(entry.id) ||
-                                    !canEditClient ||
-                                    deletionUndoExpired
-                                  }
-                                  onClick={async () => {
-                                    if (undoneActivityIds.has(entry.id)) return;
-                                    await onUndoActivity?.(entry);
-                                    setUndoneActivityIds((previous) =>
-                                      new Set(previous).add(entry.id),
-                                    );
-                                  }}
-                                  title={
-                                    !canEditClient
-                                      ? "You can only edit items that are assigned to you"
-                                      : deletionUndoExpired
-                                        ? "This item is no longer available for restoration"
-                                      : undoneActivityIds.has(entry.id)
-                                        ? "The action has already been undone"
-                                        : "Undo this action"
-                                  }
-                                  className="shrink-0 rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] font-medium text-gray-600 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
-                                >
-                                  {undoneActivityIds.has(entry.id)
-                                    ? "Undone"
-                                    : "Undo"}
-                                </button>
-                                )}
+                                {entry.description ===
+                                "File has been removed" ? (
+                                  <span
+                                    className="inline-flex items-center rounded-md bg-slate-100 px-2 py-1 text-[12.6px] font-medium text-slate-500"
+                                    title="This file is no longer available"
+                                  >
+                                    File has been removed
+                                  </span>
+                                ) : entry.description ===
+                                  "File has been replaced" ? (
+                                  <span
+                                    className="inline-flex items-center rounded-md bg-slate-100 px-2 py-1 text-[12.6px] font-medium text-slate-500"
+                                    title="This file has been replaced"
+                                  >
+                                    File has been replaced
+                                  </span>
+                                ) : null}
+                                {(entry.action === "field_changed" ||
+                                  entry.action === "subitem_field_changed" ||
+                                  entry.action === "client_deleted" ||
+                                  entry.action === "subitem_deleted") &&
+                                  (entry.action === "client_deleted" ||
+                                    entry.action === "subitem_deleted" ||
+                                    (entry.oldValue !== undefined &&
+                                      entry.oldValue !== null)) && (
+                                    <button
+                                      type="button"
+                                      disabled={
+                                        undoneActivityIds.has(entry.id) ||
+                                        !canEditClient ||
+                                        deletionUndoExpired
+                                      }
+                                      onClick={async () => {
+                                        if (undoneActivityIds.has(entry.id))
+                                          return;
+                                        await onUndoActivity?.(entry);
+                                        setUndoneActivityIds((previous) =>
+                                          new Set(previous).add(entry.id),
+                                        );
+                                      }}
+                                      title={
+                                        !canEditClient
+                                          ? "You can only edit items that are assigned to you"
+                                          : deletionUndoExpired
+                                            ? "This item is no longer available for restoration"
+                                            : undoneActivityIds.has(entry.id)
+                                              ? "The action has already been undone"
+                                              : "Undo this action"
+                                      }
+                                      className="shrink-0 rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] font-medium text-gray-600 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                    >
+                                      {undoneActivityIds.has(entry.id)
+                                        ? "Undone"
+                                        : "Undo"}
+                                    </button>
+                                  )}
+                              </div>
                             </div>
                           </div>
-                        </div>
                         );
                       });
                     })()}
@@ -3021,7 +3263,9 @@ export function ClientRow({
             onRenameOption={(oldName, newName) =>
               onRenameOption?.("reply_status", oldName, newName)
             }
-            onReorderOptions={(values) => onReorderOptions?.("reply_status", values)}
+            onReorderOptions={(values) =>
+              onReorderOptions?.("reply_status", values)
+            }
           />
         </div>
 
@@ -3067,7 +3311,9 @@ export function ClientRow({
             onRenameOption={(oldName, newName) =>
               onRenameOption?.("client_status", oldName, newName)
             }
-            onReorderOptions={(values) => onReorderOptions?.("client_status", values)}
+            onReorderOptions={(values) =>
+              onReorderOptions?.("client_status", values)
+            }
             sectionCount={5}
           />
 
@@ -3223,11 +3469,30 @@ export function ClientRow({
             value={overallPaymentStatus}
             onChange={() => undefined}
             options={overallPaymentStatusOptions}
-            onAddOption={canManagePaymentLabels ? onAddOverallPaymentStatus : undefined}
-            onDeleteOption={canManagePaymentLabels ? onDeleteOverallPaymentStatus : undefined}
-            onUpdateOptionColor={canManagePaymentLabels ? (name, color) => onUpdateOptionColor?.("overall_payment_status", name, color) : undefined}
-            onRenameOption={canManagePaymentLabels ? (oldName, newName) => onRenameOption?.("overall_payment_status", oldName, newName) : undefined}
-            onReorderOptions={canManagePaymentLabels ? (values) => onReorderOptions?.("overall_payment_status", values) : undefined}
+            onAddOption={
+              canManagePaymentLabels ? onAddOverallPaymentStatus : undefined
+            }
+            onDeleteOption={
+              canManagePaymentLabels ? onDeleteOverallPaymentStatus : undefined
+            }
+            onUpdateOptionColor={
+              canManagePaymentLabels
+                ? (name, color) =>
+                    onUpdateOptionColor?.("overall_payment_status", name, color)
+                : undefined
+            }
+            onRenameOption={
+              canManagePaymentLabels
+                ? (oldName, newName) =>
+                    onRenameOption?.("overall_payment_status", oldName, newName)
+                : undefined
+            }
+            onReorderOptions={
+              canManagePaymentLabels
+                ? (values) =>
+                    onReorderOptions?.("overall_payment_status", values)
+                : undefined
+            }
             manageLabel="overall payment status"
             small
             readOnly={!canManagePaymentLabels}
@@ -3257,6 +3522,7 @@ export function ClientRow({
               onRenameOption?.("channel", oldName, newName)
             }
             onReorderOptions={(values) => onReorderOptions?.("channel", values)}
+            sectionCount={4}
           />
         </div>
 
@@ -3282,7 +3548,9 @@ export function ClientRow({
             onRenameOption={(oldName, newName) =>
               onRenameOption?.("importance", oldName, newName)
             }
-            onReorderOptions={(values) => onReorderOptions?.("importance", values)}
+            onReorderOptions={(values) =>
+              onReorderOptions?.("importance", values)
+            }
           />
         </div>
 
@@ -3469,7 +3737,9 @@ export function ClientRow({
             onRenameOption={(oldName, newName) =>
               onRenameOption?.("progress", oldName, newName)
             }
-            onReorderOptions={(values) => onReorderOptions?.("progress", values)}
+            onReorderOptions={(values) =>
+              onReorderOptions?.("progress", values)
+            }
           />
         </div>
         {trackingMode && (
@@ -3495,11 +3765,21 @@ export function ClientRow({
                   })
                 }
                 options={trackingSummaryLabelOptions}
-                onAddOption={(name) => onAddTrackingOption?.("tracking_summary", name)}
-                onDeleteOption={(name) => onDeleteTrackingOption?.("tracking_summary", name)}
-                onUpdateOptionColor={(name, color) => onUpdateOptionColor?.("tracking_summary", name, color)}
-                onRenameOption={(oldName, newName) => onRenameOption?.("tracking_summary", oldName, newName)}
-                onReorderOptions={(layout) => onReorderOptions?.("tracking_summary", layout)}
+                onAddOption={(name) =>
+                  onAddTrackingOption?.("tracking_summary", name)
+                }
+                onDeleteOption={(name) =>
+                  onDeleteTrackingOption?.("tracking_summary", name)
+                }
+                onUpdateOptionColor={(name, color) =>
+                  onUpdateOptionColor?.("tracking_summary", name, color)
+                }
+                onRenameOption={(oldName, newName) =>
+                  onRenameOption?.("tracking_summary", oldName, newName)
+                }
+                onReorderOptions={(layout) =>
+                  onReorderOptions?.("tracking_summary", layout)
+                }
                 manageLabel="tracking summary"
               />
             </div>
@@ -3524,11 +3804,21 @@ export function ClientRow({
                   })
                 }
                 options={trackingInvoiceCreatedLabelOptions}
-                onAddOption={(name) => onAddTrackingOption?.("tracking_invoice_created", name)}
-                onDeleteOption={(name) => onDeleteTrackingOption?.("tracking_invoice_created", name)}
-                onUpdateOptionColor={(name, color) => onUpdateOptionColor?.("tracking_invoice_created", name, color)}
-                onRenameOption={(oldName, newName) => onRenameOption?.("tracking_invoice_created", oldName, newName)}
-                onReorderOptions={(layout) => onReorderOptions?.("tracking_invoice_created", layout)}
+                onAddOption={(name) =>
+                  onAddTrackingOption?.("tracking_invoice_created", name)
+                }
+                onDeleteOption={(name) =>
+                  onDeleteTrackingOption?.("tracking_invoice_created", name)
+                }
+                onUpdateOptionColor={(name, color) =>
+                  onUpdateOptionColor?.("tracking_invoice_created", name, color)
+                }
+                onRenameOption={(oldName, newName) =>
+                  onRenameOption?.("tracking_invoice_created", oldName, newName)
+                }
+                onReorderOptions={(layout) =>
+                  onReorderOptions?.("tracking_invoice_created", layout)
+                }
                 manageLabel="invoice created"
               />
             </div>
@@ -3578,17 +3868,19 @@ export function ClientRow({
                   )}
                 {trackingEstimates.map((estimate) => (
                   <option key={estimate.id} value={estimate.id}>
-                    Quote {estimate.quickbooks_estimate_doc_number ?? "(no document number)"}
+                    Quote{" "}
+                    {estimate.quickbooks_estimate_doc_number ??
+                      "(no document number)"}
                   </option>
                 ))}
               </select>
               {!client.customFields?.trackingEstimateGenerationId &&
                 canManageClient && (
-                <span className="pointer-events-none absolute inset-0 flex items-center justify-between bg-white px-1 text-[11px] text-transparent transition-colors group-hover/estimate:text-slate-400 group-focus-within/estimate:text-slate-400">
-                  <span>Select quote</span>
-                  <ChevronDown size={13} aria-hidden="true" />
-                </span>
-              )}
+                  <span className="pointer-events-none absolute inset-0 flex items-center justify-between bg-white px-1 text-[11px] text-transparent transition-colors group-hover/estimate:text-slate-400 group-focus-within/estimate:text-slate-400">
+                    <span>Select quote</span>
+                    <ChevronDown size={13} aria-hidden="true" />
+                  </span>
+                )}
             </div>
             <div
               data-client-column="trackingInvoiceNumber"
@@ -3641,11 +3933,29 @@ export function ClientRow({
                   })
                 }
                 options={trackingMultipleInvoicesLabelOptions}
-                onAddOption={(name) => onAddTrackingOption?.("tracking_multiple_invoices", name)}
-                onDeleteOption={(name) => onDeleteTrackingOption?.("tracking_multiple_invoices", name)}
-                onUpdateOptionColor={(name, color) => onUpdateOptionColor?.("tracking_multiple_invoices", name, color)}
-                onRenameOption={(oldName, newName) => onRenameOption?.("tracking_multiple_invoices", oldName, newName)}
-                onReorderOptions={(layout) => onReorderOptions?.("tracking_multiple_invoices", layout)}
+                onAddOption={(name) =>
+                  onAddTrackingOption?.("tracking_multiple_invoices", name)
+                }
+                onDeleteOption={(name) =>
+                  onDeleteTrackingOption?.("tracking_multiple_invoices", name)
+                }
+                onUpdateOptionColor={(name, color) =>
+                  onUpdateOptionColor?.(
+                    "tracking_multiple_invoices",
+                    name,
+                    color,
+                  )
+                }
+                onRenameOption={(oldName, newName) =>
+                  onRenameOption?.(
+                    "tracking_multiple_invoices",
+                    oldName,
+                    newName,
+                  )
+                }
+                onReorderOptions={(layout) =>
+                  onReorderOptions?.("tracking_multiple_invoices", layout)
+                }
                 manageLabel="multiple invoices"
               />
             </div>
@@ -3672,11 +3982,21 @@ export function ClientRow({
                   })
                 }
                 options={trackingPaymentStatusLabelOptions}
-                onAddOption={(name) => onAddTrackingOption?.("tracking_payment_status", name)}
-                onDeleteOption={(name) => onDeleteTrackingOption?.("tracking_payment_status", name)}
-                onUpdateOptionColor={(name, color) => onUpdateOptionColor?.("tracking_payment_status", name, color)}
-                onRenameOption={(oldName, newName) => onRenameOption?.("tracking_payment_status", oldName, newName)}
-                onReorderOptions={(layout) => onReorderOptions?.("tracking_payment_status", layout)}
+                onAddOption={(name) =>
+                  onAddTrackingOption?.("tracking_payment_status", name)
+                }
+                onDeleteOption={(name) =>
+                  onDeleteTrackingOption?.("tracking_payment_status", name)
+                }
+                onUpdateOptionColor={(name, color) =>
+                  onUpdateOptionColor?.("tracking_payment_status", name, color)
+                }
+                onRenameOption={(oldName, newName) =>
+                  onRenameOption?.("tracking_payment_status", oldName, newName)
+                }
+                onReorderOptions={(layout) =>
+                  onReorderOptions?.("tracking_payment_status", layout)
+                }
                 manageLabel="tracking payment status"
                 includeBlankOption={false}
               />
@@ -3732,11 +4052,29 @@ export function ClientRow({
                   })
                 }
                 options={trackingPriceInvoiceMatchLabelOptions}
-                onAddOption={(name) => onAddTrackingOption?.("tracking_price_invoice_match", name)}
-                onDeleteOption={(name) => onDeleteTrackingOption?.("tracking_price_invoice_match", name)}
-                onUpdateOptionColor={(name, color) => onUpdateOptionColor?.("tracking_price_invoice_match", name, color)}
-                onRenameOption={(oldName, newName) => onRenameOption?.("tracking_price_invoice_match", oldName, newName)}
-                onReorderOptions={(layout) => onReorderOptions?.("tracking_price_invoice_match", layout)}
+                onAddOption={(name) =>
+                  onAddTrackingOption?.("tracking_price_invoice_match", name)
+                }
+                onDeleteOption={(name) =>
+                  onDeleteTrackingOption?.("tracking_price_invoice_match", name)
+                }
+                onUpdateOptionColor={(name, color) =>
+                  onUpdateOptionColor?.(
+                    "tracking_price_invoice_match",
+                    name,
+                    color,
+                  )
+                }
+                onRenameOption={(oldName, newName) =>
+                  onRenameOption?.(
+                    "tracking_price_invoice_match",
+                    oldName,
+                    newName,
+                  )
+                }
+                onReorderOptions={(layout) =>
+                  onReorderOptions?.("tracking_price_invoice_match", layout)
+                }
                 manageLabel="price and invoice match"
               />
             </div>
@@ -3839,15 +4177,26 @@ export function ClientRow({
           <div className="max-w-[650px] overflow-hidden rounded border border-[#c8dce2] bg-white text-[12px] shadow-sm">
             <div className="flex items-center border-b border-[#c8dce2] bg-[#eaf5f7] text-[11px] font-semibold uppercase tracking-wide text-slate-600">
               <div className="w-[32%] px-3 py-2">Invoice Number</div>
-              <div className="w-[23%] border-l border-[#d7e5e8] px-3 py-2">Invoice Date</div>
-              <div className="w-[23%] border-l border-[#d7e5e8] px-3 py-2">Due Date</div>
-              <div className="w-[22%] border-l border-[#d7e5e8] px-3 py-2 text-right">Subtotal</div>
+              <div className="w-[23%] border-l border-[#d7e5e8] px-3 py-2">
+                Invoice Date
+              </div>
+              <div className="w-[23%] border-l border-[#d7e5e8] px-3 py-2">
+                Due Date
+              </div>
+              <div className="w-[22%] border-l border-[#d7e5e8] px-3 py-2 text-right">
+                Subtotal
+              </div>
             </div>
             {isLoadingTrackingInvoices ? (
-              <p className="px-3 py-3 text-slate-500">Loading linked invoices…</p>
+              <p className="px-3 py-3 text-slate-500">
+                Loading linked invoices…
+              </p>
             ) : trackingInvoiceRows.length ? (
               trackingInvoiceRows.map((invoice) => (
-                <div key={invoice.id} className="flex border-b border-[#e5eef0] last:border-b-0 text-slate-700">
+                <div
+                  key={invoice.id}
+                  className="flex border-b border-[#e5eef0] last:border-b-0 text-slate-700"
+                >
                   <div className="w-[32%] px-3 py-2 font-medium">
                     {invoice.quickbooks_invoice_doc_number ?? "—"}
                   </div>
@@ -3898,6 +4247,7 @@ export function ClientRow({
           onChangeSubitemAssignees={onChangeSubitemAssignees}
           paymentOptions={paymentOptions}
           paymentStatusOptions={paymentStatusOptions}
+          paymentReceivedOptions={paymentReceivedOptions}
           modeOfPaymentOptions={modeOfPaymentOptions}
           shipperOptions={shipperOptions}
           localOverseasOptions={localOverseasOptions}
@@ -3918,6 +4268,8 @@ export function ClientRow({
           onDeletePayment={onDeletePayment}
           onAddPaymentStatus={onAddPaymentStatus}
           onDeletePaymentStatus={onDeletePaymentStatus}
+          onAddPaymentReceived={onAddPaymentReceived}
+          onDeletePaymentReceived={onDeletePaymentReceived}
           onAddModeOfPayment={onAddModeOfPayment}
           onDeleteModeOfPayment={onDeleteModeOfPayment}
           subitemCustomCols={subitemCustomCols}

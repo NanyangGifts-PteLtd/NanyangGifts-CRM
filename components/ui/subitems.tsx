@@ -283,6 +283,7 @@ type SubitemProps = {
   onChangeSubitemAssignees: (subitemId: string, ids: string[]) => void;
   paymentOptions: OptionEntry[];
   paymentStatusOptions: OptionEntry[];
+  paymentReceivedOptions: OptionEntry[];
   modeOfPaymentOptions: OptionEntry[];
   shipperOptions: OptionEntry[];
   localOverseasOptions: OptionEntry[];
@@ -303,6 +304,8 @@ type SubitemProps = {
   onDeletePayment?: (name: string) => void | Promise<void>;
   onAddPaymentStatus?: (name: string) => void | Promise<void>;
   onDeletePaymentStatus?: (name: string) => void | Promise<void>;
+  onAddPaymentReceived?: (name: string) => void | Promise<void>;
+  onDeletePaymentReceived?: (name: string) => void | Promise<void>;
   onAddModeOfPayment?: (name: string) => void | Promise<void>;
   onDeleteModeOfPayment?: (name: string) => void | Promise<void>;
   onUpdateOptionColor?: (
@@ -317,7 +320,7 @@ type SubitemProps = {
   ) => void | Promise<void>;
   onReorderOptions?: (
     code: string,
-    layout: Array<{ value: string; section: number }>,
+    layout: Array<{ id?: string; value: string; section: number }>,
   ) => void | Promise<void>;
   onFilterColumn?: (column: string) => void;
   onSortColumn?: (
@@ -416,6 +419,7 @@ export function SubitemsTable({
   onChangeSubitemAssignees,
   paymentOptions,
   paymentStatusOptions,
+  paymentReceivedOptions,
   modeOfPaymentOptions,
   shipperOptions,
   localOverseasOptions,
@@ -436,6 +440,8 @@ export function SubitemsTable({
   onDeletePayment,
   onAddPaymentStatus,
   onDeletePaymentStatus,
+  onAddPaymentReceived,
+  onDeletePaymentReceived,
   onAddModeOfPayment,
   onDeleteModeOfPayment,
   onUpdateOptionColor,
@@ -1929,6 +1935,7 @@ export function SubitemsTable({
               onReorderOptions={(values) =>
                 onReorderOptions?.("subitem_status", values)
               }
+              sectionCount={4}
               small
               readOnly={additionalCostLinked}
             />
@@ -2269,6 +2276,7 @@ export function SubitemsTable({
               onReorderOptions={(values) =>
                 onReorderOptions?.("subitem_status", values)
               }
+              sectionCount={4}
               small
             />
           </div>
@@ -2466,6 +2474,7 @@ export function SubitemsTable({
               onReorderOptions={(values) =>
                 onReorderOptions?.("mode_of_payment", values)
               }
+              sectionCount={3}
               small
             />
           </div>
@@ -3611,17 +3620,18 @@ export function SubitemsTable({
                                 <div className="border-l border-[#e2e8f0] overflow-hidden">
                                   <StatusBadge
                                     value={
-                                      paymentRow.paymentReceived === null
+                                      paymentRow.paymentReceivedLabel ??
+                                      (paymentRow.paymentReceived === null
                                         ? ""
                                         : paymentRow.paymentReceived
                                           ? "Yes"
-                                          : "No"
+                                          : "No")
                                     }
                                     onChange={(value) =>
                                       void updateSubitemPaymentRow(
                                         sub.id,
                                         paymentRow.id,
-                                        { paymentReceived: value === "Yes" },
+                                        { paymentReceivedLabel: value },
                                       ).then((updated) =>
                                         onPaymentRowsChanged?.(
                                           sub.id,
@@ -3633,10 +3643,30 @@ export function SubitemsTable({
                                         ),
                                       )
                                     }
-                                    options={[
-                                      { value: "Yes", color: "#22c55e" },
-                                      { value: "No", color: "#ef4444" },
-                                    ]}
+                                    options={paymentReceivedOptions}
+                                    onAddOption={onAddPaymentReceived}
+                                    onDeleteOption={onDeletePaymentReceived}
+                                    onUpdateOptionColor={(name, color) =>
+                                      onUpdateOptionColor?.(
+                                        "payment_received",
+                                        name,
+                                        color,
+                                      )
+                                    }
+                                    onRenameOption={(oldName, newName) =>
+                                      onRenameOption?.(
+                                        "payment_received",
+                                        oldName,
+                                        newName,
+                                      )
+                                    }
+                                    onReorderOptions={(values) =>
+                                      onReorderOptions?.(
+                                        "payment_received",
+                                        values,
+                                      )
+                                    }
+                                    manageLabel="payment received"
                                     small
                                     readOnly={!canEditSubitem(sub.id)}
                                   />
@@ -3663,7 +3693,28 @@ export function SubitemsTable({
                                     options={modeOfPaymentOptions}
                                     onAddOption={onAddModeOfPayment}
                                     onDeleteOption={onDeleteModeOfPayment}
+                                    onUpdateOptionColor={(name, color) =>
+                                      onUpdateOptionColor?.(
+                                        "mode_of_payment",
+                                        name,
+                                        color,
+                                      )
+                                    }
+                                    onRenameOption={(oldName, newName) =>
+                                      onRenameOption?.(
+                                        "mode_of_payment",
+                                        oldName,
+                                        newName,
+                                      )
+                                    }
+                                    onReorderOptions={(values) =>
+                                      onReorderOptions?.(
+                                        "mode_of_payment",
+                                        values,
+                                      )
+                                    }
                                     manageLabel="mode of payment"
+                                    sectionCount={3}
                                     small
                                     readOnly={!canEditSubitem(sub.id)}
                                   />

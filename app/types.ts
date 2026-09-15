@@ -1,35 +1,49 @@
 export type ClientStatus =
-  | 'New Lead'
-  | 'Contacted'
-  | 'Quoted'
-  | 'Failed'
-  | 'Overdue'
-  | 'Follow Up'
-  | 'Shortlisted'
-  | 'Project Started'
-  | 'Project Done'
-  | 'Closed'
-  | 'Unqualified';
+  | "New Lead"
+  | "Contacted"
+  | "Quoted"
+  | "Failed"
+  | "Overdue"
+  | "Follow Up"
+  | "Shortlisted"
+  | "Project Started"
+  | "Project Done"
+  | "Closed"
+  | "Unqualified";
 
-export type ReplyStatus =
-  | 'Waiting...'
-  | 'Replied';
+export type ReplyStatus = "Waiting..." | "Replied";
 
 export type SubitemStatus =
-  | 'To Quote'
-  | 'Verified'
-  | 'Awarded'
-  | 'Initial Quote'
-  | 'Quoted'
-  | 'Shortlisted'
-  | 'Failed'
-  | '';
+  | "To Quote"
+  | "Verified"
+  | "Awarded"
+  | "Initial Quote"
+  | "Quoted"
+  | "Shortlisted"
+  | "Failed"
+  | "";
 
-export type PaymentStatus = 'Paid' | 'To Pay' | 'Partial' | 'Overdue';
-export type TimelineProgress = 'Pending' | 'Started' | 'Done' | 'Overdue';
-export type SampleStatus = 'Ready to collect' | 'Return arranged' | "Extended" | 'Chased'| 'Must return' | 'Request to not return' | 'No return needed'|'Failed'| 'Overdue';
-export type SampleType = 'Product sample' | 'Pre-production sample';
-export type SampleOrderStatus = 'Pending'| 'To order'| 'Ordered'| 'Delivered'| 'Paid'| 'Shipped'| 'Failed';
+export type PaymentStatus = "Paid" | "To Pay" | "Partial" | "Overdue";
+export type TimelineProgress = "Pending" | "Started" | "Done" | "Overdue";
+export type SampleStatus =
+  | "Ready to collect"
+  | "Return arranged"
+  | "Extended"
+  | "Chased"
+  | "Must return"
+  | "Request to not return"
+  | "No return needed"
+  | "Failed"
+  | "Overdue";
+export type SampleType = "Product sample" | "Pre-production sample";
+export type SampleOrderStatus =
+  | "Pending"
+  | "To order"
+  | "Ordered"
+  | "Delivered"
+  | "Paid"
+  | "Shipped"
+  | "Failed";
 
 export type Profile = {
   id: string;
@@ -37,7 +51,7 @@ export type Profile = {
   email: string | null;
   avatar_url?: string | null;
   role?: string | null;
-}
+};
 
 export interface SampleRow {
   status: string;
@@ -77,10 +91,12 @@ export interface PaymentRow {
   amount: string;
   orderNumber: string;
   paymentReceived: boolean | null;
+  /** Display value from the managed Payment received? label group. */
+  paymentReceivedLabel?: string;
+  paymentReceivedOptionId?: string | null;
   modeOfPayment: string;
   modeOfPaymentOptionId?: string | null;
 }
-
 
 export interface Subitem {
   id: string;
@@ -116,8 +132,7 @@ export interface Subitem {
   pl: string;
   sl: string;
   customFields?: Record<string, string>;
-  
-  
+
   // Payment fields
   owner: string;
   payment: string;
@@ -155,9 +170,26 @@ export interface Subitem {
 }
 
 export type ActivityEntry = {
-  id: string,
+  id: string;
   clientId?: string;
-  action: "field_changed" | "assignment_changed" | "client_added" | "client_deleted" | "client_restored" | "subitem_added" | "subitem_deleted" | "subitem_restored" | "subitem_field_changed" | "ocf_created" | "ocf_signed" | "ocf_updated" | "estimate_created" | "file_uploaded" | "file_replaced" | "file_removed" | "shipper_pushed";
+  action:
+    | "field_changed"
+    | "assignment_changed"
+    | "client_added"
+    | "client_deleted"
+    | "client_restored"
+    | "subitem_added"
+    | "subitem_deleted"
+    | "subitem_restored"
+    | "subitem_field_changed"
+    | "ocf_created"
+    | "ocf_signed"
+    | "ocf_updated"
+    | "estimate_created"
+    | "file_uploaded"
+    | "file_replaced"
+    | "file_removed"
+    | "shipper_pushed";
   fieldName?: string;
   oldValue?: unknown;
   newValue?: unknown;
@@ -170,7 +202,7 @@ export type ActivityEntry = {
   title?: string | null;
   description?: string | null;
   meta?: Record<string, any> | null;
-}
+};
 
 export interface Client {
   id: string;
@@ -211,7 +243,7 @@ export type CRMGroup = {
   name: string;
   color?: string | null;
   sort_order: number;
-}
+};
 
 export interface Email {
   id: string;
@@ -229,14 +261,14 @@ export interface Notification {
   message: string;
   time: string;
   read: boolean;
-  type: 'info' | 'warning' | 'success' | 'error';
+  type: "info" | "warning" | "success" | "error";
 }
 
 export type SearchResult = {
   id: string;
   clientId: string;
   subitemId?: string;
-  kind: 'client' | 'subitem' | 'payment' | 'timeline';
+  kind: "client" | "subitem" | "payment" | "timeline";
   label: string;
   context: string;
   field: string;

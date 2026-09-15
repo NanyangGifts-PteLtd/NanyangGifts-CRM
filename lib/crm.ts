@@ -206,6 +206,8 @@ type Subitems = {
     amount: string | null;
     order_number: string | null;
     payment_received: boolean | null;
+    payment_received_label?: string | null;
+    payment_received_option_id?: string | null;
     mode_of_payment: string | null;
     mode_of_payment_option_id: string | null;
   }> | null;
@@ -442,6 +444,14 @@ function mapSubitems(row: Subitems): Subitem {
         amount: paymentRow.amount ?? "",
         orderNumber: paymentRow.order_number ?? "",
         paymentReceived: paymentRow.payment_received ?? null,
+        paymentReceivedLabel:
+          paymentRow.payment_received_label ??
+          (paymentRow.payment_received === null
+            ? ""
+            : paymentRow.payment_received
+              ? "Yes"
+              : "No"),
+        paymentReceivedOptionId: paymentRow.payment_received_option_id ?? null,
         modeOfPayment: paymentRow.mode_of_payment ?? "",
         modeOfPaymentOptionId: paymentRow.mode_of_payment_option_id ?? null,
       }))
@@ -945,6 +955,23 @@ async function resolveOptionId(groupCode: string, value: string) {
   return data.id;
 }
 
+async function resolveOptionEntry(groupCode: string, value: string) {
+  const normalized = value.trim();
+  if (!normalized) return null;
+  const { data, error } = await supabase
+    .from("option_values")
+    .select("id, system_key, option_groups!inner(code)")
+    .eq("option_groups.code", groupCode)
+    .eq("value", normalized)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data)
+    throw new Error(
+      `â€œ${normalized}â€ is not a valid ${groupCode.replaceAll("_", " ")} label.`,
+    );
+  return { id: data.id, system_key: data.system_key ?? null };
+}
+
 export async function updateClientRow(
   clientId: string,
   updates: Partial<Client> & { customFields?: Record<string, string> },
@@ -1397,11 +1424,13 @@ export async function createSubitemRow(
         amount: "",
         order_number: "",
         payment_received: null,
+        payment_received_label: "",
+        payment_received_option_id: null,
         mode_of_payment: "",
         mode_of_payment_option_id: null,
       })
       .select(
-        "id, position, amount, order_number, payment_received, mode_of_payment, mode_of_payment_option_id",
+        "id, position, amount, order_number, payment_received, payment_received_label, payment_received_option_id, mode_of_payment, mode_of_payment_option_id",
       )
       .single();
   if (initialPaymentRowError) throw initialPaymentRowError;
@@ -1433,6 +1462,9 @@ export async function createSubitemRow(
         amount: initialPaymentRow.amount ?? "",
         orderNumber: initialPaymentRow.order_number ?? "",
         paymentReceived: initialPaymentRow.payment_received ?? null,
+        paymentReceivedLabel: initialPaymentRow.payment_received_label ?? "",
+        paymentReceivedOptionId:
+          initialPaymentRow.payment_received_option_id ?? null,
         modeOfPayment: initialPaymentRow.mode_of_payment ?? "",
         modeOfPaymentOptionId:
           initialPaymentRow.mode_of_payment_option_id ?? null,
@@ -1513,6 +1545,8 @@ export async function duplicateSubitemRow(subitemId: string) {
       amount: "",
       order_number: "",
       payment_received: null,
+      payment_received_label: "",
+      payment_received_option_id: null,
       mode_of_payment: "",
       mode_of_payment_option_id: null,
     });
@@ -2146,11 +2180,13 @@ export async function createSubitemPaymentRow(subitemId: string) {
       amount: "",
       order_number: "",
       payment_received: null,
+      payment_received_label: "",
+      payment_received_option_id: null,
       mode_of_payment: "",
       mode_of_payment_option_id: null,
     })
     .select(
-      "id, position, amount, order_number, payment_received, mode_of_payment, mode_of_payment_option_id",
+      "id, position, amount, order_number, payment_received, payment_received_label, payment_received_option_id, mode_of_payment, mode_of_payment_option_id",
     )
     .single();
   if (error) throw error;
@@ -2167,6 +2203,8 @@ export async function createSubitemPaymentRow(subitemId: string) {
     amount: created.amount ?? "",
     orderNumber: created.order_number ?? "",
     paymentReceived: created.payment_received ?? null,
+    paymentReceivedLabel: created.payment_received_label ?? "",
+    paymentReceivedOptionId: created.payment_received_option_id ?? null,
     modeOfPayment: created.mode_of_payment ?? "",
     modeOfPaymentOptionId: created.mode_of_payment_option_id ?? null,
   } satisfies PaymentRow;
@@ -2194,6 +2232,13 @@ export async function updateSubitemPaymentRow(
     updates.modeOfPayment === undefined
       ? undefined
       : await resolveOptionId("mode_of_payment", updates.modeOfPayment);
+  const paymentReceivedOption =
+    updates.paymentReceivedLabel === undefined
+      ? undefined
+      : await resolveOptionEntry(
+          "payment_received",
+          updates.paymentReceivedLabel,
+        );
   const payload = {
     ...(updates.amount !== undefined ? { amount: updates.amount } : {}),
     ...(updates.orderNumber !== undefined
@@ -2201,6 +2246,18 @@ export async function updateSubitemPaymentRow(
       : {}),
     ...(updates.paymentReceived !== undefined
       ? { payment_received: updates.paymentReceived }
+      : {}),
+    ...(paymentReceivedOption !== undefined
+      ? {
+          payment_received_label: updates.paymentReceivedLabel,
+          payment_received_option_id: paymentReceivedOption?.id ?? null,
+          payment_received:
+            paymentReceivedOption?.system_key === "payment_received_yes"
+              ? true
+              : paymentReceivedOption?.system_key === "payment_received_no"
+                ? false
+                : null,
+        }
       : {}),
     ...(updates.modeOfPayment !== undefined
       ? {
@@ -2215,7 +2272,7 @@ export async function updateSubitemPaymentRow(
     .eq("id", paymentRowId)
     .eq("subitem_id", subitemId)
     .select(
-      "id, position, amount, order_number, payment_received, mode_of_payment, mode_of_payment_option_id",
+      "id, position, amount, order_number, payment_received, payment_received_label, payment_received_option_id, mode_of_payment, mode_of_payment_option_id",
     )
     .single();
   if (error) throw error;
@@ -2238,6 +2295,8 @@ export async function updateSubitemPaymentRow(
     amount: updated.amount ?? "",
     orderNumber: updated.order_number ?? "",
     paymentReceived: updated.payment_received ?? null,
+    paymentReceivedLabel: updated.payment_received_label ?? "",
+    paymentReceivedOptionId: updated.payment_received_option_id ?? null,
     modeOfPayment: updated.mode_of_payment ?? "",
     modeOfPaymentOptionId: updated.mode_of_payment_option_id ?? null,
   } satisfies PaymentRow;

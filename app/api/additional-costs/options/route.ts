@@ -51,7 +51,9 @@ export async function GET() {
           .from("option_values")
           .select("id, group_id, value, color, section_index")
           .in("group_id", ids)
+          .order("section_index")
           .order("sort_order")
+          .order("id")
       : { data: [], error: null };
     if (valueError) throw valueError;
     return NextResponse.json({ groups: groups ?? [], values: values ?? [] });

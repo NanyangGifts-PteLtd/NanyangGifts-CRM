@@ -22,6 +22,7 @@ const BOARD_OPTION_CODES = new Set([
   "tracking_payment_status",
   "tracking_price_invoice_match",
   "overall_payment_status",
+  "payment_received",
   "additional_cost_status",
   "additional_cost_reason",
   "additional_cost_courier",
@@ -49,28 +50,39 @@ export async function POST(request: NextRequest) {
   const body = (await request.json()) as {
     code?: string;
     values?: string[];
-    layout?: Array<{ value?: string; section?: number }>;
+    layout?: Array<{ id?: string; value?: string; section?: number }>;
   };
   const code = body.code?.trim() ?? "";
   const layout = Array.isArray(body.layout)
     ? body.layout.map((item) => ({
-        value: item.value?.trim() ?? "",
+        id: item.id?.trim() || undefined,
+        value: typeof item.value === "string" ? item.value : "",
         section:
           Number.isInteger(item.section) && Number(item.section) >= 0
             ? Number(item.section)
             : 0,
       }))
     : (Array.isArray(body.values) ? body.values : []).map((value) => ({
+        id: undefined,
         value: value.trim(),
         section: 0,
       }));
   const values = layout.map((item) => item.value);
   const sectionCount =
-    code === "client_status" ? 5 : code === "payment" ? 4 : 1;
+    code === "client_status"
+      ? 5
+      : code === "payment" || code === "subitem_status"
+        ? 4
+        : code === "channel"
+          ? 4
+          : code === "mode_of_payment"
+            ? 3
+            : 1;
   if (
     !BOARD_OPTION_CODES.has(code) ||
     values.length === 0 ||
-    new Set(values).size !== values.length ||
+    new Set(layout.map((item) => item.id ?? `value:${item.value}`)).size !==
+      layout.length ||
     layout.some((item) => item.section >= sectionCount)
   ) {
     return NextResponse.json(
@@ -120,29 +132,74 @@ export async function POST(request: NextRequest) {
 
   const { data: options, error: optionsError } = await supabaseAdmin
     .from("option_values")
-    .select("id, value")
-    .eq("group_id", group.id);
+    .select("id, value, section_index")
+    .eq("group_id", group.id)
+    .order("section_index")
+    .order("sort_order")
+    .order("id");
   if (optionsError)
     return NextResponse.json({ error: optionsError.message }, { status: 500 });
-  const idsByValue = new Map(
-    (options ?? []).map((option) => [option.value, option.id]),
+  const optionById = new Map(
+    (options ?? []).map((option) => [option.id, option]),
   );
-  if (
-    values.length !== idsByValue.size ||
-    values.some((value) => !idsByValue.has(value))
-  ) {
+  const optionByValue = new Map(
+    (options ?? []).map((option) => [option.value, option]),
+  );
+  // A recently deleted/orphaned row can leave an already-open menu with a
+  // stale option briefly. Persist every option that still exists instead of
+  // rejecting the user's entire rearrangement with a 409. A later refresh
+  // naturally removes the stale item from the client-side menu.
+  const resolvedLayout = layout
+    .map((item) => ({
+      item,
+      option: item.id ? optionById.get(item.id) : optionByValue.get(item.value),
+    }))
+    .filter(
+      (
+        entry,
+      ): entry is {
+        item: (typeof layout)[number];
+        option: NonNullable<typeof entry.option>;
+      } => Boolean(entry.option),
+    );
+  const seenOptionIds = new Set<string>();
+  const validLayout = resolvedLayout.filter(({ option }) => {
+    if (seenOptionIds.has(option.id)) return false;
+    seenOptionIds.add(option.id);
+    return true;
+  });
+  if (!validLayout.length) {
     return NextResponse.json(
-      { error: "The label list changed. Refresh and try again." },
+      { error: "No current labels were available to reorder." },
       { status: 409 },
     );
   }
 
+  // A concurrent label add/delete can make the stored list longer than the
+  // menu snapshot. Preserve those unseen labels after the submitted layout.
+  const submittedOptionIds = new Set(
+    validLayout.map(({ option }) => option.id),
+  );
+  const storedOnlyOptions = (options ?? []).filter(
+    (option) => !submittedOptionIds.has(option.id),
+  );
+  const completeLayout = [
+    ...validLayout.map(({ item, option }) => ({
+      id: option.id,
+      section: item.section,
+    })),
+    ...storedOnlyOptions.map((option) => ({
+      id: option.id,
+      section: option.section_index ?? 0,
+    })),
+  ];
+
   const results = await Promise.all(
-    layout.map((item, sort_order) =>
+    completeLayout.map((item, sort_order) =>
       supabaseAdmin
         .from("option_values")
         .update({ sort_order, section_index: item.section })
-        .eq("id", idsByValue.get(item.value)!),
+        .eq("id", item.id),
     ),
   );
   const error = results.find((result) => result.error)?.error;

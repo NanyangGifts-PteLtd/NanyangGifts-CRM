@@ -104,7 +104,13 @@ import { uploadCrmFiles } from "@/lib/crm-files";
 import { CombinedPushPreviewModal } from "./shipper/CombinedPushPreviewModal";
 import { useEscapeClose } from "./hooks/use-escape-close";
 
-type OptionEntry = { id?: string; systemKey?: string | null; value: string; color: string; section?: number };
+type OptionEntry = {
+  id?: string;
+  systemKey?: string | null;
+  value: string;
+  color: string;
+  section?: number;
+};
 type PendingOptionDeletion = {
   code: string;
   name: string;
@@ -122,6 +128,7 @@ const BOARD_OPTION_GROUP_CODES = [
   "payment",
   "payment_status",
   "overall_payment_status",
+  "payment_received",
   "mode_of_payment",
   "shipper",
   "local_overseas",
@@ -269,7 +276,12 @@ const TRACKING_HEADER_COLS: HeaderCol[] = [
     minWidth: 7,
   },
   { key: "trackingTotalPrice", label: "Total Price", width: 100, minWidth: 7 },
-  { key: "trackingInvoiceTotal", label: "Invoice Total", width: 110, minWidth: 7 },
+  {
+    key: "trackingInvoiceTotal",
+    label: "Invoice Total",
+    width: 110,
+    minWidth: 7,
+  },
   {
     key: "trackingPriceInvoiceMatch",
     label: "Price and Invoice Match?",
@@ -472,9 +484,15 @@ export function CRMBoard({
   const [showBin, setShowBin] = useState(false);
   const [binItems, setBinItems] = useState<DeletedBinItem[]>([]);
   const [loadingBin, setLoadingBin] = useState(false);
-  const [restoringBinItemId, setRestoringBinItemId] = useState<string | null>(null);
-  const [selectedBinItemKeys, setSelectedBinItemKeys] = useState<Set<string>>(new Set());
-  const [pendingPermanentBinItems, setPendingPermanentBinItems] = useState<DeletedBinItem[] | null>(null);
+  const [restoringBinItemId, setRestoringBinItemId] = useState<string | null>(
+    null,
+  );
+  const [selectedBinItemKeys, setSelectedBinItemKeys] = useState<Set<string>>(
+    new Set(),
+  );
+  const [pendingPermanentBinItems, setPendingPermanentBinItems] = useState<
+    DeletedBinItem[] | null
+  >(null);
   const [permanentlyDeletingBin, setPermanentlyDeletingBin] = useState(false);
   const [binRestoreIssue, setBinRestoreIssue] = useState<string | null>(null);
   const [pendingDeleteClientId, setPendingDeleteClientId] = useState<
@@ -489,7 +507,10 @@ export function CRMBoard({
   const [selectedSubitemIds, setSelectedSubitemIds] = useState<string[]>([]);
   const [combinedPushPreview, setCombinedPushPreview] =
     useState<CombinedPushPreview | null>(null);
-  const [workbookPushSuccess, setWorkbookPushSuccess] = useState<{ workbookName: string; rowNumbers: number[] } | null>(null);
+  const [workbookPushSuccess, setWorkbookPushSuccess] = useState<{
+    workbookName: string;
+    rowNumbers: number[];
+  } | null>(null);
   const [loadingCombinedPush, setLoadingCombinedPush] = useState(false);
   const [showSubitemMoveMenu, setShowSubitemMoveMenu] = useState(false);
   const [subitemMoveSearch, setSubitemMoveSearch] = useState("");
@@ -572,7 +593,9 @@ export function CRMBoard({
       if (!currentUserId) return false;
       if (
         ["admin", "director"].includes(
-          String(currentUserRole ?? "").trim().toLowerCase(),
+          String(currentUserRole ?? "")
+            .trim()
+            .toLowerCase(),
         )
       )
         return true;
@@ -618,7 +641,9 @@ export function CRMBoard({
     [canEditSubitemRecord, clients, selectedSubitemIds],
   );
   const canManageSubitemLocks = ["director", "dev"].includes(
-    String(currentUserRole ?? "").trim().toLowerCase(),
+    String(currentUserRole ?? "")
+      .trim()
+      .toLowerCase(),
   );
   const selectedClientsHaveLockedSubitems = useMemo(
     () =>
@@ -654,7 +679,11 @@ export function CRMBoard({
   const [paymentStatusEntries, setPaymentStatusEntries] = useState<
     OptionEntry[]
   >([]);
-  const [overallPaymentStatusEntries, setOverallPaymentStatusEntries] = useState<OptionEntry[]>([]);
+  const [overallPaymentStatusEntries, setOverallPaymentStatusEntries] =
+    useState<OptionEntry[]>([]);
+  const [paymentReceivedEntries, setPaymentReceivedEntries] = useState<
+    OptionEntry[]
+  >([]);
   const [modeOfPaymentEntries, setModeOfPaymentEntries] = useState<
     OptionEntry[]
   >([]);
@@ -669,11 +698,19 @@ export function CRMBoard({
   const [subitemSubprogressEntries, setSubitemSubprogressEntries] = useState<
     OptionEntry[]
   >([]);
-  const [trackingSummaryEntries, setTrackingSummaryEntries] = useState<OptionEntry[]>([]);
-  const [trackingInvoiceCreatedEntries, setTrackingInvoiceCreatedEntries] = useState<OptionEntry[]>([]);
-  const [trackingMultipleInvoicesEntries, setTrackingMultipleInvoicesEntries] = useState<OptionEntry[]>([]);
-  const [trackingPaymentStatusEntries, setTrackingPaymentStatusEntries] = useState<OptionEntry[]>([]);
-  const [trackingPriceInvoiceMatchEntries, setTrackingPriceInvoiceMatchEntries] = useState<OptionEntry[]>([]);
+  const [trackingSummaryEntries, setTrackingSummaryEntries] = useState<
+    OptionEntry[]
+  >([]);
+  const [trackingInvoiceCreatedEntries, setTrackingInvoiceCreatedEntries] =
+    useState<OptionEntry[]>([]);
+  const [trackingMultipleInvoicesEntries, setTrackingMultipleInvoicesEntries] =
+    useState<OptionEntry[]>([]);
+  const [trackingPaymentStatusEntries, setTrackingPaymentStatusEntries] =
+    useState<OptionEntry[]>([]);
+  const [
+    trackingPriceInvoiceMatchEntries,
+    setTrackingPriceInvoiceMatchEntries,
+  ] = useState<OptionEntry[]>([]);
   const [pendingOptionDeletion, setPendingOptionDeletion] =
     useState<PendingOptionDeletion | null>(null);
   const [isDeletingOption, setIsDeletingOption] = useState(false);
@@ -692,7 +729,9 @@ export function CRMBoard({
     (e) => e.value,
   );
   const peopleOptions = profiles
-    .filter((profile) => profile.id && profile.role?.toLowerCase() !== "shipper")
+    .filter(
+      (profile) => profile.id && profile.role?.toLowerCase() !== "shipper",
+    )
     .map((profile) => ({
       value: profile.id,
       label: profile.full_name || profile.email || profile.id,
@@ -1895,7 +1934,9 @@ export function CRMBoard({
             .from("option_values")
             .select("id, group_id, system_key, value, color, section_index")
             .in("group_id", groupIds)
+            .order("section_index")
             .order("sort_order")
+            .order("id")
         : { data: [], error: null };
       if (valuesError) {
         console.error("Failed to load Board label values", valuesError);
@@ -1932,6 +1973,7 @@ export function CRMBoard({
       setPaymentEntries(optionsFor("payment"));
       setPaymentStatusEntries(optionsFor("payment_status"));
       setOverallPaymentStatusEntries(optionsFor("overall_payment_status"));
+      setPaymentReceivedEntries(optionsFor("payment_received"));
       setModeOfPaymentEntries(optionsFor("mode_of_payment"));
       setShipperEntries(optionsFor("shipper"));
       setLocalOverseasEntries(optionsFor("local_overseas"));
@@ -1940,9 +1982,13 @@ export function CRMBoard({
       setSubitemSubprogressEntries(optionsFor("subitem_subprogress"));
       setTrackingSummaryEntries(optionsFor("tracking_summary"));
       setTrackingInvoiceCreatedEntries(optionsFor("tracking_invoice_created"));
-      setTrackingMultipleInvoicesEntries(optionsFor("tracking_multiple_invoices"));
+      setTrackingMultipleInvoicesEntries(
+        optionsFor("tracking_multiple_invoices"),
+      );
       setTrackingPaymentStatusEntries(optionsFor("tracking_payment_status"));
-      setTrackingPriceInvoiceMatchEntries(optionsFor("tracking_price_invoice_match"));
+      setTrackingPriceInvoiceMatchEntries(
+        optionsFor("tracking_price_invoice_match"),
+      );
     };
 
     void loadBoardOptions();
@@ -2110,7 +2156,7 @@ export function CRMBoard({
           sort_order: currentEntries.length,
           section_index: 0,
         })
-        .select("value, color, section_index")
+        .select("id, value, color, section_index")
         .single();
 
       if (error) {
@@ -2123,7 +2169,12 @@ export function CRMBoard({
 
       setEntries((prev) => [
         ...prev,
-        { value: data.value, color: data.color, section: data.section_index ?? 0 },
+        {
+          id: data.id,
+          value: data.value,
+          color: data.color,
+          section: data.section_index ?? 0,
+        },
       ]);
       notifyChange(
         "Option added",
@@ -2147,10 +2198,15 @@ export function CRMBoard({
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok || !result.optionId) {
-        toast.error(result.protected ? "Backend label cannot be deleted" : "Option could not be deleted", {
-          id: toastId,
-          description: result.error ?? "The label option was not found.",
-        });
+        toast.error(
+          result.protected
+            ? "Backend label cannot be deleted"
+            : "Option could not be deleted",
+          {
+            id: toastId,
+            description: result.error ?? "The label option was not found.",
+          },
+        );
         return;
       }
 
@@ -2174,7 +2230,12 @@ export function CRMBoard({
       const deleteResponse = await fetch("/api/options/delete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "delete", code, name, optionId: result.optionId }),
+        body: JSON.stringify({
+          action: "delete",
+          code,
+          name,
+          optionId: result.optionId,
+        }),
       });
       const deleteResult = await deleteResponse.json().catch(() => ({}));
       if (!deleteResponse.ok) {
@@ -2187,7 +2248,8 @@ export function CRMBoard({
         }
         toast.error("Option could not be deleted", {
           id: toastId,
-          description: deleteResult.error ?? "The label option could not be deleted.",
+          description:
+            deleteResult.error ?? "The label option could not be deleted.",
         });
         return;
       }
@@ -2273,6 +2335,7 @@ export function CRMBoard({
         payment: setPaymentEntries,
         payment_status: setPaymentStatusEntries,
         overall_payment_status: setOverallPaymentStatusEntries,
+        payment_received: setPaymentReceivedEntries,
         mode_of_payment: setModeOfPaymentEntries,
         shipper: setShipperEntries,
         local_overseas: setLocalOverseasEntries,
@@ -2301,7 +2364,7 @@ export function CRMBoard({
   const reorderOptionValues = useCallback(
     async (
       code: string,
-      layout: Array<{ value: string; section: number }>,
+      layout: Array<{ id?: string; value: string; section: number }>,
     ) => {
       const setters: Record<
         string,
@@ -2315,6 +2378,7 @@ export function CRMBoard({
         payment: setPaymentEntries,
         payment_status: setPaymentStatusEntries,
         overall_payment_status: setOverallPaymentStatusEntries,
+        payment_received: setPaymentReceivedEntries,
         mode_of_payment: setModeOfPaymentEntries,
         shipper: setShipperEntries,
         local_overseas: setLocalOverseasEntries,
@@ -2332,10 +2396,12 @@ export function CRMBoard({
       let previous: OptionEntry[] = [];
       setEntries((current) => {
         previous = current;
-        const byValue = new Map(current.map((entry) => [entry.value, entry]));
+        const byIdentity = new Map(
+          current.map((entry) => [entry.id ?? `value:${entry.value}`, entry]),
+        );
         return layout
           .map((item) => {
-            const entry = byValue.get(item.value);
+            const entry = byIdentity.get(item.id ?? `value:${item.value}`);
             return entry ? { ...entry, section: item.section } : null;
           })
           .filter(Boolean) as OptionEntry[];
@@ -2360,14 +2426,22 @@ export function CRMBoard({
           return;
         }
         if (optionReorderRevisionRef.current[code] === revision) {
-          notifyChange("Label order updated", `The ${code.replaceAll("_", " ")} labels were reordered.`);
+          notifyChange(
+            "Label order updated",
+            `The ${code.replaceAll("_", " ")} labels were reordered.`,
+          );
         }
       };
-      const queuedSave = (optionReorderQueuesRef.current[code] ?? Promise.resolve())
+      const queuedSave = (
+        optionReorderQueuesRef.current[code] ?? Promise.resolve()
+      )
         .catch(() => undefined)
         .then(save);
       optionReorderQueuesRef.current[code] = queuedSave;
-      await queuedSave;
+      // The editor has already been updated optimistically. Keeping the drag
+      // handler independent from network latency prevents a sticky/rubberband
+      // feeling when several labels are moved within one section.
+      void queuedSave;
     },
     [notifyChange],
   );
@@ -2394,7 +2468,8 @@ export function CRMBoard({
         .maybeSingle();
       if (optionReadError || !option) {
         toast.error("Label could not be renamed", {
-          description: optionReadError?.message ?? "The label option was not found.",
+          description:
+            optionReadError?.message ?? "The label option was not found.",
         });
         return;
       }
@@ -2411,27 +2486,78 @@ export function CRMBoard({
 
       const fieldMap: Record<
         string,
-        { table: "clients" | "subitems"; column: string; optionIdColumn: string }
+        {
+          table: "clients" | "subitems";
+          column: string;
+          optionIdColumn: string;
+        }
       > = {
-        reply_status: { table: "clients", column: "reply_status", optionIdColumn: "reply_status_option_id" },
-        client_status: { table: "clients", column: "status", optionIdColumn: "status_option_id" },
-        channel: { table: "clients", column: "channel", optionIdColumn: "channel_option_id" },
-        importance: { table: "clients", column: "importance", optionIdColumn: "importance_option_id" },
-        progress: { table: "clients", column: "progress", optionIdColumn: "progress_option_id" },
-        payment: { table: "subitems", column: "payment", optionIdColumn: "payment_option_id" },
-        payment_status: { table: "subitems", column: "payment_status", optionIdColumn: "payment_status_option_id" },
-        mode_of_payment: { table: "subitems", column: "mode_of_payment", optionIdColumn: "mode_of_payment_option_id" },
-        shipper: { table: "subitems", column: "shipper", optionIdColumn: "shipper_option_id" },
-        local_overseas: { table: "subitems", column: "local_overseas", optionIdColumn: "local_overseas_option_id" },
-        subitem_status: { table: "subitems", column: "status", optionIdColumn: "status_option_id" },
-        currency: { table: "subitems", column: "currency", optionIdColumn: "currency_option_id" },
+        reply_status: {
+          table: "clients",
+          column: "reply_status",
+          optionIdColumn: "reply_status_option_id",
+        },
+        client_status: {
+          table: "clients",
+          column: "status",
+          optionIdColumn: "status_option_id",
+        },
+        channel: {
+          table: "clients",
+          column: "channel",
+          optionIdColumn: "channel_option_id",
+        },
+        importance: {
+          table: "clients",
+          column: "importance",
+          optionIdColumn: "importance_option_id",
+        },
+        progress: {
+          table: "clients",
+          column: "progress",
+          optionIdColumn: "progress_option_id",
+        },
+        payment: {
+          table: "subitems",
+          column: "payment",
+          optionIdColumn: "payment_option_id",
+        },
+        payment_status: {
+          table: "subitems",
+          column: "payment_status",
+          optionIdColumn: "payment_status_option_id",
+        },
+        mode_of_payment: {
+          table: "subitems",
+          column: "mode_of_payment",
+          optionIdColumn: "mode_of_payment_option_id",
+        },
+        shipper: {
+          table: "subitems",
+          column: "shipper",
+          optionIdColumn: "shipper_option_id",
+        },
+        local_overseas: {
+          table: "subitems",
+          column: "local_overseas",
+          optionIdColumn: "local_overseas_option_id",
+        },
+        subitem_status: {
+          table: "subitems",
+          column: "status",
+          optionIdColumn: "status_option_id",
+        },
+        currency: {
+          table: "subitems",
+          column: "currency",
+          optionIdColumn: "currency_option_id",
+        },
       };
-      const field = fieldMap[code];
-      if (field) {
+      if (code === "payment_received") {
         const { error } = await supabase
-          .from(field.table)
-          .update({ [field.column]: trimmed })
-          .eq(field.optionIdColumn, option.id);
+          .from("subitem_payment_rows")
+          .update({ payment_received_label: trimmed })
+          .eq("payment_received_option_id", option.id);
         if (error) {
           await supabase
             .from("option_values")
@@ -2442,68 +2568,97 @@ export function CRMBoard({
           });
           return;
         }
-        // Repair any pre-ID legacy rows that still cache the old display value.
         await supabase
-          .from(field.table)
-          .update({ [field.column]: trimmed, [field.optionIdColumn]: option.id })
-          .is(field.optionIdColumn, null)
-          .eq(field.column, oldName);
-      } else if (code === "subitem_subprogress") {
-        const { data: rows, error: readError } = await supabase
-          .from("subitems")
-          .select("id, timeline_rows");
-        if (readError) {
-          toast.error("Existing timeline labels could not be updated", {
-            description: readError.message,
-          });
-          return;
-        }
-        for (const row of rows ?? []) {
-          const timelineRows = (row.timeline_rows ?? []).map(
-            (timelineRow: { subProgress?: string }) =>
-              timelineRow.subProgress === oldName
-                ? { ...timelineRow, subProgress: trimmed }
-                : timelineRow,
-          );
-          if (
-            JSON.stringify(timelineRows) !==
-            JSON.stringify(row.timeline_rows ?? [])
-          )
-            await supabase
-              .from("subitems")
-              .update({ timeline_rows: timelineRows })
-              .eq("id", row.id);
-        }
+          .from("subitem_payment_rows")
+          .update({
+            payment_received_label: trimmed,
+            payment_received_option_id: option.id,
+          })
+          .is("payment_received_option_id", null)
+          .eq("payment_received_label", oldName);
       } else {
-        const trackingFieldByCode: Record<string, string> = {
-          tracking_summary: "trackingSummary",
-          tracking_invoice_created: "trackingInvoiceCreated",
-          tracking_multiple_invoices: "trackingMultipleInvoices",
-          tracking_payment_status: "trackingPaymentStatus",
-          tracking_price_invoice_match: "trackingPriceInvoiceMatch",
-        };
-        const trackingField = trackingFieldByCode[code];
-        if (trackingField) {
+        const field = fieldMap[code];
+        if (field) {
+          const { error } = await supabase
+            .from(field.table)
+            .update({ [field.column]: trimmed })
+            .eq(field.optionIdColumn, option.id);
+          if (error) {
+            await supabase
+              .from("option_values")
+              .update({ value: oldName })
+              .eq("id", option.id);
+            toast.error("Label could not be renamed", {
+              description: error.message,
+            });
+            return;
+          }
+          // Repair any pre-ID legacy rows that still cache the old display value.
+          await supabase
+            .from(field.table)
+            .update({
+              [field.column]: trimmed,
+              [field.optionIdColumn]: option.id,
+            })
+            .is(field.optionIdColumn, null)
+            .eq(field.column, oldName);
+        } else if (code === "subitem_subprogress") {
           const { data: rows, error: readError } = await supabase
-            .from("clients")
-            .select("id, custom_fields");
+            .from("subitems")
+            .select("id, timeline_rows");
           if (readError) {
-            toast.error("Existing tracking labels could not be updated", {
+            toast.error("Existing timeline labels could not be updated", {
               description: readError.message,
             });
             return;
           }
           for (const row of rows ?? []) {
-            if (row.custom_fields?.[trackingField] !== oldName) continue;
-            await supabase
+            const timelineRows = (row.timeline_rows ?? []).map(
+              (timelineRow: { subProgress?: string }) =>
+                timelineRow.subProgress === oldName
+                  ? { ...timelineRow, subProgress: trimmed }
+                  : timelineRow,
+            );
+            if (
+              JSON.stringify(timelineRows) !==
+              JSON.stringify(row.timeline_rows ?? [])
+            )
+              await supabase
+                .from("subitems")
+                .update({ timeline_rows: timelineRows })
+                .eq("id", row.id);
+          }
+        } else {
+          const trackingFieldByCode: Record<string, string> = {
+            tracking_summary: "trackingSummary",
+            tracking_invoice_created: "trackingInvoiceCreated",
+            tracking_multiple_invoices: "trackingMultipleInvoices",
+            tracking_payment_status: "trackingPaymentStatus",
+            tracking_price_invoice_match: "trackingPriceInvoiceMatch",
+          };
+          const trackingField = trackingFieldByCode[code];
+          if (trackingField) {
+            const { data: rows, error: readError } = await supabase
               .from("clients")
-              .update({
-                custom_fields: {
-                  ...(row.custom_fields ?? {}),
-                  [trackingField]: trimmed,
-                },
-              })
-              .eq("id", row.id);
+              .select("id, custom_fields");
+            if (readError) {
+              toast.error("Existing tracking labels could not be updated", {
+                description: readError.message,
+              });
+              return;
+            }
+            for (const row of rows ?? []) {
+              if (row.custom_fields?.[trackingField] !== oldName) continue;
+              await supabase
+                .from("clients")
+                .update({
+                  custom_fields: {
+                    ...(row.custom_fields ?? {}),
+                    [trackingField]: trimmed,
+                  },
+                })
+                .eq("id", row.id);
+            }
           }
         }
       }
@@ -2723,7 +2878,34 @@ export function CRMBoard({
 
   const handleDeleteOverallPaymentStatus = useCallback(
     async (name: string) => {
-      await deleteOptionValue("overall_payment_status", name, setOverallPaymentStatusEntries);
+      await deleteOptionValue(
+        "overall_payment_status",
+        name,
+        setOverallPaymentStatusEntries,
+      );
+    },
+    [deleteOptionValue],
+  );
+
+  const handleAddPaymentReceived = useCallback(
+    async (name: string) => {
+      await insertOptionValue(
+        "payment_received",
+        name,
+        paymentReceivedEntries,
+        setPaymentReceivedEntries,
+      );
+    },
+    [insertOptionValue, paymentReceivedEntries],
+  );
+
+  const handleDeletePaymentReceived = useCallback(
+    async (name: string) => {
+      await deleteOptionValue(
+        "payment_received",
+        name,
+        setPaymentReceivedEntries,
+      );
     },
     [deleteOptionValue],
   );
@@ -2818,7 +3000,11 @@ export function CRMBoard({
       }
       setClientStatusEntries((prev) => [
         ...prev,
-        { value: data.value, color: data.color, section: data.section_index ?? 0 },
+        {
+          value: data.value,
+          color: data.color,
+          section: data.section_index ?? 0,
+        },
       ]);
       notifyChange("Option added", `${trimmed} was added to Status.`);
     },
@@ -4074,7 +4260,9 @@ export function CRMBoard({
       try {
         result = JSON.parse(responseText);
       } catch {
-        throw new Error("The server returned an unexpected response. Ensure the latest deployment is running, then try the grouped push again.");
+        throw new Error(
+          "The server returned an unexpected response. Ensure the latest deployment is running, then try the grouped push again.",
+        );
       }
       if (!response.ok)
         throw new Error(result.error || "Could not prepare the shipment.");
@@ -4168,15 +4356,26 @@ export function CRMBoard({
         }),
       });
       const responseText = await response.text();
-      let result: { error?: string; spreadsheetPushes?: Array<{ workbookName?: string; rowNumbers?: number[] }> };
+      let result: {
+        error?: string;
+        spreadsheetPushes?: Array<{
+          workbookName?: string;
+          rowNumbers?: number[];
+        }>;
+      };
       try {
         result = JSON.parse(responseText);
       } catch {
-        throw new Error("The server returned an unexpected response. Ensure the latest deployment is running, then try the grouped push again.");
+        throw new Error(
+          "The server returned an unexpected response. Ensure the latest deployment is running, then try the grouped push again.",
+        );
       }
       if (!response.ok)
         throw new Error(result.error || "Could not create shipment.");
-      window.localStorage.setItem("shipper-spreadsheet-refresh", `${Date.now()}-${Math.random()}`);
+      window.localStorage.setItem(
+        "shipper-spreadsheet-refresh",
+        `${Date.now()}-${Math.random()}`,
+      );
       setClients((current) =>
         current.map((client) => ({
           ...client,
@@ -4190,12 +4389,23 @@ export function CRMBoard({
           }),
         })),
       );
-      const destinations = (result.spreadsheetPushes ?? []).map((push: { workbookName?: string; rowNumbers?: number[] }) => `${push.workbookName ?? "Shipper workbook"}: row${(push.rowNumbers?.length ?? 0) === 1 ? "" : "s"} ${(push.rowNumbers ?? []).join(", ")}`).join(" · ");
+      const destinations = (result.spreadsheetPushes ?? [])
+        .map(
+          (push: { workbookName?: string; rowNumbers?: number[] }) =>
+            `${push.workbookName ?? "Shipper workbook"}: row${(push.rowNumbers?.length ?? 0) === 1 ? "" : "s"} ${(push.rowNumbers ?? []).join(", ")}`,
+        )
+        .join(" · ");
       toast.success("Grouped spreadsheet push completed", {
-        description: destinations || `${combinedPushPreview.rows.length} rows were added to the shipper workbook.`,
+        description:
+          destinations ||
+          `${combinedPushPreview.rows.length} rows were added to the shipper workbook.`,
       });
       const firstDestination = result.spreadsheetPushes?.[0];
-      if (firstDestination) setWorkbookPushSuccess({ workbookName: firstDestination.workbookName ?? "Shipper workbook", rowNumbers: firstDestination.rowNumbers ?? [] });
+      if (firstDestination)
+        setWorkbookPushSuccess({
+          workbookName: firstDestination.workbookName ?? "Shipper workbook",
+          rowNumbers: firstDestination.rowNumbers ?? [],
+        });
       setCombinedPushPreview(null);
       setSelectedSubitemIds([]);
     } catch (error: any) {
@@ -4602,7 +4812,10 @@ export function CRMBoard({
       method: "POST",
     });
     const data = await response.json();
-    if (!response.ok) throw new Error(data?.error ?? "Could not create the current Closed Leads group.");
+    if (!response.ok)
+      throw new Error(
+        data?.error ?? "Could not create the current Closed Leads group.",
+      );
     setGroups((previous) =>
       previous.some((group) => group.id === data.id)
         ? previous
@@ -4898,10 +5111,9 @@ export function CRMBoard({
             String(error?.message ?? ""),
           );
         toast.error("Client update failed", {
-          description:
-            isRlsError
-              ? "You do not have permission to make this change."
-              : error?.message || "The client change could not be saved.",
+          description: isRlsError
+            ? "You do not have permission to make this change."
+            : error?.message || "The client change could not be saved.",
         });
         return false;
       }
@@ -5060,7 +5272,8 @@ export function CRMBoard({
       }),
     );
     const succeededIds = new Set<string>();
-    const failedClients: Array<{ id: string; name: string; error: unknown }> = [];
+    const failedClients: Array<{ id: string; name: string; error: unknown }> =
+      [];
     try {
       for (const client of targets) {
         try {
@@ -5080,13 +5293,19 @@ export function CRMBoard({
       if (failedClients.length) {
         setClients((current) =>
           current.map((client) => {
-            if (!failedClients.some((failed) => failed.id === client.id)) return client;
-            return previousClients.find((previous) => previous.id === client.id) ?? client;
+            if (!failedClients.some((failed) => failed.id === client.id))
+              return client;
+            return (
+              previousClients.find((previous) => previous.id === client.id) ??
+              client
+            );
           }),
         );
       }
       if (!succeededIds.size) {
-        throw failedClients[0]?.error ?? new Error("No clients could be updated.");
+        throw (
+          failedClients[0]?.error ?? new Error("No clients could be updated.")
+        );
       }
       toast.success(
         pendingSubitemLock.locked
@@ -5126,7 +5345,9 @@ export function CRMBoard({
         clients.find((client) => client.id === clientId)?.customFields
           ?.subitemsLocked === "true"
       ) {
-        toast.error("This client's subitems are locked. Check with the director if there are any changes");
+        toast.error(
+          "This client's subitems are locked. Check with the director if there are any changes",
+        );
         return;
       }
       // Timeline tracking fields are the source of truth. Mirror their
@@ -5159,21 +5380,34 @@ export function CRMBoard({
         );
       } catch (error: any) {
         void reloadClients();
-        const message = error instanceof Error ? error.message : "Please try again.";
-        if (/CN Tracking number.*already used|CN Tracking numbers must be unique/i.test(message)) {
+        const message =
+          error instanceof Error ? error.message : "Please try again.";
+        if (
+          /CN Tracking number.*already used|CN Tracking numbers must be unique/i.test(
+            message,
+          )
+        ) {
           toast.error("CN Tracking number must be unique", {
-            description:
-              message.startsWith("CN Tracking number is already used by")
-                ? `${message} Enter a different number.`
-                : "That CN Tracking number is already attached to another timeline. Enter a different number.",
+            description: message.startsWith(
+              "CN Tracking number is already used by",
+            )
+              ? `${message} Enter a different number.`
+              : "That CN Tracking number is already attached to another timeline. Enter a different number.",
           });
           return;
         }
-        toast.error("Could not save the subitem update", { description: message });
+        toast.error("Could not save the subitem update", {
+          description: message,
+        });
         console.error("Failed to update subitem", error);
       }
     },
-    [canEditSubitemRecord, clients, reloadClients, showAssignmentPermissionError],
+    [
+      canEditSubitemRecord,
+      clients,
+      reloadClients,
+      showAssignmentPermissionError,
+    ],
   );
 
   const undoActivity = useCallback(
@@ -5331,24 +5565,36 @@ export function CRMBoard({
     return () => window.removeEventListener("crm:open-bin", handleOpenBin);
   }, [openBin]);
 
-  const restoreBinItem = useCallback(async (item: DeletedBinItem) => {
-    if (item.parentDeleted) {
-      setBinRestoreIssue(`“${item.name}” cannot be restored because its original parent client is still in the Bin or has been permanently deleted. Restore the parent client first if it is still available.`);
-      return;
-    }
-    setRestoringBinItemId(item.id);
-    try {
-      if (item.type === "client") await restoreClientRow(item.id);
-      else await restoreSubitemRow(item.id);
-      setBinItems((items) => items.filter((candidate) => candidate.id !== item.id));
-      await reloadClients();
-      toast.success(`${item.type === "client" ? "Client" : "Subitem"} restored`);
-    } catch (error: any) {
-      setBinRestoreIssue(error?.message || `“${item.name}” could not be restored because it is no longer eligible for restoration.`);
-    } finally {
-      setRestoringBinItemId(null);
-    }
-  }, [reloadClients]);
+  const restoreBinItem = useCallback(
+    async (item: DeletedBinItem) => {
+      if (item.parentDeleted) {
+        setBinRestoreIssue(
+          `“${item.name}” cannot be restored because its original parent client is still in the Bin or has been permanently deleted. Restore the parent client first if it is still available.`,
+        );
+        return;
+      }
+      setRestoringBinItemId(item.id);
+      try {
+        if (item.type === "client") await restoreClientRow(item.id);
+        else await restoreSubitemRow(item.id);
+        setBinItems((items) =>
+          items.filter((candidate) => candidate.id !== item.id),
+        );
+        await reloadClients();
+        toast.success(
+          `${item.type === "client" ? "Client" : "Subitem"} restored`,
+        );
+      } catch (error: any) {
+        setBinRestoreIssue(
+          error?.message ||
+            `“${item.name}” could not be restored because it is no longer eligible for restoration.`,
+        );
+      } finally {
+        setRestoringBinItemId(null);
+      }
+    },
+    [reloadClients],
+  );
 
   const permanentlyDeleteBinItem = useCallback(async (item: DeletedBinItem) => {
     const response = await fetch("/api/crm-bin/permanent-delete", {
@@ -5357,7 +5603,10 @@ export function CRMBoard({
       body: JSON.stringify({ type: item.type, id: item.id }),
     });
     const result = await response.json();
-    if (!response.ok) throw new Error(result?.error || "Item could not be permanently deleted.");
+    if (!response.ok)
+      throw new Error(
+        result?.error || "Item could not be permanently deleted.",
+      );
   }, []);
 
   const confirmPermanentBinDelete = useCallback(async () => {
@@ -5371,92 +5620,118 @@ export function CRMBoard({
         await permanentlyDeleteBinItem(item);
         deletedKeys.add(`${item.type}:${item.id}`);
       } catch (error: any) {
-        failures.push(`${item.name}: ${error?.message || "could not be deleted"}`);
+        failures.push(
+          `${item.name}: ${error?.message || "could not be deleted"}`,
+        );
       }
     }
-    setBinItems((current) => current.filter((item) => !deletedKeys.has(`${item.type}:${item.id}`)));
-    setSelectedBinItemKeys((current) => new Set([...current].filter((key) => !deletedKeys.has(key))));
+    setBinItems((current) =>
+      current.filter((item) => !deletedKeys.has(`${item.type}:${item.id}`)),
+    );
+    setSelectedBinItemKeys(
+      (current) => new Set([...current].filter((key) => !deletedKeys.has(key))),
+    );
     setPermanentlyDeletingBin(false);
     setPendingPermanentBinItems(null);
-    if (deletedKeys.size) toast.success(`${deletedKeys.size} Bin item${deletedKeys.size === 1 ? "" : "s"} permanently deleted`);
-    if (failures.length) setBinRestoreIssue(`Some items could not be permanently deleted:\n${failures.join("\n")}`);
+    if (deletedKeys.size)
+      toast.success(
+        `${deletedKeys.size} Bin item${deletedKeys.size === 1 ? "" : "s"} permanently deleted`,
+      );
+    if (failures.length)
+      setBinRestoreIssue(
+        `Some items could not be permanently deleted:\n${failures.join("\n")}`,
+      );
     await reloadClients();
   }, [pendingPermanentBinItems, permanentlyDeleteBinItem, reloadClients]);
 
   const restoreSelectedBinItems = useCallback(async () => {
-    const items = binItems.filter((item) => selectedBinItemKeys.has(`${item.type}:${item.id}`));
-    const ineligible = items.filter((item) => item.parentDeleted || new Date(item.expiresAt).getTime() <= Date.now());
+    const items = binItems.filter((item) =>
+      selectedBinItemKeys.has(`${item.type}:${item.id}`),
+    );
+    const ineligible = items.filter(
+      (item) =>
+        item.parentDeleted || new Date(item.expiresAt).getTime() <= Date.now(),
+    );
     const eligible = items.filter((item) => !ineligible.includes(item));
     for (const item of eligible) await restoreBinItem(item);
-    if (ineligible.length) setBinRestoreIssue(`${ineligible.length} selected item${ineligible.length === 1 ? " is" : "s are"} not eligible for restoration. A subitem requires its original parent client to exist, and all Bin items must be restored within 30 days.`);
+    if (ineligible.length)
+      setBinRestoreIssue(
+        `${ineligible.length} selected item${ineligible.length === 1 ? " is" : "s are"} not eligible for restoration. A subitem requires its original parent client to exist, and all Bin items must be restored within 30 days.`,
+      );
   }, [binItems, restoreBinItem, selectedBinItemKeys]);
 
-  const addClient = useCallback(async (groupId?: string | null, name?: string) => {
-    try {
-      const defaultGroupId = groupId ?? groups[0]?.id ?? null;
-      const createdClient = await createClientRow(
-        currentUserId ?? null,
-        defaultGroupId,
-        name,
-      );
-      const newClient: Client = {
-        id: createdClient.id,
-        displayId: createdClient.display_id ?? "",
-        name: createdClient.name ?? "",
-        people: createdClient.people ?? "",
-        replyStatus: createdClient.reply_status ?? "",
-        followUp: createdClient.follow_up ?? "",
-        status: (createdClient.status as ClientStatus) ?? "New Lead",
-        channel: createdClient.channel ?? "",
-        importance: createdClient.importance ?? "",
-        progress: createdClient.progress ?? "",
-        company: createdClient.company ?? "",
-        email: createdClient.email ?? "",
-        phone: createdClient.phone ?? "",
-        requirements: createdClient.requirements ?? "",
-        unqualifiedReason: createdClient.unqualified_reason ?? "",
-        nbd: createdClient.nbd ?? "",
-        groupId: createdClient.group_id ?? defaultGroupId,
-        totalPrice: createdClient.total_price ?? "",
-        billingAddress: createdClient.billing_address ?? "",
-        createdAt: createdClient.created_at ?? "",
-        expanded: createdClient.expanded ?? true,
-        color: createdClient.color ?? "#7BCBD5",
-        subitems: [],
-        activityLog: [],
-        customFields: {},
-      };
-      setClients((prev) => [newClient, ...prev]);
-      if (currentUserId)
-        setClientAssignees((previous) => ({
-          ...previous,
-          [newClient.id]: [currentUserId],
-        }));
-      setExpandedIds((prev) => [...prev, newClient.id]);
-      notifyChange("Client added", `${newClient.name} was added to the board.`);
-      fetchClientAssignmentMaps()
-        .then((maps) => {
-          setClientAssignees(maps.people);
-          setClientPmAssignees(maps.pm);
-        })
-        .catch((e) => console.error("Failed to refresh assignees", e));
-      return true;
-    } catch (error: any) {
-      console.error("Failed to add client", error);
-      toast.error("Client could not be added", {
-        description: error?.message || "The client was not saved.",
-      });
-      return false;
-    }
-  }, [
-    currentUserId,
-    groups,
-    setClientAssignees,
-    setClientPmAssignees,
-    setClients,
-    setExpandedIds,
-    notifyChange,
-  ]);
+  const addClient = useCallback(
+    async (groupId?: string | null, name?: string) => {
+      try {
+        const defaultGroupId = groupId ?? groups[0]?.id ?? null;
+        const createdClient = await createClientRow(
+          currentUserId ?? null,
+          defaultGroupId,
+          name,
+        );
+        const newClient: Client = {
+          id: createdClient.id,
+          displayId: createdClient.display_id ?? "",
+          name: createdClient.name ?? "",
+          people: createdClient.people ?? "",
+          replyStatus: createdClient.reply_status ?? "",
+          followUp: createdClient.follow_up ?? "",
+          status: (createdClient.status as ClientStatus) ?? "New Lead",
+          channel: createdClient.channel ?? "",
+          importance: createdClient.importance ?? "",
+          progress: createdClient.progress ?? "",
+          company: createdClient.company ?? "",
+          email: createdClient.email ?? "",
+          phone: createdClient.phone ?? "",
+          requirements: createdClient.requirements ?? "",
+          unqualifiedReason: createdClient.unqualified_reason ?? "",
+          nbd: createdClient.nbd ?? "",
+          groupId: createdClient.group_id ?? defaultGroupId,
+          totalPrice: createdClient.total_price ?? "",
+          billingAddress: createdClient.billing_address ?? "",
+          createdAt: createdClient.created_at ?? "",
+          expanded: createdClient.expanded ?? true,
+          color: createdClient.color ?? "#7BCBD5",
+          subitems: [],
+          activityLog: [],
+          customFields: {},
+        };
+        setClients((prev) => [newClient, ...prev]);
+        if (currentUserId)
+          setClientAssignees((previous) => ({
+            ...previous,
+            [newClient.id]: [currentUserId],
+          }));
+        setExpandedIds((prev) => [...prev, newClient.id]);
+        notifyChange(
+          "Client added",
+          `${newClient.name} was added to the board.`,
+        );
+        fetchClientAssignmentMaps()
+          .then((maps) => {
+            setClientAssignees(maps.people);
+            setClientPmAssignees(maps.pm);
+          })
+          .catch((e) => console.error("Failed to refresh assignees", e));
+        return true;
+      } catch (error: any) {
+        console.error("Failed to add client", error);
+        toast.error("Client could not be added", {
+          description: error?.message || "The client was not saved.",
+        });
+        return false;
+      }
+    },
+    [
+      currentUserId,
+      groups,
+      setClientAssignees,
+      setClientPmAssignees,
+      setClients,
+      setExpandedIds,
+      notifyChange,
+    ],
+  );
 
   const submitNewClient = useCallback(async () => {
     const groupId = addingClientGroupId;
@@ -5564,48 +5839,54 @@ export function CRMBoard({
     showAssignmentPermissionError,
   ]);
 
-  const duplicateSelectedClients = useCallback(async (includeSubitems: boolean) => {
-    if ([...selectedIds].some((clientId) => !canEditClientRecord(clientId))) {
-      showAssignmentPermissionError();
-      return;
-    }
-    setIsDuplicatingClients(true);
-    try {
-      await Promise.all(
-        [...selectedIds].map((clientId) => duplicateClientRow(clientId, includeSubitems)),
-      );
-      await reloadClients();
-      const [nextClientAssignmentMaps, nextSubitemAssignees] = await Promise.all([
-        fetchClientAssignmentMaps(),
-        fetchAllSubitemAssignees(),
-      ]);
-      setClientAssignees(nextClientAssignmentMaps.people);
-      setClientPmAssignees(nextClientAssignmentMaps.pm);
-      setSubitemAssignees(nextSubitemAssignees);
-      toast.success("Clients duplicated", {
-        description: `${selectedIds.size} selected client${selectedIds.size === 1 ? "" : "s"} were copied ${includeSubitems ? "with" : "without"} their subitems.`,
-      });
-      setSelectedIds(new Set());
-    } catch (error) {
-      await reloadClients();
-      toast.error("Clients could not be duplicated", {
-        description:
-          error instanceof Error
-            ? error.message
-            : "The selected clients were not duplicated.",
-      });
-    } finally {
-      setIsDuplicatingClients(false);
-    }
-  }, [
-    canEditClientRecord,
-    reloadClients,
-    selectedIds,
-    setClientAssignees,
-    setClientPmAssignees,
-    setSubitemAssignees,
-    showAssignmentPermissionError,
-  ]);
+  const duplicateSelectedClients = useCallback(
+    async (includeSubitems: boolean) => {
+      if ([...selectedIds].some((clientId) => !canEditClientRecord(clientId))) {
+        showAssignmentPermissionError();
+        return;
+      }
+      setIsDuplicatingClients(true);
+      try {
+        await Promise.all(
+          [...selectedIds].map((clientId) =>
+            duplicateClientRow(clientId, includeSubitems),
+          ),
+        );
+        await reloadClients();
+        const [nextClientAssignmentMaps, nextSubitemAssignees] =
+          await Promise.all([
+            fetchClientAssignmentMaps(),
+            fetchAllSubitemAssignees(),
+          ]);
+        setClientAssignees(nextClientAssignmentMaps.people);
+        setClientPmAssignees(nextClientAssignmentMaps.pm);
+        setSubitemAssignees(nextSubitemAssignees);
+        toast.success("Clients duplicated", {
+          description: `${selectedIds.size} selected client${selectedIds.size === 1 ? "" : "s"} were copied ${includeSubitems ? "with" : "without"} their subitems.`,
+        });
+        setSelectedIds(new Set());
+      } catch (error) {
+        await reloadClients();
+        toast.error("Clients could not be duplicated", {
+          description:
+            error instanceof Error
+              ? error.message
+              : "The selected clients were not duplicated.",
+        });
+      } finally {
+        setIsDuplicatingClients(false);
+      }
+    },
+    [
+      canEditClientRecord,
+      reloadClients,
+      selectedIds,
+      setClientAssignees,
+      setClientPmAssignees,
+      setSubitemAssignees,
+      showAssignmentPermissionError,
+    ],
+  );
 
   const duplicateClientAction = useCallback(
     async (clientId: string, includeSubitems: boolean) => {
@@ -5617,10 +5898,11 @@ export function CRMBoard({
       try {
         await duplicateClientRow(clientId, includeSubitems);
         await reloadClients();
-        const [nextClientAssignmentMaps, nextSubitemAssignees] = await Promise.all([
-          fetchClientAssignmentMaps(),
-          fetchAllSubitemAssignees(),
-        ]);
+        const [nextClientAssignmentMaps, nextSubitemAssignees] =
+          await Promise.all([
+            fetchClientAssignmentMaps(),
+            fetchAllSubitemAssignees(),
+          ]);
         setClientAssignees(nextClientAssignmentMaps.people);
         setClientPmAssignees(nextClientAssignmentMaps.pm);
         setSubitemAssignees(nextSubitemAssignees);
@@ -5645,24 +5927,30 @@ export function CRMBoard({
     ],
   );
 
-  const requestClientDuplication = useCallback((clientId: string) => {
-    if (!canEditClientRecord(clientId)) {
-      showAssignmentPermissionError();
-      return;
-    }
-    setPendingClientDuplication({ clientIds: [clientId], selection: false });
-  }, [canEditClientRecord, showAssignmentPermissionError]);
+  const requestClientDuplication = useCallback(
+    (clientId: string) => {
+      if (!canEditClientRecord(clientId)) {
+        showAssignmentPermissionError();
+        return;
+      }
+      setPendingClientDuplication({ clientIds: [clientId], selection: false });
+    },
+    [canEditClientRecord, showAssignmentPermissionError],
+  );
 
-  const confirmClientDuplication = useCallback(async (includeSubitems: boolean) => {
-    const pending = pendingClientDuplication;
-    if (!pending) return;
-    if (pending.selection) {
-      await duplicateSelectedClients(includeSubitems);
-    } else if (pending.clientIds[0]) {
-      await duplicateClientAction(pending.clientIds[0], includeSubitems);
-    }
-    setPendingClientDuplication(null);
-  }, [duplicateClientAction, duplicateSelectedClients, pendingClientDuplication]);
+  const confirmClientDuplication = useCallback(
+    async (includeSubitems: boolean) => {
+      const pending = pendingClientDuplication;
+      if (!pending) return;
+      if (pending.selection) {
+        await duplicateSelectedClients(includeSubitems);
+      } else if (pending.clientIds[0]) {
+        await duplicateClientAction(pending.clientIds[0], includeSubitems);
+      }
+      setPendingClientDuplication(null);
+    },
+    [duplicateClientAction, duplicateSelectedClients, pendingClientDuplication],
+  );
 
   const moveClientAction = useCallback(
     async (clientId: string, targetGroupId: string) => {
@@ -5688,7 +5976,9 @@ export function CRMBoard({
       const targetGroup = groups.find((group) => group.id === targetGroupId);
       if (isUnqualifiedGroupName(targetGroup?.name)) {
         const clientIds = [...selectedIds];
-        const firstClient = clients.find((client) => client.id === clientIds[0]);
+        const firstClient = clients.find(
+          (client) => client.id === clientIds[0],
+        );
         setUnqualifiedReasonDraft(
           clientIds.length === 1 ? (firstClient?.unqualifiedReason ?? "") : "",
         );
@@ -5820,7 +6110,10 @@ export function CRMBoard({
       );
       try {
         await deleteSubitemRow(subitemId);
-        notifyChange("Subitem deleted", "The subitem was moved to the Bin and can be restored for 30 days.");
+        notifyChange(
+          "Subitem deleted",
+          "The subitem was moved to the Bin and can be restored for 30 days.",
+        );
       } catch (error: any) {
         setClients(clients);
         console.error("Failed to delete subitem", error);
@@ -6152,82 +6445,167 @@ export function CRMBoard({
             <header className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
               <div>
                 <h2 className="text-base font-semibold text-slate-900">Bin</h2>
-                <p className="mt-1 text-xs text-slate-500">Deleted clients and subitems can be restored for 30 days.</p>
+                <p className="mt-1 text-xs text-slate-500">
+                  Deleted clients and subitems can be restored for 30 days.
+                </p>
               </div>
-              <button type="button" onClick={() => setShowBin(false)} className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Close Bin">
+              <button
+                type="button"
+                onClick={() => setShowBin(false)}
+                className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                aria-label="Close Bin"
+              >
                 <X size={18} />
               </button>
             </header>
             {!loadingBin && binItems.length > 0 && (
               <div className="flex items-center gap-2 border-b border-slate-100 px-5 py-2.5">
                 <label className="flex items-center gap-2 text-xs text-slate-600">
-                  <input type="checkbox" checked={selectedBinItemKeys.size === binItems.length} onChange={(event) => setSelectedBinItemKeys(event.target.checked ? new Set(binItems.map((item) => `${item.type}:${item.id}`)) : new Set())} className="h-3.5 w-3.5 accent-[#43adc4]" />
+                  <input
+                    type="checkbox"
+                    checked={selectedBinItemKeys.size === binItems.length}
+                    onChange={(event) =>
+                      setSelectedBinItemKeys(
+                        event.target.checked
+                          ? new Set(
+                              binItems.map((item) => `${item.type}:${item.id}`),
+                            )
+                          : new Set(),
+                      )
+                    }
+                    className="h-3.5 w-3.5 accent-[#43adc4]"
+                  />
                   Select all
                 </label>
                 {selectedBinItemKeys.size > 0 && (
                   <>
-                    <span className="text-xs text-slate-500">{selectedBinItemKeys.size} selected</span>
-                    <button type="button" onClick={() => void restoreSelectedBinItems()} className="ml-auto rounded-md border border-teal-200 px-2.5 py-1 text-xs font-medium text-teal-700 hover:bg-teal-50">Restore selected</button>
-                    <button type="button" onClick={() => setPendingPermanentBinItems(binItems.filter((item) => selectedBinItemKeys.has(`${item.type}:${item.id}`)))} className="rounded-md border border-red-200 px-2.5 py-1 text-xs font-medium text-red-700 hover:bg-red-50">Permanently delete</button>
+                    <span className="text-xs text-slate-500">
+                      {selectedBinItemKeys.size} selected
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => void restoreSelectedBinItems()}
+                      className="ml-auto rounded-md border border-teal-200 px-2.5 py-1 text-xs font-medium text-teal-700 hover:bg-teal-50"
+                    >
+                      Restore selected
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setPendingPermanentBinItems(
+                          binItems.filter((item) =>
+                            selectedBinItemKeys.has(`${item.type}:${item.id}`),
+                          ),
+                        )
+                      }
+                      className="rounded-md border border-red-200 px-2.5 py-1 text-xs font-medium text-red-700 hover:bg-red-50"
+                    >
+                      Permanently delete
+                    </button>
                   </>
                 )}
               </div>
             )}
             <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-4">
               {loadingBin ? (
-                <p className="py-8 text-center text-sm text-slate-500">Loading Bin…</p>
+                <p className="py-8 text-center text-sm text-slate-500">
+                  Loading Bin…
+                </p>
               ) : binItems.length === 0 ? (
-                <p className="py-8 text-center text-sm text-slate-500">The Bin is empty.</p>
-              ) : binItems.map((item) => {
-                const daysRemaining = Math.max(0, Math.ceil((new Date(item.expiresAt).getTime() - Date.now()) / 86_400_000));
-                return (
-                  <div key={`${item.type}:${item.id}`} className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
-                    <input
-                      type="checkbox"
-                      checked={selectedBinItemKeys.has(`${item.type}:${item.id}`)}
-                      onChange={(event) => setSelectedBinItemKeys((current) => {
-                        const next = new Set(current);
-                        const key = `${item.type}:${item.id}`;
-                        if (event.target.checked) next.add(key); else next.delete(key);
-                        return next;
-                      })}
-                      aria-label={`Select ${item.name}`}
-                      className="h-3.5 w-3.5 shrink-0 accent-[#43adc4]"
-                    />
-                    <Trash2 size={16} className="shrink-0 text-slate-400" />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-slate-800">{item.name}</p>
-                      <p className="mt-0.5 text-xs text-slate-500">
-                        {item.type === "client" ? `Client${item.subitemCount ? ` · ${item.subitemCount} subitem${item.subitemCount === 1 ? "" : "s"}` : ""}` : `Subitem · ${item.clientName}`} · {daysRemaining} day{daysRemaining === 1 ? "" : "s"} remaining
-                      </p>
+                <p className="py-8 text-center text-sm text-slate-500">
+                  The Bin is empty.
+                </p>
+              ) : (
+                binItems.map((item) => {
+                  const daysRemaining = Math.max(
+                    0,
+                    Math.ceil(
+                      (new Date(item.expiresAt).getTime() - Date.now()) /
+                        86_400_000,
+                    ),
+                  );
+                  return (
+                    <div
+                      key={`${item.type}:${item.id}`}
+                      className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedBinItemKeys.has(
+                          `${item.type}:${item.id}`,
+                        )}
+                        onChange={(event) =>
+                          setSelectedBinItemKeys((current) => {
+                            const next = new Set(current);
+                            const key = `${item.type}:${item.id}`;
+                            if (event.target.checked) next.add(key);
+                            else next.delete(key);
+                            return next;
+                          })
+                        }
+                        aria-label={`Select ${item.name}`}
+                        className="h-3.5 w-3.5 shrink-0 accent-[#43adc4]"
+                      />
+                      <Trash2 size={16} className="shrink-0 text-slate-400" />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-slate-800">
+                          {item.name}
+                        </p>
+                        <p className="mt-0.5 text-xs text-slate-500">
+                          {item.type === "client"
+                            ? `Client${item.subitemCount ? ` · ${item.subitemCount} subitem${item.subitemCount === 1 ? "" : "s"}` : ""}`
+                            : `Subitem · ${item.clientName}`}{" "}
+                          · {daysRemaining} day{daysRemaining === 1 ? "" : "s"}{" "}
+                          remaining
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={
+                          item.parentDeleted ||
+                          new Date(item.expiresAt).getTime() <= Date.now() ||
+                          restoringBinItemId === item.id
+                        }
+                        onClick={() => void restoreBinItem(item)}
+                        title={
+                          item.parentDeleted
+                            ? "Restore the parent client first"
+                            : new Date(item.expiresAt).getTime() <= Date.now()
+                              ? "The 30-day Bin retention period has ended"
+                              : "Restore this item"
+                        }
+                        className="rounded-md border border-teal-200 bg-white px-2.5 py-1.5 text-xs font-medium text-teal-700 hover:bg-teal-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {restoringBinItemId === item.id
+                          ? "Restoring…"
+                          : "Restore"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPendingPermanentBinItems([item])}
+                        className="rounded-md border border-red-200 bg-white px-2.5 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50"
+                      >
+                        Permanently delete
+                      </button>
                     </div>
-                    <button
-                      type="button"
-                      disabled={item.parentDeleted || new Date(item.expiresAt).getTime() <= Date.now() || restoringBinItemId === item.id}
-                      onClick={() => void restoreBinItem(item)}
-                      title={item.parentDeleted ? "Restore the parent client first" : new Date(item.expiresAt).getTime() <= Date.now() ? "The 30-day Bin retention period has ended" : "Restore this item"}
-                      className="rounded-md border border-teal-200 bg-white px-2.5 py-1.5 text-xs font-medium text-teal-700 hover:bg-teal-50 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {restoringBinItemId === item.id ? "Restoring…" : "Restore"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setPendingPermanentBinItems([item])}
-                      className="rounded-md border border-red-200 bg-white px-2.5 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50"
-                    >
-                      Permanently delete
-                    </button>
-                  </div>
-                );
-              })}
+                  );
+                })
+              )}
             </div>
           </section>
         </div>
       )}
-      <AlertDialog open={!!pendingPermanentBinItems} onOpenChange={(open) => !open && !permanentlyDeletingBin && setPendingPermanentBinItems(null)}>
+      <AlertDialog
+        open={!!pendingPermanentBinItems}
+        onOpenChange={(open) =>
+          !open && !permanentlyDeletingBin && setPendingPermanentBinItems(null)
+        }
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Permanently delete from the Bin?</AlertDialogTitle>
+            <AlertDialogTitle>
+              Permanently delete from the Bin?
+            </AlertDialogTitle>
             <AlertDialogDescription>
               {pendingPermanentBinItems?.length === 1
                 ? `“${pendingPermanentBinItems[0].name}” and its stored files will be permanently deleted. This cannot be undone.`
@@ -6235,21 +6613,37 @@ export function CRMBoard({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={permanentlyDeletingBin}>Cancel</AlertDialogCancel>
-            <AlertDialogAction disabled={permanentlyDeletingBin} className="bg-red-600 hover:bg-red-700" onClick={(event) => { event.preventDefault(); void confirmPermanentBinDelete(); }}>
+            <AlertDialogCancel disabled={permanentlyDeletingBin}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={permanentlyDeletingBin}
+              className="bg-red-600 hover:bg-red-700"
+              onClick={(event) => {
+                event.preventDefault();
+                void confirmPermanentBinDelete();
+              }}
+            >
               {permanentlyDeletingBin ? "Deleting…" : "Permanently delete"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      <AlertDialog open={!!binRestoreIssue} onOpenChange={(open) => !open && setBinRestoreIssue(null)}>
+      <AlertDialog
+        open={!!binRestoreIssue}
+        onOpenChange={(open) => !open && setBinRestoreIssue(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Item cannot be restored</AlertDialogTitle>
-            <AlertDialogDescription className="whitespace-pre-line">{binRestoreIssue}</AlertDialogDescription>
+            <AlertDialogDescription className="whitespace-pre-line">
+              {binRestoreIssue}
+            </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogAction onClick={() => setBinRestoreIssue(null)}>Close</AlertDialogAction>
+            <AlertDialogAction onClick={() => setBinRestoreIssue(null)}>
+              Close
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -6293,11 +6687,18 @@ export function CRMBoard({
                 : "Duplicate selected clients"
             }
             onClick={() => {
-              if ([...selectedIds].some((clientId) => !canEditClientRecord(clientId))) {
+              if (
+                [...selectedIds].some(
+                  (clientId) => !canEditClientRecord(clientId),
+                )
+              ) {
                 showAssignmentPermissionError();
                 return;
               }
-              setPendingClientDuplication({ clientIds: [...selectedIds], selection: true });
+              setPendingClientDuplication({
+                clientIds: [...selectedIds],
+                selection: true,
+              });
             }}
             className="flex items-center gap-1.5 rounded px-3 py-2 text-sm text-slate-500 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
           >
@@ -6318,58 +6719,63 @@ export function CRMBoard({
             >
               <MoveRight size={17} /> {isMovingClients ? "Moving..." : "Move"}
             </button>
-            {showClientMoveMenu && !isMovingClients && clientMoveMenuPosition &&
+            {showClientMoveMenu &&
+              !isMovingClients &&
+              clientMoveMenuPosition &&
               createPortal(
-              <div
-                style={{ left: clientMoveMenuPosition.left, bottom: clientMoveMenuPosition.bottom }}
-                className="fixed z-[1000] max-h-96 w-72 overflow-y-auto rounded-xl border border-slate-200 bg-white p-3 shadow-2xl"
-              >
-                <div className="mb-3 text-base font-medium text-slate-800">
-                  Move to group
-                </div>
-                <div className="relative mb-2">
-                  <Search
-                    size={15}
-                    className="absolute left-2.5 top-2.5 text-slate-400"
-                  />
-                  <input
-                    autoFocus
-                    value={clientMoveSearch}
-                    onChange={(event) =>
-                      setClientMoveSearch(event.target.value)
-                    }
-                    placeholder="Search groups"
-                    className="h-10 w-full rounded border border-slate-200 pl-8 pr-2 text-sm outline-none focus:border-sky-400"
-                  />
-                </div>
-                {groups
-                  .filter((group) =>
+                <div
+                  style={{
+                    left: clientMoveMenuPosition.left,
+                    bottom: clientMoveMenuPosition.bottom,
+                  }}
+                  className="fixed z-[1000] max-h-96 w-72 overflow-y-auto rounded-xl border border-slate-200 bg-white p-3 shadow-2xl"
+                >
+                  <div className="mb-3 text-base font-medium text-slate-800">
+                    Move to group
+                  </div>
+                  <div className="relative mb-2">
+                    <Search
+                      size={15}
+                      className="absolute left-2.5 top-2.5 text-slate-400"
+                    />
+                    <input
+                      autoFocus
+                      value={clientMoveSearch}
+                      onChange={(event) =>
+                        setClientMoveSearch(event.target.value)
+                      }
+                      placeholder="Search groups"
+                      className="h-10 w-full rounded border border-slate-200 pl-8 pr-2 text-sm outline-none focus:border-sky-400"
+                    />
+                  </div>
+                  {groups
+                    .filter((group) =>
+                      group.name
+                        .toLowerCase()
+                        .includes(clientMoveSearch.toLowerCase()),
+                    )
+                    .map((group) => (
+                      <button
+                        key={group.id}
+                        type="button"
+                        onClick={() => void moveSelectedClients(group.id)}
+                        className="block w-full rounded px-2 py-2 text-left text-sm text-slate-700 hover:bg-sky-50"
+                      >
+                        {group.name}
+                      </button>
+                    ))}
+                  {groups.filter((group) =>
                     group.name
                       .toLowerCase()
                       .includes(clientMoveSearch.toLowerCase()),
-                  )
-                  .map((group) => (
-                    <button
-                      key={group.id}
-                      type="button"
-                      onClick={() => void moveSelectedClients(group.id)}
-                      className="block w-full rounded px-2 py-2 text-left text-sm text-slate-700 hover:bg-sky-50"
-                    >
-                      {group.name}
-                    </button>
-                  ))}
-                {groups.filter((group) =>
-                  group.name
-                    .toLowerCase()
-                    .includes(clientMoveSearch.toLowerCase()),
-                ).length === 0 && (
-                  <div className="px-2 py-5 text-center text-sm text-slate-400">
-                    No groups found.
-                  </div>
-                )}
-              </div>,
-              document.body,
-            )}
+                  ).length === 0 && (
+                    <div className="px-2 py-5 text-center text-sm text-slate-400">
+                      No groups found.
+                    </div>
+                  )}
+                </div>,
+                document.body,
+              )}
           </div>
           <button
             type="button"
@@ -6485,63 +6891,72 @@ export function CRMBoard({
             >
               <MoveRight size={17} /> {isMovingSubitems ? "Moving..." : "Move"}
             </button>
-            {showSubitemMoveMenu && !isMovingSubitems && subitemMoveMenuPosition &&
+            {showSubitemMoveMenu &&
+              !isMovingSubitems &&
+              subitemMoveMenuPosition &&
               createPortal(
-              <div
-                style={{ left: subitemMoveMenuPosition.left, bottom: subitemMoveMenuPosition.bottom }}
-                className="fixed z-[1000] max-h-96 w-80 overflow-y-auto rounded-xl border border-slate-200 bg-white p-3 shadow-2xl"
-              >
-                <div className="mb-3 text-base font-medium text-slate-800">
-                  Choose a new parent
-                </div>
-                <div className="relative mb-3">
-                  <Search
-                    size={15}
-                    className="absolute left-2.5 top-2.5 text-slate-400"
-                  />
-                  <input
-                    autoFocus
-                    value={subitemMoveSearch}
-                    onChange={(event) =>
-                      setSubitemMoveSearch(event.target.value)
-                    }
-                    placeholder="Search clients"
-                    className="h-10 w-full rounded border border-slate-200 pl-8 pr-2 text-sm outline-none focus:border-sky-400"
-                  />
-                </div>
-                {orderedMoveGroups.map((group) => (
-                  <div key={group.name} className="mb-3">
-                    <div className="px-1 py-1 text-xs font-medium text-sky-600">
-                      {group.name}
+                <div
+                  style={{
+                    left: subitemMoveMenuPosition.left,
+                    bottom: subitemMoveMenuPosition.bottom,
+                  }}
+                  className="fixed z-[1000] max-h-96 w-80 overflow-y-auto rounded-xl border border-slate-200 bg-white p-3 shadow-2xl"
+                >
+                  <div className="mb-3 text-base font-medium text-slate-800">
+                    Choose a new parent
+                  </div>
+                  <div className="relative mb-3">
+                    <Search
+                      size={15}
+                      className="absolute left-2.5 top-2.5 text-slate-400"
+                    />
+                    <input
+                      autoFocus
+                      value={subitemMoveSearch}
+                      onChange={(event) =>
+                        setSubitemMoveSearch(event.target.value)
+                      }
+                      placeholder="Search clients"
+                      className="h-10 w-full rounded border border-slate-200 pl-8 pr-2 text-sm outline-none focus:border-sky-400"
+                    />
+                  </div>
+                  {orderedMoveGroups.map((group) => (
+                    <div key={group.name} className="mb-3">
+                      <div className="px-1 py-1 text-xs font-medium text-sky-600">
+                        {group.name}
+                      </div>
+                      {group.clients.map((client) => (
+                        <button
+                          key={client.id}
+                          type="button"
+                          onClick={async () => {
+                            setShowSubitemMoveMenu(false);
+                            await moveSelectedSubitems(
+                              selectedSubitemIds,
+                              client.id,
+                            );
+                            clearSubitemSelection();
+                          }}
+                          className="block w-full rounded px-2 py-2 text-left text-sm text-slate-700 hover:bg-sky-50"
+                        >
+                          {client.name}
+                          {client.displayId ? (
+                            <span className="ml-1 font-mono text-xs text-slate-400">
+                              · {client.displayId}
+                            </span>
+                          ) : null}
+                        </button>
+                      ))}
                     </div>
-                    {group.clients.map((client) => (
-                      <button
-                        key={client.id}
-                        type="button"
-                        onClick={async () => {
-                          setShowSubitemMoveMenu(false);
-                          await moveSelectedSubitems(
-                            selectedSubitemIds,
-                            client.id,
-                          );
-                          clearSubitemSelection();
-                        }}
-                        className="block w-full rounded px-2 py-2 text-left text-sm text-slate-700 hover:bg-sky-50"
-                      >
-                        {client.name}
-                        {client.displayId ? <span className="ml-1 font-mono text-xs text-slate-400">· {client.displayId}</span> : null}
-                      </button>
-                    ))}
-                  </div>
-                ))}
-                {orderedMoveGroups.length === 0 && (
-                  <div className="px-2 py-5 text-center text-sm text-slate-400">
-                    No clients found.
-                  </div>
-                )}
-              </div>,
-              document.body,
-            )}
+                  ))}
+                  {orderedMoveGroups.length === 0 && (
+                    <div className="px-2 py-5 text-center text-sm text-slate-400">
+                      No clients found.
+                    </div>
+                  )}
+                </div>,
+                document.body,
+              )}
           </div>
           <button
             type="button"
@@ -6601,15 +7016,27 @@ export function CRMBoard({
           onConfirm={() => void confirmCombinedPush()}
         />
       )}
-      <AlertDialog open={!!workbookPushSuccess} onOpenChange={(open) => !open && setWorkbookPushSuccess(null)}>
+      <AlertDialog
+        open={!!workbookPushSuccess}
+        onOpenChange={(open) => !open && setWorkbookPushSuccess(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Push completed</AlertDialogTitle>
             <AlertDialogDescription>
-              The grouped push was added to <strong>{workbookPushSuccess?.workbookName}</strong> at row{(workbookPushSuccess?.rowNumbers.length ?? 0) === 1 ? "" : "s"} {workbookPushSuccess?.rowNumbers.join(", ")}.
+              The grouped push was added to{" "}
+              <strong>{workbookPushSuccess?.workbookName}</strong> at row
+              {(workbookPushSuccess?.rowNumbers.length ?? 0) === 1
+                ? ""
+                : "s"}{" "}
+              {workbookPushSuccess?.rowNumbers.join(", ")}.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter><AlertDialogAction onClick={() => setWorkbookPushSuccess(null)}>Done</AlertDialogAction></AlertDialogFooter>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={() => setWorkbookPushSuccess(null)}>
+              Done
+            </AlertDialogAction>
+          </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
       <div className="flex items-center gap-2 px-2 py-1 border-b border-gray-200 bg-white flex-shrink-0">
@@ -7172,12 +7599,16 @@ export function CRMBoard({
                 {pendingOptionDeletion?.name}
               </span>{" "}
               is currently used in {pendingOptionDeletion?.usageCount ?? 0}{" "}
-              {(pendingOptionDeletion?.usageCount ?? 0) === 1 ? "cell" : "cells"}.
-              Deleting it will change those cells to the blank label option.
+              {(pendingOptionDeletion?.usageCount ?? 0) === 1
+                ? "cell"
+                : "cells"}
+              . Deleting it will change those cells to the blank label option.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeletingOption}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={isDeletingOption}>
+              Cancel
+            </AlertDialogCancel>
             <AlertDialogAction
               disabled={isDeletingOption}
               onClick={(event) => {
@@ -7404,15 +7835,21 @@ export function CRMBoard({
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              Duplicate {pendingClientDuplication?.clientIds.length === 1 ? "client" : "clients"}
+              Duplicate{" "}
+              {pendingClientDuplication?.clientIds.length === 1
+                ? "client"
+                : "clients"}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              Choose whether the duplicate should include the client&apos;s subitems.
-              Files and attachments are never copied, and every duplicated client starts with Status set to New Lead.
+              Choose whether the duplicate should include the client&apos;s
+              subitems. Files and attachments are never copied, and every
+              duplicated client starts with Status set to New Lead.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDuplicatingClients}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={isDuplicatingClients}>
+              Cancel
+            </AlertDialogCancel>
             <AlertDialogAction
               disabled={isDuplicatingClients}
               onClick={(event) => {
@@ -7444,7 +7881,8 @@ export function CRMBoard({
           <AlertDialogHeader>
             <AlertDialogTitle>Delete selected clients?</AlertDialogTitle>
             <AlertDialogDescription>
-              These clients will be moved to the Bin for 30 days before permanent deletion.
+              These clients will be moved to the Bin for 30 days before
+              permanent deletion.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -7478,7 +7916,8 @@ export function CRMBoard({
                 : `Mark ${pendingUnqualifiedLead?.changes.length ?? 0} leads as unqualified?`}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              Explain why the lead is unqualified. This reason is required and will be saved on the Board.
+              Explain why the lead is unqualified. This reason is required and
+              will be saved on the Board.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <textarea
@@ -7491,7 +7930,9 @@ export function CRMBoard({
             className="w-full resize-y rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-800 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
           />
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={savingUnqualifiedLead}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={savingUnqualifiedLead}>
+              Cancel
+            </AlertDialogCancel>
             <AlertDialogAction
               disabled={!unqualifiedReasonDraft.trim() || savingUnqualifiedLead}
               onClick={(event) => {
@@ -7562,7 +8003,8 @@ export function CRMBoard({
               <span className="font-semibold text-gray-700">
                 {pendingClientToDelete?.name ?? "this client"}
               </span>{" "}
-              and its active subitems to the Bin. They can be restored for 30 days.
+              and its active subitems to the Bin. They can be restored for 30
+              days.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -7589,8 +8031,8 @@ export function CRMBoard({
           <AlertDialogHeader>
             <AlertDialogTitle>Delete selected subitems?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will move{" "}
-              {pendingDeleteSelectedSubitems?.length ?? 0} selected subitems to the Bin for 30 days.
+              This will move {pendingDeleteSelectedSubitems?.length ?? 0}{" "}
+              selected subitems to the Bin for 30 days.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -8195,7 +8637,10 @@ export function CRMBoard({
                   {collapsedGroups[group.id] ? "▷" : "▼"}
                 </button>
                 <div>
-                  <div className="crm-group-name text-lg leading-6" style={{ color: groupAccentColor(group) }}>
+                  <div
+                    className="crm-group-name text-lg leading-6"
+                    style={{ color: groupAccentColor(group) }}
+                  >
                     {group.name}
                   </div>
                   <div className="text-[13px] font-normal text-slate-500">
@@ -8618,6 +9063,7 @@ export function CRMBoard({
                       progressOptions={progressEntries}
                       paymentOptions={paymentEntries}
                       paymentStatusOptions={paymentStatusEntries}
+                      paymentReceivedOptions={paymentReceivedEntries}
                       overallPaymentStatusOptions={overallPaymentStatusEntries}
                       modeOfPaymentOptions={modeOfPaymentEntries}
                       shipperOptions={shipperEntries}
@@ -8626,10 +9072,18 @@ export function CRMBoard({
                       currencyOptions={currencyEntries}
                       subitemSubprogressOptions={subitemSubprogressEntries}
                       trackingSummaryOptions={trackingSummaryEntries}
-                      trackingInvoiceCreatedOptions={trackingInvoiceCreatedEntries}
-                      trackingMultipleInvoicesOptions={trackingMultipleInvoicesEntries}
-                      trackingPaymentStatusOptions={trackingPaymentStatusEntries}
-                      trackingPriceInvoiceMatchOptions={trackingPriceInvoiceMatchEntries}
+                      trackingInvoiceCreatedOptions={
+                        trackingInvoiceCreatedEntries
+                      }
+                      trackingMultipleInvoicesOptions={
+                        trackingMultipleInvoicesEntries
+                      }
+                      trackingPaymentStatusOptions={
+                        trackingPaymentStatusEntries
+                      }
+                      trackingPriceInvoiceMatchOptions={
+                        trackingPriceInvoiceMatchEntries
+                      }
                       onAddTrackingOption={handleAddTrackingOption}
                       onDeleteTrackingOption={handleDeleteTrackingOption}
                       onAddSubitemSubprogress={handleAddSubitemSubprogress}
@@ -8658,8 +9112,12 @@ export function CRMBoard({
                       onDeletePayment={handleDeletePayment}
                       onAddPaymentStatus={handleAddPaymentStatus}
                       onDeletePaymentStatus={handleDeletePaymentStatus}
+                      onAddPaymentReceived={handleAddPaymentReceived}
+                      onDeletePaymentReceived={handleDeletePaymentReceived}
                       onAddOverallPaymentStatus={handleAddOverallPaymentStatus}
-                      onDeleteOverallPaymentStatus={handleDeleteOverallPaymentStatus}
+                      onDeleteOverallPaymentStatus={
+                        handleDeleteOverallPaymentStatus
+                      }
                       onAddModeOfPayment={handleAddModeOfPayment}
                       onDeleteModeOfPayment={handleDeleteModeOfPayment}
                       clientCustomCols={visibleClientCustomCols}
@@ -8691,7 +9149,9 @@ export function CRMBoard({
                         groups.map((group) => [group.id, group.name]),
                       )}
                       groups={groups}
-                      onDuplicateClient={() => requestClientDuplication(client.id)}
+                      onDuplicateClient={() =>
+                        requestClientDuplication(client.id)
+                      }
                       onMoveClient={(groupId) =>
                         moveClientAction(client.id, groupId)
                       }
@@ -8717,24 +9177,41 @@ export function CRMBoard({
                         setDetailSubitem({ clientId: client.id, subitemId })
                       }
                       onPaymentRowsChanged={(subitemId, paymentRows) =>
-                        setClients((current) => current.map((owner) => owner.id !== client.id ? owner : {
-                          ...owner,
-                          subitems: owner.subitems.map((subitem) => subitem.id === subitemId ? { ...subitem, paymentRows } : subitem),
-                        }))
+                        setClients((current) =>
+                          current.map((owner) =>
+                            owner.id !== client.id
+                              ? owner
+                              : {
+                                  ...owner,
+                                  subitems: owner.subitems.map((subitem) =>
+                                    subitem.id === subitemId
+                                      ? { ...subitem, paymentRows }
+                                      : subitem,
+                                  ),
+                                },
+                          ),
+                        )
                       }
                     />
                   ))}
                   <div className="group/add-client min-h-[34px] border border-[#D0D4E4] border-t-0 bg-white px-2 py-1 hover:bg-[#f5fbff] focus-within:bg-[#f5fbff]">
                     <div
                       className="relative max-w-sm"
-                      style={{ marginLeft: activeClientHeaderCols.find((column) => column.key === "selectCheckbox")?.width ?? 34 }}
+                      style={{
+                        marginLeft:
+                          activeClientHeaderCols.find(
+                            (column) => column.key === "selectCheckbox",
+                          )?.width ?? 34,
+                      }}
                     >
                       <Plus
                         size={13}
                         className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500"
                       />
                       <input
-                        value={addingClientGroupId === group.id ? newClientName : ""}
+                        value={
+                          addingClientGroupId === group.id ? newClientName : ""
+                        }
                         disabled={isAddingClient}
                         onFocus={() => {
                           if (addingClientGroupId !== group.id) {
@@ -8742,7 +9219,9 @@ export function CRMBoard({
                             setNewClientName("");
                           }
                         }}
-                        onChange={(event) => setNewClientName(event.target.value)}
+                        onChange={(event) =>
+                          setNewClientName(event.target.value)
+                        }
                         onKeyDown={(event) => {
                           if (event.key === "Enter") {
                             event.preventDefault();
