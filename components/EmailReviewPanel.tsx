@@ -16,6 +16,7 @@ type ReviewRow = {
   reviewed_at: string | null;
   promotion_error: string | null;
   created_at: string;
+  attachments?: Array<{ id: string; name: string; url: string }>;
 };
 
 type Props = { currentUserRole?: string | null };
@@ -167,6 +168,21 @@ export function EmailReviewPanel({ currentUserRole }: Props) {
               <p className="mt-3 whitespace-pre-wrap rounded bg-slate-50 p-3 text-sm text-slate-700">
                 {row.body_text || "(No email body)"}
               </p>
+              {row.attachments?.length ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {row.attachments.map((attachment) => (
+                    <a
+                      key={attachment.id}
+                      href={attachment.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="rounded border border-sky-200 bg-sky-50 px-2 py-1 text-sm text-sky-700 hover:bg-sky-100"
+                    >
+                      {attachment.name}
+                    </a>
+                  ))}
+                </div>
+              ) : null}
               {row.promotion_error ? (
                 <p className="mt-2 text-sm text-red-600">
                   Promotion error: {row.promotion_error}

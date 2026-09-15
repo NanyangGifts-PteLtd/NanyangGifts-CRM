@@ -42,7 +42,43 @@ type QueuePayload = {
   subject?: string;
   body?: string;
   bodyText?: string;
+  attachments?: unknown;
 };
+
+type StoredAttachment = {
+  id: string;
+  kind: "file";
+  name: string;
+  url: string;
+  mimeType?: string;
+  storagePath: string;
+  actorName: string;
+  createdAt: string;
+  createdThrough: string;
+  sourceKey: string;
+};
+
+function storedAttachments(value: unknown): StoredAttachment[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is StoredAttachment =>
+        Boolean(
+          item &&
+          typeof item === "object" &&
+          typeof (item as StoredAttachment).storagePath === "string" &&
+          typeof (item as StoredAttachment).sourceKey === "string",
+        ),
+      )
+    : [];
+}
+
+function clientAttachments(value: unknown): StoredAttachment[] {
+  if (typeof value !== "string" || !value.trim()) return [];
+  try {
+    return storedAttachments(JSON.parse(value));
+  } catch {
+    return [];
+  }
+}
 
 function requirements(subject: string, body: string) {
   return [subject ? `Subject: ${subject}` : "", body]
@@ -57,12 +93,22 @@ export async function GET() {
     const { data, error } = await supabaseAdmin
       .from("email_review_queue")
       .select(
-        "id, external_id, sender_name, sender_email, subject, body_text, email_type, review_status, reviewed_by, reviewed_at, promoted_client_id, promotion_error, created_at",
+        "id, external_id, sender_name, sender_email, subject, body_text, email_type, review_status, reviewed_by, reviewed_at, promoted_client_id, promotion_error, created_at, payload",
       )
       .order("created_at", { ascending: false });
     if (error) throw error;
     return NextResponse.json({
-      rows: data ?? [],
+      rows: (data ?? []).map((row) => ({
+        ...row,
+        attachments: storedAttachments(row.payload?.attachments).map(
+          (file) => ({
+            id: file.id,
+            name: file.name,
+            url: file.url,
+          }),
+        ),
+        payload: undefined,
+      })),
       canReview: REVIEWER_ROLES.has(role),
     });
   } catch (error) {
@@ -152,6 +198,69 @@ export async function POST(request: NextRequest) {
         .eq("external_id", row.external_id)
         .maybeSingle();
       if (ingestionError) throw ingestionError;
+      const clientId = result.clientId ?? ingestion?.client_id ?? null;
+      const attachments = storedAttachments(payload.attachments);
+      if (clientId && attachments.length) {
+        const { data: client, error: clientError } = await supabaseAdmin
+          .from("clients")
+          .select("custom_fields")
+          .eq("id", clientId)
+          .single();
+        if (clientError) throw clientError;
+        const customFields =
+          client.custom_fields &&
+          typeof client.custom_fields === "object" &&
+          !Array.isArray(client.custom_fields)
+            ? (client.custom_fields as Record<string, unknown>)
+            : {};
+        const existing = clientAttachments(customFields.logoRequirementsFile);
+        const additions = attachments.filter(
+          (attachment) =>
+            !existing.some((item) => item.sourceKey === attachment.sourceKey),
+        );
+        if (additions.length) {
+          const { error: attachmentUpdateError } = await supabaseAdmin
+            .from("clients")
+            .update({
+              custom_fields: {
+                ...customFields,
+                logoRequirementsFile: JSON.stringify([
+                  ...existing,
+                  ...additions,
+                ]),
+              },
+            })
+            .eq("id", clientId);
+          if (attachmentUpdateError) throw attachmentUpdateError;
+          const { error: activityError } = await supabaseAdmin
+            .from("activity_log")
+            .insert(
+              additions.map((attachment) => ({
+                client_id: clientId,
+                subitem_id: null,
+                actor_name: "Email integration (Make)",
+                action: "file_uploaded",
+                field_name: "logoRequirementsFile",
+                old_value: null,
+                new_value: attachment.name,
+                subitem_name: null,
+                link: attachment.url,
+                title: `attached ${attachment.name} after Email Review promotion`,
+                description: null,
+                meta: {
+                  field: "logoRequirementsFile",
+                  fileName: attachment.name,
+                  storagePath: attachment.storagePath,
+                  externalId: row.external_id,
+                  sourceKey: attachment.sourceKey,
+                  reviewId: row.id,
+                },
+                created_at: new Date().toISOString(),
+              })),
+            );
+          if (activityError) throw activityError;
+        }
+      }
       const { data, error } = await supabaseAdmin
         .from("email_review_queue")
         .update({
@@ -159,7 +268,7 @@ export async function POST(request: NextRequest) {
           reviewed_by: user.id,
           reviewed_at: new Date().toISOString(),
           promoted_ingestion_id: ingestion?.id ?? null,
-          promoted_client_id: result.clientId ?? ingestion?.client_id ?? null,
+          promoted_client_id: clientId,
           promotion_error: null,
           updated_at: new Date().toISOString(),
         })
@@ -169,7 +278,7 @@ export async function POST(request: NextRequest) {
       if (error) throw error;
       return NextResponse.json({
         row: data,
-        clientId: result.clientId ?? ingestion?.client_id ?? null,
+        clientId,
       });
     } catch (promotionError) {
       const message =

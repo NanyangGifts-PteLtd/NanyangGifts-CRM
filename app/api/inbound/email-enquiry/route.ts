@@ -100,12 +100,23 @@ export async function POST(request: NextRequest) {
         .select("id, review_status")
         .maybeSingle();
       if (queueError) throw queueError;
+      const reviewId =
+        queued?.id ??
+        (
+          await supabaseAdmin
+            .from("email_review_queue")
+            .select("id")
+            .eq("external_id", messageId)
+            .maybeSingle()
+        ).data?.id ??
+        null;
       return NextResponse.json(
         {
           ok: true,
           queued: true,
           emailType,
-          reviewId: queued?.id ?? null,
+          reviewId,
+          attachmentUploadUrl: "/api/inbound/email-enquiry/attachment",
           message: "Non-enquiry email queued for review.",
         },
         { status: 202 },
