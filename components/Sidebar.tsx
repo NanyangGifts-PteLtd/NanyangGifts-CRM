@@ -1,23 +1,36 @@
-'use client';
+"use client";
 
-import React from 'react';
-import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { LayoutGrid, Mail, BarChart2, SquareChartGantt, BotMessageSquare, PackageSearch, Users, UserRoundCog, ContactRound, ReceiptText } from 'lucide-react';
+import React from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import {
+  LayoutGrid,
+  Mail,
+  BarChart2,
+  SquareChartGantt,
+  BotMessageSquare,
+  PackageSearch,
+  Users,
+  UserRoundCog,
+  ContactRound,
+  ReceiptText,
+  MailSearch,
+} from "lucide-react";
 import logo from "./logo.png";
-import Image from 'next/image';
+import Image from "next/image";
 
 export type SidePanel =
-  | 'crm'
-  | 'emails'
-  | 'reports'
-  | 'ganttchart'
-  | 'roundrobin'
-  | 'team'
-  | 'customerprofiles'
-  | 'useradmin'
-  | 'shipper'
-  | 'additionalcosts';
+  | "crm"
+  | "emails"
+  | "reports"
+  | "ganttchart"
+  | "roundrobin"
+  | "team"
+  | "customerprofiles"
+  | "useradmin"
+  | "shipper"
+  | "additionalcosts"
+  | "emailreview";
 
 interface SidebarProps {
   activePanel: SidePanel;
@@ -28,17 +41,50 @@ interface SidebarProps {
   currentUserRole?: string | null;
 }
 
-const navItems: { id: SidePanel; icon: React.ReactNode; label: string; href?: string, external?: boolean }[] = [
-  { id: 'crm', icon: <LayoutGrid size={16.5} />, label: 'CRM Board' },
-  { id: 'additionalcosts', icon: <ReceiptText size={16.5} />, label: 'Additional Costs' },
-  { id: 'emails', icon: <Mail size={16.5} />, label: 'Emails' },
-  { id: 'reports', icon: <BarChart2 size={17.5} />, label: 'Reports & KPI' },
-  { id: 'ganttchart', icon: <SquareChartGantt size={17.5} />, label: 'Gantt Chart' },
-  { id: 'roundrobin', icon: <BotMessageSquare size={17.5} />, label: 'Round Robin' },
-  { id: 'team', icon: <Users size={17.5} />, label: 'Team' },
-  { id: 'customerprofiles', icon: <ContactRound size={17.5} />, label: 'Customer Profiles' },
-  { id: 'useradmin', icon: <UserRoundCog size={17.5} />, label: 'User Admin' },
-  { id: 'shipper', icon: <PackageSearch size={17.5} />, label: 'Shipper', href: '/app/shipper', external: true },
+const navItems: {
+  id: SidePanel;
+  icon: React.ReactNode;
+  label: string;
+  href?: string;
+  external?: boolean;
+}[] = [
+  { id: "crm", icon: <LayoutGrid size={16.5} />, label: "CRM Board" },
+  {
+    id: "additionalcosts",
+    icon: <ReceiptText size={16.5} />,
+    label: "Additional Costs",
+  },
+  { id: "emails", icon: <Mail size={16.5} />, label: "Emails" },
+  {
+    id: "emailreview",
+    icon: <MailSearch size={16.5} />,
+    label: "Email Review",
+  },
+  { id: "reports", icon: <BarChart2 size={17.5} />, label: "Reports & KPI" },
+  {
+    id: "ganttchart",
+    icon: <SquareChartGantt size={17.5} />,
+    label: "Gantt Chart",
+  },
+  {
+    id: "roundrobin",
+    icon: <BotMessageSquare size={17.5} />,
+    label: "Round Robin",
+  },
+  { id: "team", icon: <Users size={17.5} />, label: "Team" },
+  {
+    id: "customerprofiles",
+    icon: <ContactRound size={17.5} />,
+    label: "Customer Profiles",
+  },
+  { id: "useradmin", icon: <UserRoundCog size={17.5} />, label: "User Admin" },
+  {
+    id: "shipper",
+    icon: <PackageSearch size={17.5} />,
+    label: "Shipper",
+    href: "/app/shipper",
+    external: true,
+  },
 ];
 
 export default function Sidebar({
@@ -52,14 +98,15 @@ export default function Sidebar({
   const pathname = usePathname();
 
   const itemClass = (active: boolean) =>
-    `w-full flex items-center gap-3 px-2 py-2 rounded-md text-left group relative transition transform active:scale-95 duration-150 ${active
-      ? 'bg-[#16a5c4] text-white'
-      : 'text-gray-500 hover:bg-[#16a5c4] hover:text-white'
+    `w-full flex items-center gap-3 px-2 py-2 rounded-md text-left group relative transition transform active:scale-95 duration-150 ${
+      active
+        ? "bg-[#16a5c4] text-white"
+        : "text-gray-500 hover:bg-[#16a5c4] hover:text-white"
     }`;
 
   return (
     <div
-      className={`${collapsed ? 'w-12' : 'w-52'} bg-[#ffffff] relative h-screen flex flex-col border-r border-[#f2f8ff] flex-shrink-0 transition-[width] duration-200 ease-in-out overflow-hidden sticky top-0 left-0`}
+      className={`${collapsed ? "w-12" : "w-52"} bg-[#ffffff] relative h-screen flex flex-col border-r border-[#f2f8ff] flex-shrink-0 transition-[width] duration-200 ease-in-out overflow-hidden sticky top-0 left-0`}
     >
       <div className="h-12 flex items-center justify-between px-1 lg:px-4 border-b border-[#f2f8ff]">
         <div className="flex items-center gap-2 min-w-0">
@@ -74,81 +121,88 @@ export default function Sidebar({
         <button
           onClick={onToggleCollapsed}
           className="p-1.5 rounded-md text-gray-500 hover:bg-[#43adc4] hover:text-white transition-colors"
-          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
         >
-          {collapsed ? '›' : '‹'}
+          {collapsed ? "›" : "‹"}
         </button>
       </div>
 
       <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-0.5">
-        {navItems.filter((item) => item.id !== 'useradmin' || currentUserRole === 'director' || currentUserRole === 'dev').map((item) => {
-          const isRouteItem = !!item.href;
-          const isActive = isRouteItem
-            ? pathname === item.href
-            : activePanel === item.id;
+        {navItems
+          .filter(
+            (item) =>
+              item.id !== "useradmin" ||
+              currentUserRole === "director" ||
+              currentUserRole === "dev",
+          )
+          .map((item) => {
+            const isRouteItem = !!item.href;
+            const isActive = isRouteItem
+              ? pathname === item.href
+              : activePanel === item.id;
 
-          if (item.external) {
-            return (
-              <a
-                key={item.id}
-                href={item.href!}
-                target="_blank"
-                rel="noopener noreferrer"
-                className={itemClass(false)}
-              >
-                <span className="flex-shrink-0">{item.icon}</span>
-                <span className="text-xs font-medium hidden lg:block truncate">
-                  {item.label}
-                </span>
-                <div className="absolute left-full ml-2 px-2 py-1 bg-gray-800 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 lg:hidden">
-                  {item.label}
-                </div>
-              </a>
-            );
-          }
+            if (item.external) {
+              return (
+                <a
+                  key={item.id}
+                  href={item.href!}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={itemClass(false)}
+                >
+                  <span className="flex-shrink-0">{item.icon}</span>
+                  <span className="text-xs font-medium hidden lg:block truncate">
+                    {item.label}
+                  </span>
+                  <div className="absolute left-full ml-2 px-2 py-1 bg-gray-800 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 lg:hidden">
+                    {item.label}
+                  </div>
+                </a>
+              );
+            }
 
-          if (isRouteItem) {
+            if (isRouteItem) {
+              return (
+                <Link
+                  key={item.id}
+                  href={item.href!}
+                  className={itemClass(isActive)}
+                >
+                  <span className="flex-shrink-0">{item.icon}</span>
+                  <span className="text-xs font-medium hidden lg:block truncate">
+                    {item.label}
+                  </span>
+                  <div className="absolute left-full ml-2 px-2 py-1 bg-gray-800 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 lg:hidden">
+                    {item.label}
+                  </div>
+                </Link>
+              );
+            }
+
             return (
-              <Link
+              <button
                 key={item.id}
-                href={item.href!}
+                onClick={() => onChangePanel(item.id)}
                 className={itemClass(isActive)}
               >
                 <span className="flex-shrink-0">{item.icon}</span>
                 <span className="text-xs font-medium hidden lg:block truncate">
                   {item.label}
                 </span>
+                {item.id === "emails" && emailUnread > 0 && (
+                  <span
+                    className="ml-auto bg-red-500 text-white rounded-full text-xs px-1.5 py-0.5 hidden lg:flex items-center justify-center min-w-5 leading-none"
+                    style={{ fontSize: "10px" }}
+                  >
+                    {emailUnread}
+                  </span>
+                )}
                 <div className="absolute left-full ml-2 px-2 py-1 bg-gray-800 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 lg:hidden">
                   {item.label}
                 </div>
-              </Link>
+              </button>
             );
-          }
-
-          return (
-            <button
-              key={item.id}
-              onClick={() => onChangePanel(item.id)}
-              className={itemClass(isActive)}
-            >
-              <span className="flex-shrink-0">{item.icon}</span>
-              <span className="text-xs font-medium hidden lg:block truncate">
-                {item.label}
-              </span>
-              {item.id === 'emails' && emailUnread > 0 && (
-                <span
-                  className="ml-auto bg-red-500 text-white rounded-full text-xs px-1.5 py-0.5 hidden lg:flex items-center justify-center min-w-5 leading-none"
-                  style={{ fontSize: '10px' }}
-                >
-                  {emailUnread}
-                </span>
-              )}
-              <div className="absolute left-full ml-2 px-2 py-1 bg-gray-800 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 lg:hidden">
-                {item.label}
-              </div>
-            </button>
-          );
-        })}
+          })}
       </nav>
     </div>
   );
