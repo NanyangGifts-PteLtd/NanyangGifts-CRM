@@ -200,6 +200,23 @@ const FORMULA_RESULT_FIELDS = new Set([
   "paymentAmount",
   "difference",
 ]);
+// Payment mode presents these stored costs in the selected currency, so they
+// are results rather than editable source inputs in that table.
+const PAYMENT_FORMULA_RESULT_FIELDS = new Set([
+  ...FORMULA_RESULT_FIELDS,
+  "manpower",
+  "ls",
+  "difference",
+]);
+const PAYMENT_QUANTITY_HEADER_FIELDS = new Set([
+  "quantityProduced",
+  "qtyFree",
+  "sample",
+  "qtyTotal",
+  "qtyWeKeep",
+  "qtyFor",
+  "totalToPay",
+]);
 const PAYMENT_STATUS_SYSTEM_KEYS = new Set([
   "payment_status_paid",
   "payment_status_underpaid",
@@ -3140,7 +3157,7 @@ export function SubitemsTable({
                       setDragOverColumnKey(null);
                       setDragOverColumnEdge(null);
                     }}
-                    className={`group overflow-visible relative border-r border-[#D0D4E4] text-center text-[12.6px] font-semibold whitespace-nowrap text-gray-500 ${isDragging ? "opacity-60" : ""} ${isDragTarget ? (draggedColumnKey ? "cursor-grabbing" : "cursor-grab") : ""}`}
+                    className={`group overflow-visible relative border-r border-[#D0D4E4] text-center text-[12.6px] font-semibold whitespace-nowrap text-gray-500 ${tableMode === "payment" && PAYMENT_QUANTITY_HEADER_FIELDS.has(col.key) ? "bg-slate-200" : ""} ${isDragging ? "opacity-60" : ""} ${isDragTarget ? (draggedColumnKey ? "cursor-grabbing" : "cursor-grab") : ""}`}
                   >
                     <div className="flex items-center justify-center gap-1 overflow-hidden px-2">
                       <span className="truncate">{col.label}</span>
@@ -3474,7 +3491,14 @@ export function SubitemsTable({
                         col.key === "name"
                           ? "overflow-visible relative z-20"
                           : "overflow-hidden"
-                      } ${FORMULA_RESULT_FIELDS.has(col.key) ? "bg-amber-50" : ""}`}
+                      } ${
+                        (tableMode === "payment"
+                          ? PAYMENT_FORMULA_RESULT_FIELDS
+                          : FORMULA_RESULT_FIELDS
+                        ).has(col.key)
+                          ? "bg-amber-50"
+                          : ""
+                      }`}
 
                       style={{ minWidth: col.minWidth }}
                     >
