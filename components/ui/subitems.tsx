@@ -18,7 +18,6 @@ import {
 import {
   Calendar,
   CreditCard,
-  FileText,
   Package,
   Plus,
   Trash2,
@@ -1749,7 +1748,7 @@ export function SubitemsTable({
       }}
       className={`flex h-[30px] items-center gap-1 ${canEditSubitem(sub.id) ? "cursor-grab active:cursor-grabbing" : ""}`}
     >
-      <FileText size={11} className="text-gray-400 shrink-0" />
+      <span aria-hidden="true" className="w-2 shrink-0" />
       <EditableCell
         value={sub.name}
         onChange={(v) => onUpdateSubitem(sub.id, { name: v })}
