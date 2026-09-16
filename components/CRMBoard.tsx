@@ -10,6 +10,7 @@ import React, {
 import { createPortal } from "react-dom";
 import {
   ChevronDown,
+  ChevronRight,
   Plus,
   Trash2,
   Filter,
@@ -8523,7 +8524,7 @@ export function CRMBoard({
                 /^closed leads\s*-\s*/i.test(group.name),
               )
             : groupedClients
-          ).map(({ group, clients: groupClients }) => (
+          ).map(({ group, clients: groupClients }, groupIndex) => (
             <React.Fragment key={group.id}>
               {groupDragOverId === group.id && groupDragOverEdge === "top" && (
                 <div className="pointer-events-none h-1 w-full bg-[#0f8da8] shadow-[0_0_5px_rgba(15,141,168,0.6)]" />
@@ -8582,8 +8583,12 @@ export function CRMBoard({
                   event.preventDefault();
                   setOpenGroupMenu(group.id);
                 }}
-                className={`group relative flex min-h-[60px] cursor-grab items-center gap-3 border border-slate-300 border-l-[5px] bg-white px-3 py-2 text-sm shadow-[0_1px_0_rgba(15,23,42,0.03)] active:cursor-grabbing ${groupDragOverId === group.id || dragOverGroupId === group.id ? "ring-2 ring-inset ring-[#0f8da8]/50 bg-sky-50" : ""}`}
-                style={{ borderLeftColor: groupAccentColor(group) }}
+                className={`group relative flex items-start gap-2 bg-white text-sm active:cursor-grabbing ${groupIndex > 0 ? "mt-4" : ""} ${collapsedGroups[group.id] ? "min-h-[60px] cursor-grab border border-slate-300 border-l-[5px] pb-2 pl-4 pr-3 pt-[5px] shadow-[0_1px_0_rgba(15,23,42,0.03)]" : "min-h-[34px] cursor-grab border-0 pb-[5px] pl-[21px] pr-3 pt-[5px]"} ${groupDragOverId === group.id || dragOverGroupId === group.id ? "ring-2 ring-inset ring-[#0f8da8]/50 bg-sky-50" : ""}`}
+                style={
+                  collapsedGroups[group.id]
+                    ? { borderLeftColor: groupAccentColor(group) }
+                    : undefined
+                }
               >
                 <button
                   type="button"
@@ -8595,7 +8600,7 @@ export function CRMBoard({
                     );
                   }}
                   onMouseDown={(event) => event.stopPropagation()}
-                  className="absolute -left-9 top-1/2 z-30 -translate-y-1/2 rounded bg-white/90 p-1 text-gray-400 opacity-0 shadow-sm transition-opacity hover:text-gray-700 group-hover:opacity-100"
+                  className="absolute -left-9 top-1/2 z-30 -translate-y-1/2 rounded bg-white/90 p-1 text-gray-400 opacity-0 shadow-sm transition-opacity hover:bg-slate-100 hover:text-gray-700 group-hover:opacity-100"
                   title={`Group actions for ${group.name}`}
                 >
                   <MoreHorizontal size={14} />
@@ -8631,19 +8636,35 @@ export function CRMBoard({
                 )}
                 <button
                   onClick={() => toggleGroup(group.id)}
-                  className="text-base"
+                  className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center"
                   style={{ color: groupAccentColor(group) }}
                 >
-                  {collapsedGroups[group.id] ? "▷" : "▼"}
+                  {collapsedGroups[group.id] ? (
+                    <ChevronRight size={18} strokeWidth={2.25} />
+                  ) : (
+                    <ChevronDown size={18} strokeWidth={2.25} />
+                  )}
                 </button>
-                <div>
+                <div
+                  className={
+                    collapsedGroups[group.id]
+                      ? ""
+                      : "flex min-w-0 items-center gap-2"
+                  }
+                >
                   <div
-                    className="crm-group-name text-lg leading-6"
+                    className="crm-group-name shrink-0 text-lg leading-6"
                     style={{ color: groupAccentColor(group) }}
                   >
                     {group.name}
                   </div>
-                  <div className="text-[13px] font-normal text-slate-500">
+                  <div
+                    className={`text-[13px] font-normal text-slate-500 ${
+                      collapsedGroups[group.id]
+                        ? ""
+                        : "opacity-0 transition-opacity group-hover:opacity-100"
+                    }`}
+                  >
                     {groupClients.length}{" "}
                     {groupClients.length === 1 ? "Client" : "Clients"} /{" "}
                     {trackingView
@@ -8679,6 +8700,11 @@ export function CRMBoard({
                     className="relative flex text-[12.6px] items-center justify-center min-w-0 flex-shrink-0 border border-[#D0D4E4] overflow-visible bg-white"
                     style={{ minWidth: totalMinWidth, width: totalMinWidth }}
                   >
+                    <div
+                      aria-hidden="true"
+                      className="pointer-events-none absolute inset-y-0 left-0 z-50 w-[5px]"
+                      style={{ backgroundColor: groupAccentColor(group) }}
+                    />
                     {activeClientHeaderCols.map((col) => {
                       const fixedKeys = new Set([
                         "selectCheckbox",
