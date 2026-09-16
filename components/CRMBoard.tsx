@@ -22,6 +22,7 @@ import {
   Copy,
   MoveRight,
   Search,
+  UserRound,
   Columns3,
   ListRestart,
   ArrowDownUp,
@@ -369,6 +370,8 @@ export function CRMBoard({
   const [filterPayment, setFilterPayment] = useState("All");
   const [filterPaymentStatus, setFilterPaymentStatus] = useState("All");
   const [filterPeople, setFilterPeople] = useState("All");
+  const [showPeopleFilter, setShowPeopleFilter] = useState(false);
+  const [peopleFilterSearch, setPeopleFilterSearch] = useState("");
   const [filterImportance, setFilterImportance] = useState("All");
   const [filterReplyStatus, setFilterReplyStatus] = useState("All");
   const [filterChannel, setFilterChannel] = useState("All");
@@ -478,6 +481,7 @@ export function CRMBoard({
   }, [searchTarget, setClients, setExpandedIds]);
 
   const filterRef = useRef<HTMLDivElement>(null);
+  const peopleFilterRef = useRef<HTMLDivElement>(null);
   const [ocfClient, setOcfClient] = useState<Client | null>(null);
   const [isOcfChooserOpen, setIsOcfChooserOpen] = useState(false);
   const [isOcfModalOpen, setIsOcfModalOpen] = useState(false);
@@ -740,6 +744,8 @@ export function CRMBoard({
   const peopleProfilesById = Object.fromEntries(
     profiles.map((profile) => [profile.id, profile]),
   );
+  const selectedPeopleProfile =
+    filterPeople === "All" ? null : peopleProfilesById[filterPeople];
   const statusColors = Object.fromEntries(
     clientStatusEntries.map((e) => [e.value, e.color]),
   );
@@ -2081,6 +2087,21 @@ export function CRMBoard({
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [showFilter]);
+
+  useEffect(() => {
+    if (!showPeopleFilter) return;
+    const handler = (event: MouseEvent) => {
+      if (
+        peopleFilterRef.current &&
+        !peopleFilterRef.current.contains(event.target as Node)
+      ) {
+        setShowPeopleFilter(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showPeopleFilter]);
 
   useEffect(() => {
     if (
@@ -7041,21 +7062,6 @@ export function CRMBoard({
         </AlertDialogContent>
       </AlertDialog>
       <div className="flex items-center gap-2 px-2 py-1 border-b border-gray-200 bg-white flex-shrink-0">
-        <button
-          onClick={() => void addClient()}
-          className="flex items-center gap-1 px-2 py-1 bg-[#43adc4] hover:bg-[#0f8da8] text-white rounded-md text-[10px] font-medium transition-colors transition transform active:scale-95 duration-150"
-        >
-          <Plus size={12} /> Add Client
-        </button>
-        <button
-          onClick={() => setShowAddGroupModal(true)}
-          disabled={
-            !["director", "admin", "dev"].includes(currentUserRole ?? "")
-          }
-          className="flex items-center gap-1 px-2 py-1 bg-[#43adc4] hover:bg-[#0f8da8] text-white rounded-md text-[10px] font-medium transition-colors transition transform active:scale-95 duration-150 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          <Plus size={12} /> Add Group
-        </button>
         <AddGroupModal
           open={showAddGroupModal}
           onClose={() => setShowAddGroupModal(false)}
@@ -7063,30 +7069,131 @@ export function CRMBoard({
         />
 
         <button
-          onClick={toggleCollapseAllGroups}
-          disabled={groups.length === 0}
-          title="Ctrl + G"
-          className="flex items-center gap-1 px-2 py-1 bg-[#43adc4] hover:bg-[#0f8da8] text-white rounded-md text-[10px] font-medium transition-colors transition transform active:scale-95 duration-150 disabled:cursor-not-allowed disabled:opacity-50"
+          type="button"
+          onClick={() => setTrackingView((enabled) => !enabled)}
+          className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors ${trackingView ? "bg-[#0f8da8] text-white" : "text-slate-700 hover:bg-slate-100"}`}
         >
-          {allGroupsCollapsed ? (
-            <ChevronsDown size={12} />
-          ) : (
-            <ChevronsUp size={12} />
-          )}
-          {allGroupsCollapsed ? "Expand All Groups" : "Collapse All Groups"}
+          Tracking View
         </button>
 
-        <button
-          onClick={toggleExpandAll}
-          title="Ctrl + I"
-          className="flex items-center gap-1 px-2 py-1 bg-[#43adc4] hover:bg-[#0f8da8] text-white rounded-md text-[10px] font-medium transition-colors transition transform active:scale-95 duration-150"
-        >
-          {allExpanded ? <ChevronsUp size={12} /> : <ChevronsDown size={12} />}
-          {allExpanded ? "Collapse All Clients" : "Expand All Clients"}
-        </button>
+        <div ref={peopleFilterRef} className="relative">
+          <button
+            type="button"
+            title="Filter board by person"
+            onClick={() => {
+              setShowPeopleFilter((open) => !open);
+              setShowFilter(false);
+              setShowSortMenu(false);
+              setShowHideColumns(false);
+              setShowBoardMoreMenu(false);
+            }}
+            className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors ${showPeopleFilter || selectedPeopleProfile ? "bg-[#dff5f7] text-slate-700" : "text-slate-700 hover:bg-slate-100"}`}
+          >
+            {selectedPeopleProfile ? (
+              <span
+                className="flex h-5 w-5 items-center justify-center rounded-full text-[9px] font-bold text-white"
+                style={{ background: gradientForId(selectedPeopleProfile.id) }}
+              >
+                {(
+                  selectedPeopleProfile.full_name ||
+                  selectedPeopleProfile.email ||
+                  "U"
+                )
+                  .trim()
+                  .split(/\s+/)
+                  .filter(Boolean)
+                  .slice(0, 2)
+                  .map((part) => part[0])
+                  .join("")
+                  .toUpperCase()}
+              </span>
+            ) : null}
+            {!selectedPeopleProfile && (
+              <UserRound size={17} className="text-slate-600" />
+            )}
+            Person
+            {selectedPeopleProfile && (
+              <span
+                role="button"
+                tabIndex={0}
+                aria-label="Clear person filter"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setFilterPeople("All");
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    setFilterPeople("All");
+                  }
+                }}
+                className="ml-0.5 text-xs leading-none hover:text-slate-950"
+              >
+                ×
+              </span>
+            )}
+          </button>
+          {showPeopleFilter && (
+            <div className="absolute left-0 top-full z-50 mt-1 w-[min(430px,calc(100vw-1rem))] rounded-xl border border-slate-200 bg-white p-4 shadow-xl">
+              <div className="mb-3 text-sm font-medium text-slate-700">
+                Filter this board by person
+              </div>
+              <div className="relative mb-4">
+                <Search
+                  size={16}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                />
+                <input
+                  autoFocus
+                  value={peopleFilterSearch}
+                  onChange={(event) =>
+                    setPeopleFilterSearch(event.target.value)
+                  }
+                  placeholder="Search"
+                  className="h-8 w-full rounded border border-sky-400 py-1 pl-9 pr-3 text-sm outline-none"
+                />
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {peopleOptions
+                  .filter(({ label }) =>
+                    label
+                      .toLowerCase()
+                      .includes(peopleFilterSearch.toLowerCase()),
+                  )
+                  .map(({ value, label }) => {
+                    const initials = label
+                      .trim()
+                      .split(/\s+/)
+                      .filter(Boolean)
+                      .slice(0, 2)
+                      .map((part) => part[0])
+                      .join("")
+                      .toUpperCase();
+                    const selected = filterPeople === value;
+                    return (
+                      <button
+                        key={value}
+                        type="button"
+                        title={label}
+                        onClick={() => {
+                          setFilterPeople(value);
+                          setShowPeopleFilter(false);
+                          setPeopleFilterSearch("");
+                        }}
+                        className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold text-white ring-offset-2 transition hover:scale-105 ${selected ? "ring-2 ring-sky-400" : ""}`}
+                        style={{ background: gradientForId(value) }}
+                      >
+                        {initials || "U"}
+                      </button>
+                    );
+                  })}
+              </div>
+            </div>
+          )}
+        </div>
 
         <div ref={filterRef} className="relative">
-          <div className="inline-flex overflow-hidden rounded-md text-[10px] font-medium text-white shadow-sm">
+          <div className="inline-flex overflow-hidden rounded-md text-sm font-medium text-slate-700">
             <button
               onClick={() => {
                 setFocusedFilterColumn(null);
@@ -7094,12 +7201,12 @@ export function CRMBoard({
                 setShowFilter(!showFilter || filterMode !== "quick");
                 setShowSortMenu(false);
               }}
-              className="flex items-center gap-1 bg-[#43adc4] px-2 py-1 transition-colors hover:bg-[#0f8da8] active:scale-95"
+              className={`flex items-center gap-1.5 rounded-l-md px-2.5 py-1.5 transition-colors hover:bg-slate-100 ${showFilter ? "bg-slate-100" : ""}`}
             >
               <Filter size={12} />
               Filter
               {activeFilterCount > 0 && (
-                <span className="rounded-full bg-white/25 px-1.5">
+                <span className="rounded-full bg-slate-200 px-1.5 text-xs">
                   {activeFilterCount}
                 </span>
               )}
@@ -7112,7 +7219,7 @@ export function CRMBoard({
                 setShowFilter(true);
                 setShowSortMenu(false);
               }}
-              className="border-l border-white/35 bg-[#43adc4] px-1.5 transition-colors hover:bg-[#0f8da8] active:scale-95"
+              className="rounded-r-md px-1.5 transition-colors hover:bg-slate-100"
               title="Open advanced filters"
               aria-label="Open advanced filters"
             >
@@ -7341,7 +7448,7 @@ export function CRMBoard({
               setShowHideColumns(false);
               setShowBoardMoreMenu(false);
             }}
-            className={`flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium text-white transition active:scale-95 ${showSortMenu || activeBoardSort.category !== DEFAULT_BOARD_SORT.category || activeBoardSort.column !== DEFAULT_BOARD_SORT.column || activeBoardSort.direction !== DEFAULT_BOARD_SORT.direction ? "bg-[#0f8da8]" : "bg-[#43adc4] hover:bg-[#0f8da8]"}`}
+            className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100 ${showSortMenu || activeBoardSort.category !== DEFAULT_BOARD_SORT.category || activeBoardSort.column !== DEFAULT_BOARD_SORT.column || activeBoardSort.direction !== DEFAULT_BOARD_SORT.direction ? "bg-slate-100" : ""}`}
           >
             <ArrowDownUp size={12} /> Sort <ChevronDown size={11} />
           </button>
@@ -7435,11 +7542,11 @@ export function CRMBoard({
               setShowSortMenu(false);
               setShowBoardMoreMenu(false);
             }}
-            className="flex items-center gap-1 px-2 py-1 bg-[#43adc4] hover:bg-[#0f8da8] text-white rounded-md text-[10px] font-medium transition-colors transform active:scale-95 duration-150"
+            className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100"
           >
             <EyeOff size={12} /> Hide
             {hiddenColumnKeys.size > 0 && (
-              <span className="rounded-full bg-white/25 px-1.5">
+              <span className="rounded-full bg-slate-200 px-1.5 text-xs">
                 {hiddenColumnKeys.size}
               </span>
             )}
@@ -7496,91 +7603,117 @@ export function CRMBoard({
           )}
         </div>
 
-        <button
-          type="button"
-          onClick={() => setTrackingView((enabled) => !enabled)}
-          className={`flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium text-white transition active:scale-95 ${trackingView ? "bg-[#0f8da8]" : "bg-[#43adc4] hover:bg-[#0f8da8]"}`}
-        >
-          Tracking View
-        </button>
-
-        <div className="flex items-center gap-1">
-          {clientStatuses.map((st) => {
-            const count = clients.filter((c) => c.status === st).length;
-            if (!count) return null;
-            return (
-              <button
-                key={st}
-                onClick={() =>
-                  setFilterStatus(filterStatus === st ? "All" : st)
-                }
-                className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium whitespace-nowrap flex-shrink-0 transition-opacity transform active:scale-95 duration-150"
-                style={{
-                  background: statusColors[st],
-                  color: "#ffffff",
-                  opacity:
-                    filterStatus !== "All" && filterStatus !== st ? 0.35 : 1,
-                }}
-              >
-                {st}{" "}
-                <span className="bg-white/30 rounded-full px-1">{count}</span>
-              </button>
-            );
-          })}
-          <div className="relative ml-1" data-crm-menu-trigger>
-            <button
-              type="button"
-              onClick={() => {
-                setShowBoardMoreMenu((open) => !open);
-                setShowSortMenu(false);
-                setShowHideColumns(false);
-              }}
-              className="flex h-6 w-6 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 hover:text-gray-800"
-              title="More board actions"
+        <div className="relative ml-1" data-crm-menu-trigger>
+          <button
+            type="button"
+            onClick={() => {
+              setShowBoardMoreMenu((open) => !open);
+              setShowSortMenu(false);
+              setShowHideColumns(false);
+            }}
+            className="flex h-6 w-6 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 hover:text-gray-800"
+            title="More board actions"
+          >
+            <MoreHorizontal size={16} />
+          </button>
+          {showBoardMoreMenu && (
+            <div
+              data-crm-menu
+              className="absolute right-0 top-full z-50 mt-1 w-64 rounded-lg border border-gray-200 bg-white p-1.5 shadow-xl"
             >
-              <MoreHorizontal size={16} />
-            </button>
-            {showBoardMoreMenu && (
-              <div
-                data-crm-menu
-                className="absolute right-0 top-full z-50 mt-1 w-64 rounded-lg border border-gray-200 bg-white p-1.5 shadow-xl"
+              <button
+                type="button"
+                onClick={() => {
+                  setShowBoardMoreMenu(false);
+                  void addClient();
+                }}
+                className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs font-medium text-gray-700 hover:bg-gray-50"
               >
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowBoardMoreMenu(false);
-                    setShowRestoreConfirm(true);
-                  }}
-                  className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs font-medium text-gray-700 hover:bg-gray-50"
-                >
-                  <Columns3 size={15} className="text-[#43adc4]" /> Restore
-                  default column widths
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowBoardMoreMenu(false);
-                    setShowRestoreArrangementConfirm(true);
-                  }}
-                  className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs font-medium text-gray-700 hover:bg-gray-50"
-                >
-                  <ListRestart size={15} className="text-[#43adc4]" /> Restore
-                  default column arrangement
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowBoardMoreMenu(false);
-                    setShowRestoreSortingConfirm(true);
-                  }}
-                  className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs font-medium text-gray-700 hover:bg-gray-50"
-                >
-                  <RotateCcw size={15} className="text-[#43adc4]" /> Restore
-                  default column sorting
-                </button>
-              </div>
-            )}
-          </div>
+                <Plus size={15} className="text-[#43adc4]" /> Add client
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowBoardMoreMenu(false);
+                  setShowAddGroupModal(true);
+                }}
+                disabled={
+                  !["director", "admin", "dev"].includes(currentUserRole ?? "")
+                }
+                className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Plus size={15} className="text-[#43adc4]" /> Add group
+              </button>
+              <div className="my-1 border-t border-gray-100" />
+              <button
+                type="button"
+                onClick={() => {
+                  setShowBoardMoreMenu(false);
+                  toggleCollapseAllGroups();
+                }}
+                disabled={groups.length === 0}
+                className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {allGroupsCollapsed ? (
+                  <ChevronsDown size={15} className="text-[#43adc4]" />
+                ) : (
+                  <ChevronsUp size={15} className="text-[#43adc4]" />
+                )}
+                {allGroupsCollapsed
+                  ? "Expand all groups"
+                  : "Collapse all groups"}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowBoardMoreMenu(false);
+                  toggleExpandAll();
+                }}
+                className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs font-medium text-gray-700 hover:bg-gray-50"
+              >
+                {allExpanded ? (
+                  <ChevronsUp size={15} className="text-[#43adc4]" />
+                ) : (
+                  <ChevronsDown size={15} className="text-[#43adc4]" />
+                )}
+                {allExpanded ? "Collapse all clients" : "Expand all clients"}
+              </button>
+              <div className="my-1 border-t border-gray-100" />
+              <button
+                type="button"
+                onClick={() => {
+                  setShowBoardMoreMenu(false);
+                  setShowRestoreConfirm(true);
+                }}
+                className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs font-medium text-gray-700 hover:bg-gray-50"
+              >
+                <Columns3 size={15} className="text-[#43adc4]" /> Restore
+                default column widths
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowBoardMoreMenu(false);
+                  setShowRestoreArrangementConfirm(true);
+                }}
+                className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs font-medium text-gray-700 hover:bg-gray-50"
+              >
+                <ListRestart size={15} className="text-[#43adc4]" /> Restore
+                default column arrangement
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowBoardMoreMenu(false);
+                  setShowRestoreSortingConfirm(true);
+                }}
+                className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs font-medium text-gray-700 hover:bg-gray-50"
+              >
+                <RotateCcw size={15} className="text-[#43adc4]" /> Restore
+                default column sorting
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="flex-1" />
@@ -8524,7 +8657,7 @@ export function CRMBoard({
                 /^closed leads\s*-\s*/i.test(group.name),
               )
             : groupedClients
-          ).map(({ group, clients: groupClients }, groupIndex) => (
+          ).map(({ group, clients: groupClients }) => (
             <React.Fragment key={group.id}>
               {groupDragOverId === group.id && groupDragOverEdge === "top" && (
                 <div className="pointer-events-none h-1 w-full bg-[#0f8da8] shadow-[0_0_5px_rgba(15,141,168,0.6)]" />
@@ -8583,7 +8716,7 @@ export function CRMBoard({
                   event.preventDefault();
                   setOpenGroupMenu(group.id);
                 }}
-                className={`group relative flex items-start gap-2 bg-white text-sm active:cursor-grabbing ${groupIndex > 0 ? "mt-4" : ""} ${collapsedGroups[group.id] ? "min-h-[60px] cursor-grab border border-slate-300 border-l-[5px] pb-2 pl-4 pr-3 pt-[5px] shadow-[0_1px_0_rgba(15,23,42,0.03)]" : "min-h-[34px] cursor-grab border-0 pb-[5px] pl-[21px] pr-3 pt-[5px]"} ${groupDragOverId === group.id || dragOverGroupId === group.id ? "ring-2 ring-inset ring-[#0f8da8]/50 bg-sky-50" : ""}`}
+                className={`group relative mt-4 flex items-start gap-2 bg-white text-sm active:cursor-grabbing ${collapsedGroups[group.id] ? "min-h-[60px] cursor-grab border border-slate-300 border-l-[5px] pb-2 pl-4 pr-3 pt-[5px] shadow-[0_1px_0_rgba(15,23,42,0.03)]" : "min-h-[34px] cursor-grab border-0 pb-[5px] pl-[21px] pr-3 pt-[5px]"} ${groupDragOverId === group.id || dragOverGroupId === group.id ? "ring-2 ring-inset ring-[#0f8da8]/50 bg-sky-50" : ""}`}
                 style={
                   collapsedGroups[group.id]
                     ? { borderLeftColor: groupAccentColor(group) }
@@ -9371,6 +9504,18 @@ export function CRMBoard({
               )}
             </React.Fragment>
           ))}
+          <div className="flex px-2 py-6">
+            <button
+              type="button"
+              onClick={() => setShowAddGroupModal(true)}
+              disabled={
+                !["director", "admin", "dev"].includes(currentUserRole ?? "")
+              }
+              className="inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-600 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <Plus size={18} /> Add new group
+            </button>
+          </div>
         </div>
       </div>
       <GenerateOcfModal
