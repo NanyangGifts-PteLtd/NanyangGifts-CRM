@@ -21,6 +21,7 @@ export function SubitemActionsMenu({
   onDelete,
   hideMoveAndDuplicate = false,
   alwaysVisible = false,
+  triggerOffsetPx = -28,
 }: {
   subitemId: string;
   subitemName: string;
@@ -35,6 +36,7 @@ export function SubitemActionsMenu({
   onDelete: () => void;
   hideMoveAndDuplicate?: boolean;
   alwaysVisible?: boolean;
+  triggerOffsetPx?: number;
 }) {
   const [open, setOpen] = useState(false);
   const [moving, setMoving] = useState(false);
@@ -81,7 +83,8 @@ export function SubitemActionsMenu({
       ref={menuRef}
       data-subitem-action-menu
       data-detail-action-menu={!onOpen || undefined}
-      className={`${onOpen ? "absolute -left-7 top-1/2 -translate-y-1/2" : "relative"} ${open ? "z-[200]" : "z-30"}`}
+      className={`${onOpen ? "absolute top-1/2 -translate-y-1/2" : "relative"} ${open ? "z-[200]" : "z-30"}`}
+      style={onOpen ? { left: triggerOffsetPx } : undefined}
     >
       <button
         type="button"

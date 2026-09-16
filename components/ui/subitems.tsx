@@ -2664,8 +2664,7 @@ export function SubitemsTable({
 
   return (
     <div
-      className="relative mb-2 ml-7 max-w-[calc(100vw-80px)] overflow-visible"
-      style={{ borderLeft: `7px solid ${clientColor}` }}
+      className="relative mb-5 ml-7 mt-4 max-w-[calc(100vw-80px)] overflow-visible"
       data-client-id={clientId}
     >
       {permissionNotice && (
@@ -3041,7 +3040,10 @@ export function SubitemsTable({
 
           <thead>
             <tr className="border-b border-t border-r border-[#D0D4E4] bg-gray-50">
-              <th className="w-11 px-2 py-1 text-center">
+              <th
+                className="h-[33.1px] w-11 align-middle border-l-[6px] px-2 py-1 text-center"
+                style={{ borderLeftColor: clientColor }}
+              >
                 <input
                   type="checkbox"
                   checked={
@@ -3061,7 +3063,7 @@ export function SubitemsTable({
                       ? "Clients and subitems cannot be selected together"
                       : "Select all subitems in this client"
                   }
-                  className={`h-3 w-3 rounded accent-[#7BCBD5] ${clientIsSelected ? "cursor-not-allowed opacity-40" : "cursor-pointer"}`}
+                  className={`h-3 w-3 rounded border border-slate-400 bg-white accent-[#7BCBD5] ${clientIsSelected ? "cursor-not-allowed opacity-40" : "cursor-pointer"}`}
                 />
               </th>
 
@@ -3446,7 +3448,15 @@ export function SubitemsTable({
                   }}
                   className={`relative group border-b border-r border-[#D0D4E4] hover:bg-blue-50/30 ${subitemDropMarker?.subitemId === sub.id ? (subitemDropMarker.edge === "top" ? "shadow-[inset_0_3px_0_#0f8da8]" : "shadow-[inset_0_-3px_0_#0f8da8]") : ""}`}
                 >
-                  <td className="group relative overflow-visible border-r border-[#D0D4E4] px-2 py-1 text-center">
+                  <td
+                    className="group relative h-[33.1px] overflow-visible align-middle border-r border-l-[6px] border-[#D0D4E4] px-2 py-1 text-center"
+                    style={{ borderLeftColor: clientColor }}
+                  >
+                    <div
+                      aria-hidden="true"
+                      className="pointer-events-none absolute -left-8 top-1/2 z-[61] h-px w-8 -translate-y-1/2"
+                      style={{ backgroundColor: clientColor }}
+                    />
                     <SubitemActionsMenu
                       subitemId={sub.id}
                       subitemName={sub.name}
@@ -3459,6 +3469,7 @@ export function SubitemsTable({
                       }
                       onDelete={() => onDeleteSubitem(sub.id)}
                       hideMoveAndDuplicate={isAdditionalCostSubitem(sub)}
+                      triggerOffsetPx={-70}
                     />
                     <input
                       data-selection-control
@@ -3480,7 +3491,7 @@ export function SubitemsTable({
                             ? "Clients and subitems cannot be selected together"
                             : "Select subitem"
                       }
-                      className={`h-3 w-3 rounded accent-[#7BCBD5] ${clientIsSelected || isAdditionalCostSubitem(sub) ? "cursor-not-allowed opacity-40" : "cursor-pointer"}`}
+                      className={`h-3 w-3 rounded border border-slate-400 bg-white accent-[#7BCBD5] ${clientIsSelected || isAdditionalCostSubitem(sub) ? "cursor-not-allowed opacity-40" : "cursor-pointer"}`}
                     />
                   </td>
 
@@ -3998,7 +4009,10 @@ export function SubitemsTable({
             )}
 
             <tr className="group/add-subitem bg-white hover:bg-[#f5fbff] focus-within:bg-[#f5fbff]">
-              <td className="border-r border-[#D0D4E4]" style={{ width: 34 }} />
+              <td
+                className="relative border-r border-l-[6px] border-[#D0D4E4]"
+                style={{ width: 34, borderLeftColor: `${clientColor}80` }}
+              />
               <td
                 colSpan={Math.max(totalColSpan - 1, 1)}
                 className="px-2 py-1.5"

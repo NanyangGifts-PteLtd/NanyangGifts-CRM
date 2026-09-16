@@ -217,6 +217,7 @@ export type ClientRowProps = {
   isBlacklisted: boolean;
   isSelected: boolean;
   isExpanded: boolean;
+  groupAccentColor: string;
   onToggleExpand: () => void;
   onToggleSelect: () => void;
   onUpdate: (u: Partial<Client>) => void;
@@ -381,6 +382,7 @@ export function ClientRow({
   isBlacklisted,
   isSelected,
   isExpanded,
+  groupAccentColor,
   onToggleExpand,
   onToggleSelect,
   onUpdate,
@@ -2753,14 +2755,19 @@ export function ClientRow({
           }
         }}
         style={{ width: boardWidth, minWidth: boardWidth }}
-        className="box-border border-b flex text-[15px] items-center flex-shrink-0 border-r border-[#D0D4E4] group transition-colors"
+        className="relative box-border border-b flex text-[15px] items-center flex-shrink-0 border-r border-[#D0D4E4] group transition-colors"
       >
         <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -top-px -bottom-px left-0 z-20 w-[5px]"
+          style={{ backgroundColor: groupAccentColor }}
+        />
+        <div
           data-client-column="selectCheckbox"
-          className="group/client-actions box-border relative flex min-w-0 self-stretch items-center px-3 flex-shrink-0 overflow-visible"
+          className="group/client-actions box-border relative flex min-w-0 self-stretch items-center justify-center flex-shrink-0 overflow-visible"
           style={{
-            minWidth: colWidth.selectCheckbox,
-            width: colWidth.selectCheckbox,
+            minWidth: 60,
+            width: 60,
             order: columnOrderMap.selectCheckbox ?? 0,
           }}
         >
@@ -2779,7 +2786,7 @@ export function ClientRow({
               onToggleClientSubitemsLock?.(client.id, !subitemsLocked)
             }
             align="left"
-            className="absolute -left-7 top-1/2 z-30 -translate-y-1/2"
+            className="absolute -left-12 top-1/2 z-30 -translate-y-1/2"
             triggerClassName="opacity-0 transition-opacity group-hover/client-actions:opacity-100"
           />
           {subitemsLocked && (
@@ -2800,13 +2807,13 @@ export function ClientRow({
                 ? "Clients and subitems cannot be selected together"
                 : "Select client"
             }
-            className={`w-3 h-3 rounded accent-[#7BCBD5] transition transform active:scale-150 duration-200 ${selectedSubitemIds.length > 0 ? "cursor-not-allowed opacity-40" : "cursor-pointer"}`}
+            className={`absolute left-1/2 top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded border border-slate-400 bg-white accent-[#7BCBD5] transition duration-200 active:scale-150 ${selectedSubitemIds.length > 0 ? "cursor-not-allowed opacity-40" : "cursor-pointer"}`}
           />
           {!trackingMode && (
             <button
               data-selection-control
               onClick={onToggleExpand}
-              className="text-gray-400 hover:text-gray-700 transition-colors"
+              className="absolute left-[calc(50%+14px)] top-1/2 -translate-y-1/2 text-gray-400 transition-colors hover:text-gray-700"
             >
               {isExpanded ? (
                 <ChevronDown
@@ -2838,7 +2845,7 @@ export function ClientRow({
                   ? "Select a QuickBooks quote first"
                   : "Show linked invoices"
               }
-              className="ml-1 text-gray-400 transition-colors hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-40"
+              className="absolute left-[calc(50%+14px)] top-1/2 -translate-y-1/2 text-gray-400 transition-colors hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {isTrackingInvoicesExpanded ? (
                 <ChevronDown
@@ -4227,7 +4234,7 @@ export function ClientRow({
           clientId={client.id}
           subitemsLocked={subitemsLocked}
           subitems={client.subitems}
-          clientColor={"#7BCBD5"}
+          clientColor={groupAccentColor}
           onUpdateSubitem={onUpdateSubitem}
           onAddSubitem={onAddSubitem}
           onDeleteSubitem={onDeleteSubitem}
