@@ -434,6 +434,12 @@ export function CRMBoard({
   const [collapsedGroups, setCollapsedGroups] = useState<
     Record<string, boolean>
   >({});
+  const [pendingGroupContentIds, setPendingGroupContentIds] = useState<
+    Set<string>
+  >(new Set());
+  const [loadedGroupContentIds, setLoadedGroupContentIds] = useState<
+    Set<string>
+  >(new Set());
   const [openGroupMenu, setOpenGroupMenu] = useState<string | null>(null);
 
   useEffect(() => {
@@ -775,6 +781,17 @@ export function CRMBoard({
   );
 
   const [groups, setGroups] = useState<CRMGroup[]>([]);
+  useEffect(() => {
+    const openGroupIds = groups
+      .filter((group) => !collapsedGroups[group.id])
+      .map((group) => group.id);
+    if (!openGroupIds.length) return;
+    setLoadedGroupContentIds((current) => {
+      const next = new Set(current);
+      openGroupIds.forEach((id) => next.add(id));
+      return next;
+    });
+  }, [collapsedGroups, groups]);
   const allGroupsCollapsed =
     groups.length > 0 && groups.every((group) => collapsedGroups[group.id]);
   const [groupToDelete, setGroupToDelete] = useState<CRMGroup | null>(null);
@@ -4612,18 +4629,61 @@ export function CRMBoard({
   }, [allExpanded, clients, setExpandedIds]);
 
   const toggleCollapseAllGroups = useCallback(() => {
-    setCollapsedGroups((previous) => {
-      const shouldExpand =
-        groups.length > 0 && groups.every((group) => previous[group.id]);
-      return Object.fromEntries(
-        groups.map((group) => [group.id, !shouldExpand]),
-      );
-    });
-  }, [groups]);
+    const shouldExpand =
+      groups.length > 0 && groups.every((group) => collapsedGroups[group.id]);
+    const groupIds = groups
+      .map((group) => group.id)
+      .filter((id) => !loadedGroupContentIds.has(id));
+    if (shouldExpand) {
+      setPendingGroupContentIds(new Set(groupIds));
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          setLoadedGroupContentIds((current) => {
+            const next = new Set(current);
+            groupIds.forEach((id) => next.add(id));
+            return next;
+          });
+          setPendingGroupContentIds((current) => {
+            const next = new Set(current);
+            groupIds.forEach((id) => next.delete(id));
+            return next;
+          });
+        });
+      });
+    } else {
+      setPendingGroupContentIds(new Set());
+    }
+    setCollapsedGroups(
+      Object.fromEntries(groups.map((group) => [group.id, !shouldExpand])),
+    );
+  }, [collapsedGroups, groups, loadedGroupContentIds]);
 
-  const toggleGroup = useCallback((id: string) => {
-    setCollapsedGroups((prev) => ({ ...prev, [id]: !prev[id] }));
-  }, []);
+  const toggleGroup = useCallback(
+    (id: string) => {
+      const isExpanding = Boolean(collapsedGroups[id]);
+      if (isExpanding && !loadedGroupContentIds.has(id)) {
+        setPendingGroupContentIds((current) => new Set(current).add(id));
+        window.requestAnimationFrame(() => {
+          window.requestAnimationFrame(() => {
+            setLoadedGroupContentIds((current) => new Set(current).add(id));
+            setPendingGroupContentIds((current) => {
+              const next = new Set(current);
+              next.delete(id);
+              return next;
+            });
+          });
+        });
+      } else {
+        setPendingGroupContentIds((current) => {
+          const next = new Set(current);
+          next.delete(id);
+          return next;
+        });
+      }
+      setCollapsedGroups((previous) => ({ ...previous, [id]: !previous[id] }));
+    },
+    [collapsedGroups, loadedGroupContentIds],
+  );
 
   useEffect(() => {
     const handleKeyboardShortcut = (event: KeyboardEvent) => {
@@ -8817,595 +8877,681 @@ export function CRMBoard({
                 </div>
               </div>
 
-              {!collapsedGroups[group.id] && (
-                <div
-                  data-client-group={group.id}
-                  onDragOver={(event) => handleDragOver(event, group.id, "top")}
-                  onDrop={() => handleDrop(group.id)}
-                  onDragLeave={() => {
-                    setDragOverGroupId(null);
-                    setDragOverGroupEdge(null);
-                  }}
-                  className="relative"
-                  style={{ minWidth: totalMinWidth }}
-                >
+              {!collapsedGroups[group.id] &&
+                pendingGroupContentIds.has(group.id) && (
                   <div
-                    className="relative flex text-[12.6px] items-center justify-center min-w-0 flex-shrink-0 border border-[#D0D4E4] overflow-visible bg-white"
-                    style={{ minWidth: totalMinWidth, width: totalMinWidth }}
+                    className="relative overflow-hidden bg-white"
+                    style={{
+                      minWidth: totalMinWidth,
+                      minHeight: 28 + groupClients.length * 33.1,
+                    }}
+                    aria-busy="true"
+                    aria-label={`Loading ${group.name} clients`}
+                  >
+                    <div
+                      className="relative flex h-7 items-center bg-white text-[12.6px]"
+                      style={{ minWidth: totalMinWidth, width: totalMinWidth }}
+                    >
+                      <div
+                        aria-hidden="true"
+                        className="pointer-events-none absolute inset-y-0 left-0 z-10 w-[5px]"
+                        style={{ backgroundColor: groupAccentColor(group) }}
+                      />
+                      {activeClientHeaderCols.map((col) => (
+                        <div
+                          key={col.key}
+                          className="flex h-7 shrink-0 items-center justify-center border border-[#D0D4E4] border-l-0 px-1 text-center"
+                          style={{ minWidth: col.width, width: col.width }}
+                        >
+                          {col.key === "selectCheckbox" ? (
+                            <input
+                              type="checkbox"
+                              disabled
+                              aria-label="Select clients in this group"
+                              className="h-3 w-3 rounded"
+                            />
+                          ) : (
+                            <span className="truncate">{col.label}</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    {groupClients.map((client) => (
+                      <div
+                        key={client.id}
+                        aria-hidden="true"
+                        className="flex h-[33.1px] border-b border-[#D0D4E4]"
+                        style={{
+                          minWidth: totalMinWidth,
+                          width: totalMinWidth,
+                        }}
+                      >
+                        {activeClientHeaderCols.map((col) => (
+                          <div
+                            key={col.key}
+                            className="h-full shrink-0 border-r border-[#D0D4E4]"
+                            style={{ minWidth: col.width, width: col.width }}
+                          />
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+              {(!collapsedGroups[group.id] ||
+                loadedGroupContentIds.has(group.id)) &&
+                !pendingGroupContentIds.has(group.id) && (
+                  <div
+                    data-client-group={group.id}
+                    onDragOver={(event) =>
+                      handleDragOver(event, group.id, "top")
+                    }
+                    onDrop={() => handleDrop(group.id)}
+                    onDragLeave={() => {
+                      setDragOverGroupId(null);
+                      setDragOverGroupEdge(null);
+                    }}
+                    className={`relative ${collapsedGroups[group.id] ? "hidden" : ""}`}
+                    style={{ minWidth: totalMinWidth }}
+                  >
+                    <div
+                      className="relative flex text-[12.6px] items-center justify-center min-w-0 flex-shrink-0 border border-[#D0D4E4] overflow-visible bg-white"
+                      style={{ minWidth: totalMinWidth, width: totalMinWidth }}
+                    >
+                      <div
+                        aria-hidden="true"
+                        className="pointer-events-none absolute inset-y-0 left-0 z-50 w-[5px]"
+                        style={{ backgroundColor: groupAccentColor(group) }}
+                      />
+                      {activeClientHeaderCols.map((col) => {
+                        const fixedKeys = new Set([
+                          "selectCheckbox",
+                          "client",
+                          "addClientCol",
+                          "empty",
+                        ]);
+                        const isDraggable = !fixedKeys.has(col.key);
+                        const isDragging = draggedHeaderKey === col.key;
+                        const isDragOver = dragOverHeaderKey === col.key;
+
+                        return (
+                          <div
+                            key={col.key}
+                            draggable={isDraggable}
+                            onContextMenu={(event) => {
+                              if (
+                                [
+                                  "selectCheckbox",
+                                  "addClientCol",
+                                  "empty",
+                                ].includes(col.key)
+                              )
+                                return;
+                              event.preventDefault();
+                              setOpenColumnMenu(
+                                `client:${group.id}:${col.key}`,
+                              );
+                            }}
+                            onDragStart={(event) => {
+                              if (!isDraggable) return;
+                              event.dataTransfer?.setData(
+                                "text/plain",
+                                col.key,
+                              );
+                              event.dataTransfer?.setData(
+                                "application/x-crm-client-column",
+                                col.key,
+                              );
+                              event.dataTransfer!.effectAllowed = "move";
+                              setDragPreview(event, event.currentTarget, true);
+                              setDraggedHeaderKey(col.key);
+                            }}
+                            onDragOver={(event) => {
+                              if (
+                                !isDraggable ||
+                                !Array.from(event.dataTransfer.types).includes(
+                                  "application/x-crm-client-column",
+                                )
+                              )
+                                return;
+                              event.preventDefault();
+                              setDragOverHeaderKey(col.key);
+                              const bounds =
+                                event.currentTarget.getBoundingClientRect();
+                              setDragOverHeaderEdge(
+                                event.clientX < bounds.left + bounds.width / 2
+                                  ? "left"
+                                  : "right",
+                              );
+                            }}
+                            onDragLeave={() => {
+                              if (dragOverHeaderKey === col.key) {
+                                setDragOverHeaderKey(null);
+                                setDragOverHeaderEdge(null);
+                              }
+                            }}
+                            onDrop={(event) => {
+                              if (
+                                !Array.from(event.dataTransfer.types).includes(
+                                  "application/x-crm-client-column",
+                                )
+                              )
+                                return;
+                              event.preventDefault();
+                              const draggedKey =
+                                event.dataTransfer?.getData("text/plain") ||
+                                draggedHeaderKey;
+                              if (
+                                draggedKey &&
+                                draggedKey !== col.key &&
+                                isDraggable
+                              )
+                                reorderClientColumns(draggedKey, col.key);
+                              setDraggedHeaderKey(null);
+                              setDragOverHeaderKey(null);
+                              setDragOverHeaderEdge(null);
+                            }}
+                            className={`group relative flex h-7 justify-center items-center overflow-visible border-[#D0D4E4] border-r flex-shrink-0 ${isDragging ? "opacity-60" : ""} ${isDraggable ? (draggedHeaderKey ? "cursor-grabbing" : "cursor-grab") : ""} ${isDragOver && isDraggable ? "bg-[#dff9ff]" : ""}`}
+                            data-highlight-aggregate={
+                              col.key === "totalPrice" ||
+                              col.key === "totalMarkup"
+                                ? "true"
+                                : undefined
+                            }
+                            style={{
+                              minWidth: col.width,
+                              width: col.width,
+                              boxShadow:
+                                col.key === "totalPrice" ||
+                                col.key === "totalMarkup"
+                                  ? "inset 0 -2px 0 #ef4444"
+                                  : undefined,
+                            }}
+                          >
+                            {col.key === "selectCheckbox" ? (
+                              <input
+                                type="checkbox"
+                                checked={
+                                  groupClients.length > 0 &&
+                                  groupClients.every((client) =>
+                                    selectedIds.has(client.id),
+                                  )
+                                }
+                                onChange={() =>
+                                  toggleSelectGroup(
+                                    groupClients.map((client) => client.id),
+                                  )
+                                }
+                                disabled={
+                                  selectedSubitemIds.length > 0 ||
+                                  groupClients.length === 0
+                                }
+                                title={
+                                  selectedSubitemIds.length > 0
+                                    ? "Clients and subitems cannot be selected together"
+                                    : "Select clients in this group"
+                                }
+                                className={`w-3 h-3 rounded accent-[#7BCBD5] ${selectedSubitemIds.length > 0 || groupClients.length === 0 ? "cursor-not-allowed opacity-40" : "cursor-pointer"}`}
+                              />
+                            ) : col.key === "addClientCol" ||
+                              (trackingView && col.key === "empty") ? (
+                              canCreateCustomColumns ? (
+                                <button
+                                  type="button"
+                                  onClick={() => setShowAddColModal("client")}
+                                  className="mx-auto flex h-5 w-5 items-center justify-center rounded-md text-teal-500 hover:bg-teal-100 hover:text-black"
+                                  title="Add client column"
+                                >
+                                  <Plus size={14} />
+                                </button>
+                              ) : null
+                            ) : (
+                              <div className="flex items-center gap-1 min-w-0 max-w-full px-1">
+                                <span className="truncate">{col.label}</span>
+                                {col.isCustom && col.customColumnId ? (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      handleDeleteCustomColumn(
+                                        col.customColumnId!,
+                                      )
+                                    }
+                                    className="text-gray-400 hover:text-red-500 flex-shrink-0"
+                                    title="Delete column"
+                                  >
+                                    <X size={12} />
+                                  </button>
+                                ) : null}
+                              </div>
+                            )}
+                            {![
+                              "selectCheckbox",
+                              "addClientCol",
+                              "empty",
+                            ].includes(col.key) && (
+                              <button
+                                type="button"
+                                data-crm-menu-trigger
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  setOpenColumnMenu(
+                                    openColumnMenu ===
+                                      `client:${group.id}:${col.key}`
+                                      ? null
+                                      : `client:${group.id}:${col.key}`,
+                                  );
+                                }}
+                                onMouseDown={(event) => event.stopPropagation()}
+                                className="absolute right-0.5 top-0.5 z-30 hidden rounded bg-white/90 p-0.5 text-gray-400 shadow-sm hover:text-gray-700 group-hover:block"
+                                title={`Column options for ${col.label}`}
+                              >
+                                <MoreHorizontal size={12} />
+                              </button>
+                            )}
+                            {openColumnMenu ===
+                              `client:${group.id}:${col.key}` && (
+                              <div
+                                data-crm-menu
+                                className="absolute left-0 top-full z-[80] mt-1 w-40 rounded-md border border-gray-200 bg-white p-1 text-left shadow-xl"
+                              >
+                                {[
+                                  "people",
+                                  "status",
+                                  "replyStatus",
+                                  "importance",
+                                  "channel",
+                                ].includes(col.key) && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      openColumnFilter(
+                                        col.key === "people"
+                                          ? "people"
+                                          : `client:${col.key}`,
+                                      );
+                                      setOpenColumnMenu(null);
+                                    }}
+                                    className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-[10px] font-medium text-gray-700 hover:bg-gray-50"
+                                  >
+                                    <Filter size={12} /> Filter
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setBoardSort({
+                                      category: "client",
+                                      column: col.key,
+                                      direction: "asc",
+                                    });
+                                    setOpenColumnMenu(null);
+                                  }}
+                                  className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-[10px] font-medium text-gray-700 hover:bg-gray-50"
+                                >
+                                  <ArrowUp size={12} /> Sort ascending
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setBoardSort({
+                                      category: "client",
+                                      column: col.key,
+                                      direction: "desc",
+                                    });
+                                    setOpenColumnMenu(null);
+                                  }}
+                                  className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-[10px] font-medium text-gray-700 hover:bg-gray-50"
+                                >
+                                  <ArrowDown size={12} /> Sort descending
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    hideColumn(`client:${col.key}`)
+                                  }
+                                  className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-[10px] font-medium text-gray-700 hover:bg-gray-50"
+                                >
+                                  <EyeOff size={12} /> Hide column
+                                </button>
+                              </div>
+                            )}
+                            {isDragOver && isDraggable && (
+                              <div
+                                className={`pointer-events-none absolute inset-y-0 z-20 w-1 bg-[#0f8da8] shadow-[0_0_5px_rgba(15,141,168,0.6)] ${dragOverHeaderEdge === "left" ? "left-0" : "right-0"}`}
+                              />
+                            )}
+                            <div
+                              onMouseDown={(event) => {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                startResize(col.key, event.clientX);
+                              }}
+                              onDragStart={(event) => {
+                                event.preventDefault();
+                                event.stopPropagation();
+                              }}
+                              className="absolute right-0 top-0 z-40 h-full w-2 cursor-col-resize border-l border-transparent hover:border-[#7BCBD5]"
+                            />
+                          </div>
+                        );
+                      })}
+                      {dragOverGroupId === group.id &&
+                        dragOverGroupEdge === "top" && (
+                          <div className="pointer-events-none absolute inset-x-0 -bottom-0.5 z-30 h-1 bg-[#0f8da8] shadow-[0_0_5px_rgba(15,141,168,0.6)]" />
+                        )}
+                    </div>
+                  </div>
+                )}
+
+              {(!collapsedGroups[group.id] ||
+                loadedGroupContentIds.has(group.id)) &&
+                !pendingGroupContentIds.has(group.id) && (
+                  <div
+                    data-client-group-drop-zone={group.id}
+                    onDragOver={(event) =>
+                      handleDragOver(event, group.id, "top")
+                    }
+                    onDrop={(event) => {
+                      event.preventDefault();
+                      void handleDrop(group.id);
+                    }}
+                    onDragLeave={(event) => {
+                      if (
+                        event.currentTarget.contains(
+                          event.relatedTarget as Node,
+                        )
+                      )
+                        return;
+                      setDragOverGroupId(null);
+                      setDragOverGroupEdge(null);
+                    }}
+                    className={`relative ${collapsedGroups[group.id] ? "hidden" : ""}`}
+                    style={{ minWidth: totalMinWidth }}
                   >
                     <div
                       aria-hidden="true"
                       className="pointer-events-none absolute inset-y-0 left-0 z-50 w-[5px]"
                       style={{ backgroundColor: groupAccentColor(group) }}
                     />
-                    {activeClientHeaderCols.map((col) => {
-                      const fixedKeys = new Set([
-                        "selectCheckbox",
-                        "client",
-                        "addClientCol",
-                        "empty",
-                      ]);
-                      const isDraggable = !fixedKeys.has(col.key);
-                      const isDragging = draggedHeaderKey === col.key;
-                      const isDragOver = dragOverHeaderKey === col.key;
-
-                      return (
-                        <div
-                          key={col.key}
-                          draggable={isDraggable}
-                          onContextMenu={(event) => {
-                            if (
-                              [
-                                "selectCheckbox",
-                                "addClientCol",
-                                "empty",
-                              ].includes(col.key)
-                            )
-                              return;
-                            event.preventDefault();
-                            setOpenColumnMenu(`client:${group.id}:${col.key}`);
-                          }}
-                          onDragStart={(event) => {
-                            if (!isDraggable) return;
-                            event.dataTransfer?.setData("text/plain", col.key);
-                            event.dataTransfer?.setData(
-                              "application/x-crm-client-column",
-                              col.key,
+                    {groupClients.map((client) => (
+                      <ClientRow
+                        key={client.id}
+                        client={client}
+                        isBlacklisted={
+                          blacklistedPhones.has(
+                            normalizeBlacklistPhone(client.phone ?? ""),
+                          ) &&
+                          Boolean(normalizeBlacklistPhone(client.phone ?? ""))
+                        }
+                        isExpanded={expandedIdSet.has(client.id)}
+                        onToggleExpand={() =>
+                          setExpandedIds((prev) =>
+                            prev.includes(client.id)
+                              ? prev.filter((id) => id !== client.id)
+                              : [...prev, client.id],
+                          )
+                        }
+                        onOpenOcfModal={handleOpenOcfModal}
+                        onOpenDetail={() => setDetailClientId(client.id)}
+                        isSelected={selectedIds.has(client.id)}
+                        onToggleSelect={() => toggleSelect(client.id)}
+                        onUpdate={(updates) => updateClient(client.id, updates)}
+                        onUpdateSubitem={(subitemId, updates) =>
+                          updateSubitem(client.id, subitemId, updates)
+                        }
+                        onAddSubitem={(name) => addSubitem(client.id, name)}
+                        onDeleteSubitem={(subitemId) =>
+                          setPendingDeleteSubitem({
+                            clientId: client.id,
+                            subitemId,
+                          })
+                        }
+                        selectedSubitemIds={selectedSubitemIds}
+                        onToggleSubitemSelection={toggleSubitemSelection}
+                        onToggleAllSubitems={toggleAllSubitems}
+                        onSubitemDragStart={(subitemId, event) =>
+                          handleSubitemDragStart(subitemId, client.id, event)
+                        }
+                        onSubitemDragEnd={handleSubitemDragEnd}
+                        onSubitemRowDragOver={(event, subitemId) =>
+                          handleSubitemRowDragOver(event, client.id, subitemId)
+                        }
+                        onSubitemRowDrop={(event, subitemId) =>
+                          void handleSubitemRowDrop(event, client.id, subitemId)
+                        }
+                        subitemDropMarker={
+                          subitemDropMarker?.clientId === client.id
+                            ? {
+                                subitemId: subitemDropMarker.subitemId,
+                                edge: subitemDropMarker.edge,
+                              }
+                            : null
+                        }
+                        onSubitemDragOver={handleSubitemDragOver}
+                        onSubitemDrop={handleSubitemDrop}
+                        isSubitemDropTarget={
+                          dragOverSubitemClientId === client.id &&
+                          draggedSubitem?.sourceClientId !== client.id
+                        }
+                        onDelete={() => setPendingDeleteClientId(client.id)}
+                        canDelete={canEditClientRecord(client.id)}
+                        profiles={profiles}
+                        clientAssignedIds={clientAssignees[client.id] ?? []}
+                        onChangeClientAssignees={(ids) =>
+                          handleClientAssigneesChange(client.id, ids)
+                        }
+                        clientPmAssignedIds={clientPmAssignees[client.id] ?? []}
+                        onChangeClientPmAssignees={(ids) =>
+                          handleClientPmAssigneesChange(client.id, ids)
+                        }
+                        subitemAssigneeMap={subitemAssignees}
+                        onChangeSubitemAssignees={handleSubitemAssigneesChange}
+                        colWidth={colWidth}
+                        boardWidth={totalMinWidth}
+                        columnOrderMap={activeClientColumnOrderMap}
+                        trackingMode={trackingView}
+                        onDragStart={(event) =>
+                          handleDragStart(client.id, event)
+                        }
+                        onDragEnd={handleDragEnd}
+                        isDragging={draggedClientId === client.id}
+                        replyStatusOptions={replyStatusEntries}
+                        statusOptions={clientStatusEntries}
+                        channelOptions={channelEntries}
+                        importanceOptions={importanceEntries}
+                        progressOptions={progressEntries}
+                        paymentOptions={paymentEntries}
+                        paymentStatusOptions={paymentStatusEntries}
+                        paymentReceivedOptions={paymentReceivedEntries}
+                        overallPaymentStatusOptions={
+                          overallPaymentStatusEntries
+                        }
+                        modeOfPaymentOptions={modeOfPaymentEntries}
+                        shipperOptions={shipperEntries}
+                        localOverseasOptions={localOverseasEntries}
+                        subitemStatusOptions={subitemStatusEntries}
+                        currencyOptions={currencyEntries}
+                        subitemSubprogressOptions={subitemSubprogressEntries}
+                        trackingSummaryOptions={trackingSummaryEntries}
+                        trackingInvoiceCreatedOptions={
+                          trackingInvoiceCreatedEntries
+                        }
+                        trackingMultipleInvoicesOptions={
+                          trackingMultipleInvoicesEntries
+                        }
+                        trackingPaymentStatusOptions={
+                          trackingPaymentStatusEntries
+                        }
+                        trackingPriceInvoiceMatchOptions={
+                          trackingPriceInvoiceMatchEntries
+                        }
+                        onAddTrackingOption={handleAddTrackingOption}
+                        onDeleteTrackingOption={handleDeleteTrackingOption}
+                        onAddSubitemSubprogress={handleAddSubitemSubprogress}
+                        onDeleteSubitemSubprogress={
+                          handleDeleteSubitemSubprogress
+                        }
+                        onAddCurrency={handleAddCurrency}
+                        onDeleteCurrency={handleDeleteCurrency}
+                        onAddSubitemStatus={handleAddSubitemStatus}
+                        onDeleteSubitemStatus={handleDeleteSubitemStatus}
+                        onAddLocalOverseas={handleAddLocalOverseas}
+                        onDeleteLocalOverseas={handleDeleteLocalOverseas}
+                        onAddShipper={handleAddShipper}
+                        onDeleteShipper={handleDeleteShipper}
+                        onAddReplyStatus={handleAddReplyStatus}
+                        onDeleteReplyStatus={handleDeleteReplyStatus}
+                        onAddStatus={handleAddStatus}
+                        onDeleteStatus={handleDeleteStatus}
+                        onAddChannel={handleAddChannel}
+                        onDeleteChannel={handleDeleteChannel}
+                        onAddImportance={handleAddImportance}
+                        onDeleteImportance={handleDeleteImportance}
+                        onAddProgress={handleAddProgress}
+                        onDeleteProgress={handleDeleteProgress}
+                        onAddPayment={handleAddPayment}
+                        onDeletePayment={handleDeletePayment}
+                        onAddPaymentStatus={handleAddPaymentStatus}
+                        onDeletePaymentStatus={handleDeletePaymentStatus}
+                        onAddPaymentReceived={handleAddPaymentReceived}
+                        onDeletePaymentReceived={handleDeletePaymentReceived}
+                        onAddOverallPaymentStatus={
+                          handleAddOverallPaymentStatus
+                        }
+                        onDeleteOverallPaymentStatus={
+                          handleDeleteOverallPaymentStatus
+                        }
+                        onAddModeOfPayment={handleAddModeOfPayment}
+                        onDeleteModeOfPayment={handleDeleteModeOfPayment}
+                        clientCustomCols={visibleClientCustomCols}
+                        updateClientCustomField={updateClientCustomField}
+                        subitemCustomCols={subitemCustomCols}
+                        onDeleteCustomColumn={handleDeleteCustomColumn}
+                        onRequestAddSubitemCol={() => {
+                          if (canCreateCustomColumns)
+                            setShowAddColModal("subitem");
+                          else
+                            toast.error(
+                              "Only directors and developers can create custom columns.",
                             );
-                            event.dataTransfer!.effectAllowed = "move";
-                            setDragPreview(event, event.currentTarget, true);
-                            setDraggedHeaderKey(col.key);
-                          }}
-                          onDragOver={(event) => {
-                            if (
-                              !isDraggable ||
-                              !Array.from(event.dataTransfer.types).includes(
-                                "application/x-crm-client-column",
-                              )
-                            )
-                              return;
-                            event.preventDefault();
-                            setDragOverHeaderKey(col.key);
-                            const bounds =
-                              event.currentTarget.getBoundingClientRect();
-                            setDragOverHeaderEdge(
-                              event.clientX < bounds.left + bounds.width / 2
-                                ? "left"
-                                : "right",
-                            );
-                          }}
-                          onDragLeave={() => {
-                            if (dragOverHeaderKey === col.key) {
-                              setDragOverHeaderKey(null);
-                              setDragOverHeaderEdge(null);
+                        }}
+                        onUpdateOptionColor={updateOptionColor}
+                        onRenameOption={renameOptionValue}
+                        onReorderOptions={reorderOptionValues}
+                        onFilterColumn={openColumnFilter}
+                        onSortColumn={(category, column, direction) =>
+                          setBoardSort({ category, column, direction })
+                        }
+                        hiddenColumnKeys={hiddenColumnKeys}
+                        onHideColumn={hideColumn}
+                        onSetColumnVisibility={setColumnVisibility}
+                        currentUserRole={currentUserRole ?? undefined}
+                        currentUserId={currentUserId}
+                        onUndoActivity={undoActivity}
+                        groupNamesById={Object.fromEntries(
+                          groups.map((group) => [group.id, group.name]),
+                        )}
+                        groups={groups}
+                        onDuplicateClient={() =>
+                          requestClientDuplication(client.id)
+                        }
+                        onMoveClient={(groupId) =>
+                          moveClientAction(client.id, groupId)
+                        }
+                        onToggleClientSubitemsLock={(clientId, locked) =>
+                          setPendingSubitemLock({
+                            clientIds: [clientId],
+                            locked,
+                          })
+                        }
+                        subitemMoveTargetGroups={groupedClients.map(
+                          ({ group, clients: groupClients }) => ({
+                            name: group.name,
+                            clients: groupClients.map((target) => ({
+                              id: target.id,
+                              name: target.name,
+                              displayId: target.displayId,
+                            })),
+                          }),
+                        )}
+                        onDuplicateSubitemAction={duplicateSubitemAction}
+                        onMoveSubitemAction={moveSubitemAction}
+                        onOpenSubitemDetail={(subitemId) =>
+                          setDetailSubitem({ clientId: client.id, subitemId })
+                        }
+                        onPaymentRowsChanged={(subitemId, paymentRows) =>
+                          setClients((current) =>
+                            current.map((owner) =>
+                              owner.id !== client.id
+                                ? owner
+                                : {
+                                    ...owner,
+                                    subitems: owner.subitems.map((subitem) =>
+                                      subitem.id === subitemId
+                                        ? { ...subitem, paymentRows }
+                                        : subitem,
+                                    ),
+                                  },
+                            ),
+                          )
+                        }
+                      />
+                    ))}
+                    <div className="group/add-client min-h-[34px] border border-[#D0D4E4] border-t-0 bg-white px-2 py-1 hover:bg-[#f5fbff] focus-within:bg-[#f5fbff]">
+                      <div
+                        className="relative max-w-sm"
+                        style={{
+                          marginLeft:
+                            activeClientHeaderCols.find(
+                              (column) => column.key === "selectCheckbox",
+                            )?.width ?? 34,
+                        }}
+                      >
+                        <Plus
+                          size={13}
+                          className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500"
+                        />
+                        <input
+                          value={
+                            addingClientGroupId === group.id
+                              ? newClientName
+                              : ""
+                          }
+                          disabled={isAddingClient}
+                          onFocus={() => {
+                            if (addingClientGroupId !== group.id) {
+                              setAddingClientGroupId(group.id);
+                              setNewClientName("");
                             }
                           }}
-                          onDrop={(event) => {
-                            if (
-                              !Array.from(event.dataTransfer.types).includes(
-                                "application/x-crm-client-column",
-                              )
-                            )
-                              return;
-                            event.preventDefault();
-                            const draggedKey =
-                              event.dataTransfer?.getData("text/plain") ||
-                              draggedHeaderKey;
-                            if (
-                              draggedKey &&
-                              draggedKey !== col.key &&
-                              isDraggable
-                            )
-                              reorderClientColumns(draggedKey, col.key);
-                            setDraggedHeaderKey(null);
-                            setDragOverHeaderKey(null);
-                            setDragOverHeaderEdge(null);
-                          }}
-                          className={`group relative flex h-7 justify-center items-center overflow-visible border-[#D0D4E4] border-r flex-shrink-0 ${isDragging ? "opacity-60" : ""} ${isDraggable ? (draggedHeaderKey ? "cursor-grabbing" : "cursor-grab") : ""} ${isDragOver && isDraggable ? "bg-[#dff9ff]" : ""}`}
-                          data-highlight-aggregate={
-                            col.key === "totalPrice" ||
-                            col.key === "totalMarkup"
-                              ? "true"
-                              : undefined
+                          onChange={(event) =>
+                            setNewClientName(event.target.value)
                           }
-                          style={{
-                            minWidth: col.width,
-                            width: col.width,
-                            boxShadow:
-                              col.key === "totalPrice" ||
-                              col.key === "totalMarkup"
-                                ? "inset 0 -2px 0 #ef4444"
-                                : undefined,
-                          }}
-                        >
-                          {col.key === "selectCheckbox" ? (
-                            <input
-                              type="checkbox"
-                              checked={
-                                groupClients.length > 0 &&
-                                groupClients.every((client) =>
-                                  selectedIds.has(client.id),
-                                )
-                              }
-                              onChange={() =>
-                                toggleSelectGroup(
-                                  groupClients.map((client) => client.id),
-                                )
-                              }
-                              disabled={
-                                selectedSubitemIds.length > 0 ||
-                                groupClients.length === 0
-                              }
-                              title={
-                                selectedSubitemIds.length > 0
-                                  ? "Clients and subitems cannot be selected together"
-                                  : "Select clients in this group"
-                              }
-                              className={`w-3 h-3 rounded accent-[#7BCBD5] ${selectedSubitemIds.length > 0 || groupClients.length === 0 ? "cursor-not-allowed opacity-40" : "cursor-pointer"}`}
-                            />
-                          ) : col.key === "addClientCol" ||
-                            (trackingView && col.key === "empty") ? (
-                            canCreateCustomColumns ? (
-                              <button
-                                type="button"
-                                onClick={() => setShowAddColModal("client")}
-                                className="mx-auto flex h-5 w-5 items-center justify-center rounded-md text-teal-500 hover:bg-teal-100 hover:text-black"
-                                title="Add client column"
-                              >
-                                <Plus size={14} />
-                              </button>
-                            ) : null
-                          ) : (
-                            <div className="flex items-center gap-1 min-w-0 max-w-full px-1">
-                              <span className="truncate">{col.label}</span>
-                              {col.isCustom && col.customColumnId ? (
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    handleDeleteCustomColumn(
-                                      col.customColumnId!,
-                                    )
-                                  }
-                                  className="text-gray-400 hover:text-red-500 flex-shrink-0"
-                                  title="Delete column"
-                                >
-                                  <X size={12} />
-                                </button>
-                              ) : null}
-                            </div>
-                          )}
-                          {![
-                            "selectCheckbox",
-                            "addClientCol",
-                            "empty",
-                          ].includes(col.key) && (
-                            <button
-                              type="button"
-                              data-crm-menu-trigger
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                setOpenColumnMenu(
-                                  openColumnMenu ===
-                                    `client:${group.id}:${col.key}`
-                                    ? null
-                                    : `client:${group.id}:${col.key}`,
-                                );
-                              }}
-                              onMouseDown={(event) => event.stopPropagation()}
-                              className="absolute right-0.5 top-0.5 z-30 hidden rounded bg-white/90 p-0.5 text-gray-400 shadow-sm hover:text-gray-700 group-hover:block"
-                              title={`Column options for ${col.label}`}
-                            >
-                              <MoreHorizontal size={12} />
-                            </button>
-                          )}
-                          {openColumnMenu ===
-                            `client:${group.id}:${col.key}` && (
-                            <div
-                              data-crm-menu
-                              className="absolute left-0 top-full z-[80] mt-1 w-40 rounded-md border border-gray-200 bg-white p-1 text-left shadow-xl"
-                            >
-                              {[
-                                "people",
-                                "status",
-                                "replyStatus",
-                                "importance",
-                                "channel",
-                              ].includes(col.key) && (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    openColumnFilter(
-                                      col.key === "people"
-                                        ? "people"
-                                        : `client:${col.key}`,
-                                    );
-                                    setOpenColumnMenu(null);
-                                  }}
-                                  className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-[10px] font-medium text-gray-700 hover:bg-gray-50"
-                                >
-                                  <Filter size={12} /> Filter
-                                </button>
-                              )}
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setBoardSort({
-                                    category: "client",
-                                    column: col.key,
-                                    direction: "asc",
-                                  });
-                                  setOpenColumnMenu(null);
-                                }}
-                                className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-[10px] font-medium text-gray-700 hover:bg-gray-50"
-                              >
-                                <ArrowUp size={12} /> Sort ascending
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setBoardSort({
-                                    category: "client",
-                                    column: col.key,
-                                    direction: "desc",
-                                  });
-                                  setOpenColumnMenu(null);
-                                }}
-                                className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-[10px] font-medium text-gray-700 hover:bg-gray-50"
-                              >
-                                <ArrowDown size={12} /> Sort descending
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => hideColumn(`client:${col.key}`)}
-                                className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-[10px] font-medium text-gray-700 hover:bg-gray-50"
-                              >
-                                <EyeOff size={12} /> Hide column
-                              </button>
-                            </div>
-                          )}
-                          {isDragOver && isDraggable && (
-                            <div
-                              className={`pointer-events-none absolute inset-y-0 z-20 w-1 bg-[#0f8da8] shadow-[0_0_5px_rgba(15,141,168,0.6)] ${dragOverHeaderEdge === "left" ? "left-0" : "right-0"}`}
-                            />
-                          )}
-                          <div
-                            onMouseDown={(event) => {
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") {
                               event.preventDefault();
-                              event.stopPropagation();
-                              startResize(col.key, event.clientX);
-                            }}
-                            onDragStart={(event) => {
-                              event.preventDefault();
-                              event.stopPropagation();
-                            }}
-                            className="absolute right-0 top-0 z-40 h-full w-2 cursor-col-resize border-l border-transparent hover:border-[#7BCBD5]"
-                          />
-                        </div>
-                      );
-                    })}
-                    {dragOverGroupId === group.id &&
-                      dragOverGroupEdge === "top" && (
-                        <div className="pointer-events-none absolute inset-x-0 -bottom-0.5 z-30 h-1 bg-[#0f8da8] shadow-[0_0_5px_rgba(15,141,168,0.6)]" />
-                      )}
-                  </div>
-                </div>
-              )}
-
-              {!collapsedGroups[group.id] && (
-                <div
-                  data-client-group-drop-zone={group.id}
-                  onDragOver={(event) => handleDragOver(event, group.id, "top")}
-                  onDrop={(event) => {
-                    event.preventDefault();
-                    void handleDrop(group.id);
-                  }}
-                  onDragLeave={(event) => {
-                    if (
-                      event.currentTarget.contains(event.relatedTarget as Node)
-                    )
-                      return;
-                    setDragOverGroupId(null);
-                    setDragOverGroupEdge(null);
-                  }}
-                  className="relative"
-                  style={{ minWidth: totalMinWidth }}
-                >
-                  <div
-                    aria-hidden="true"
-                    className="pointer-events-none absolute inset-y-0 left-0 z-50 w-[5px]"
-                    style={{ backgroundColor: groupAccentColor(group) }}
-                  />
-                  {groupClients.map((client) => (
-                    <ClientRow
-                      key={client.id}
-                      client={client}
-                      isBlacklisted={
-                        blacklistedPhones.has(
-                          normalizeBlacklistPhone(client.phone ?? ""),
-                        ) &&
-                        Boolean(normalizeBlacklistPhone(client.phone ?? ""))
-                      }
-                      isExpanded={expandedIdSet.has(client.id)}
-                      onToggleExpand={() =>
-                        setExpandedIds((prev) =>
-                          prev.includes(client.id)
-                            ? prev.filter((id) => id !== client.id)
-                            : [...prev, client.id],
-                        )
-                      }
-                      onOpenOcfModal={handleOpenOcfModal}
-                      onOpenDetail={() => setDetailClientId(client.id)}
-                      isSelected={selectedIds.has(client.id)}
-                      onToggleSelect={() => toggleSelect(client.id)}
-                      onUpdate={(updates) => updateClient(client.id, updates)}
-                      onUpdateSubitem={(subitemId, updates) =>
-                        updateSubitem(client.id, subitemId, updates)
-                      }
-                      onAddSubitem={(name) => addSubitem(client.id, name)}
-                      onDeleteSubitem={(subitemId) =>
-                        setPendingDeleteSubitem({
-                          clientId: client.id,
-                          subitemId,
-                        })
-                      }
-                      selectedSubitemIds={selectedSubitemIds}
-                      onToggleSubitemSelection={toggleSubitemSelection}
-                      onToggleAllSubitems={toggleAllSubitems}
-                      onSubitemDragStart={(subitemId, event) =>
-                        handleSubitemDragStart(subitemId, client.id, event)
-                      }
-                      onSubitemDragEnd={handleSubitemDragEnd}
-                      onSubitemRowDragOver={(event, subitemId) =>
-                        handleSubitemRowDragOver(event, client.id, subitemId)
-                      }
-                      onSubitemRowDrop={(event, subitemId) =>
-                        void handleSubitemRowDrop(event, client.id, subitemId)
-                      }
-                      subitemDropMarker={
-                        subitemDropMarker?.clientId === client.id
-                          ? {
-                              subitemId: subitemDropMarker.subitemId,
-                              edge: subitemDropMarker.edge,
+                              void submitNewClient();
                             }
-                          : null
-                      }
-                      onSubitemDragOver={handleSubitemDragOver}
-                      onSubitemDrop={handleSubitemDrop}
-                      isSubitemDropTarget={
-                        dragOverSubitemClientId === client.id &&
-                        draggedSubitem?.sourceClientId !== client.id
-                      }
-                      onDelete={() => setPendingDeleteClientId(client.id)}
-                      canDelete={canEditClientRecord(client.id)}
-                      profiles={profiles}
-                      clientAssignedIds={clientAssignees[client.id] ?? []}
-                      onChangeClientAssignees={(ids) =>
-                        handleClientAssigneesChange(client.id, ids)
-                      }
-                      clientPmAssignedIds={clientPmAssignees[client.id] ?? []}
-                      onChangeClientPmAssignees={(ids) =>
-                        handleClientPmAssigneesChange(client.id, ids)
-                      }
-                      subitemAssigneeMap={subitemAssignees}
-                      onChangeSubitemAssignees={handleSubitemAssigneesChange}
-                      colWidth={colWidth}
-                      boardWidth={totalMinWidth}
-                      columnOrderMap={activeClientColumnOrderMap}
-                      trackingMode={trackingView}
-                      onDragStart={(event) => handleDragStart(client.id, event)}
-                      onDragEnd={handleDragEnd}
-                      isDragging={draggedClientId === client.id}
-                      replyStatusOptions={replyStatusEntries}
-                      statusOptions={clientStatusEntries}
-                      channelOptions={channelEntries}
-                      importanceOptions={importanceEntries}
-                      progressOptions={progressEntries}
-                      paymentOptions={paymentEntries}
-                      paymentStatusOptions={paymentStatusEntries}
-                      paymentReceivedOptions={paymentReceivedEntries}
-                      overallPaymentStatusOptions={overallPaymentStatusEntries}
-                      modeOfPaymentOptions={modeOfPaymentEntries}
-                      shipperOptions={shipperEntries}
-                      localOverseasOptions={localOverseasEntries}
-                      subitemStatusOptions={subitemStatusEntries}
-                      currencyOptions={currencyEntries}
-                      subitemSubprogressOptions={subitemSubprogressEntries}
-                      trackingSummaryOptions={trackingSummaryEntries}
-                      trackingInvoiceCreatedOptions={
-                        trackingInvoiceCreatedEntries
-                      }
-                      trackingMultipleInvoicesOptions={
-                        trackingMultipleInvoicesEntries
-                      }
-                      trackingPaymentStatusOptions={
-                        trackingPaymentStatusEntries
-                      }
-                      trackingPriceInvoiceMatchOptions={
-                        trackingPriceInvoiceMatchEntries
-                      }
-                      onAddTrackingOption={handleAddTrackingOption}
-                      onDeleteTrackingOption={handleDeleteTrackingOption}
-                      onAddSubitemSubprogress={handleAddSubitemSubprogress}
-                      onDeleteSubitemSubprogress={
-                        handleDeleteSubitemSubprogress
-                      }
-                      onAddCurrency={handleAddCurrency}
-                      onDeleteCurrency={handleDeleteCurrency}
-                      onAddSubitemStatus={handleAddSubitemStatus}
-                      onDeleteSubitemStatus={handleDeleteSubitemStatus}
-                      onAddLocalOverseas={handleAddLocalOverseas}
-                      onDeleteLocalOverseas={handleDeleteLocalOverseas}
-                      onAddShipper={handleAddShipper}
-                      onDeleteShipper={handleDeleteShipper}
-                      onAddReplyStatus={handleAddReplyStatus}
-                      onDeleteReplyStatus={handleDeleteReplyStatus}
-                      onAddStatus={handleAddStatus}
-                      onDeleteStatus={handleDeleteStatus}
-                      onAddChannel={handleAddChannel}
-                      onDeleteChannel={handleDeleteChannel}
-                      onAddImportance={handleAddImportance}
-                      onDeleteImportance={handleDeleteImportance}
-                      onAddProgress={handleAddProgress}
-                      onDeleteProgress={handleDeleteProgress}
-                      onAddPayment={handleAddPayment}
-                      onDeletePayment={handleDeletePayment}
-                      onAddPaymentStatus={handleAddPaymentStatus}
-                      onDeletePaymentStatus={handleDeletePaymentStatus}
-                      onAddPaymentReceived={handleAddPaymentReceived}
-                      onDeletePaymentReceived={handleDeletePaymentReceived}
-                      onAddOverallPaymentStatus={handleAddOverallPaymentStatus}
-                      onDeleteOverallPaymentStatus={
-                        handleDeleteOverallPaymentStatus
-                      }
-                      onAddModeOfPayment={handleAddModeOfPayment}
-                      onDeleteModeOfPayment={handleDeleteModeOfPayment}
-                      clientCustomCols={visibleClientCustomCols}
-                      updateClientCustomField={updateClientCustomField}
-                      subitemCustomCols={subitemCustomCols}
-                      onDeleteCustomColumn={handleDeleteCustomColumn}
-                      onRequestAddSubitemCol={() => {
-                        if (canCreateCustomColumns)
-                          setShowAddColModal("subitem");
-                        else
-                          toast.error(
-                            "Only directors and developers can create custom columns.",
-                          );
-                      }}
-                      onUpdateOptionColor={updateOptionColor}
-                      onRenameOption={renameOptionValue}
-                      onReorderOptions={reorderOptionValues}
-                      onFilterColumn={openColumnFilter}
-                      onSortColumn={(category, column, direction) =>
-                        setBoardSort({ category, column, direction })
-                      }
-                      hiddenColumnKeys={hiddenColumnKeys}
-                      onHideColumn={hideColumn}
-                      onSetColumnVisibility={setColumnVisibility}
-                      currentUserRole={currentUserRole ?? undefined}
-                      currentUserId={currentUserId}
-                      onUndoActivity={undoActivity}
-                      groupNamesById={Object.fromEntries(
-                        groups.map((group) => [group.id, group.name]),
-                      )}
-                      groups={groups}
-                      onDuplicateClient={() =>
-                        requestClientDuplication(client.id)
-                      }
-                      onMoveClient={(groupId) =>
-                        moveClientAction(client.id, groupId)
-                      }
-                      onToggleClientSubitemsLock={(clientId, locked) =>
-                        setPendingSubitemLock({
-                          clientIds: [clientId],
-                          locked,
-                        })
-                      }
-                      subitemMoveTargetGroups={groupedClients.map(
-                        ({ group, clients: groupClients }) => ({
-                          name: group.name,
-                          clients: groupClients.map((target) => ({
-                            id: target.id,
-                            name: target.name,
-                            displayId: target.displayId,
-                          })),
-                        }),
-                      )}
-                      onDuplicateSubitemAction={duplicateSubitemAction}
-                      onMoveSubitemAction={moveSubitemAction}
-                      onOpenSubitemDetail={(subitemId) =>
-                        setDetailSubitem({ clientId: client.id, subitemId })
-                      }
-                      onPaymentRowsChanged={(subitemId, paymentRows) =>
-                        setClients((current) =>
-                          current.map((owner) =>
-                            owner.id !== client.id
-                              ? owner
-                              : {
-                                  ...owner,
-                                  subitems: owner.subitems.map((subitem) =>
-                                    subitem.id === subitemId
-                                      ? { ...subitem, paymentRows }
-                                      : subitem,
-                                  ),
-                                },
-                          ),
-                        )
-                      }
-                    />
-                  ))}
-                  <div className="group/add-client min-h-[34px] border border-[#D0D4E4] border-t-0 bg-white px-2 py-1 hover:bg-[#f5fbff] focus-within:bg-[#f5fbff]">
-                    <div
-                      className="relative max-w-sm"
-                      style={{
-                        marginLeft:
-                          activeClientHeaderCols.find(
-                            (column) => column.key === "selectCheckbox",
-                          )?.width ?? 34,
-                      }}
-                    >
-                      <Plus
-                        size={13}
-                        className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500"
-                      />
-                      <input
-                        value={
-                          addingClientGroupId === group.id ? newClientName : ""
-                        }
-                        disabled={isAddingClient}
-                        onFocus={() => {
-                          if (addingClientGroupId !== group.id) {
-                            setAddingClientGroupId(group.id);
-                            setNewClientName("");
+                            if (event.key === "Escape") {
+                              event.preventDefault();
+                              setAddingClientGroupId(null);
+                              setNewClientName("");
+                              event.currentTarget.blur();
+                            }
+                          }}
+                          onBlur={() => void submitNewClient()}
+                          placeholder={
+                            isAddingClient && addingClientGroupId === group.id
+                              ? "Adding client…"
+                              : "Add client"
                           }
-                        }}
-                        onChange={(event) =>
-                          setNewClientName(event.target.value)
-                        }
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter") {
-                            event.preventDefault();
-                            void submitNewClient();
-                          }
-                          if (event.key === "Escape") {
-                            event.preventDefault();
-                            setAddingClientGroupId(null);
-                            setNewClientName("");
-                            event.currentTarget.blur();
-                          }
-                        }}
-                        onBlur={() => void submitNewClient()}
-                        placeholder={
-                          isAddingClient && addingClientGroupId === group.id
-                            ? "Adding client…"
-                            : "Add client"
-                        }
-                        aria-label={`New client name for ${group.name}`}
-                        className="h-7 w-full rounded border border-transparent bg-transparent pl-7 pr-2 text-xs text-gray-700 outline-none transition group-hover/add-client:border-gray-500 group-hover/add-client:bg-white focus:border-[#3799b1] focus:bg-white focus:ring-2 focus:ring-[#7BCBD5]/25 disabled:cursor-not-allowed disabled:opacity-50"
-                      />
+                          aria-label={`New client name for ${group.name}`}
+                          className="h-7 w-full rounded border border-transparent bg-transparent pl-7 pr-2 text-xs text-gray-700 outline-none transition group-hover/add-client:border-gray-500 group-hover/add-client:bg-white focus:border-[#3799b1] focus:bg-white focus:ring-2 focus:ring-[#7BCBD5]/25 disabled:cursor-not-allowed disabled:opacity-50"
+                        />
+                      </div>
                     </div>
                   </div>
-                </div>
-              )}
+                )}
 
               {groupToDelete && (
                 <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/20 backdrop-blur-[2px] px-4">
@@ -9442,36 +9588,38 @@ export function CRMBoard({
                 </div>
               )}
 
-              {!collapsedGroups[group.id] && (
-                <div
-                  onDragOver={(event) =>
-                    handleGroupDragOver(event, group.id, "bottom")
-                  }
-                  onDragEnter={(event) =>
-                    handleGroupDragEnter(event, group.id, "bottom")
-                  }
-                  onDrop={(event) => {
-                    event.preventDefault();
-                    handleGroupDrop(group.id, "bottom");
-                  }}
-                  onDragLeave={() => {
-                    if (
-                      groupDragOverId === group.id &&
-                      groupDragOverEdge === "bottom"
-                    ) {
-                      setGroupDragOverId(null);
-                      setGroupDragOverEdge(null);
+              {(!collapsedGroups[group.id] ||
+                loadedGroupContentIds.has(group.id)) &&
+                !pendingGroupContentIds.has(group.id) && (
+                  <div
+                    onDragOver={(event) =>
+                      handleGroupDragOver(event, group.id, "bottom")
                     }
-                  }}
-                  className="relative h-1"
-                  style={{ minWidth: totalMinWidth }}
-                >
-                  {groupDragOverId === group.id &&
-                    groupDragOverEdge === "bottom" && (
-                      <div className="pointer-events-none absolute inset-x-0 -top-0.5 z-30 h-1 bg-[#0f8da8] shadow-[0_0_5px_rgba(15,141,168,0.6)]" />
-                    )}
-                </div>
-              )}
+                    onDragEnter={(event) =>
+                      handleGroupDragEnter(event, group.id, "bottom")
+                    }
+                    onDrop={(event) => {
+                      event.preventDefault();
+                      handleGroupDrop(group.id, "bottom");
+                    }}
+                    onDragLeave={() => {
+                      if (
+                        groupDragOverId === group.id &&
+                        groupDragOverEdge === "bottom"
+                      ) {
+                        setGroupDragOverId(null);
+                        setGroupDragOverEdge(null);
+                      }
+                    }}
+                    className={`relative h-1 ${collapsedGroups[group.id] ? "hidden" : ""}`}
+                    style={{ minWidth: totalMinWidth }}
+                  >
+                    {groupDragOverId === group.id &&
+                      groupDragOverEdge === "bottom" && (
+                        <div className="pointer-events-none absolute inset-x-0 -top-0.5 z-30 h-1 bg-[#0f8da8] shadow-[0_0_5px_rgba(15,141,168,0.6)]" />
+                      )}
+                  </div>
+                )}
 
               {collapsedGroups[group.id] && (
                 <div
