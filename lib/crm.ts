@@ -269,6 +269,7 @@ export type DeletedBinItem = {
   expiresAt: string;
   subitemCount?: number;
   parentDeleted?: boolean;
+  isPaymentVoucher?: boolean;
 };
 
 type ActivityLogRow = {
@@ -825,7 +826,7 @@ export async function fetchDeletedBinItems(): Promise<DeletedBinItem[]> {
     supabase
       .from("subitems")
       .select(
-        "id, name, client_id, deleted_at, deleted_with_client_id, clients!subitems_client_id_fkey(name, deleted_at)",
+        "id, name, client_id, deleted_at, deleted_with_client_id, custom_fields, clients!subitems_client_id_fkey(name, deleted_at)",
       )
       .not("deleted_at", "is", null)
       .order("deleted_at", { ascending: false }),
@@ -860,6 +861,7 @@ export async function fetchDeletedBinItems(): Promise<DeletedBinItem[]> {
       deletedAt: subitem.deleted_at,
       expiresAt: expiresAt(subitem.deleted_at),
       parentDeleted: Boolean(subitem.clients?.deleted_at),
+      isPaymentVoucher: subitem.custom_fields?.additionalCostLinked === "true",
     }));
   return [...clientItems, ...subitemItems].sort(
     (first, second) =>
@@ -2082,6 +2084,10 @@ export async function deleteSubitemRow(subitemId: string) {
         result.error ?? "The linked Additional Cost could not be deleted.",
       );
     }
+    // The Payment Voucher endpoint has deleted both linked records. Do not
+    // continue into the standard subitem delete flow, which would otherwise
+    // attempt to delete the voucher a second time.
+    return;
   }
 
   try {

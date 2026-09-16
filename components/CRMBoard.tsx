@@ -5970,6 +5970,7 @@ export function CRMBoard({
     return {
       clientName: client?.name ?? "this client",
       subitemName: subitem?.name ?? "this subitem",
+      isPaymentVoucher: subitem?.customFields?.additionalCostLinked === "true",
     };
   }, [clients, pendingDeleteSubitem]);
 
@@ -6774,6 +6775,16 @@ export function CRMBoard({
               {pendingPermanentBinItems?.length === 1
                 ? `“${pendingPermanentBinItems[0].name}” and its stored files will be permanently deleted. This cannot be undone.`
                 : `${pendingPermanentBinItems?.length ?? 0} selected Bin items and their stored files will be permanently deleted. This cannot be undone.`}
+              {pendingPermanentBinItems?.some(
+                (item) => item.isPaymentVoucher,
+              ) && (
+                <>
+                  <br />
+                  <br />
+                  Any linked Payment Voucher records will also be permanently
+                  deleted.
+                </>
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -8431,6 +8442,10 @@ export function CRMBoard({
           <AlertDialogHeader>
             <AlertDialogTitle>Delete this client?</AlertDialogTitle>
             <AlertDialogDescription>
+              If this is a linked Payment Voucher subitem, deleting it will also
+              delete the corresponding Payment Voucher record.
+              <br />
+              <br />
               This will move{" "}
               <span className="font-semibold text-gray-700">
                 {pendingClientToDelete?.name ?? "this client"}
@@ -8506,6 +8521,13 @@ export function CRMBoard({
           <AlertDialogHeader>
             <AlertDialogTitle>Delete this subitem?</AlertDialogTitle>
             <AlertDialogDescription>
+              {pendingSubitemToDelete?.isPaymentVoucher && (
+                <>
+                  This linked Payment Voucher will also be deleted.
+                  <br />
+                  <br />
+                </>
+              )}
               This will move{" "}
               <span className="font-semibold text-gray-700">
                 {pendingSubitemToDelete?.subitemName ?? "this subitem"}

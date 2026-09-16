@@ -167,9 +167,34 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const { user, role } = await authorize();
-    const body = (await request.json()) as { clientId?: string };
+    const body = (await request.json()) as {
+      clientId?: string;
+      values?: {
+        cost?: unknown;
+        reason?: unknown;
+        items_sent?: unknown;
+        courier?: unknown;
+        remarks?: unknown;
+      };
+    };
     if (!body.clientId)
       throw new Error("Choose a client before creating an additional cost.");
+    const cost = Number(body.values?.cost);
+    const reason = await resolveLabel(
+      "additional_cost_reason",
+      body.values?.reason,
+    );
+    const courier = await resolveLabel(
+      "additional_cost_courier",
+      body.values?.courier,
+    );
+    const itemsSent = String(body.values?.items_sent ?? "").trim();
+    if (!Number.isFinite(cost) || cost <= 0)
+      throw new Error("Cost must be greater than zero.");
+    if (!reason.value) throw new Error("Choose a Reason label.");
+    if (!itemsSent) throw new Error("Items Sent is required.");
+    if (!courier.value || !["Lalamove", "Easyparcel"].includes(courier.value))
+      throw new Error("Choose Lalamove or Easyparcel as the Courier.");
     const { data: client, error: clientError } = await supabaseAdmin
       .from("clients")
       .select("id, custom_fields")
@@ -210,6 +235,16 @@ export async function POST(request: NextRequest) {
       .limit(1)
       .maybeSingle();
     if (latestError) throw latestError;
+    const { data: references, error: referencesError } = await supabaseAdmin
+      .from("additional_costs")
+      .select("trip_id")
+      .order("created_at", { ascending: false });
+    if (referencesError) throw referencesError;
+    const nextReference =
+      (references ?? []).reduce((max, record) => {
+        const match = String(record.trip_id ?? "").match(/(\d+)$/);
+        return Math.max(max, Number(match?.[1] ?? 0));
+      }, 0) + 1;
     const { data, error } = await supabaseAdmin
       .from("additional_costs")
       .insert({
@@ -217,6 +252,14 @@ export async function POST(request: NextRequest) {
         position: Number(latest?.position ?? -1) + 1,
         created_by: user.id,
         created_at: createdAt,
+        cost,
+        reason: reason.value,
+        reason_option_id: reason.id,
+        items_sent: itemsSent,
+        courier: courier.value,
+        courier_option_id: courier.id,
+        remarks: String(body.values?.remarks ?? "").trim(),
+        trip_id: String(nextReference),
       })
       .select("*")
       .single();
@@ -236,11 +279,12 @@ export async function POST(request: NextRequest) {
           client_id: client.id,
           position: Number(lastSubitem?.position ?? -1) + 1,
           created_at: createdAt,
-          name: "Additional Cost",
+          name: courier.value,
           status: status.value,
           status_option_id: status.id,
           qty: "1",
           currency: "SGD",
+          cost: String(cost),
           custom_fields: {
             additionalCostId: data.id,
             additionalCostLinked: "true",
@@ -347,6 +391,7 @@ export async function DELETE(request: NextRequest) {
         .maybeSingle();
       if (subitemError || !subitem)
         throw new Error("Linked Additional Cost subitem not found.");
+      linkedSubitem = subitem;
       additionalCostId = String(subitem.custom_fields?.additionalCostId ?? "");
       if (!additionalCostId)
         throw new Error("This subitem is not linked to an Additional Cost.");

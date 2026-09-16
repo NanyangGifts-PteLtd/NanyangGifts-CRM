@@ -52,7 +52,7 @@ const navItems: {
   {
     id: "additionalcosts",
     icon: <ReceiptText size={16.5} />,
-    label: "Additional Costs",
+    label: "Payment Voucher",
   },
   { id: "emails", icon: <Mail size={16.5} />, label: "Emails" },
   {

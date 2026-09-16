@@ -6,7 +6,6 @@ import {
   ChevronDown,
   ChevronRight,
   LockKeyhole,
-  Plus,
   Search,
   Trash2,
   X,
@@ -66,20 +65,13 @@ type Props = {
 type Column = { key: string; label: string; width: number };
 const initialColumns: Column[] = [
   { key: "project", label: "Project Name", width: 250 },
-  { key: "date_sent", label: "Date Sent", width: 142 },
-  { key: "people", label: "People", width: 150 },
   { key: "cost", label: "Cost", width: 115 },
-  { key: "remarks", label: "Remarks", width: 260 },
-  { key: "status", label: "Status", width: 140 },
   { key: "reason", label: "Reason", width: 155 },
-  { key: "courier", label: "Courier", width: 140 },
-  { key: "trip_id", label: "Trip ID", width: 145 },
+  { key: "trip_id", label: "Reference ID", width: 145 },
   { key: "items_sent", label: "Items Sent", width: 210 },
-  { key: "qty", label: "Qty", width: 95 },
-  { key: "created", label: "Date Created", width: 130 },
-  { key: "verified", label: "Verified?", width: 104 },
-  { key: "discussed", label: "Discussed?", width: 110 },
-  { key: "actions", label: "", width: 48 },
+  { key: "courier", label: "Courier", width: 140 },
+  { key: "remarks", label: "Remarks", width: 260 },
+  { key: "created", label: "Date Created", width: 140 },
 ];
 const cellClass =
   "h-10 min-w-0 bg-white px-2 text-sm text-slate-700 outline-none focus:bg-sky-50 focus:ring-1 focus:ring-inset focus:ring-sky-400";
@@ -101,6 +93,10 @@ export function AdditionalCostsBoard({
   clientPmAssignees,
 }: Props) {
   const [rows, setRows] = useState<AdditionalCost[]>([]);
+  const [collapsedVoucherGroups, setCollapsedVoucherGroups] = useState({
+    courier: false,
+    other: false,
+  });
   const [labelOptions, setLabelOptions] = useState<
     Record<string, LabelOption[]>
   >({});
@@ -113,6 +109,16 @@ export function AdditionalCostsBoard({
     new Set(),
   );
   const [creatingFor, setCreatingFor] = useState<string | null>(null);
+  const [selectedVoucherClientId, setSelectedVoucherClientId] = useState<
+    string | null
+  >(null);
+  const [voucherDraft, setVoucherDraft] = useState({
+    cost: "",
+    reason: "",
+    items_sent: "",
+    courier: "",
+    remarks: "",
+  });
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<AdditionalCost | null>(
     null,
@@ -304,7 +310,7 @@ export function AdditionalCostsBoard({
       const response = await fetch("/api/additional-costs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ clientId }),
+        body: JSON.stringify({ clientId, values: voucherDraft }),
       });
       const result = await response.json();
       if (!response.ok)
@@ -314,7 +320,15 @@ export function AdditionalCostsBoard({
       setRows((current) => [result.row, ...current]);
       setPickerOpen(false);
       setPickerQuery("");
-      toast.success("Additional cost added");
+      setSelectedVoucherClientId(null);
+      setVoucherDraft({
+        cost: "",
+        reason: "",
+        items_sent: "",
+        courier: "",
+        remarks: "",
+      });
+      toast.success("Payment voucher added");
     } catch (createError) {
       toast.error("Additional cost could not be created", {
         description:
@@ -413,31 +427,158 @@ export function AdditionalCostsBoard({
       {content}
     </div>
   );
+  const voucherGroups = [
+    {
+      id: "courier" as const,
+      name: "Lalamove/Easyparcel",
+      rows: rows.filter((row) => /lalamove|easyparcel/i.test(row.courier)),
+      accent: "#16a5c4",
+    },
+    {
+      id: "other" as const,
+      name: "Manpower/UPS Charges/Other payments",
+      rows: rows.filter((row) => !/lalamove|easyparcel/i.test(row.courier)),
+      accent: "#8b5cf6",
+    },
+  ];
+  const renderVoucherGroup = (group: (typeof voucherGroups)[number]) => (
+    <section
+      key={group.id}
+      className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm"
+    >
+      <button
+        type="button"
+        onClick={() =>
+          setCollapsedVoucherGroups((current) => ({
+            ...current,
+            [group.id]: !current[group.id],
+          }))
+        }
+        className="flex w-full items-center gap-2 border-l-4 px-4 py-3 text-left hover:bg-slate-50"
+        style={{ borderLeftColor: group.accent }}
+      >
+        {collapsedVoucherGroups[group.id] ? (
+          <ChevronRight size={18} style={{ color: group.accent }} />
+        ) : (
+          <ChevronDown size={18} style={{ color: group.accent }} />
+        )}
+        <span className="text-lg font-semibold text-slate-800">
+          {group.name}
+        </span>
+        <span className="text-sm text-slate-500">
+          {group.rows.length} vouchers
+        </span>
+      </button>
+      {!collapsedVoucherGroups[group.id] && (
+        <div className="overflow-x-auto">
+          <table className="min-w-full border-collapse text-sm">
+            <thead className="bg-slate-50 text-left text-xs font-semibold text-slate-500">
+              <tr>
+                {initialColumns.map((column) => (
+                  <th
+                    key={column.key}
+                    className="whitespace-nowrap border-b border-r border-slate-200 px-3 py-3 last:border-r-0"
+                  >
+                    {column.label}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {!group.rows.length ? (
+                <tr>
+                  <td
+                    colSpan={initialColumns.length}
+                    className="px-3 py-8 text-center text-sm text-slate-400"
+                  >
+                    No payment vouchers in this group yet.
+                  </td>
+                </tr>
+              ) : (
+                group.rows.map((row) => {
+                  const client = clientsById.get(row.client_id);
+                  return (
+                    <tr key={row.id} className="hover:bg-slate-50">
+                      <td className="border-b border-r border-slate-200 px-3 py-2 font-medium text-slate-700">
+                        {client ? clientLabel(client) : "Deleted client"}
+                      </td>
+                      <td className="border-b border-r border-slate-200 px-3 py-2 text-right">
+                        {row.cost == null
+                          ? ""
+                          : row.cost.toLocaleString("en-SG", {
+                              style: "currency",
+                              currency: "SGD",
+                            })}
+                      </td>
+                      <td className="border-b border-r border-slate-200 px-3 py-2">
+                        {row.reason}
+                      </td>
+                      <td className="border-b border-r border-slate-200 px-3 py-2">
+                        {row.trip_id}
+                      </td>
+                      <td className="border-b border-r border-slate-200 px-3 py-2">
+                        {row.items_sent}
+                      </td>
+                      <td className="border-b border-r border-slate-200 px-3 py-2">
+                        {row.courier}
+                      </td>
+                      <td className="border-b border-slate-200 px-3 py-2">
+                        {row.remarks}
+                      </td>
+                      <td
+                        title={`${new Date(row.created_at).toLocaleString("en-SG")}${row.created_by ? ` · Created by ${profiles.find((profile) => profile.id === row.created_by)?.full_name || profiles.find((profile) => profile.id === row.created_by)?.email || "Unknown user"}` : ""}`}
+                        className="whitespace-nowrap border-b border-slate-200 px-3 py-2 text-xs text-slate-500"
+                      >
+                        {new Date(row.created_at).toLocaleDateString("en-SG")}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {group.id === "courier" && !collapsedVoucherGroups[group.id] && (
+        <div className="border-t border-slate-200 px-3 py-2">
+          <button
+            type="button"
+            onClick={() => {
+              setExpandedPickerGroups(
+                new Set(clientSections.map((section) => section.id)),
+              );
+              setPickerOpen(true);
+            }}
+            className="text-sm font-medium text-sky-700 hover:text-sky-800"
+          >
+            + Add payment voucher
+          </button>
+        </div>
+      )}
+    </section>
+  );
   return (
     <section className="crm-board min-h-full bg-slate-50 p-4 sm:p-6">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold text-slate-800">
-            Additional Costs (Lalamove/Defect/Replacement)
+            Payment Voucher
           </h1>
           <p className="mt-1 text-sm text-slate-500">
-            Log costs related to a CRM client. Each record remains linked to its
-            selected project.
+            Review payment vouchers grouped by courier and other payments.
           </p>
         </div>
-        <button
-          onClick={() => {
-            setExpandedPickerGroups(
-              new Set(clientSections.map((section) => section.id)),
-            );
-            setPickerOpen(true);
-          }}
-          className="inline-flex items-center gap-2 rounded-md bg-[#16a5c4] px-3 py-2 text-sm font-semibold text-white hover:bg-[#118ca7]"
-        >
-          <Plus size={16} /> Add additional cost
-        </button>
       </div>
-      <div className="w-max min-w-full rounded-lg border border-slate-200 bg-white shadow-sm">
+      <div className="space-y-4">
+        {loading ? (
+          <div className="rounded-lg border border-slate-200 bg-white px-3 py-10 text-center text-sm text-slate-400">
+            Loading payment vouchers…
+          </div>
+        ) : (
+          voucherGroups.map(renderVoucherGroup)
+        )}
+      </div>
+      <div className="hidden w-max min-w-full rounded-lg border border-slate-200 bg-white shadow-sm">
         <div>
           <div
             className="grid bg-slate-50 text-xs font-semibold text-slate-500"
@@ -744,94 +885,225 @@ export function AdditionalCostsBoard({
                 <X size={19} />
               </button>
             </div>
-            <label className="relative m-4 block">
-              <Search
-                size={16}
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-              />
-              <input
-                autoFocus
-                value={pickerQuery}
-                onChange={(event) => setPickerQuery(event.target.value)}
-                placeholder="Search client name or Client ID…"
-                className="w-full rounded-md border border-slate-300 py-2 pl-9 pr-3 text-sm outline-none focus:border-sky-500"
-              />
-            </label>
-            <div className="min-h-0 overflow-y-auto border-t border-slate-100 px-2 pb-2">
-              {clientSections.map((section) => {
-                const expanded = expandedPickerGroups.has(section.id);
-                return (
-                  <div key={section.id}>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setExpandedPickerGroups((current) => {
-                          const next = new Set(current);
-                          if (next.has(section.id)) next.delete(section.id);
-                          else next.add(section.id);
-                          return next;
-                        })
-                      }
-                      className="sticky top-0 flex w-full items-center justify-between border-y border-slate-100 bg-slate-50 px-3 py-2 text-left text-xs font-semibold text-slate-500 hover:bg-slate-100"
-                    >
-                      <span>{section.label}</span>
-                      {expanded ? (
-                        <ChevronDown size={16} />
-                      ) : (
-                        <ChevronRight size={16} />
-                      )}
-                    </button>
-                    {expanded
-                      ? section.clients.map((client) => {
-                          const restriction = creationRestriction(client);
-                          const isLocked =
-                            client.customFields?.subitemsLocked === "true";
-                          return (
-                            <div
-                              key={client.id}
-                              title={restriction ?? undefined}
-                            >
-                              <button
-                                disabled={
-                                  creatingFor !== null || Boolean(restriction)
-                                }
-                                onClick={() => void create(client.id)}
-                                className="flex w-full items-center rounded-md px-3 py-3 text-left text-sm hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-50"
-                              >
-                                <span className="flex min-w-0 items-center font-medium text-slate-700">
-                                  {isLocked ? (
-                                    <LockKeyhole
-                                      size={17}
-                                      aria-label="Locked client"
-                                      className="mr-2 shrink-0 text-amber-500"
-                                    />
-                                  ) : null}
-                                  <span className="truncate">
-                                    {client.name || "Unnamed client"}
-                                  </span>
-                                  <span className="ml-2 shrink-0 font-mono text-xs text-slate-400">
-                                    {client.displayId}
-                                  </span>
-                                </span>
-                                {creatingFor === client.id ? (
-                                  <span className="ml-auto text-xs text-slate-400">
-                                    Creating…
-                                  </span>
-                                ) : null}
-                              </button>
-                            </div>
-                          );
-                        })
-                      : null}
-                  </div>
-                );
-              })}
-              {!clientSections.length ? (
-                <p className="px-3 py-8 text-center text-sm text-slate-400">
-                  No matching clients.
+            {selectedVoucherClientId ? (
+              <div className="space-y-3 p-4">
+                <button
+                  type="button"
+                  onClick={() => setSelectedVoucherClientId(null)}
+                  className="text-sm text-sky-700 hover:underline"
+                >
+                  Change project
+                </button>
+                <p className="text-sm font-medium text-slate-700">
+                  Project:{" "}
+                  {clientLabel(clientsById.get(selectedVoucherClientId)!)}
                 </p>
-              ) : null}
-            </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="text-sm font-medium text-slate-700">
+                    Cost *
+                    <input
+                      type="number"
+                      min="0.01"
+                      step="0.01"
+                      value={voucherDraft.cost}
+                      onChange={(event) =>
+                        setVoucherDraft((draft) => ({
+                          ...draft,
+                          cost: event.target.value,
+                        }))
+                      }
+                      className="mt-1 w-full rounded border border-slate-300 px-3 py-2 font-normal"
+                    />
+                  </label>
+                  <label className="text-sm font-medium text-slate-700">
+                    Reason *
+                    <select
+                      value={voucherDraft.reason}
+                      onChange={(event) =>
+                        setVoucherDraft((draft) => ({
+                          ...draft,
+                          reason: event.target.value,
+                        }))
+                      }
+                      className="mt-1 w-full rounded border border-slate-300 px-3 py-2 font-normal"
+                    >
+                      <option value="">Select reason</option>
+                      {(labelOptions.additional_cost_reason ?? [])
+                        .filter((option) => option.value)
+                        .map((option) => (
+                          <option
+                            key={option.id ?? option.value}
+                            value={option.value}
+                          >
+                            {option.value}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                  <label className="text-sm font-medium text-slate-700">
+                    Items Sent *
+                    <input
+                      value={voucherDraft.items_sent}
+                      onChange={(event) =>
+                        setVoucherDraft((draft) => ({
+                          ...draft,
+                          items_sent: event.target.value,
+                        }))
+                      }
+                      className="mt-1 w-full rounded border border-slate-300 px-3 py-2 font-normal"
+                    />
+                  </label>
+                  <label className="text-sm font-medium text-slate-700">
+                    Courier *
+                    <select
+                      value={voucherDraft.courier}
+                      onChange={(event) =>
+                        setVoucherDraft((draft) => ({
+                          ...draft,
+                          courier: event.target.value,
+                        }))
+                      }
+                      className="mt-1 w-full rounded border border-slate-300 px-3 py-2 font-normal"
+                    >
+                      <option value="">Select courier</option>
+                      {(labelOptions.additional_cost_courier ?? [])
+                        .filter((option) =>
+                          ["Lalamove", "Easyparcel"].includes(option.value),
+                        )
+                        .map((option) => (
+                          <option
+                            key={option.id ?? option.value}
+                            value={option.value}
+                          >
+                            {option.value}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                </div>
+                <label className="block text-sm font-medium text-slate-700">
+                  Remarks{" "}
+                  <textarea
+                    value={voucherDraft.remarks}
+                    onChange={(event) =>
+                      setVoucherDraft((draft) => ({
+                        ...draft,
+                        remarks: event.target.value,
+                      }))
+                    }
+                    className="mt-1 min-h-20 w-full rounded border border-slate-300 px-3 py-2 font-normal"
+                  />
+                </label>
+                <button
+                  type="button"
+                  disabled={
+                    creatingFor !== null ||
+                    Number(voucherDraft.cost) <= 0 ||
+                    !voucherDraft.reason ||
+                    !voucherDraft.items_sent.trim() ||
+                    !voucherDraft.courier
+                  }
+                  onClick={() => void create(selectedVoucherClientId)}
+                  className="rounded bg-[#16a5c4] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                >
+                  {creatingFor ? "Creating…" : "Create payment voucher"}
+                </button>
+              </div>
+            ) : (
+              <>
+                <label className="relative m-4 block">
+                  <Search
+                    size={16}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                  />
+                  <input
+                    autoFocus
+                    value={pickerQuery}
+                    onChange={(event) => setPickerQuery(event.target.value)}
+                    placeholder="Search client name or Client ID…"
+                    className="w-full rounded-md border border-slate-300 py-2 pl-9 pr-3 text-sm outline-none focus:border-sky-500"
+                  />
+                </label>
+                <div className="min-h-0 overflow-y-auto border-t border-slate-100 px-2 pb-2">
+                  {clientSections.map((section) => {
+                    const expanded = expandedPickerGroups.has(section.id);
+                    return (
+                      <div key={section.id}>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setExpandedPickerGroups((current) => {
+                              const next = new Set(current);
+                              if (next.has(section.id)) next.delete(section.id);
+                              else next.add(section.id);
+                              return next;
+                            })
+                          }
+                          className="sticky top-0 flex w-full items-center justify-between border-y border-slate-100 bg-slate-50 px-3 py-2 text-left text-xs font-semibold text-slate-500 hover:bg-slate-100"
+                        >
+                          <span>{section.label}</span>
+                          {expanded ? (
+                            <ChevronDown size={16} />
+                          ) : (
+                            <ChevronRight size={16} />
+                          )}
+                        </button>
+                        {expanded
+                          ? section.clients.map((client) => {
+                              const restriction = creationRestriction(client);
+                              const isLocked =
+                                client.customFields?.subitemsLocked === "true";
+                              return (
+                                <div
+                                  key={client.id}
+                                  title={restriction ?? undefined}
+                                >
+                                  <button
+                                    disabled={
+                                      creatingFor !== null ||
+                                      Boolean(restriction)
+                                    }
+                                    onClick={() =>
+                                      setSelectedVoucherClientId(client.id)
+                                    }
+                                    className="flex w-full items-center rounded-md px-3 py-3 text-left text-sm hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                  >
+                                    <span className="flex min-w-0 items-center font-medium text-slate-700">
+                                      {isLocked ? (
+                                        <LockKeyhole
+                                          size={17}
+                                          aria-label="Locked client"
+                                          className="mr-2 shrink-0 text-amber-500"
+                                        />
+                                      ) : null}
+                                      <span className="truncate">
+                                        {client.name || "Unnamed client"}
+                                      </span>
+                                      <span className="ml-2 shrink-0 font-mono text-xs text-slate-400">
+                                        {client.displayId}
+                                      </span>
+                                    </span>
+                                    {creatingFor === client.id ? (
+                                      <span className="ml-auto text-xs text-slate-400">
+                                        Creating…
+                                      </span>
+                                    ) : null}
+                                  </button>
+                                </div>
+                              );
+                            })
+                          : null}
+                      </div>
+                    );
+                  })}
+                  {!clientSections.length ? (
+                    <p className="px-3 py-8 text-center text-sm text-slate-400">
+                      No matching clients.
+                    </p>
+                  ) : null}
+                </div>
+              </>
+            )}
           </div>
         </div>
       ) : null}
@@ -841,10 +1113,10 @@ export function AdditionalCostsBoard({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete additional cost?</AlertDialogTitle>
+            <AlertDialogTitle>Delete payment voucher?</AlertDialogTitle>
             <AlertDialogDescription>
-              This additional-cost record will be permanently deleted. This
-              action cannot be undone.
+              This payment voucher and its linked CRM subitem will both be
+              deleted. This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
