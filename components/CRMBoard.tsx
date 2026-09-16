@@ -106,14 +106,19 @@ import {
 import { uploadCrmFiles } from "@/lib/crm-files";
 import { CombinedPushPreviewModal } from "./shipper/CombinedPushPreviewModal";
 import { useEscapeClose } from "./hooks/use-escape-close";
+import {
+  canonicalPaymentStatusOptions,
+  type OptionEntry,
+} from "@/lib/board-labels";
+import {
+  expandedGroupsForSearch,
+  matchesBoardSearchValues,
+  selectedBoardSearchColumns,
+  setAllSearchColumns,
+  setSearchColumnsSelection,
+  visibleSearchGroups,
+} from "@/lib/board-search";
 
-type OptionEntry = {
-  id?: string;
-  systemKey?: string | null;
-  value: string;
-  color: string;
-  section?: number;
-};
 type PendingOptionDeletion = {
   code: string;
   name: string;
@@ -2003,33 +2008,6 @@ export function CRMBoard({
       );
       const optionsFor = (code: (typeof BOARD_OPTION_GROUP_CODES)[number]) =>
         valuesByCode.get(code) ?? [];
-      const canonicalMismatchOptions = (
-        code: "payment_status" | "overall_payment_status",
-      ) => {
-        const options = optionsFor(code);
-        const mismatch =
-          options.find((option) =>
-            code === "payment_status"
-              ? option.systemKey === "payment_status_mismatch"
-              : option.systemKey === "overall_payment_status_mismatch",
-          ) ?? options.find((option) => option.value === "MISMATCH");
-        const legacySystemKeys = new Set(
-          code === "payment_status"
-            ? ["payment_status_underpaid", "payment_status_overpaid"]
-            : ["overall_payment_status_partially_paid"],
-        );
-        const legacyValues = new Set(
-          code === "payment_status"
-            ? ["Underpaid", "Overpaid", "Partial", "Partially Paid"]
-            : ["Partially Paid"],
-        );
-        return options.filter(
-          (option) =>
-            !legacySystemKeys.has(option.systemKey ?? "") &&
-            !legacyValues.has(option.value) &&
-            (option.value !== "MISMATCH" || option.id === mismatch?.id),
-        );
-      };
 
       setReplyStatusEntries(optionsFor("reply_status"));
       setClientStatusEntries(optionsFor("client_status"));
@@ -2037,9 +2015,17 @@ export function CRMBoard({
       setImportanceEntries(optionsFor("importance"));
       setProgressEntries(optionsFor("progress"));
       setPaymentEntries(optionsFor("payment"));
-      setPaymentStatusEntries(canonicalMismatchOptions("payment_status"));
+      setPaymentStatusEntries(
+        canonicalPaymentStatusOptions(
+          "payment_status",
+          optionsFor("payment_status"),
+        ),
+      );
       setOverallPaymentStatusEntries(
-        canonicalMismatchOptions("overall_payment_status"),
+        canonicalPaymentStatusOptions(
+          "overall_payment_status",
+          optionsFor("overall_payment_status"),
+        ),
       );
       setPaymentReceivedEntries(optionsFor("payment_received"));
       setModeOfPaymentEntries(optionsFor("mode_of_payment"));
@@ -3983,9 +3969,11 @@ export function CRMBoard({
     (client: Client) => {
       const query = boardSearchTerm.trim().toLowerCase();
       if (!query) return true;
-      const selectedColumns = boardSearchAllColumns
-        ? new Set(advancedColumns.map((column) => column.key))
-        : boardSearchColumns;
+      const selectedColumns = selectedBoardSearchColumns(
+        boardSearchAllColumns,
+        boardSearchColumns,
+        advancedColumns,
+      );
       const profileName = (id: string) =>
         peopleProfilesById[id]?.full_name ||
         peopleProfilesById[id]?.email ||
@@ -4016,11 +4004,7 @@ export function CRMBoard({
                         key,
                       ),
               );
-        return clientValues.some((value) =>
-          String(value ?? "")
-            .toLowerCase()
-            .includes(query),
-        );
+        return matchesBoardSearchValues(query, clientValues);
       });
     },
     [
@@ -4046,10 +4030,10 @@ export function CRMBoard({
     if (!searchCollapsedGroupsRef.current)
       searchCollapsedGroupsRef.current = collapsedGroups;
     setCollapsedGroups((current) => {
-      if (groups.every((group) => !current[group.id])) return current;
-      return Object.fromEntries(
-        groups.map((group) => [group.id, false]),
-      ) as Record<string, boolean>;
+      return expandedGroupsForSearch(
+        groups.map((group) => group.id),
+        current,
+      );
     });
   }, [boardSearchActive, collapsedGroups, groups]);
 
@@ -4353,14 +4337,13 @@ export function CRMBoard({
           : { ...client, subitems: [...client.subitems].sort(compareSubitems) },
       ),
   }));
-  const boardVisibleGroups = (
+  const boardVisibleGroups = visibleSearchGroups(
     trackingView
       ? groupedClients.filter(({ group }) =>
           /^closed leads\s*-/i.test(group.name),
         )
-      : groupedClients
-  ).filter(({ clients: groupClients }) =>
-    boardSearchActive ? groupClients.length > 0 : true,
+      : groupedClients,
+    boardSearchActive,
   );
   const noBoardSearchResults =
     boardSearchActive && boardVisibleGroups.length === 0;
@@ -7298,8 +7281,9 @@ export function CRMBoard({
                   type="checkbox"
                   checked={boardSearchAllColumns}
                   onChange={(event) => {
-                    setBoardSearchAllColumns(event.target.checked);
-                    if (event.target.checked) setBoardSearchColumns(new Set());
+                    const selection = setAllSearchColumns(event.target.checked);
+                    setBoardSearchAllColumns(selection.allColumnsSelected);
+                    setBoardSearchColumns(selection.selectedColumns);
                   }}
                   className="h-4 w-4 accent-[#0f8da8]"
                 />
@@ -7335,16 +7319,15 @@ export function CRMBoard({
                               );
                               setBoardSearchAllColumns(false);
                               setBoardSearchColumns((current) => {
-                                const next = boardSearchAllColumns
-                                  ? new Set(
-                                      advancedColumns.map((item) => item.key),
-                                    )
-                                  : new Set(current);
-                                categoryColumns.forEach((item) => {
-                                  if (shouldSelect) next.add(item.key);
-                                  else next.delete(item.key);
-                                });
-                                return next;
+                                return setSearchColumnsSelection(
+                                  {
+                                    allColumnsSelected: boardSearchAllColumns,
+                                    selectedColumns: current,
+                                  },
+                                  categoryColumns.map((item) => item.key),
+                                  shouldSelect,
+                                  advancedColumns.map((item) => item.key),
+                                ).selectedColumns;
                               });
                             }}
                             className="h-4 w-4 accent-[#0f8da8]"
@@ -7366,14 +7349,15 @@ export function CRMBoard({
                             const shouldSelect = event.target.checked;
                             setBoardSearchAllColumns(false);
                             setBoardSearchColumns((current) => {
-                              const next = boardSearchAllColumns
-                                ? new Set(
-                                    advancedColumns.map((item) => item.key),
-                                  )
-                                : new Set(current);
-                              if (shouldSelect) next.add(column.key);
-                              else next.delete(column.key);
-                              return next;
+                              return setSearchColumnsSelection(
+                                {
+                                  allColumnsSelected: boardSearchAllColumns,
+                                  selectedColumns: current,
+                                },
+                                [column.key],
+                                shouldSelect,
+                                advancedColumns.map((item) => item.key),
+                              ).selectedColumns;
                             });
                           }}
                           className="h-4 w-4 accent-[#0f8da8]"

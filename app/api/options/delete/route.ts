@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { AUTOMATED_OPTION_LABELS } from "@/lib/board-labels";
 
 type LabelField = {
   table: "clients" | "subitems" | "subitem_payment_rows";
@@ -97,11 +98,6 @@ const TRACKING_CUSTOM_FIELD_BY_CODE: Record<string, string> = {
   tracking_payment_status: "trackingPaymentStatus",
   tracking_price_invoice_match: "trackingPriceInvoiceMatch",
 };
-const AUTOMATED_LABELS: Record<string, Set<string>> = {
-  payment_status: new Set(["✅", "MISMATCH", "Resolved"]),
-  overall_payment_status: new Set(["Unpaid", "MISMATCH", "Fully Paid"]),
-};
-
 async function canManageLabels() {
   const caller = await createClient();
   const {
@@ -282,7 +278,7 @@ export async function POST(request: NextRequest) {
   const found = await findOption(code, name);
   if ("error" in found)
     return NextResponse.json({ error: found.error }, { status: 404 });
-  if (AUTOMATED_LABELS[code]?.has(name)) {
+  if (AUTOMATED_OPTION_LABELS[code]?.has(name)) {
     return NextResponse.json(
       {
         error: `“${name}” is produced by the ${code.replaceAll("_", " ")} calculation and cannot be deleted.`,

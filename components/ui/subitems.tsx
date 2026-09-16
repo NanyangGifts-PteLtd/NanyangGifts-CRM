@@ -46,6 +46,13 @@ import { calculateSubitemFinancials } from "@/lib/subitem-calculations";
 import { toast } from "sonner";
 import { SubitemActionsMenu } from "@/components/SubitemActionsMenu";
 import {
+  DEFAULT_PAYMENT_STATUS_OPTIONS,
+  findSystemOption,
+  PAYMENT_STATUS_SYSTEM_KEYS,
+  type OptionEntry,
+} from "@/lib/board-labels";
+import { automaticPaymentStatus } from "@/lib/payment-status";
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -172,13 +179,6 @@ export const PAYMENT_COLS: ColumnDef[] = [
 ];
 
 type TableMode = "subitem" | "payment" | "timeline";
-type OptionEntry = {
-  id?: string;
-  systemKey?: string | null;
-  value: string;
-  color: string;
-  section?: number;
-};
 type ShipperPushValues = Record<string, string> & { subitemId: string };
 const CUSTOM_COL_WIDTH = 120;
 const FORMULA_RESULT_FIELDS = new Set([
@@ -216,17 +216,6 @@ const PAYMENT_QUANTITY_HEADER_FIELDS = new Set([
   "qtyFor",
   "totalToPay",
 ]);
-const PAYMENT_STATUS_SYSTEM_KEYS = new Set([
-  "payment_status_paid",
-  "payment_status_mismatch",
-  "payment_status_resolved",
-]);
-const DEFAULT_PAYMENT_STATUS_OPTIONS: OptionEntry[] = [
-  { value: "✅", color: "#22c55e" },
-  { value: "MISMATCH", color: "#ef4444" },
-  { value: "Resolved", color: "#3b82f6" },
-];
-
 const SHIPPER_PUSH_FIELDS: Array<{
   key: keyof Omit<ShipperPushValues, "subitemId">;
   label: string;
@@ -2205,29 +2194,20 @@ export function SubitemsTable({
       .reduce((sum, row) => sum + parseNumber(row.amount), 0);
     const difference = paymentAmount - totalToPay;
     const paymentStatusOption = (systemKey: string, fallback: string) =>
-      paymentStatusOptions.find((option) => option.systemKey === systemKey) ??
-      (systemKey === "payment_status_mismatch"
-        ? paymentStatusOptions.find((option) => option.value === "MISMATCH")
-        : undefined) ?? {
-        value: fallback,
-        color: "#d1d5db",
-      };
-    const paidOption = paymentStatusOption("payment_status_paid", "✅");
-    const mismatchOption = paymentStatusOption(
-      "payment_status_mismatch",
-      "MISMATCH",
-    );
+      findSystemOption(paymentStatusOptions, systemKey, fallback);
     const resolvedOption = paymentStatusOption(
       "payment_status_resolved",
       "Resolved",
     );
-    const automaticPaymentStatus =
-      Math.abs(difference) < 0.005 ? paidOption.value : mismatchOption.value;
+    const calculatedPaymentStatus = automaticPaymentStatus(
+      difference,
+      paymentStatusOptions,
+    );
     const paymentStatus =
       sub.paymentStatusOptionId === resolvedOption.id ||
       (!resolvedOption.id && sub.paymentStatus === resolvedOption.value)
         ? resolvedOption.value
-        : automaticPaymentStatus;
+        : calculatedPaymentStatus;
     const paymentStatusLabelOptions = paymentStatusOptions.filter(
       (option) =>
         option.value === "" ||

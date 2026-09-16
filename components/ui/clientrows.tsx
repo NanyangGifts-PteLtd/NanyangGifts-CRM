@@ -49,14 +49,9 @@ import { uploadCrmFiles } from "@/lib/crm-files";
 import { FilePreview } from "./file-preview";
 import { toast } from "sonner";
 import { useEscapeClose } from "@/components/hooks/use-escape-close";
+import { findSystemOption, type OptionEntry } from "@/lib/board-labels";
+import { overallPaymentStatus as calculateOverallPaymentStatus } from "@/lib/payment-status";
 
-type OptionEntry = {
-  id?: string;
-  systemKey?: string | null;
-  value: string;
-  color: string;
-  section?: number;
-};
 type AttachmentItem = {
   id: string;
   kind: "file" | "link";
@@ -558,23 +553,11 @@ export function ClientRow({
       ? "border-amber-300 bg-amber-300 text-amber-950 hover:bg-amber-400"
       : "border-slate-200 bg-transparent text-slate-500 hover:bg-slate-50";
   const paymentStatusOption = (systemKey: string, fallback: string) =>
-    paymentStatusOptions.find((option) => option.systemKey === systemKey) ?? {
-      value: fallback,
-      color: "#d1d5db",
-    };
+    findSystemOption(paymentStatusOptions, systemKey, fallback);
   const resolvedPaymentOption = paymentStatusOption(
     "payment_status_resolved",
     "Resolved",
   );
-  const overallPaymentOption = (systemKey: string, fallback: string) =>
-    overallPaymentStatusOptions.find(
-      (option) => option.systemKey === systemKey,
-    ) ??
-    (systemKey === "overall_payment_status_mismatch"
-      ? overallPaymentStatusOptions.find(
-          (option) => option.value === "MISMATCH",
-        )
-      : undefined) ?? { value: fallback, color: "#d1d5db" };
   const awardedSubitems = client.subitems.filter(contributesToAwardedTotals);
   const paidAwardedSubitems = awardedSubitems.filter(
     (subitem) =>
@@ -597,18 +580,11 @@ export function ClientRow({
         return Math.abs(received - totalToPay) < 0.005;
       })(),
   );
-  const overallPaymentStatus =
-    awardedSubitems.length === 0
-      ? ""
-      : paidAwardedSubitems.length === 0
-        ? overallPaymentOption("overall_payment_status_unpaid", "Unpaid").value
-        : paidAwardedSubitems.length === awardedSubitems.length
-          ? overallPaymentOption(
-              "overall_payment_status_fully_paid",
-              "Fully Paid",
-            ).value
-          : overallPaymentOption("overall_payment_status_mismatch", "MISMATCH")
-              .value;
+  const overallPaymentStatus = calculateOverallPaymentStatus(
+    awardedSubitems.length,
+    paidAwardedSubitems.length,
+    overallPaymentStatusOptions,
+  );
   const subitemsLocked = client.customFields?.subitemsLocked === "true";
   const [showCloseDialog, setShowCloseDialog] = useState(false);
   const [showMultipleInvoicesDialog, setShowMultipleInvoicesDialog] =
