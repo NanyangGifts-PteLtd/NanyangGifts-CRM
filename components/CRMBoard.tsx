@@ -2003,6 +2003,33 @@ export function CRMBoard({
       );
       const optionsFor = (code: (typeof BOARD_OPTION_GROUP_CODES)[number]) =>
         valuesByCode.get(code) ?? [];
+      const canonicalMismatchOptions = (
+        code: "payment_status" | "overall_payment_status",
+      ) => {
+        const options = optionsFor(code);
+        const mismatch =
+          options.find((option) =>
+            code === "payment_status"
+              ? option.systemKey === "payment_status_mismatch"
+              : option.systemKey === "overall_payment_status_mismatch",
+          ) ?? options.find((option) => option.value === "MISMATCH");
+        const legacySystemKeys = new Set(
+          code === "payment_status"
+            ? ["payment_status_underpaid", "payment_status_overpaid"]
+            : ["overall_payment_status_partially_paid"],
+        );
+        const legacyValues = new Set(
+          code === "payment_status"
+            ? ["Underpaid", "Overpaid", "Partial", "Partially Paid"]
+            : ["Partially Paid"],
+        );
+        return options.filter(
+          (option) =>
+            !legacySystemKeys.has(option.systemKey ?? "") &&
+            !legacyValues.has(option.value) &&
+            (option.value !== "MISMATCH" || option.id === mismatch?.id),
+        );
+      };
 
       setReplyStatusEntries(optionsFor("reply_status"));
       setClientStatusEntries(optionsFor("client_status"));
@@ -2010,8 +2037,10 @@ export function CRMBoard({
       setImportanceEntries(optionsFor("importance"));
       setProgressEntries(optionsFor("progress"));
       setPaymentEntries(optionsFor("payment"));
-      setPaymentStatusEntries(optionsFor("payment_status"));
-      setOverallPaymentStatusEntries(optionsFor("overall_payment_status"));
+      setPaymentStatusEntries(canonicalMismatchOptions("payment_status"));
+      setOverallPaymentStatusEntries(
+        canonicalMismatchOptions("overall_payment_status"),
+      );
       setPaymentReceivedEntries(optionsFor("payment_received"));
       setModeOfPaymentEntries(optionsFor("mode_of_payment"));
       setShipperEntries(optionsFor("shipper"));

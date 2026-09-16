@@ -569,7 +569,12 @@ export function ClientRow({
   const overallPaymentOption = (systemKey: string, fallback: string) =>
     overallPaymentStatusOptions.find(
       (option) => option.systemKey === systemKey,
-    ) ?? { value: fallback, color: "#d1d5db" };
+    ) ??
+    (systemKey === "overall_payment_status_mismatch"
+      ? overallPaymentStatusOptions.find(
+          (option) => option.value === "MISMATCH",
+        )
+      : undefined) ?? { value: fallback, color: "#d1d5db" };
   const awardedSubitems = client.subitems.filter(contributesToAwardedTotals);
   const paidAwardedSubitems = awardedSubitems.filter(
     (subitem) =>
@@ -602,10 +607,8 @@ export function ClientRow({
               "overall_payment_status_fully_paid",
               "Fully Paid",
             ).value
-          : overallPaymentOption(
-              "overall_payment_status_partially_paid",
-              "Partially Paid",
-            ).value;
+          : overallPaymentOption("overall_payment_status_mismatch", "MISMATCH")
+              .value;
   const subitemsLocked = client.customFields?.subitemsLocked === "true";
   const [showCloseDialog, setShowCloseDialog] = useState(false);
   const [showMultipleInvoicesDialog, setShowMultipleInvoicesDialog] =

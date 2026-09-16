@@ -23,7 +23,7 @@ export type SubitemStatus =
   | "Failed"
   | "";
 
-export type PaymentStatus = "Paid" | "To Pay" | "Partial" | "Overdue";
+export type PaymentStatus = "Paid" | "To Pay" | "MISMATCH" | "Overdue";
 export type TimelineProgress = "Pending" | "Started" | "Done" | "Overdue";
 export type SampleStatus =
   | "Ready to collect"

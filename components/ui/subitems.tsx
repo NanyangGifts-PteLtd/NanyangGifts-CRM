@@ -218,14 +218,12 @@ const PAYMENT_QUANTITY_HEADER_FIELDS = new Set([
 ]);
 const PAYMENT_STATUS_SYSTEM_KEYS = new Set([
   "payment_status_paid",
-  "payment_status_underpaid",
-  "payment_status_overpaid",
+  "payment_status_mismatch",
   "payment_status_resolved",
 ]);
 const DEFAULT_PAYMENT_STATUS_OPTIONS: OptionEntry[] = [
   { value: "✅", color: "#22c55e" },
-  { value: "Underpaid", color: "#ef4444" },
-  { value: "Overpaid", color: "#f59e0b" },
+  { value: "MISMATCH", color: "#ef4444" },
   { value: "Resolved", color: "#3b82f6" },
 ];
 
@@ -2207,29 +2205,24 @@ export function SubitemsTable({
       .reduce((sum, row) => sum + parseNumber(row.amount), 0);
     const difference = paymentAmount - totalToPay;
     const paymentStatusOption = (systemKey: string, fallback: string) =>
-      paymentStatusOptions.find((option) => option.systemKey === systemKey) ?? {
+      paymentStatusOptions.find((option) => option.systemKey === systemKey) ??
+      (systemKey === "payment_status_mismatch"
+        ? paymentStatusOptions.find((option) => option.value === "MISMATCH")
+        : undefined) ?? {
         value: fallback,
         color: "#d1d5db",
       };
     const paidOption = paymentStatusOption("payment_status_paid", "✅");
-    const underpaidOption = paymentStatusOption(
-      "payment_status_underpaid",
-      "Underpaid",
-    );
-    const overpaidOption = paymentStatusOption(
-      "payment_status_overpaid",
-      "Overpaid",
+    const mismatchOption = paymentStatusOption(
+      "payment_status_mismatch",
+      "MISMATCH",
     );
     const resolvedOption = paymentStatusOption(
       "payment_status_resolved",
       "Resolved",
     );
     const automaticPaymentStatus =
-      Math.abs(difference) < 0.005
-        ? paidOption.value
-        : difference < 0
-          ? underpaidOption.value
-          : overpaidOption.value;
+      Math.abs(difference) < 0.005 ? paidOption.value : mismatchOption.value;
     const paymentStatus =
       sub.paymentStatusOptionId === resolvedOption.id ||
       (!resolvedOption.id && sub.paymentStatus === resolvedOption.value)
@@ -2238,6 +2231,7 @@ export function SubitemsTable({
     const paymentStatusLabelOptions = paymentStatusOptions.filter(
       (option) =>
         option.value === "" ||
+        option.value === "MISMATCH" ||
         PAYMENT_STATUS_SYSTEM_KEYS.has(option.systemKey ?? ""),
     );
     const canResolvePayment = ["admin", "director", "dev"].includes(

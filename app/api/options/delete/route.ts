@@ -98,8 +98,8 @@ const TRACKING_CUSTOM_FIELD_BY_CODE: Record<string, string> = {
   tracking_price_invoice_match: "trackingPriceInvoiceMatch",
 };
 const AUTOMATED_LABELS: Record<string, Set<string>> = {
-  payment_status: new Set(["✅", "Underpaid", "Overpaid", "Resolved"]),
-  overall_payment_status: new Set(["Unpaid", "Partially Paid", "Fully Paid"]),
+  payment_status: new Set(["✅", "MISMATCH", "Resolved"]),
+  overall_payment_status: new Set(["Unpaid", "MISMATCH", "Fully Paid"]),
 };
 
 async function canManageLabels() {
