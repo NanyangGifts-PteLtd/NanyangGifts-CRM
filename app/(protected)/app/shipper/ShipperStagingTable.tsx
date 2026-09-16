@@ -294,7 +294,7 @@ export function ShipperStagingTable({
     );
   };
   return (
-    <section className="mt-8 border-t-4 border-amber-300 bg-amber-50/30 pb-16 pt-4">
+    <section className="board-typography mt-8 border-t-4 border-amber-300 bg-amber-50/30 pb-16 pt-4">
       <div className="mb-3 flex gap-3 px-2">
         <div>
           <h2 className="font-semibold text-amber-900">Staging environment</h2>
@@ -432,7 +432,7 @@ export function ShipperStagingTable({
                         return next;
                       })
                     }
-                    className="flex w-full gap-2 bg-slate-50 p-3 text-left text-sm font-semibold"
+                    className="board-group-name flex w-full gap-2 bg-slate-50 p-3 text-left text-sm font-semibold"
                   >
                     {openGroups.has(group.id) ? (
                       <ChevronDown size={16} />
@@ -458,7 +458,11 @@ export function ShipperStagingTable({
                         className="block w-full border-t p-3 text-left hover:bg-sky-50"
                       >
                         {item.name}
-                        {item.displayId ? <span className="ml-1 font-mono text-xs text-slate-400">· {item.displayId}</span> : null}{" "}
+                        {item.displayId ? (
+                          <span className="ml-1 font-mono text-xs text-slate-400">
+                            · {item.displayId}
+                          </span>
+                        ) : null}{" "}
                         <span className="text-slate-500">
                           · {item.clientName}
                         </span>

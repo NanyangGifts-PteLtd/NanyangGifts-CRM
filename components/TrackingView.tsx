@@ -139,7 +139,7 @@ export function TrackingView({
     });
 
   return (
-    <div className="border-t border-slate-200 bg-white">
+    <div className="board-typography border-t border-slate-200 bg-white">
       <div className="overflow-x-auto">
         <table className="min-w-[1450px] w-full border-collapse text-[12.6px]">
           <tbody>
@@ -160,7 +160,7 @@ export function TrackingView({
                       </span>
                       <span className="h-8 w-1.5 rounded bg-[#7BCBD5]" />
                       <span>
-                        <span className="block text-lg font-semibold leading-6 text-slate-700">
+                        <span className="board-group-name block text-lg font-semibold leading-6 text-slate-700">
                           {group.name}
                         </span>
                         <span className="block text-[13px] italic font-normal text-slate-500">

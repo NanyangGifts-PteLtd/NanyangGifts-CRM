@@ -1,17 +1,24 @@
-@import url('https://fonts.googleapis.com/css2?family=Figtree:wght@400&family=Poppins:wght@500&family=Roboto:wght@400;500;700&display=swap');
+@import url("https://fonts.googleapis.com/css2?family=Figtree:wght@400&family=Poppins:wght@500&family=Roboto:wght@400;500;700&display=swap");
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 .crm-board,
-.crm-board * {
-  font-family: 'Figtree', 'Roboto', 'Noto Sans Hebrew', 'Noto Kufi Arabic', 'Noto Sans JP', sans-serif !important;
+.board-typography,
+.crm-board *,
+.board-typography * {
+  font-family:
+    "Figtree", "Roboto", "Noto Sans Hebrew", "Noto Kufi Arabic", "Noto Sans JP",
+    sans-serif !important;
   font-weight: 400 !important;
 }
 
-.crm-board .crm-group-name {
-  font-family: 'Poppins', 'Roboto', 'Noto Sans Hebrew', 'Noto Kufi Arabic', 'Noto Sans JP', sans-serif !important;
+.crm-board .crm-group-name,
+.board-typography .board-group-name {
+  font-family:
+    "Poppins", "Roboto", "Noto Sans Hebrew", "Noto Kufi Arabic", "Noto Sans JP",
+    sans-serif !important;
   font-size: 18px !important;
   font-weight: 500 !important;
   line-height: 24px !important;
@@ -51,11 +58,22 @@
 }
 
 @keyframes notification-shake {
-  0%, 100% { transform: rotate(0deg); }
-  20% { transform: rotate(-12deg); }
-  40% { transform: rotate(10deg); }
-  60% { transform: rotate(-8deg); }
-  80% { transform: rotate(5deg); }
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  20% {
+    transform: rotate(-12deg);
+  }
+  40% {
+    transform: rotate(10deg);
+  }
+  60% {
+    transform: rotate(-8deg);
+  }
+  80% {
+    transform: rotate(5deg);
+  }
 }
 
 .search-result-highlight {
@@ -63,12 +81,17 @@
 }
 
 @keyframes search-result-highlight {
-  0%, 100% { box-shadow: inset 0 0 0 0 rgba(245, 158, 11, 0); }
-  20%, 70% { box-shadow: inset 0 0 0 2px rgba(245, 158, 11, 0.75); }
+  0%,
+  100% {
+    box-shadow: inset 0 0 0 0 rgba(245, 158, 11, 0);
+  }
+  20%,
+  70% {
+    box-shadow: inset 0 0 0 2px rgba(245, 158, 11, 0.75);
+  }
 }
 
 @custom-variant dark (&:is(.dark *));
-
 
 @layer base {
   :root {
@@ -76,7 +99,7 @@
     --background: #ffffff;
     --foreground: #000000;
     --card: #ffffff;
-    --card-foreground:#000000;
+    --card-foreground: #000000;
     --popover: #ffffff;
     --popover-foreground: 0 0% 3.9%;
     --primary: 0 0% 9%;
@@ -128,38 +151,37 @@
 }
 /* Alert styles */
 .AlertDialogOverlay {
-	background-color: white;
-	position: fixed;
-	inset: 0;
-	animation: overlayShow 150ms cubic-bezier(0.16, 1, 0.3, 1);
+  background-color: white;
+  position: fixed;
+  inset: 0;
+  animation: overlayShow 150ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .AlertDialogContent {
-	background-color: white;
-	border-radius: 6px;
-	box-shadow: var(--shadow-6);
-	position: fixed;
-	top: 50%;
-	left: 50%;
-	transform: translate(-50%, -50%);
-	width: 90vw;
-	max-width: 500px;
-	max-height: 85vh;
-	padding: 25px;
-	animation: contentShow 150ms cubic-bezier(0.16, 1, 0.3, 1);
+  background-color: white;
+  border-radius: 6px;
+  box-shadow: var(--shadow-6);
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 90vw;
+  max-width: 500px;
+  max-height: 85vh;
+  padding: 25px;
+  animation: contentShow 150ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .AlertDialogContent:focus {
-	outline: none;
+  outline: none;
 }
 
 .AlertDialogDescription {
-	margin-bottom: 20px;
-	color: var(--mauve-11);
-	font-size: 15px;
-	line-height: 1.5;
+  margin-bottom: 20px;
+  color: var(--mauve-11);
+  font-size: 15px;
+  line-height: 1.5;
 }
-
 
 .recharts-wrapper:focus,
 .recharts-wrapper *:focus {
@@ -181,84 +203,85 @@
 }
 
 .TooltipContent {
-	border-radius: 4px;
-	padding: 5px 10px;
-	font-size: 12px;
+  border-radius: 4px;
+  padding: 5px 10px;
+  font-size: 12px;
   font-weight: 400;
-	line-height: 1;
-	color: #7fc8d1;
-	background-color: white;
-	box-shadow:
-		hsl(206 22% 7% / 35%) 0px 10px 38px -10px,
-		hsl(206 22% 7% / 20%) 0px 10px 20px -15px;
-	user-select: none;
-	animation-duration: 200ms;
-	animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
-	will-change: transform, opacity;
+  line-height: 1;
+  color: #7fc8d1;
+  background-color: white;
+  box-shadow:
+    hsl(206 22% 7% / 35%) 0px 10px 38px -10px,
+    hsl(206 22% 7% / 20%) 0px 10px 20px -15px;
+  user-select: none;
+  animation-duration: 200ms;
+  animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: transform, opacity;
 }
 .TooltipContent[data-state="delayed-open"][data-side="top"] {
-	animation-name: slideDownAndFade;
+  animation-name: slideDownAndFade;
 }
 .TooltipContent[data-state="delayed-open"][data-side="right"] {
-	animation-name: slideLeftAndFade;
+  animation-name: slideLeftAndFade;
 }
 .TooltipContent[data-state="delayed-open"][data-side="bottom"] {
-	animation-name: slideUpAndFade;
+  animation-name: slideUpAndFade;
 }
 .TooltipContent[data-state="delayed-open"][data-side="left"] {
-	animation-name: slideRightAndFade;
+  animation-name: slideRightAndFade;
 }
 
 .TooltipArrow {
-	fill: rgb(255, 255, 255);
+  fill: rgb(255, 255, 255);
 }
 
 @keyframes slideUpAndFade {
-	from {
-		opacity: 0;
-		transform: translateY(2px);
-	}
-	to {
-		opacity: 1;
-		transform: translateY(0);
-	}
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @keyframes slideRightAndFade {
-	from {
-		opacity: 0;
-		transform: translateX(-2px);
-	}
-	to {
-		opacity: 1;
-		transform: translateX(0);
-	}
+  from {
+    opacity: 0;
+    transform: translateX(-2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
 
 @keyframes slideDownAndFade {
-	from {
-		opacity: 0;
-		transform: translateY(-2px);
-	}
-	to {
-		opacity: 1;
-		transform: translateY(0);
-	}
+  from {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @keyframes slideLeftAndFade {
-	from {
-		opacity: 0;
-		transform: translateX(2px);
-	}
-	to {
-		opacity: 1;
-		transform: translateX(0);
-	}
+  from {
+    opacity: 0;
+    transform: translateX(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
 
 @keyframes gradientFlow {
-  0%, 100% {
+  0%,
+  100% {
     background-position: 0% 50%;
   }
   50% {
@@ -268,21 +291,21 @@
 
 /* Detail-view action menus live at the right edge, so their nested Move picker opens inward. */
 [data-detail-action-menu] .left-full {
-	left: auto !important;
-	right: 100% !important;
-	margin-left: 0 !important;
-	margin-right: 0.25rem !important;
+  left: auto !important;
+  right: 100% !important;
+  margin-left: 0 !important;
+  margin-right: 0.25rem !important;
 }
 
 /* Round Robin cards retain a clear, usable drop target after their final user. */
 section.min-h-\[420px\]::after {
-	content: "Drop here to place at the end";
-	display: block;
-	margin-top: 0.75rem;
-	border-top: 2px dashed #cbd5e1;
-	padding-top: 0.5rem;
-	color: #94a3b8;
-	font-size: 0.75rem;
-	text-align: center;
-	pointer-events: none;
+  content: "Drop here to place at the end";
+  display: block;
+  margin-top: 0.75rem;
+  border-top: 2px dashed #cbd5e1;
+  padding-top: 0.5rem;
+  color: #94a3b8;
+  font-size: 0.75rem;
+  text-align: center;
+  pointer-events: none;
 }
