@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import {
   Copy,
+  ChevronDown,
+  ChevronRight,
   ExternalLink,
   MoreHorizontal,
   MoveRight,
@@ -27,7 +29,15 @@ export function SubitemActionsMenu({
   subitemName: string;
   targetGroups: Array<{
     name: string;
-    clients: Array<{ id: string; name: string; displayId?: string }>;
+    clients: Array<{
+      id: string;
+      name: string;
+      displayId?: string;
+      company?: string;
+      email?: string;
+      subitems?: string[];
+      canMoveHere?: boolean;
+    }>;
   }>;
   canEdit: boolean;
   onOpen?: () => void;
@@ -42,6 +52,7 @@ export function SubitemActionsMenu({
   const [moving, setMoving] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const [search, setSearch] = useState("");
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [processing, setProcessing] = useState<"duplicate" | "move" | null>(
     null,
   );
@@ -132,7 +143,15 @@ export function SubitemActionsMenu({
               <button
                 type="button"
                 disabled={!canEdit || !!processing}
-                onClick={() => setMoving((value) => !value)}
+                onClick={() =>
+                  setMoving((value) => {
+                    if (!value)
+                      setExpandedGroups(
+                        new Set(targetGroups.map((group) => group.name)),
+                      );
+                    return !value;
+                  })
+                }
                 className="flex w-full items-center gap-2 rounded px-2 py-2 text-xs text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-400"
                 title={
                   !canEdit
@@ -163,24 +182,45 @@ export function SubitemActionsMenu({
                   </div>
                   {targetGroups.map((group) => {
                     const clients = group.clients.filter((client) =>
-                      `${client.name} ${client.displayId ?? ""}`
+                      `${client.name} ${client.displayId ?? ""} ${client.company ?? ""} ${client.email ?? ""}`
                         .toLowerCase()
                         .includes(search.toLowerCase()),
                     );
                     return clients.length ? (
-                      <div key={group.name} className="mb-3">
-                        <div className="px-1 py-1 text-xs font-medium text-sky-600">
-                          {group.name}
-                        </div>
-                        {clients.map((client) => (
+                      <div key={group.name} className="mb-2">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setExpandedGroups((current) => {
+                              const next = new Set(current);
+                              if (next.has(group.name)) next.delete(group.name);
+                              else next.add(group.name);
+                              return next;
+                            })
+                          }
+                          className="flex w-full items-center justify-between rounded px-1 py-1 text-xs font-medium text-sky-600 hover:bg-sky-50"
+                        >
+                          <span>{group.name}</span>
+                          {expandedGroups.has(group.name) ? (
+                            <ChevronDown size={14} />
+                          ) : (
+                            <ChevronRight size={14} />
+                          )}
+                        </button>
+                        {expandedGroups.has(group.name) && clients.map((client) => (
                           <button
-                            disabled={!!processing}
+                            disabled={!!processing || client.canMoveHere === false}
                             key={client.id}
                             type="button"
                             onClick={() =>
                               void run("move", () => onMove(client.id))
                             }
-                            className="block w-full rounded px-2 py-2 text-left text-sm text-slate-700 hover:bg-sky-50 disabled:opacity-50"
+                            title={
+                              client.canMoveHere === false
+                                ? "You can only move subitems into clients assigned to you"
+                                : "Move subitem here"
+                            }
+                            className="block w-full rounded px-2 py-2 text-left text-sm text-slate-700 hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-40"
                           >
                             {client.name}
                             {client.displayId ? (
@@ -188,6 +228,15 @@ export function SubitemActionsMenu({
                                 · {client.displayId}
                               </span>
                             ) : null}
+                            <span className="mt-0.5 block truncate text-xs text-slate-500">
+                              Company: {client.company || "—"} · Email: {client.email || "—"}
+                            </span>
+                            <span className="mt-0.5 block truncate text-xs text-slate-400">
+                              Subitems ({client.subitems?.length ?? 0}): {client.subitems?.length
+                                ? client.subitems.slice(0, 3).join(", ") +
+                                  (client.subitems.length > 3 ? "…" : "")
+                                : "None"}
+                            </span>
                           </button>
                         ))}
                       </div>
@@ -195,7 +244,7 @@ export function SubitemActionsMenu({
                   })}
                   {!targetGroups.some((group) =>
                     group.clients.some((client) =>
-                      `${client.name} ${client.displayId ?? ""}`
+                      `${client.name} ${client.displayId ?? ""} ${client.company ?? ""} ${client.email ?? ""}`
                         .toLowerCase()
                         .includes(search.toLowerCase()),
                     ),

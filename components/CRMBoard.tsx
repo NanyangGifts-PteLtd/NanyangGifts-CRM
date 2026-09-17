@@ -541,6 +541,9 @@ export function CRMBoard({
   const [loadingCombinedPush, setLoadingCombinedPush] = useState(false);
   const [showSubitemMoveMenu, setShowSubitemMoveMenu] = useState(false);
   const [subitemMoveSearch, setSubitemMoveSearch] = useState("");
+  const [expandedSubitemMoveGroups, setExpandedSubitemMoveGroups] = useState<
+    Set<string>
+  >(new Set());
   const [isMovingSubitems, setIsMovingSubitems] = useState(false);
   const [isDuplicatingSubitems, setIsDuplicatingSubitems] = useState(false);
   const [showClientMoveMenu, setShowClientMoveMenu] = useState(false);
@@ -4350,15 +4353,19 @@ export function CRMBoard({
 
   const parentClientOptions = useMemo(
     () =>
-      clients.map((client) => ({
+      [...clients].sort(compareClients).map((client) => ({
         id: client.id,
         name: client.name || "Unnamed client",
         displayId: client.displayId,
+        company: client.company,
+        email: client.email,
+        subitems: client.subitems.map((subitem) => subitem.name),
+        canMoveHere: canEditClientRecord(client.id),
         groupName:
           groups.find((group) => group.id === client.groupId)?.name ||
           "Ungrouped",
       })),
-    [clients, groups],
+    [canEditClientRecord, clients, groups],
   );
 
   const selectedSubitems = useMemo(
@@ -4628,7 +4635,7 @@ export function CRMBoard({
           (client) =>
             client.groupName === group.name &&
             (!subitemMoveSearch.trim() ||
-              `${client.name} ${client.displayId ?? ""}`
+              `${client.name} ${client.displayId ?? ""} ${client.company ?? ""} ${client.email ?? ""}`
                 .toLowerCase()
                 .includes(subitemMoveSearch.trim().toLowerCase())),
         ),
@@ -4638,7 +4645,7 @@ export function CRMBoard({
       (client) =>
         client.groupName === "Ungrouped" &&
         (!subitemMoveSearch.trim() ||
-          `${client.name} ${client.displayId ?? ""}`
+          `${client.name} ${client.displayId ?? ""} ${client.company ?? ""} ${client.email ?? ""}`
             .toLowerCase()
             .includes(subitemMoveSearch.trim().toLowerCase())),
     );
@@ -6301,6 +6308,10 @@ export function CRMBoard({
 
   const moveSelectedSubitems = useCallback(
     async (subitemIds: string[], targetClientId: string) => {
+      if (!canEditClientRecord(targetClientId)) {
+        toast.error("You can only move subitems into clients assigned to you");
+        return;
+      }
       if (
         subitemIds.some((subitemId) => {
           const owner = clients.find((client) =>
@@ -6336,6 +6347,7 @@ export function CRMBoard({
       }
     },
     [
+      canEditClientRecord,
       canEditSubitemRecord,
       clients,
       reloadClients,
@@ -6467,6 +6479,9 @@ export function CRMBoard({
       setClientMoveMenuPosition(position);
       setShowClientMoveMenu(true);
     } else {
+      setExpandedSubitemMoveGroups(
+        new Set(orderedMoveGroups.map((group) => group.name)),
+      );
       setSubitemMoveMenuPosition(position);
       setShowSubitemMoveMenu(true);
     }
@@ -6530,6 +6545,10 @@ export function CRMBoard({
                     id: target.id,
                     name: target.name,
                     displayId: target.displayId,
+                    company: target.company,
+                    email: target.email,
+                    subitems: target.subitems.map((item) => item.name),
+                    canMoveHere: canEditClientRecord(target.id),
                   })),
                 }),
               )}
@@ -7114,14 +7133,37 @@ export function CRMBoard({
                     />
                   </div>
                   {orderedMoveGroups.map((group) => (
-                    <div key={group.name} className="mb-3">
-                      <div className="px-1 py-1 text-xs font-medium text-sky-600">
-                        {group.name}
-                      </div>
-                      {group.clients.map((client) => (
+                    <div key={group.name} className="mb-2">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setExpandedSubitemMoveGroups((current) => {
+                            const next = new Set(current);
+                            if (next.has(group.name)) next.delete(group.name);
+                            else next.add(group.name);
+                            return next;
+                          })
+                        }
+                        className="flex w-full items-center justify-between rounded px-1 py-1 text-xs font-medium text-sky-600 hover:bg-sky-50"
+                      >
+                        <span>{group.name}</span>
+                        {expandedSubitemMoveGroups.has(group.name) ? (
+                          <ChevronDown size={15} />
+                        ) : (
+                          <ChevronRight size={15} />
+                        )}
+                      </button>
+                      {expandedSubitemMoveGroups.has(group.name) &&
+                        group.clients.map((client) => (
                         <button
                           key={client.id}
                           type="button"
+                          disabled={!client.canMoveHere}
+                          title={
+                            client.canMoveHere
+                              ? "Move selected subitems here"
+                              : "You can only move subitems into clients assigned to you"
+                          }
                           onClick={async () => {
                             setShowSubitemMoveMenu(false);
                             await moveSelectedSubitems(
@@ -7130,7 +7172,7 @@ export function CRMBoard({
                             );
                             clearSubitemSelection();
                           }}
-                          className="block w-full rounded px-2 py-2 text-left text-sm text-slate-700 hover:bg-sky-50"
+                          className="block w-full rounded px-2 py-2 text-left text-sm text-slate-700 hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-40"
                         >
                           {client.name}
                           {client.displayId ? (
@@ -7138,6 +7180,15 @@ export function CRMBoard({
                               · {client.displayId}
                             </span>
                           ) : null}
+                          <span className="mt-0.5 block truncate text-xs text-slate-500">
+                            Company: {client.company || "—"} · Email: {client.email || "—"}
+                          </span>
+                          <span className="mt-0.5 block truncate text-xs text-slate-400">
+                            Subitems ({client.subitems.length}): {client.subitems.length
+                              ? client.subitems.slice(0, 3).join(", ") +
+                                (client.subitems.length > 3 ? "…" : "")
+                              : "None"}
+                          </span>
                         </button>
                       ))}
                     </div>
@@ -9766,6 +9817,10 @@ export function CRMBoard({
                               id: target.id,
                               name: target.name,
                               displayId: target.displayId,
+                              company: target.company,
+                              email: target.email,
+                              subitems: target.subitems.map((item) => item.name),
+                              canMoveHere: canEditClientRecord(target.id),
                             })),
                           }),
                         )}

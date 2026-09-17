@@ -1190,21 +1190,35 @@ export function AdditionalCostsBoard({
                                     onClick={() =>
                                       setSelectedVoucherClientId(client.id)
                                     }
-                                    className="flex w-full items-center rounded-md px-3 py-3 text-left text-sm hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                    className="flex w-full items-start rounded-md px-3 py-3 text-left text-sm hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-50"
                                   >
-                                    <span className="flex min-w-0 items-center font-medium text-slate-700">
-                                      {isLocked ? (
-                                        <LockKeyhole
-                                          size={17}
-                                          aria-label="Locked client"
-                                          className="mr-2 shrink-0 text-amber-500"
-                                        />
-                                      ) : null}
-                                      <span className="truncate">
-                                        {client.name || "Unnamed client"}
+                                    <span className="min-w-0 flex-1">
+                                      <span className="flex items-center font-medium text-slate-700">
+                                        {isLocked ? (
+                                          <LockKeyhole
+                                            size={17}
+                                            aria-label="Locked client"
+                                            className="mr-2 shrink-0 text-amber-500"
+                                          />
+                                        ) : null}
+                                        <span className="truncate">
+                                          {client.name || "Unnamed client"}
+                                        </span>
+                                        <span className="ml-2 shrink-0 font-mono text-xs text-slate-400">
+                                          {client.displayId}
+                                        </span>
                                       </span>
-                                      <span className="ml-2 shrink-0 font-mono text-xs text-slate-400">
-                                        {client.displayId}
+                                      <span className="mt-1 block truncate text-xs text-slate-500">
+                                        Company: {client.company || "—"} · Email: {client.email || "—"}
+                                      </span>
+                                      <span className="mt-1 block truncate text-xs text-slate-400">
+                                        Subitems ({client.subitems.length}): {client.subitems.length
+                                          ? client.subitems
+                                              .slice(0, 3)
+                                              .map((subitem) => subitem.name || "Unnamed subitem")
+                                              .join(", ") +
+                                            (client.subitems.length > 3 ? "…" : "")
+                                          : "None"}
                                       </span>
                                     </span>
                                     {creatingFor === client.id ? (
