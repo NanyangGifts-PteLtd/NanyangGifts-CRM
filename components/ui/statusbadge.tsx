@@ -83,6 +83,7 @@ export function StatusBadge({
   onReorderOptions,
   manageLabel = "option",
   readOnly = false,
+  readOnlyReason,
   includeBlankOption = true,
   sectionCount = 1,
 }: {
@@ -98,6 +99,7 @@ export function StatusBadge({
   onReorderOptions?: (layout: BadgeOptionLayout[]) => void | Promise<void>;
   manageLabel?: string;
   readOnly?: boolean;
+  readOnlyReason?: string;
   includeBlankOption?: boolean;
   sectionCount?: number;
 }) {
@@ -552,7 +554,7 @@ export function StatusBadge({
         aria-label={value || "Set label"}
         title={
           readOnly
-            ? "Cost fields are locked because this subitem is paid"
+            ? readOnlyReason ?? "Cost fields are locked because this subitem is paid"
             : undefined
         }
         className={`ck h-full w-full whitespace-nowrap font-medium leading-none transition duration-150 ${readOnly ? "cursor-not-allowed opacity-70" : open ? "" : "active:scale-95"} ${small ? "text-[12.6px]" : "text-[12.6px]"}`}

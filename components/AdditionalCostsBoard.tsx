@@ -27,6 +27,7 @@ import {
   StatusBadge,
   type BadgeOptionLayout,
 } from "@/components/ui/statusbadge";
+import { createClient as createSupabaseClient } from "@/lib/supabase/client";
 
 type AdditionalCost = {
   id: string;
@@ -61,6 +62,7 @@ type Props = {
   currentUserRole?: string | null;
   clientAssignees: Record<string, string[]>;
   clientPmAssignees: Record<string, string[]>;
+  onOpenProject?: (clientId: string) => void;
 };
 type Column = { key: string; label: string; width: number };
 const initialColumns: Column[] = [
@@ -72,6 +74,7 @@ const initialColumns: Column[] = [
   { key: "courier", label: "Courier", width: 140 },
   { key: "remarks", label: "Remarks", width: 260 },
   { key: "created", label: "Date Created", width: 140 },
+  { key: "actions", label: "", width: 52 },
 ];
 const cellClass =
   "h-10 min-w-0 bg-white px-2 text-sm text-slate-700 outline-none focus:bg-sky-50 focus:ring-1 focus:ring-inset focus:ring-sky-400";
@@ -91,6 +94,7 @@ export function AdditionalCostsBoard({
   currentUserRole,
   clientAssignees,
   clientPmAssignees,
+  onOpenProject,
 }: Props) {
   const [rows, setRows] = useState<AdditionalCost[]>([]);
   const [collapsedVoucherGroups, setCollapsedVoucherGroups] = useState({
@@ -152,6 +156,38 @@ export function AdditionalCostsBoard({
   }, []);
   useEffect(() => {
     void load();
+  }, [load]);
+  useEffect(() => {
+    const supabase = createSupabaseClient();
+    let disposed = false;
+    let timer: number | undefined;
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    const scheduleReload = () => {
+      if (timer !== undefined) window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        timer = undefined;
+        if (!disposed) void load();
+      }, 300);
+    };
+    const start = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (disposed) return;
+      if (session) supabase.realtime.setAuth(session.access_token);
+      channel = supabase
+        .channel("payment-voucher-live-refresh")
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "additional_costs" },
+          scheduleReload,
+        )
+        .subscribe();
+    };
+    void start();
+    return () => {
+      disposed = true;
+      if (timer !== undefined) window.clearTimeout(timer);
+      if (channel) supabase.removeChannel(channel);
+    };
   }, [load]);
   const loadLabelOptions = useCallback(async () => {
     const response = await fetch("/api/additional-costs/options");
@@ -500,36 +536,128 @@ export function AdditionalCostsBoard({
                   return (
                     <tr key={row.id} className="hover:bg-slate-50">
                       <td className="border-b border-r border-slate-200 px-3 py-2 font-medium text-slate-700">
-                        {client ? clientLabel(client) : "Deleted client"}
+                        {client ? (
+                          <button
+                            type="button"
+                            onClick={() => onOpenProject?.(client.id)}
+                            className="max-w-full truncate text-left text-sky-700 hover:underline"
+                            title={`Open ${clientLabel(client)} on the CRM Board`}
+                          >
+                            {clientLabel(client)}
+                          </button>
+                        ) : (
+                          "Deleted client"
+                        )}
                       </td>
-                      <td className="border-b border-r border-slate-200 px-3 py-2 text-right">
-                        {row.cost == null
-                          ? ""
-                          : row.cost.toLocaleString("en-SG", {
-                              style: "currency",
-                              currency: "SGD",
-                            })}
+                      <td className="border-b border-r border-slate-200 p-0">
+                        <input
+                          type="number"
+                          min="0.01"
+                          step="0.01"
+                          defaultValue={row.cost ?? ""}
+                          disabled={!canDelete(row)}
+                          onBlur={(event) =>
+                            event.target.value !== String(row.cost ?? "") &&
+                            void update(row.id, { cost: event.target.value })
+                          }
+                          className="h-10 w-full bg-transparent px-3 text-right outline-none focus:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-60"
+                        />
                       </td>
-                      <td className="border-b border-r border-slate-200 px-3 py-2">
-                        {row.reason}
+                      <td className="h-10 border-b border-r border-slate-200 p-0">
+                        <StatusBadge
+                          value={row.reason}
+                          onChange={(reason) => void update(row.id, { reason })}
+                          options={labelOptions.additional_cost_reason ?? []}
+                          onAddOption={(value) =>
+                            manageLabel("additional_cost_reason", "add", value)
+                          }
+                          onDeleteOption={(value) =>
+                            deleteLabel("additional_cost_reason", value)
+                          }
+                          onUpdateOptionColor={(value, color) =>
+                            manageLabel(
+                              "additional_cost_reason",
+                              "color",
+                              value,
+                              color,
+                            )
+                          }
+                          onRenameOption={(value, nextValue) =>
+                            manageLabel(
+                              "additional_cost_reason",
+                              "rename",
+                              value,
+                              nextValue,
+                            )
+                          }
+                          onReorderOptions={(layout) =>
+                            reorderLabels("additional_cost_reason", layout)
+                          }
+                          manageLabel="reason"
+                          readOnly={!canDelete(row)}
+                        />
                       </td>
                       <td className="border-b border-r border-slate-200 px-3 py-2">
                         {row.trip_id}
                       </td>
-                      <td className="border-b border-r border-slate-200 px-3 py-2">
-                        {row.items_sent}
+                      <td className="border-b border-r border-slate-200 p-0">
+                        <input
+                          defaultValue={row.items_sent}
+                          disabled={!canDelete(row)}
+                          onBlur={(event) =>
+                            event.target.value !== row.items_sent &&
+                            void update(row.id, { items_sent: event.target.value })
+                          }
+                          className="h-10 w-full bg-transparent px-3 outline-none focus:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-60"
+                        />
                       </td>
-                      <td className="border-b border-r border-slate-200 px-3 py-2">
-                        {row.courier}
+                      <td className="h-10 border-b border-r border-slate-200 p-0">
+                        <StatusBadge
+                          value={row.courier}
+                          onChange={(courier) => void update(row.id, { courier })}
+                          options={(labelOptions.additional_cost_courier ?? []).filter(
+                            (option) =>
+                              group.id === "courier"
+                                ? ["Lalamove", "Easyparcel"].includes(option.value)
+                                : !["", "Lalamove", "Easyparcel"].includes(
+                                    option.value,
+                                  ),
+                          )}
+                          includeBlankOption={false}
+                          readOnly={!canDelete(row)}
+                        />
                       </td>
-                      <td className="border-b border-slate-200 px-3 py-2">
-                        {row.remarks}
+                      <td className="border-b border-slate-200 p-0">
+                        <input
+                          defaultValue={row.remarks}
+                          disabled={!canDelete(row)}
+                          onBlur={(event) =>
+                            event.target.value !== row.remarks &&
+                            void update(row.id, { remarks: event.target.value })
+                          }
+                          className="h-10 w-full bg-transparent px-3 outline-none focus:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-60"
+                        />
                       </td>
                       <td
                         title={`${new Date(row.created_at).toLocaleString("en-SG")}${row.created_by ? ` · Created by ${profiles.find((profile) => profile.id === row.created_by)?.full_name || profiles.find((profile) => profile.id === row.created_by)?.email || "Unknown user"}` : ""}`}
                         className="whitespace-nowrap border-b border-slate-200 px-3 py-2 text-xs text-slate-500"
                       >
                         {new Date(row.created_at).toLocaleDateString("en-SG")}
+                      </td>
+                      <td className="border-b border-slate-200 p-0 text-center">
+                        <button
+                          type="button"
+                          disabled={!canDelete(row) || deletingId === row.id}
+                          onClick={() => setPendingDelete(row)}
+                          title={
+                            canDelete(row)
+                              ? "Delete payment voucher and linked subitem"
+                              : "You can only edit payment vouchers for clients assigned to you"
+                          }
+                          className="inline-flex h-10 w-full items-center justify-center text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-30"
+                        >
+                          <Trash2 size={16} />
+                        </button>
                       </td>
                     </tr>
                   );
@@ -872,9 +1000,18 @@ export function AdditionalCostsBoard({
             <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
               <div>
                 <h2 className="font-semibold text-slate-800">
-                  Choose a client
+                  {selectedVoucherClientId
+                    ? "Payment voucher details"
+                    : "Choose a client"}
                 </h2>
-                <p className="mt-0.5 text-sm text-slate-500">
+                {selectedVoucherClientId ? (
+                  <p className="mt-0.5 text-sm text-slate-500">
+                    Complete the required payment voucher information.
+                  </p>
+                ) : null}
+                <p
+                  className={`mt-0.5 text-sm text-slate-500 ${selectedVoucherClientId ? "hidden" : ""}`}
+                >
                   The client becomes this record’s Project Name.
                 </p>
               </div>
@@ -898,6 +1035,11 @@ export function AdditionalCostsBoard({
                   Project:{" "}
                   {clientLabel(clientsById.get(selectedVoucherClientId)!)}
                 </p>
+                <div className="border-t border-slate-200 pt-3">
+                  <p className="text-sm font-semibold text-slate-700">
+                    Voucher information
+                  </p>
+                </div>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <label className="text-sm font-medium text-slate-700">
                     Cost *
@@ -917,28 +1059,18 @@ export function AdditionalCostsBoard({
                   </label>
                   <label className="text-sm font-medium text-slate-700">
                     Reason *
-                    <select
-                      value={voucherDraft.reason}
-                      onChange={(event) =>
-                        setVoucherDraft((draft) => ({
-                          ...draft,
-                          reason: event.target.value,
-                        }))
-                      }
-                      className="mt-1 w-full rounded border border-slate-300 px-3 py-2 font-normal"
-                    >
-                      <option value="">Select reason</option>
-                      {(labelOptions.additional_cost_reason ?? [])
-                        .filter((option) => option.value)
-                        .map((option) => (
-                          <option
-                            key={option.id ?? option.value}
-                            value={option.value}
-                          >
-                            {option.value}
-                          </option>
-                        ))}
-                    </select>
+                    <div className="mt-1 h-10 overflow-hidden rounded border border-slate-300">
+                      <StatusBadge
+                        value={voucherDraft.reason}
+                        onChange={(reason) =>
+                          setVoucherDraft((draft) => ({
+                            ...draft,
+                            reason,
+                          }))
+                        }
+                        options={labelOptions.additional_cost_reason ?? []}
+                      />
+                    </div>
                   </label>
                   <label className="text-sm font-medium text-slate-700">
                     Items Sent *
@@ -955,30 +1087,22 @@ export function AdditionalCostsBoard({
                   </label>
                   <label className="text-sm font-medium text-slate-700">
                     Courier *
-                    <select
-                      value={voucherDraft.courier}
-                      onChange={(event) =>
-                        setVoucherDraft((draft) => ({
-                          ...draft,
-                          courier: event.target.value,
-                        }))
-                      }
-                      className="mt-1 w-full rounded border border-slate-300 px-3 py-2 font-normal"
-                    >
-                      <option value="">Select courier</option>
-                      {(labelOptions.additional_cost_courier ?? [])
-                        .filter((option) =>
-                          ["Lalamove", "Easyparcel"].includes(option.value),
-                        )
-                        .map((option) => (
-                          <option
-                            key={option.id ?? option.value}
-                            value={option.value}
-                          >
-                            {option.value}
-                          </option>
-                        ))}
-                    </select>
+                    <div className="mt-1 h-10 overflow-hidden rounded border border-slate-300">
+                      <StatusBadge
+                        value={voucherDraft.courier}
+                        onChange={(courier) =>
+                          setVoucherDraft((draft) => ({
+                            ...draft,
+                            courier,
+                          }))
+                        }
+                        options={(labelOptions.additional_cost_courier ?? []).filter(
+                          (option) =>
+                            !option.value ||
+                            ["Lalamove", "Easyparcel"].includes(option.value),
+                        )}
+                      />
+                    </div>
                   </label>
                 </div>
                 <label className="block text-sm font-medium text-slate-700">

@@ -69,6 +69,7 @@ async function resolveLabel(code: string, value: unknown) {
 
 const ADDITIONAL_COST_STATUS = "[Variation] Cost Difference";
 const ADDITIONAL_COST_STATUS_KEY = "subitem_status_variation_cost_difference";
+const COURIER_VOUCHER_COURIERS = new Set(["Lalamove", "Easyparcel"]);
 
 async function ensureAdditionalCostStatus() {
   const { data: group, error: groupError } = await supabaseAdmin
@@ -321,13 +322,44 @@ export async function POST(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
-    await authorize();
+    const { user, role } = await authorize();
     const body = (await request.json()) as {
       id?: string;
       values?: Record<string, unknown>;
     };
     if (!body.id || !body.values)
       throw new Error("An additional cost and changes are required.");
+    const { data: existing, error: existingError } = await supabaseAdmin
+      .from("additional_costs")
+      .select("*")
+      .eq("id", body.id)
+      .maybeSingle();
+    if (existingError || !existing) throw new Error("Additional cost not found.");
+    const { data: client, error: clientError } = await supabaseAdmin
+      .from("clients")
+      .select("custom_fields")
+      .eq("id", existing.client_id)
+      .maybeSingle();
+    if (clientError || !client) throw new Error("Linked client not found.");
+    if (client.custom_fields?.subitemsLocked === "true") {
+      throw new Error(
+        "This client's subitems are locked. Check with the director if there are any changes.",
+      );
+    }
+    if (!["admin", "director"].includes(role)) {
+      const { data: assignment, error: assignmentError } = await supabaseAdmin
+        .from("client_assignees")
+        .select("client_id")
+        .eq("client_id", existing.client_id)
+        .eq("user_id", user.id)
+        .in("assignment_type", ["people", "pm"])
+        .maybeSingle();
+      if (assignmentError) throw assignmentError;
+      if (!assignment)
+        throw new Error(
+          "You can only edit payment vouchers for clients assigned to you.",
+        );
+    }
     const values = Object.fromEntries(
       Object.entries(body.values).filter(([field]) =>
         EDITABLE_FIELDS.has(field),
@@ -341,9 +373,12 @@ export async function PATCH(request: NextRequest) {
       values.cost !== ""
     ) {
       const cost = Number(values.cost);
-      if (!Number.isFinite(cost)) throw new Error("Cost must be a number.");
+      if (!Number.isFinite(cost) || cost <= 0)
+        throw new Error("Cost must be greater than zero.");
       values.cost = cost;
     }
+    if (values.items_sent !== undefined && !String(values.items_sent).trim())
+      throw new Error("Items Sent is required.");
     if (values.people_ids !== undefined) {
       if (
         !Array.isArray(values.people_ids) ||
@@ -358,13 +393,59 @@ export async function PATCH(request: NextRequest) {
       values[field] = label.value;
       values[`${field}_option_id`] = label.id;
     }
+    if (values.courier !== undefined && !values.courier)
+      throw new Error("Choose a Courier label.");
+    if (values.courier !== undefined) {
+      const existingIsCourierVoucher = COURIER_VOUCHER_COURIERS.has(
+        String(existing.courier ?? ""),
+      );
+      const nextIsCourierVoucher = COURIER_VOUCHER_COURIERS.has(
+        String(values.courier),
+      );
+      if (existingIsCourierVoucher !== nextIsCourierVoucher) {
+        throw new Error(
+          "A Payment Voucher cannot be moved between voucher groups by changing its Courier.",
+        );
+      }
+    }
+
+    const { data: linkedSubitem, error: linkedSubitemError } =
+      await supabaseAdmin
+        .from("subitems")
+        .select("id, name, cost")
+        .eq("client_id", existing.client_id)
+        .contains("custom_fields", { additionalCostId: existing.id })
+        .is("deleted_at", null)
+        .maybeSingle();
+    if (linkedSubitemError || !linkedSubitem)
+      throw new Error("Linked Payment Voucher subitem not found.");
+
+    const linkedChanges = {
+      ...(values.cost !== undefined ? { cost: String(values.cost) } : {}),
+      ...(values.courier !== undefined ? { name: String(values.courier) } : {}),
+    };
+    if (Object.keys(linkedChanges).length) {
+      const { error: linkedUpdateError } = await supabaseAdmin
+        .from("subitems")
+        .update(linkedChanges)
+        .eq("id", linkedSubitem.id);
+      if (linkedUpdateError) throw linkedUpdateError;
+    }
     const { data, error } = await supabaseAdmin
       .from("additional_costs")
       .update({ ...values, updated_at: new Date().toISOString() })
       .eq("id", body.id)
       .select("*")
       .single();
-    if (error) throw error;
+    if (error) {
+      if (Object.keys(linkedChanges).length) {
+        await supabaseAdmin
+          .from("subitems")
+          .update({ cost: linkedSubitem.cost, name: linkedSubitem.name })
+          .eq("id", linkedSubitem.id);
+      }
+      throw error;
+    }
     return NextResponse.json({ row: data });
   } catch (error) {
     return failure(error);

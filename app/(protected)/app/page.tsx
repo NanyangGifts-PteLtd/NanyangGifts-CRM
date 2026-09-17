@@ -119,6 +119,20 @@ export default function Page() {
     [],
   );
 
+  const openPaymentVoucherProject = useCallback((clientId: string) => {
+    setActivePanel("crm");
+    setSearchTarget({
+      id: `payment-voucher-project-${clientId}-${Date.now()}`,
+      clientId,
+      kind: "client",
+      label: "Project Name",
+      context: "Opened from Payment Voucher",
+      field: "Project Name",
+      value: "",
+      query: "",
+    });
+  }, []);
+
   const reloadClients = useCallback(async () => {
     const refreshSequence = ++recordsRefreshSequence.current;
     const writeRevisionAtStart = getBoardWriteRevision();
@@ -455,6 +469,7 @@ export default function Page() {
             currentUserRole={currentUserRole}
             clientAssignees={clientAssignees}
             clientPmAssignees={clientPmAssignees}
+            onOpenProject={openPaymentVoucherProject}
           />
         );
 

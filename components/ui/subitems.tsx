@@ -1941,6 +1941,11 @@ export function SubitemsTable({
               sectionCount={4}
               small
               readOnly={additionalCostLinked}
+              readOnlyReason={
+                additionalCostLinked
+                  ? "This field is managed by the linked Payment Voucher."
+                  : undefined
+              }
             />
           </div>
         );
@@ -2029,6 +2034,11 @@ export function SubitemsTable({
                 onReorderOptions?.("currency", values)
               }
               readOnly={costLocked || additionalCostLinked}
+              readOnlyReason={
+                additionalCostLinked
+                  ? "This field is managed by the linked Payment Voucher."
+                  : undefined
+              }
               small
             />
           </div>
@@ -2631,9 +2641,7 @@ export function SubitemsTable({
   };
 
   const totalColSpan = 1 + cols.length + subitemCustomCols.length + 1;
-  const selectableSubitems = displayedSubitems.filter(
-    (subitem) => !isAdditionalCostSubitem(subitem),
-  );
+  const selectableSubitems = displayedSubitems;
 
   return (
     <div
@@ -3450,21 +3458,19 @@ export function SubitemsTable({
                       checked={selectedSubitemIds.includes(sub.id)}
                       onClick={(e) => {
                         e.stopPropagation();
-                        if (!clientIsSelected && !isAdditionalCostSubitem(sub))
+                        if (!clientIsSelected)
                           onToggleSubitemSelection(sub.id);
                       }}
                       onChange={() => {}}
-                      disabled={
-                        clientIsSelected || isAdditionalCostSubitem(sub)
-                      }
+                      disabled={clientIsSelected}
                       title={
-                        isAdditionalCostSubitem(sub)
-                          ? "Additional Cost subitems cannot be moved or duplicated"
-                          : clientIsSelected
+                        clientIsSelected
                             ? "Clients and subitems cannot be selected together"
-                            : "Select subitem"
+                            : isAdditionalCostSubitem(sub)
+                              ? "Select Payment Voucher subitem (bulk actions are unavailable)"
+                              : "Select subitem"
                       }
-                      className={`h-3 w-3 rounded border border-slate-400 bg-white accent-[#7BCBD5] ${clientIsSelected || isAdditionalCostSubitem(sub) ? "cursor-not-allowed opacity-40" : "cursor-pointer"}`}
+                      className={`h-3 w-3 rounded border border-slate-400 bg-white accent-[#7BCBD5] ${clientIsSelected ? "cursor-not-allowed opacity-40" : "cursor-pointer"}`}
                     />
                   </td>
 

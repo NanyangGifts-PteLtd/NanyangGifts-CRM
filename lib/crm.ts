@@ -1618,6 +1618,31 @@ export async function updateSubitemRow(
   if (fetchError) throw fetchError;
   if (
     existing.custom_fields?.additionalCostLinked === "true" &&
+    updates.cost !== undefined
+  ) {
+    const unsupportedFields = Object.keys(updates).filter(
+      (field) => field !== "cost",
+    );
+    if (unsupportedFields.length) {
+      throw new Error(
+        "Only Cost can be changed from the CRM Board for a Payment Voucher subitem.",
+      );
+    }
+    const response = await fetch("/api/additional-costs", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: existing.custom_fields.additionalCostId,
+        values: { cost: updates.cost },
+      }),
+    });
+    const result = await response.json();
+    if (!response.ok)
+      throw new Error(result.error ?? "Could not update the Payment Voucher.");
+    return;
+  }
+  if (
+    existing.custom_fields?.additionalCostLinked === "true" &&
     ["name", "status", "qty", "currency"].some(
       (field) => updates[field as keyof Subitem] !== undefined,
     )

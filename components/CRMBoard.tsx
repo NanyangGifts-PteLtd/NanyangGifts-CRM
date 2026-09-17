@@ -4370,6 +4370,9 @@ export function CRMBoard({
       ),
     [clients, selectedSubitemIds],
   );
+  const selectedPaymentVoucherSubitems = selectedSubitems.some(
+    (subitem) => subitem.customFields?.additionalCostLinked === "true",
+  );
   const selectedSubitemTotals = useMemo(
     () =>
       selectedSubitems.reduce(
@@ -7012,6 +7015,7 @@ export function CRMBoard({
             disabled={
               !canAccessShipperPush ||
               !canEditSelectedSubitems ||
+              selectedPaymentVoucherSubitems ||
               loadingCombinedPush
             }
             onClick={() =>
@@ -7028,6 +7032,8 @@ export function CRMBoard({
                 ? "Pushing is available to PM, Director, and Dev roles"
                 : !canEditSelectedSubitems
                   ? "You can only edit items that are assigned to you"
+                  : selectedPaymentVoucherSubitems
+                    ? "Bulk actions are unavailable for Payment Voucher subitems"
                   : "Push selected subitems as one shipment"
             }
             className="shrink-0 flex items-center gap-1.5 rounded bg-teal-600 px-3 py-2 text-sm text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-50"
@@ -7040,10 +7046,16 @@ export function CRMBoard({
           </button>
           <button
             type="button"
-            disabled={isDuplicatingSubitems || !canEditSelectedSubitems}
+            disabled={
+              isDuplicatingSubitems ||
+              !canEditSelectedSubitems ||
+              selectedPaymentVoucherSubitems
+            }
             title={
               !canEditSelectedSubitems
                 ? "You can only edit items that are assigned to you"
+                : selectedPaymentVoucherSubitems
+                  ? "Bulk actions are unavailable for Payment Voucher subitems"
                 : "Duplicate selected subitems"
             }
             onClick={() => void duplicateSelectedSubitems()}
@@ -7055,11 +7067,17 @@ export function CRMBoard({
           <div className="relative">
             <button
               type="button"
-              disabled={isMovingSubitems || !canEditSelectedSubitems}
+              disabled={
+                isMovingSubitems ||
+                !canEditSelectedSubitems ||
+                selectedPaymentVoucherSubitems
+              }
               onClick={(event) => toggleMoveMenu(event, "subitem")}
               title={
                 !canEditSelectedSubitems
                   ? "You can only edit items that are assigned to you"
+                  : selectedPaymentVoucherSubitems
+                    ? "Bulk actions are unavailable for Payment Voucher subitems"
                   : "Move selected subitems"
               }
               className="flex items-center gap-1.5 rounded px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
@@ -7135,11 +7153,13 @@ export function CRMBoard({
           </div>
           <button
             type="button"
-            disabled={!canEditSelectedSubitems}
+            disabled={!canEditSelectedSubitems || selectedPaymentVoucherSubitems}
             onClick={() => setPendingDeleteSelectedSubitems(selectedSubitemIds)}
             title={
               !canEditSelectedSubitems
                 ? "You can only delete items that are assigned to you"
+                : selectedPaymentVoucherSubitems
+                  ? "Bulk actions are unavailable for Payment Voucher subitems"
                 : "Delete selected subitems"
             }
             className="flex items-center gap-1.5 rounded px-3 py-2 text-sm text-red-500 hover:bg-red-50 disabled:cursor-not-allowed disabled:text-slate-300 disabled:hover:bg-transparent"
