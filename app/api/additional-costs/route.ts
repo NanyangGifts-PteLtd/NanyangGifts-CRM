@@ -14,6 +14,7 @@ const EDITABLE_FIELDS = new Set([
   "courier",
   "trip_id",
   "items_sent",
+  "relatedSubitemIds",
   "qty",
   "verified",
   "discussed",
@@ -173,7 +174,7 @@ export async function POST(request: NextRequest) {
       values?: {
         cost?: unknown;
         reason?: unknown;
-        items_sent?: unknown;
+        relatedSubitemIds?: unknown;
         courier?: unknown;
         remarks?: unknown;
       };
@@ -189,11 +190,19 @@ export async function POST(request: NextRequest) {
       "additional_cost_courier",
       body.values?.courier,
     );
-    const itemsSent = String(body.values?.items_sent ?? "").trim();
+    const relatedSubitemIds = Array.isArray(body.values?.relatedSubitemIds)
+      ? [...new Set(body.values.relatedSubitemIds.filter((id): id is string => typeof id === "string" && id.trim().length > 0))]
+      : [];
     if (!Number.isFinite(cost) || cost <= 0)
       throw new Error("Cost must be greater than zero.");
     if (!reason.value) throw new Error("Choose a Reason label.");
-    if (!itemsSent) throw new Error("Related Subitems is required.");
+    if (!relatedSubitemIds.length)
+      throw new Error("Select at least one Related Subitem.");
+    if (
+      reason.value.trim().toLocaleLowerCase() === "other" &&
+      !String(body.values?.remarks ?? "").trim()
+    )
+      throw new Error("Remarks is required when Reason is Other.");
     if (!courier.value || !["Lalamove", "Easyparcel"].includes(courier.value))
       throw new Error("Choose Lalamove or Easyparcel as the Courier.");
     const { data: client, error: clientError } = await supabaseAdmin
@@ -204,6 +213,28 @@ export async function POST(request: NextRequest) {
       .maybeSingle();
     if (clientError || !client)
       throw new Error("The selected client is no longer available.");
+    const { data: relatedSubitems, error: relatedSubitemsError } =
+      await supabaseAdmin
+        .from("subitems")
+        .select("id, name, custom_fields")
+        .eq("client_id", client.id)
+        .is("deleted_at", null)
+        .in("id", relatedSubitemIds);
+    if (relatedSubitemsError) throw relatedSubitemsError;
+    if (
+      (relatedSubitems ?? []).length !== relatedSubitemIds.length ||
+      (relatedSubitems ?? []).some(
+        (subitem) => subitem.custom_fields?.additionalCostId,
+      )
+    )
+      throw new Error("One or more selected Related Subitems are unavailable.");
+    const relatedNameById = new Map(
+      (relatedSubitems ?? []).map((subitem) => [subitem.id, subitem.name]),
+    );
+    const itemsSent = relatedSubitemIds
+      .map((id) => relatedNameById.get(id) ?? "")
+      .filter(Boolean)
+      .join(", ");
     if (client.custom_fields?.subitemsLocked === "true") {
       throw new Error(
         "This client is locked. Unlock its subitems on the CRM Board before adding an additional cost.",
@@ -377,8 +408,31 @@ export async function PATCH(request: NextRequest) {
         throw new Error("Cost must be greater than zero.");
       values.cost = cost;
     }
+    if (values.relatedSubitemIds !== undefined) {
+      if (!Array.isArray(values.relatedSubitemIds) || !values.relatedSubitemIds.length)
+        throw new Error("Select at least one Related Subitem.");
+      const ids = [...new Set(values.relatedSubitemIds.filter((id): id is string => typeof id === "string" && id.trim().length > 0))];
+      const { data: relatedSubitems, error: relatedSubitemsError } =
+        await supabaseAdmin
+          .from("subitems")
+          .select("id, name, custom_fields")
+          .eq("client_id", existing.client_id)
+          .is("deleted_at", null)
+          .in("id", ids);
+      if (relatedSubitemsError) throw relatedSubitemsError;
+      if (
+        (relatedSubitems ?? []).length !== ids.length ||
+        (relatedSubitems ?? []).some(
+          (subitem) => subitem.custom_fields?.additionalCostId,
+        )
+      )
+        throw new Error("One or more selected Related Subitems are unavailable.");
+      const names = new Map((relatedSubitems ?? []).map((subitem) => [subitem.id, subitem.name]));
+      values.items_sent = ids.map((id) => names.get(id) ?? "").filter(Boolean).join(", ");
+      delete values.relatedSubitemIds;
+    }
     if (values.items_sent !== undefined && !String(values.items_sent).trim())
-      throw new Error("Related Subitems is required.");
+      throw new Error("Select at least one Related Subitem.");
     if (values.people_ids !== undefined) {
       if (
         !Array.isArray(values.people_ids) ||
@@ -393,6 +447,12 @@ export async function PATCH(request: NextRequest) {
       values[field] = label.value;
       values[`${field}_option_id`] = label.id;
     }
+    if (
+      String(values.reason ?? existing.reason ?? "").trim().toLocaleLowerCase() ===
+        "other" &&
+      !String(values.remarks ?? existing.remarks ?? "").trim()
+    )
+      throw new Error("Remarks is required when Reason is Other.");
     if (values.courier !== undefined && !values.courier)
       throw new Error("Choose a Courier label.");
     if (values.courier !== undefined) {

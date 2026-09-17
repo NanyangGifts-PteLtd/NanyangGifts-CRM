@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   Check,
   ChevronDown,
@@ -108,6 +109,13 @@ export function AdditionalCostsBoard({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [relatedSubitemsOpen, setRelatedSubitemsOpen] = useState(false);
+  const [boardRelatedSubitemsMenu, setBoardRelatedSubitemsMenu] = useState<{
+    rowId: string;
+    top: number;
+    left: number;
+    width: number;
+  } | null>(null);
   const [pickerQuery, setPickerQuery] = useState("");
   const [expandedPickerGroups, setExpandedPickerGroups] = useState<Set<string>>(
     new Set(),
@@ -145,10 +153,12 @@ export function AdditionalCostsBoard({
   const [voucherDraft, setVoucherDraft] = useState({
     cost: "",
     reason: "",
-    items_sent: "",
+    relatedSubitemIds: [] as string[],
     courier: "",
     remarks: "",
   });
+  const relatedSubitemsRef = useRef<HTMLDetailsElement>(null);
+  const boardRelatedSubitemsMenuRef = useRef<HTMLDivElement>(null);
   const billExpenseTotal = useMemo(
     () =>
       billDraft.lines.reduce(
@@ -249,6 +259,31 @@ export function AdditionalCostsBoard({
   useEffect(() => {
     void loadLabelOptions();
   }, [loadLabelOptions]);
+  useEffect(() => {
+    if (!relatedSubitemsOpen) return;
+    const closeOnClickAway = (event: MouseEvent) => {
+      if (!relatedSubitemsRef.current?.contains(event.target as Node))
+        setRelatedSubitemsOpen(false);
+    };
+    document.addEventListener("mousedown", closeOnClickAway);
+    return () => document.removeEventListener("mousedown", closeOnClickAway);
+  }, [relatedSubitemsOpen]);
+  useEffect(() => {
+    if (!pickerOpen) setRelatedSubitemsOpen(false);
+  }, [pickerOpen]);
+  useEffect(() => {
+    if (!boardRelatedSubitemsMenu) return;
+    const closeOnClickAway = (event: MouseEvent) => {
+      const target = event.target as Element;
+      if (
+        !boardRelatedSubitemsMenuRef.current?.contains(target) &&
+        !target.closest("[data-related-subitems-trigger]")
+      )
+        setBoardRelatedSubitemsMenu(null);
+    };
+    document.addEventListener("mousedown", closeOnClickAway);
+    return () => document.removeEventListener("mousedown", closeOnClickAway);
+  }, [boardRelatedSubitemsMenu]);
   useEffect(() => {
     if (!pickerOpen || voucherCreationGroup !== "other" || otherBillChoice !== "add")
       return;
@@ -434,7 +469,7 @@ export function AdditionalCostsBoard({
       setVoucherDraft({
         cost: "",
         reason: "",
-        items_sent: "",
+        relatedSubitemIds: [],
         courier: "",
         remarks: "",
       });
@@ -532,6 +567,127 @@ export function AdditionalCostsBoard({
       });
     return sections;
   }, [filteredClients, groups]);
+  const renderRelatedSubitemSelector = (clientId: string) => {
+    const subitems = (clientsById.get(clientId)?.subitems ?? []).filter(
+      (subitem) => !subitem.customFields?.additionalCostId,
+    );
+    const selected = subitems.filter((subitem) =>
+      voucherDraft.relatedSubitemIds.includes(subitem.id),
+    );
+    return (
+      <details
+        ref={relatedSubitemsRef}
+        open={relatedSubitemsOpen}
+        onToggle={(event) => setRelatedSubitemsOpen(event.currentTarget.open)}
+        className="relative mt-1 rounded border border-slate-300 bg-white"
+      >
+        <summary className="cursor-pointer list-none px-3 py-2 text-sm text-slate-700 marker:content-none">
+          {selected.length
+            ? selected.map((subitem) => subitem.name).join(", ")
+            : "Select related subitems"}
+        </summary>
+        <div className="absolute left-0 right-0 z-20 max-h-52 overflow-y-auto border-t border-slate-200 bg-white p-2 shadow-lg">
+          {subitems.length ? (
+            subitems.map((subitem) => (
+              <label key={subitem.id} className="flex cursor-pointer items-center gap-2 rounded px-2 py-2 text-sm hover:bg-slate-50">
+                <input
+                  type="checkbox"
+                  checked={voucherDraft.relatedSubitemIds.includes(subitem.id)}
+                  onChange={() =>
+                    setVoucherDraft((draft) => ({
+                      ...draft,
+                      relatedSubitemIds: draft.relatedSubitemIds.includes(subitem.id)
+                        ? draft.relatedSubitemIds.filter((id) => id !== subitem.id)
+                        : [...draft.relatedSubitemIds, subitem.id],
+                    }))
+                  }
+                />
+                <span className="min-w-0 truncate">{subitem.name || "Unnamed subitem"}</span>
+                <span className="shrink-0 font-mono text-xs text-slate-400">{subitem.displayId}</span>
+              </label>
+            ))
+          ) : (
+            <p className="px-2 py-3 text-sm text-slate-500">This client has no subitems.</p>
+          )}
+        </div>
+      </details>
+    );
+  };
+  const renderBoardRelatedSubitemSelector = (
+    row: AdditionalCost,
+    client: Client | undefined,
+  ) => {
+    const subitems = (client?.subitems ?? []).filter(
+      (subitem) => !subitem.customFields?.additionalCostId,
+    );
+    const selectedNames = new Set(
+      row.items_sent.split(",").map((name) => name.trim()).filter(Boolean),
+    );
+    const selectedIds = subitems
+      .filter((subitem) => selectedNames.has(subitem.name))
+      .map((subitem) => subitem.id);
+    const menuOpen = boardRelatedSubitemsMenu?.rowId === row.id;
+    return (
+      <>
+        <button
+          type="button"
+          data-related-subitems-trigger
+          disabled={!canDelete(row)}
+          onClick={(event) => {
+            const rect = event.currentTarget.getBoundingClientRect();
+            setBoardRelatedSubitemsMenu(
+              menuOpen
+                ? null
+                : { rowId: row.id, top: rect.bottom + 4, left: rect.left, width: rect.width },
+            );
+          }}
+          className="h-10 w-full truncate px-3 text-left hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {row.items_sent || "Select related subitems"}
+        </button>
+        {menuOpen &&
+          createPortal(
+            <div
+              ref={boardRelatedSubitemsMenuRef}
+              style={{
+                position: "fixed",
+                top: boardRelatedSubitemsMenu.top,
+                left: boardRelatedSubitemsMenu.left,
+                width: Math.max(288, boardRelatedSubitemsMenu.width),
+                zIndex: 500,
+              }}
+              className="max-h-52 overflow-y-auto rounded border border-slate-200 bg-white p-2 shadow-xl"
+            >
+          {subitems.map((subitem) => (
+            <label key={subitem.id} className="flex cursor-pointer items-center gap-2 rounded px-2 py-2 hover:bg-slate-50">
+              <input
+                type="checkbox"
+                disabled={!canDelete(row)}
+                checked={selectedIds.includes(subitem.id)}
+                onChange={() => {
+                  const nextIds = selectedIds.includes(subitem.id)
+                    ? selectedIds.filter((id) => id !== subitem.id)
+                    : [...selectedIds, subitem.id];
+                  const names = subitems
+                    .filter((item) => nextIds.includes(item.id))
+                    .map((item) => item.name)
+                    .join(", ");
+                  void update(row.id, {
+                    relatedSubitemIds: nextIds,
+                    items_sent: names,
+                  });
+                }}
+              />
+              <span className="min-w-0 truncate">{subitem.name || "Unnamed subitem"}</span>
+              <span className="shrink-0 font-mono text-xs text-slate-400">{subitem.displayId}</span>
+            </label>
+          ))}
+            </div>,
+            document.body,
+          )}
+      </>
+    );
+  };
   const cell = (content: React.ReactNode, key: string) => (
     <div key={key} className="min-w-0 border-b border-r border-slate-200">
       {content}
@@ -625,6 +781,7 @@ export function AdditionalCostsBoard({
                       </td>
                       <td className="border-b border-r border-slate-200 p-0">
                         <input
+                          key={`${row.id}-cost-${row.cost ?? ""}`}
                           type="number"
                           min="0.01"
                           step="0.01"
@@ -640,7 +797,16 @@ export function AdditionalCostsBoard({
                       <td className="h-10 border-b border-r border-slate-200 p-0">
                         <StatusBadge
                           value={row.reason}
-                          onChange={(reason) => void update(row.id, { reason })}
+                          onChange={(reason) => {
+                            if (
+                              reason.trim().toLocaleLowerCase() === "other" &&
+                              !row.remarks.trim()
+                            ) {
+                              toast.error("Remarks is required when Reason is Other.");
+                              return;
+                            }
+                            void update(row.id, { reason });
+                          }}
                           options={labelOptions.additional_cost_reason ?? []}
                           onAddOption={(value) =>
                             manageLabel("additional_cost_reason", "add", value)
@@ -673,6 +839,7 @@ export function AdditionalCostsBoard({
                       </td>
                       <td className="border-b border-r border-slate-200 p-0">
                         <input
+                          key={`${row.id}-remarks-${row.remarks}`}
                           defaultValue={row.remarks}
                           disabled={!canDelete(row)}
                           onBlur={(event) =>
@@ -686,15 +853,7 @@ export function AdditionalCostsBoard({
                         {row.trip_id}
                       </td>
                       <td className="border-b border-r border-slate-200 p-0">
-                        <input
-                          defaultValue={row.items_sent}
-                          disabled={!canDelete(row)}
-                          onBlur={(event) =>
-                            event.target.value !== row.items_sent &&
-                            void update(row.id, { items_sent: event.target.value })
-                          }
-                          className="h-10 w-full bg-transparent px-3 outline-none focus:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-60"
-                        />
+                        {renderBoardRelatedSubitemSelector(row, client)}
                       </td>
                       <td className="h-10 border-b border-r border-slate-200 p-0">
                         <StatusBadge
@@ -755,7 +914,7 @@ export function AdditionalCostsBoard({
               setVoucherDraft({
                 cost: "",
                 reason: "",
-                items_sent: "",
+                relatedSubitemIds: [],
                 courier: "",
                 remarks: "",
               });
@@ -1274,10 +1433,10 @@ export function AdditionalCostsBoard({
                         <div className="mt-3 grid gap-3 sm:grid-cols-2">
                           <label className="text-sm font-medium text-slate-700">Cost *<input type="number" min="0.01" step="0.01" value={voucherDraft.cost} readOnly={otherBillChoice === "add"} onChange={(event) => setVoucherDraft((draft) => ({ ...draft, cost: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 px-3 py-2 font-normal read-only:bg-slate-100" />{otherBillChoice === "add" ? <span className="mt-1 block text-xs font-normal text-slate-500">Calculated from the expense-line amounts.</span> : null}</label>
                           <label className="text-sm font-medium text-slate-700">Reason *<div className="mt-1 h-10 overflow-hidden rounded border border-slate-300"><StatusBadge value={voucherDraft.reason} onChange={(reason) => setVoucherDraft((draft) => ({ ...draft, reason }))} options={labelOptions.additional_cost_reason ?? []} /></div></label>
-                          <label className="text-sm font-medium text-slate-700">Related Subitems *<input value={voucherDraft.items_sent} onChange={(event) => setVoucherDraft((draft) => ({ ...draft, items_sent: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 px-3 py-2 font-normal" /></label>
+                          <label className="text-sm font-medium text-slate-700">Related Subitems *{renderRelatedSubitemSelector(selectedVoucherClientId)}</label>
                           <label className="text-sm font-medium text-slate-700">Courier *<div className="mt-1 h-10 overflow-hidden rounded border border-slate-300"><StatusBadge value={voucherDraft.courier} onChange={(courier) => setVoucherDraft((draft) => ({ ...draft, courier }))} options={(labelOptions.additional_cost_courier ?? []).filter((option) => !["", "Lalamove", "Easyparcel"].includes(option.value))} includeBlankOption={false} /></div></label>
                         </div>
-                        <label className="mt-3 block text-sm font-medium text-slate-700">Remarks<textarea value={voucherDraft.remarks} onChange={(event) => setVoucherDraft((draft) => ({ ...draft, remarks: event.target.value }))} className="mt-1 min-h-20 w-full rounded border border-slate-300 px-3 py-2 font-normal" /></label>
+                        <label className="mt-3 block text-sm font-medium text-slate-700">Remarks{voucherDraft.reason.trim().toLocaleLowerCase() === "other" ? " * (Specify Reason)" : ""}<textarea value={voucherDraft.remarks} onChange={(event) => setVoucherDraft((draft) => ({ ...draft, remarks: event.target.value }))} className="mt-1 min-h-20 w-full rounded border border-slate-300 px-3 py-2 font-normal" /></label>
                       </section>
                       <button type="button" disabled className="rounded bg-slate-300 px-4 py-2 text-sm font-semibold text-white">Create QuickBooks Bill and payment voucher (coming soon)</button>
                     </>
@@ -1335,16 +1494,7 @@ export function AdditionalCostsBoard({
                   </label>
                   <label className="text-sm font-medium text-slate-700">
                     Related Subitems *
-                    <input
-                      value={voucherDraft.items_sent}
-                      onChange={(event) =>
-                        setVoucherDraft((draft) => ({
-                          ...draft,
-                          items_sent: event.target.value,
-                        }))
-                      }
-                      className="mt-1 w-full rounded border border-slate-300 px-3 py-2 font-normal"
-                    />
+                    {renderRelatedSubitemSelector(selectedVoucherClientId)}
                   </label>
                   <label className="text-sm font-medium text-slate-700">
                     Courier *
@@ -1367,7 +1517,7 @@ export function AdditionalCostsBoard({
                   </label>
                 </div>
                 <label className="block text-sm font-medium text-slate-700">
-                  Remarks{" "}
+                  Remarks{voucherDraft.reason.trim().toLocaleLowerCase() === "other" ? " * (Specify Reason)" : ""}{" "}
                   <textarea
                     value={voucherDraft.remarks}
                     onChange={(event) =>
@@ -1385,8 +1535,9 @@ export function AdditionalCostsBoard({
                     creatingFor !== null ||
                     Number(voucherDraft.cost) <= 0 ||
                     !voucherDraft.reason ||
-                    !voucherDraft.items_sent.trim() ||
+                    !voucherDraft.relatedSubitemIds.length ||
                     !voucherDraft.courier
+                    || (voucherDraft.reason.trim().toLocaleLowerCase() === "other" && !voucherDraft.remarks.trim())
                   }
                   onClick={() => void create(selectedVoucherClientId)}
                   className="rounded bg-[#16a5c4] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
