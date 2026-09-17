@@ -116,6 +116,9 @@ export function StatusBadge({
   const btnRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const optionsRef = useRef<BadgeOption[]>([]);
+  const localLayoutSnapshotRef = useRef<string | null>(null);
+  const localLayoutTimerRef = useRef<number | null>(null);
+  const [localLayoutVersion, setLocalLayoutVersion] = useState(0);
   const configuredOptions = normalizeOptions(rawOptions);
   // A synthetic blank option clears the label without adding a mutable option
   // to the shared label configuration.
@@ -124,6 +127,15 @@ export function StatusBadge({
     configuredOptions.some((option) => option.value === "")
       ? configuredOptions
       : [{ value: "", color: "#bfc0c2", section: 0 }, ...configuredOptions];
+  const optionSnapshot = (entries: BadgeOption[]) =>
+    entries
+      .map((entry) =>
+        [entry.id ?? "", entry.value, entry.color ?? "", entry.section ?? 0].join(
+          "\u001f",
+        ),
+      )
+      .join("\u001e");
+  const baseOptionsSnapshot = optionSnapshot(baseOptions);
   // While editing, preserve a local ordering draft. Parent props update after
   // each optimistic save, but two quick drops can otherwise calculate from a
   // render that predates the first drop and visibly bounce the second one.
@@ -195,6 +207,11 @@ export function StatusBadge({
   }, [largestSectionSize, normalizedSectionCount, options.length]);
 
   const resetMenuState = () => {
+    if (localLayoutTimerRef.current !== null) {
+      window.clearTimeout(localLayoutTimerRef.current);
+      localLayoutTimerRef.current = null;
+    }
+    localLayoutSnapshotRef.current = null;
     setEditingLabels(false);
     setColorEditor(null);
     setDraftNames({});
@@ -226,6 +243,28 @@ export function StatusBadge({
     document.addEventListener("mousedown", close);
     return () => document.removeEventListener("mousedown", close);
   }, [open]);
+
+  // A local reorder remains authoritative until its matching persisted
+  // snapshot arrives. This lets external changes stay live without allowing
+  // stale events from the current user's queued drag saves to rubberband the
+  // menu back to an older order.
+  useEffect(() => {
+    if (!editingLabels) return;
+    const editorSnapshot = editorOptions ? optionSnapshot(editorOptions) : "";
+    if (editorSnapshot === baseOptionsSnapshot) return;
+    if (localLayoutSnapshotRef.current !== null) return;
+    setEditorOptions(baseOptions);
+    setDraftNames({});
+    setColorEditor(null);
+  }, [baseOptionsSnapshot, editorOptions, editingLabels, localLayoutVersion]);
+
+  useEffect(
+    () => () => {
+      if (localLayoutTimerRef.current !== null)
+        window.clearTimeout(localLayoutTimerRef.current);
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -299,6 +338,16 @@ export function StatusBadge({
     // same event burst always starts from this exact arrangement.
     optionsRef.current = nextOptions;
     setEditorOptions(nextOptions);
+    localLayoutSnapshotRef.current = optionSnapshot(nextOptions);
+    if (localLayoutTimerRef.current !== null)
+      window.clearTimeout(localLayoutTimerRef.current);
+    // A failed or unavailable persistence request must not leave this menu
+    // permanently detached from the shared options.
+    localLayoutTimerRef.current = window.setTimeout(() => {
+      localLayoutSnapshotRef.current = null;
+      localLayoutTimerRef.current = null;
+      setLocalLayoutVersion((version) => version + 1);
+    }, 1800);
     setDraggedOption(null);
     // The Board applies this layout optimistically. Do not hold the browser's
     // drag interaction open while the queued persistence request completes.
@@ -444,9 +493,16 @@ export function StatusBadge({
               <button
                 key={color}
                 type="button"
-                onClick={async () => {
-                  await onUpdateOptionColor(option.value, color);
+                onClick={() => {
+                  setEditorOptions((current) =>
+                    current?.map((entry) =>
+                      entry.value === option.value
+                        ? { ...entry, color }
+                        : entry,
+                    ) ?? current,
+                  );
                   setColorEditor(null);
+                  void onUpdateOptionColor(option.value, color);
                 }}
                 className="h-6 w-6 rounded-md border border-white ring-1 ring-gray-200 transition hover:scale-110"
                 style={{ background: color }}

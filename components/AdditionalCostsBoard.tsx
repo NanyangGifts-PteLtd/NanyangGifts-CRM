@@ -1230,7 +1230,7 @@ export function AdditionalCostsBoard({
                               <label className="text-sm font-medium text-slate-700">Due date
                                 <input type="date" value={billDraft.dueDate} onChange={(event) => setBillDraft((draft) => ({ ...draft, dueDate: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 px-3 py-2 font-normal" />
                               </label>
-                              <label className="text-sm font-medium text-slate-700">Bill no.
+                              <label className="text-sm font-medium text-slate-700">Invoice no. (Bill no. on QuickBooks)
                                 <input value={billDraft.billNumber} onChange={(event) => setBillDraft((draft) => ({ ...draft, billNumber: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 px-3 py-2 font-normal" />
                               </label>
                               <label className="text-sm font-medium text-slate-700">Permit no.

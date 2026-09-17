@@ -2393,21 +2393,6 @@ export function CRMBoard({
         return;
       }
 
-      const supabase = createSupabaseClient();
-      const { error } = await supabase
-        .from("option_values")
-        .update({ color })
-        .eq("group_id", groupId)
-        .eq("value", name);
-
-      if (error) {
-        console.error(`Failed to update option color for ${code}`, error);
-        toast.error("Label color could not be changed", {
-          description: error.message,
-        });
-        return;
-      }
-
       const setters: Record<
         string,
         React.Dispatch<React.SetStateAction<OptionEntry[]>>
@@ -2433,11 +2418,31 @@ export function CRMBoard({
         tracking_payment_status: setTrackingPaymentStatusEntries,
         tracking_price_invoice_match: setTrackingPriceInvoiceMatchEntries,
       };
-      setters[code]?.((previous) =>
-        previous.map((entry) =>
+      const setEntries = setters[code];
+      let previous: OptionEntry[] | null = null;
+      setEntries?.((current) => {
+        previous = current;
+        return current.map((entry) =>
           entry.value === name ? { ...entry, color } : entry,
-        ),
-      );
+        );
+      });
+
+      const supabase = createSupabaseClient();
+      const { error } = await supabase
+        .from("option_values")
+        .update({ color })
+        .eq("group_id", groupId)
+        .eq("value", name);
+
+      if (error) {
+        if (previous) setEntries?.(previous);
+        console.error(`Failed to update option color for ${code}`, error);
+        toast.error("Label color could not be changed", {
+          description: error.message,
+        });
+        return;
+      }
+
       notifyChange(
         "Label color changed",
         `${name} now uses the selected color.`,
