@@ -69,10 +69,10 @@ const initialColumns: Column[] = [
   { key: "project", label: "Project Name", width: 250 },
   { key: "cost", label: "Cost", width: 115 },
   { key: "reason", label: "Reason", width: 155 },
-  { key: "trip_id", label: "Reference ID", width: 145 },
-  { key: "items_sent", label: "Items Sent", width: 210 },
-  { key: "courier", label: "Courier", width: 140 },
   { key: "remarks", label: "Remarks", width: 260 },
+  { key: "trip_id", label: "Reference ID", width: 145 },
+  { key: "items_sent", label: "Related Subitems", width: 210 },
+  { key: "courier", label: "Courier", width: 140 },
   { key: "created", label: "Date Created", width: 140 },
   { key: "actions", label: "", width: 52 },
 ];
@@ -671,6 +671,17 @@ export function AdditionalCostsBoard({
                           readOnly={!canDelete(row)}
                         />
                       </td>
+                      <td className="border-b border-r border-slate-200 p-0">
+                        <input
+                          defaultValue={row.remarks}
+                          disabled={!canDelete(row)}
+                          onBlur={(event) =>
+                            event.target.value !== row.remarks &&
+                            void update(row.id, { remarks: event.target.value })
+                          }
+                          className="h-10 w-full bg-transparent px-3 outline-none focus:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-60"
+                        />
+                      </td>
                       <td className="border-b border-r border-slate-200 px-3 py-2">
                         {row.trip_id}
                       </td>
@@ -699,17 +710,6 @@ export function AdditionalCostsBoard({
                           )}
                           includeBlankOption={false}
                           readOnly={!canDelete(row)}
-                        />
-                      </td>
-                      <td className="border-b border-slate-200 p-0">
-                        <input
-                          defaultValue={row.remarks}
-                          disabled={!canDelete(row)}
-                          onBlur={(event) =>
-                            event.target.value !== row.remarks &&
-                            void update(row.id, { remarks: event.target.value })
-                          }
-                          className="h-10 w-full bg-transparent px-3 outline-none focus:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-60"
                         />
                       </td>
                       <td
@@ -1274,7 +1274,7 @@ export function AdditionalCostsBoard({
                         <div className="mt-3 grid gap-3 sm:grid-cols-2">
                           <label className="text-sm font-medium text-slate-700">Cost *<input type="number" min="0.01" step="0.01" value={voucherDraft.cost} readOnly={otherBillChoice === "add"} onChange={(event) => setVoucherDraft((draft) => ({ ...draft, cost: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 px-3 py-2 font-normal read-only:bg-slate-100" />{otherBillChoice === "add" ? <span className="mt-1 block text-xs font-normal text-slate-500">Calculated from the expense-line amounts.</span> : null}</label>
                           <label className="text-sm font-medium text-slate-700">Reason *<div className="mt-1 h-10 overflow-hidden rounded border border-slate-300"><StatusBadge value={voucherDraft.reason} onChange={(reason) => setVoucherDraft((draft) => ({ ...draft, reason }))} options={labelOptions.additional_cost_reason ?? []} /></div></label>
-                          <label className="text-sm font-medium text-slate-700">Items Sent *<input value={voucherDraft.items_sent} onChange={(event) => setVoucherDraft((draft) => ({ ...draft, items_sent: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 px-3 py-2 font-normal" /></label>
+                          <label className="text-sm font-medium text-slate-700">Related Subitems *<input value={voucherDraft.items_sent} onChange={(event) => setVoucherDraft((draft) => ({ ...draft, items_sent: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 px-3 py-2 font-normal" /></label>
                           <label className="text-sm font-medium text-slate-700">Courier *<div className="mt-1 h-10 overflow-hidden rounded border border-slate-300"><StatusBadge value={voucherDraft.courier} onChange={(courier) => setVoucherDraft((draft) => ({ ...draft, courier }))} options={(labelOptions.additional_cost_courier ?? []).filter((option) => !["", "Lalamove", "Easyparcel"].includes(option.value))} includeBlankOption={false} /></div></label>
                         </div>
                         <label className="mt-3 block text-sm font-medium text-slate-700">Remarks<textarea value={voucherDraft.remarks} onChange={(event) => setVoucherDraft((draft) => ({ ...draft, remarks: event.target.value }))} className="mt-1 min-h-20 w-full rounded border border-slate-300 px-3 py-2 font-normal" /></label>
@@ -1334,7 +1334,7 @@ export function AdditionalCostsBoard({
                     </div>
                   </label>
                   <label className="text-sm font-medium text-slate-700">
-                    Items Sent *
+                    Related Subitems *
                     <input
                       value={voucherDraft.items_sent}
                       onChange={(event) =>

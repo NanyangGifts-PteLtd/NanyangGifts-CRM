@@ -193,7 +193,7 @@ export async function POST(request: NextRequest) {
     if (!Number.isFinite(cost) || cost <= 0)
       throw new Error("Cost must be greater than zero.");
     if (!reason.value) throw new Error("Choose a Reason label.");
-    if (!itemsSent) throw new Error("Items Sent is required.");
+    if (!itemsSent) throw new Error("Related Subitems is required.");
     if (!courier.value || !["Lalamove", "Easyparcel"].includes(courier.value))
       throw new Error("Choose Lalamove or Easyparcel as the Courier.");
     const { data: client, error: clientError } = await supabaseAdmin
@@ -378,7 +378,7 @@ export async function PATCH(request: NextRequest) {
       values.cost = cost;
     }
     if (values.items_sent !== undefined && !String(values.items_sent).trim())
-      throw new Error("Items Sent is required.");
+      throw new Error("Related Subitems is required.");
     if (values.people_ids !== undefined) {
       if (
         !Array.isArray(values.people_ids) ||
