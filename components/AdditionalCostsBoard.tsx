@@ -116,6 +116,32 @@ export function AdditionalCostsBoard({
   const [selectedVoucherClientId, setSelectedVoucherClientId] = useState<
     string | null
   >(null);
+  const [voucherCreationGroup, setVoucherCreationGroup] = useState<
+    "courier" | "other"
+  >("courier");
+  const [otherBillChoice, setOtherBillChoice] = useState<
+    "add" | "none" | null
+  >(null);
+  const [billOptions, setBillOptions] = useState<{
+    vendors: Array<{ id: string; name: string }>;
+    accounts: Array<{ id: string; name: string }>;
+    terms: Array<{ id: string; name: string }>;
+    taxCodes: Array<{ id: string; name: string }>;
+  }>({ vendors: [], accounts: [], terms: [], taxCodes: [] });
+  const [billOptionsLoading, setBillOptionsLoading] = useState(false);
+  const [billOptionsError, setBillOptionsError] = useState<string | null>(null);
+  const [billDraft, setBillDraft] = useState({
+    supplierId: "",
+    mailingAddress: "",
+    termId: "",
+    billDate: new Date().toISOString().slice(0, 10),
+    dueDate: new Date().toISOString().slice(0, 10),
+    billNumber: "",
+    permitNumber: "",
+    memo: "",
+    attachments: [] as File[],
+    lines: [{ categoryId: "", description: "", amount: "", taxCodeId: "" }],
+  });
   const [voucherDraft, setVoucherDraft] = useState({
     cost: "",
     reason: "",
@@ -123,6 +149,14 @@ export function AdditionalCostsBoard({
     courier: "",
     remarks: "",
   });
+  const billExpenseTotal = useMemo(
+    () =>
+      billDraft.lines.reduce(
+        (total, line) => total + (Number.parseFloat(line.amount) || 0),
+        0,
+      ),
+    [billDraft.lines],
+  );
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<AdditionalCost | null>(
     null,
@@ -215,6 +249,46 @@ export function AdditionalCostsBoard({
   useEffect(() => {
     void loadLabelOptions();
   }, [loadLabelOptions]);
+  useEffect(() => {
+    if (!pickerOpen || voucherCreationGroup !== "other" || otherBillChoice !== "add")
+      return;
+    let active = true;
+    setBillOptionsLoading(true);
+    setBillOptionsError(null);
+    void Promise.all([
+      fetch("/api/quickbooks/vendors").then((response) => response.json().then((data) => ({ response, data }))),
+      fetch("/api/quickbooks/expense-accounts").then((response) => response.json().then((data) => ({ response, data }))),
+      fetch("/api/quickbooks/terms").then((response) => response.json().then((data) => ({ response, data }))),
+      fetch("/api/quickbooks/tax-codes").then((response) => response.json().then((data) => ({ response, data }))),
+    ])
+      .then(([vendors, accounts, terms, taxCodes]) => {
+        if (!active) return;
+        const failed = [vendors, accounts, terms, taxCodes].find(({ response }) => !response.ok);
+        if (failed) throw new Error(failed.data?.error ?? "Could not load QuickBooks Bill options.");
+        setBillOptions({
+          vendors: vendors.data.vendors ?? [],
+          accounts: accounts.data.accounts ?? [],
+          terms: terms.data.terms ?? [],
+          taxCodes: taxCodes.data.taxCodes ?? [],
+        });
+      })
+      .catch((loadError) => {
+        if (active) setBillOptionsError(loadError instanceof Error ? loadError.message : "Could not load QuickBooks Bill options.");
+      })
+      .finally(() => {
+        if (active) setBillOptionsLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [otherBillChoice, pickerOpen, voucherCreationGroup]);
+  useEffect(() => {
+    if (otherBillChoice !== "add") return;
+    const total = billExpenseTotal > 0 ? billExpenseTotal.toFixed(2) : "";
+    setVoucherDraft((draft) =>
+      draft.cost === total ? draft : { ...draft, cost: total },
+    );
+  }, [billExpenseTotal, otherBillChoice]);
   const manageLabel = async (
     code: string,
     action: "add" | "color" | "rename",
@@ -667,7 +741,7 @@ export function AdditionalCostsBoard({
           </table>
         </div>
       )}
-      {group.id === "courier" && !collapsedVoucherGroups[group.id] && (
+      {!collapsedVoucherGroups[group.id] && (
         <div className="border-t border-slate-200 px-3 py-2">
           <button
             type="button"
@@ -675,6 +749,36 @@ export function AdditionalCostsBoard({
               setExpandedPickerGroups(
                 new Set(clientSections.map((section) => section.id)),
               );
+              setVoucherCreationGroup(group.id);
+              setSelectedVoucherClientId(null);
+              setOtherBillChoice(null);
+              setVoucherDraft({
+                cost: "",
+                reason: "",
+                items_sent: "",
+                courier: "",
+                remarks: "",
+              });
+              const today = new Date().toISOString().slice(0, 10);
+              setBillDraft({
+                supplierId: "",
+                mailingAddress: "",
+                termId: "",
+                billDate: today,
+                dueDate: today,
+                billNumber: "",
+                permitNumber: "",
+                memo: "",
+                attachments: [],
+                lines: [
+                  {
+                    categoryId: "",
+                    description: "",
+                    amount: "",
+                    taxCodeId: "",
+                  },
+                ],
+              });
               setPickerOpen(true);
             }}
             className="text-sm font-medium text-sky-700 hover:text-sky-800"
@@ -996,12 +1100,14 @@ export function AdditionalCostsBoard({
           role="dialog"
           aria-modal="true"
         >
-          <div className="flex max-h-[min(40rem,calc(100vh-2rem))] w-full max-w-xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
+          <div className="flex max-h-[calc(100vh-2rem)] w-full max-w-6xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
               <div>
                 <h2 className="font-semibold text-slate-800">
                   {selectedVoucherClientId
-                    ? "Payment voucher details"
+                    ? voucherCreationGroup === "other" && otherBillChoice === "add"
+                      ? "Prepare QuickBooks Bill"
+                      : "Payment voucher details"
                     : "Choose a client"}
                 </h2>
                 {selectedVoucherClientId ? (
@@ -1023,6 +1129,161 @@ export function AdditionalCostsBoard({
               </button>
             </div>
             {selectedVoucherClientId ? (
+              voucherCreationGroup === "other" ? (
+                <div className="min-h-0 space-y-4 overflow-y-auto p-5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedVoucherClientId(null);
+                      setOtherBillChoice(null);
+                    }}
+                    className="text-sm text-sky-700 hover:underline"
+                  >
+                    Change project
+                  </button>
+                  <section>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Project Name
+                    </p>
+                    <p className="mt-1 text-sm font-medium text-slate-800">
+                      {clientLabel(clientsById.get(selectedVoucherClientId)!)}
+                    </p>
+                  </section>
+                  {otherBillChoice === null ? (
+                    <section className="border-t border-slate-200 pt-4">
+                      <h3 className="font-semibold text-slate-800">Bill</h3>
+                      <p className="mt-1 text-sm text-slate-500">
+                        Does this payment voucher need a QuickBooks Bill?
+                      </p>
+                      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                        <button
+                          type="button"
+                          onClick={() => setOtherBillChoice("add")}
+                          className="rounded-lg border border-sky-500 bg-sky-100 px-6 py-5 text-left text-lg font-semibold text-sky-900 shadow-sm transition hover:bg-sky-200"
+                        >
+                          Add a Bill
+                          <span className="mt-2 block text-sm font-normal text-sky-800">
+                            Prepare the Bill details to send to QuickBooks.
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setOtherBillChoice("none")}
+                          className="rounded-lg border border-violet-400 bg-violet-100 px-6 py-5 text-left text-lg font-semibold text-violet-900 shadow-sm transition hover:bg-violet-200"
+                        >
+                          No Bill to add
+                          <span className="mt-2 block text-sm font-normal text-violet-800">
+                            Continue with a payment voucher only.
+                          </span>
+                        </button>
+                      </div>
+                    </section>
+                  ) : (
+                    <>
+                      <section className="border-t border-slate-200 pt-4">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <h3 className="font-semibold text-slate-800">Bill</h3>
+                            <p className="mt-1 text-sm text-slate-500">
+                              {otherBillChoice === "none"
+                                ? "No QuickBooks Bill will be created for this voucher."
+                                : "Complete the details for the QuickBooks Bill."}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setOtherBillChoice(null)}
+                            className="text-sm text-sky-700 hover:underline"
+                          >
+                            Change
+                          </button>
+                        </div>
+                        {otherBillChoice === "add" ? (
+                          <div className="mt-4 space-y-4">
+                            {billOptionsLoading ? (
+                              <p className="text-sm text-slate-500">Loading QuickBooks options…</p>
+                            ) : null}
+                            {billOptionsError ? (
+                              <p className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                                {billOptionsError}
+                              </p>
+                            ) : null}
+                            <div className="grid gap-3 sm:grid-cols-2">
+                              <label className="text-sm font-medium text-slate-700">Supplier
+                                <select value={billDraft.supplierId} onChange={(event) => setBillDraft((draft) => ({ ...draft, supplierId: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 font-normal">
+                                  <option value="">Choose a supplier</option>
+                                  {billOptions.vendors.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}
+                                </select>
+                              </label>
+                              <label className="text-sm font-medium text-slate-700">Terms
+                                <select value={billDraft.termId} onChange={(event) => setBillDraft((draft) => ({ ...draft, termId: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 font-normal">
+                                  <option value="">Choose terms</option>
+                                  {billOptions.terms.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}
+                                </select>
+                              </label>
+                              <label className="sm:col-span-2 text-sm font-medium text-slate-700">Mailing Address
+                                <textarea value={billDraft.mailingAddress} onChange={(event) => setBillDraft((draft) => ({ ...draft, mailingAddress: event.target.value }))} className="mt-1 min-h-20 w-full rounded border border-slate-300 px-3 py-2 font-normal" />
+                              </label>
+                              <label className="text-sm font-medium text-slate-700">Bill date
+                                <input type="date" value={billDraft.billDate} onChange={(event) => setBillDraft((draft) => ({ ...draft, billDate: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 px-3 py-2 font-normal" />
+                              </label>
+                              <label className="text-sm font-medium text-slate-700">Due date
+                                <input type="date" value={billDraft.dueDate} onChange={(event) => setBillDraft((draft) => ({ ...draft, dueDate: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 px-3 py-2 font-normal" />
+                              </label>
+                              <label className="text-sm font-medium text-slate-700">Bill no.
+                                <input value={billDraft.billNumber} onChange={(event) => setBillDraft((draft) => ({ ...draft, billNumber: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 px-3 py-2 font-normal" />
+                              </label>
+                              <label className="text-sm font-medium text-slate-700">Permit no.
+                                <input value={billDraft.permitNumber} onChange={(event) => setBillDraft((draft) => ({ ...draft, permitNumber: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 px-3 py-2 font-normal" />
+                              </label>
+                            </div>
+                            <div>
+                              <p className="mb-2 text-sm font-semibold text-slate-700">Expense lines</p>
+                              <div className="overflow-x-auto rounded-md border border-slate-200">
+                                <table className="min-w-[900px] w-full text-sm">
+                                  <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                    <tr><th className="px-3 py-2">Category</th><th className="px-3 py-2">Description</th><th className="px-3 py-2">Amount</th><th className="px-3 py-2">GST</th><th className="w-24 px-3 py-2"><span className="sr-only">Actions</span></th></tr>
+                                  </thead>
+                                  <tbody>
+                                    {billDraft.lines.map((line, index) => (
+                                      <tr key={index} className="border-t border-slate-200 align-top">
+                                        <td className="px-3 py-2"><select value={line.categoryId} onChange={(event) => setBillDraft((draft) => ({ ...draft, lines: draft.lines.map((current, currentIndex) => currentIndex === index ? { ...current, categoryId: event.target.value } : current) }))} className="w-full rounded border border-slate-300 bg-white px-3 py-2"><option value="">Choose a category</option>{billOptions.accounts.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}</select></td>
+                                        <td className="px-3 py-2"><input value={line.description} onChange={(event) => setBillDraft((draft) => ({ ...draft, lines: draft.lines.map((current, currentIndex) => currentIndex === index ? { ...current, description: event.target.value } : current) }))} className="w-full rounded border border-slate-300 px-3 py-2" /></td>
+                                        <td className="px-3 py-2"><input type="number" min="0" step="0.01" value={line.amount} onChange={(event) => setBillDraft((draft) => ({ ...draft, lines: draft.lines.map((current, currentIndex) => currentIndex === index ? { ...current, amount: event.target.value } : current) }))} className="w-full rounded border border-slate-300 px-3 py-2" /></td>
+                                        <td className="px-3 py-2"><select value={line.taxCodeId} onChange={(event) => setBillDraft((draft) => ({ ...draft, lines: draft.lines.map((current, currentIndex) => currentIndex === index ? { ...current, taxCodeId: event.target.value } : current) }))} className="w-full rounded border border-slate-300 bg-white px-3 py-2"><option value="">Choose GST</option>{billOptions.taxCodes.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}</select></td>
+                                        <td className="px-3 py-2">{billDraft.lines.length > 1 ? <button type="button" onClick={() => setBillDraft((draft) => ({ ...draft, lines: draft.lines.filter((_, currentIndex) => currentIndex !== index) }))} className="text-red-600 hover:underline">Remove</button> : null}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                  <tfoot className="border-t border-slate-200 bg-slate-50"><tr><td colSpan={5} className="px-3 py-2"><button type="button" onClick={() => setBillDraft((draft) => ({ ...draft, lines: [...draft.lines, { categoryId: "", description: "", amount: "", taxCodeId: "" }] }))} className="font-medium text-sky-700 hover:underline">+ Add expense line</button></td></tr></tfoot>
+                                </table>
+                              </div>
+                            </div>
+                            <label className="block text-sm font-medium text-slate-700">Memo
+                              <textarea value={billDraft.memo} onChange={(event) => setBillDraft((draft) => ({ ...draft, memo: event.target.value }))} className="mt-1 min-h-20 w-full rounded border border-slate-300 px-3 py-2 font-normal" />
+                            </label>
+                            <label className="block text-sm font-medium text-slate-700">Attachments
+                              <input type="file" multiple onChange={(event) => setBillDraft((draft) => ({ ...draft, attachments: [...draft.attachments, ...Array.from(event.target.files ?? [])] }))} className="mt-1 block w-full text-sm font-normal text-slate-600" />
+                            </label>
+                            {billDraft.attachments.length ? <ul className="space-y-1 text-sm text-slate-600">{billDraft.attachments.map((file, index) => <li key={`${file.name}-${file.lastModified}-${index}`} className="flex items-center gap-2"><span className="truncate">{file.name}</span><button type="button" aria-label={`Remove ${file.name}`} onClick={() => setBillDraft((draft) => ({ ...draft, attachments: draft.attachments.filter((_, fileIndex) => fileIndex !== index) }))} className="rounded p-0.5 text-slate-500 hover:bg-slate-100 hover:text-red-600"><X size={15} /></button></li>)}</ul> : null}
+                          </div>
+                        ) : null}
+                      </section>
+                      <section className="border-t border-slate-200 pt-4">
+                        <h3 className="font-semibold text-slate-800">Voucher information</h3>
+                        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                          <label className="text-sm font-medium text-slate-700">Cost *<input type="number" min="0.01" step="0.01" value={voucherDraft.cost} readOnly={otherBillChoice === "add"} onChange={(event) => setVoucherDraft((draft) => ({ ...draft, cost: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 px-3 py-2 font-normal read-only:bg-slate-100" />{otherBillChoice === "add" ? <span className="mt-1 block text-xs font-normal text-slate-500">Calculated from the expense-line amounts.</span> : null}</label>
+                          <label className="text-sm font-medium text-slate-700">Reason *<div className="mt-1 h-10 overflow-hidden rounded border border-slate-300"><StatusBadge value={voucherDraft.reason} onChange={(reason) => setVoucherDraft((draft) => ({ ...draft, reason }))} options={labelOptions.additional_cost_reason ?? []} /></div></label>
+                          <label className="text-sm font-medium text-slate-700">Items Sent *<input value={voucherDraft.items_sent} onChange={(event) => setVoucherDraft((draft) => ({ ...draft, items_sent: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 px-3 py-2 font-normal" /></label>
+                          <label className="text-sm font-medium text-slate-700">Courier *<div className="mt-1 h-10 overflow-hidden rounded border border-slate-300"><StatusBadge value={voucherDraft.courier} onChange={(courier) => setVoucherDraft((draft) => ({ ...draft, courier }))} options={(labelOptions.additional_cost_courier ?? []).filter((option) => !["", "Lalamove", "Easyparcel"].includes(option.value))} includeBlankOption={false} /></div></label>
+                        </div>
+                        <label className="mt-3 block text-sm font-medium text-slate-700">Remarks<textarea value={voucherDraft.remarks} onChange={(event) => setVoucherDraft((draft) => ({ ...draft, remarks: event.target.value }))} className="mt-1 min-h-20 w-full rounded border border-slate-300 px-3 py-2 font-normal" /></label>
+                      </section>
+                      <button type="button" disabled className="rounded bg-slate-300 px-4 py-2 text-sm font-semibold text-white">Create QuickBooks Bill and payment voucher (coming soon)</button>
+                    </>
+                  )}
+                </div>
+              ) : (
               <div className="space-y-3 p-4">
                 <button
                   type="button"
@@ -1133,6 +1394,7 @@ export function AdditionalCostsBoard({
                   {creatingFor ? "Creating…" : "Create payment voucher"}
                 </button>
               </div>
+              )
             ) : (
               <>
                 <label className="relative m-4 block">
