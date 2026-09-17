@@ -1368,8 +1368,8 @@ export function AdditionalCostsBoard({
                               </p>
                             ) : null}
                             <div className="grid gap-3 sm:grid-cols-2">
-                              <label className="text-sm font-medium text-slate-700">Supplier
-                                <select value={billDraft.supplierId} onChange={(event) => setBillDraft((draft) => ({ ...draft, supplierId: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 font-normal">
+                              <label className="text-sm font-medium text-slate-700">Supplier *
+                                <select required value={billDraft.supplierId} onChange={(event) => setBillDraft((draft) => ({ ...draft, supplierId: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 font-normal">
                                   <option value="">Choose a supplier</option>
                                   {billOptions.vendors.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}
                                 </select>
@@ -1389,8 +1389,8 @@ export function AdditionalCostsBoard({
                               <label className="text-sm font-medium text-slate-700">Due date
                                 <input type="date" value={billDraft.dueDate} onChange={(event) => setBillDraft((draft) => ({ ...draft, dueDate: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 px-3 py-2 font-normal" />
                               </label>
-                              <label className="text-sm font-medium text-slate-700">Invoice no. (Bill no. on QuickBooks)
-                                <input value={billDraft.billNumber} onChange={(event) => setBillDraft((draft) => ({ ...draft, billNumber: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 px-3 py-2 font-normal" />
+                              <label className="text-sm font-medium text-slate-700">Invoice no. * <span className="font-normal text-slate-500">(Bill no. on QuickBooks)</span>
+                                <input required value={billDraft.billNumber} onChange={(event) => setBillDraft((draft) => ({ ...draft, billNumber: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 px-3 py-2 font-normal" />
                               </label>
                               <label className="text-sm font-medium text-slate-700">Permit no.
                                 <input value={billDraft.permitNumber} onChange={(event) => setBillDraft((draft) => ({ ...draft, permitNumber: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 px-3 py-2 font-normal" />
@@ -1401,15 +1401,15 @@ export function AdditionalCostsBoard({
                               <div className="overflow-x-auto rounded-md border border-slate-200">
                                 <table className="min-w-[900px] w-full text-sm">
                                   <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                                    <tr><th className="px-3 py-2">Category</th><th className="px-3 py-2">Description</th><th className="px-3 py-2">Amount</th><th className="px-3 py-2">GST</th><th className="w-24 px-3 py-2"><span className="sr-only">Actions</span></th></tr>
+                                    <tr><th className="px-3 py-2">Category *</th><th className="px-3 py-2">Description *</th><th className="px-3 py-2">Amount *</th><th className="px-3 py-2">GST *</th><th className="w-24 px-3 py-2"><span className="sr-only">Actions</span></th></tr>
                                   </thead>
                                   <tbody>
                                     {billDraft.lines.map((line, index) => (
                                       <tr key={index} className="border-t border-slate-200 align-top">
-                                        <td className="px-3 py-2"><select value={line.categoryId} onChange={(event) => setBillDraft((draft) => ({ ...draft, lines: draft.lines.map((current, currentIndex) => currentIndex === index ? { ...current, categoryId: event.target.value } : current) }))} className="w-full rounded border border-slate-300 bg-white px-3 py-2"><option value="">Choose a category</option>{billOptions.accounts.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}</select></td>
-                                        <td className="px-3 py-2"><input value={line.description} onChange={(event) => setBillDraft((draft) => ({ ...draft, lines: draft.lines.map((current, currentIndex) => currentIndex === index ? { ...current, description: event.target.value } : current) }))} className="w-full rounded border border-slate-300 px-3 py-2" /></td>
-                                        <td className="px-3 py-2"><input type="number" min="0" step="0.01" value={line.amount} onChange={(event) => setBillDraft((draft) => ({ ...draft, lines: draft.lines.map((current, currentIndex) => currentIndex === index ? { ...current, amount: event.target.value } : current) }))} className="w-full rounded border border-slate-300 px-3 py-2" /></td>
-                                        <td className="px-3 py-2"><select value={line.taxCodeId} onChange={(event) => setBillDraft((draft) => ({ ...draft, lines: draft.lines.map((current, currentIndex) => currentIndex === index ? { ...current, taxCodeId: event.target.value } : current) }))} className="w-full rounded border border-slate-300 bg-white px-3 py-2"><option value="">Choose GST</option>{billOptions.taxCodes.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}</select></td>
+                                        <td className="px-3 py-2"><select required value={line.categoryId} onChange={(event) => setBillDraft((draft) => ({ ...draft, lines: draft.lines.map((current, currentIndex) => currentIndex === index ? { ...current, categoryId: event.target.value } : current) }))} className="w-full rounded border border-slate-300 bg-white px-3 py-2"><option value="">Choose a category</option>{billOptions.accounts.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}</select></td>
+                                        <td className="px-3 py-2"><input required value={line.description} onChange={(event) => setBillDraft((draft) => ({ ...draft, lines: draft.lines.map((current, currentIndex) => currentIndex === index ? { ...current, description: event.target.value } : current) }))} className="w-full rounded border border-slate-300 px-3 py-2" /></td>
+                                        <td className="px-3 py-2"><input required type="number" min="0.01" step="0.01" value={line.amount} onChange={(event) => setBillDraft((draft) => ({ ...draft, lines: draft.lines.map((current, currentIndex) => currentIndex === index ? { ...current, amount: event.target.value } : current) }))} className="w-full rounded border border-slate-300 px-3 py-2" /></td>
+                                        <td className="px-3 py-2"><select required value={line.taxCodeId} onChange={(event) => setBillDraft((draft) => ({ ...draft, lines: draft.lines.map((current, currentIndex) => currentIndex === index ? { ...current, taxCodeId: event.target.value } : current) }))} className="w-full rounded border border-slate-300 bg-white px-3 py-2"><option value="">Choose GST</option>{billOptions.taxCodes.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}</select></td>
                                         <td className="px-3 py-2">{billDraft.lines.length > 1 ? <button type="button" onClick={() => setBillDraft((draft) => ({ ...draft, lines: draft.lines.filter((_, currentIndex) => currentIndex !== index) }))} className="text-red-600 hover:underline">Remove</button> : null}</td>
                                       </tr>
                                     ))}
@@ -1418,8 +1418,8 @@ export function AdditionalCostsBoard({
                                 </table>
                               </div>
                             </div>
-                            <label className="block text-sm font-medium text-slate-700">Memo
-                              <textarea value={billDraft.memo} onChange={(event) => setBillDraft((draft) => ({ ...draft, memo: event.target.value }))} className="mt-1 min-h-20 w-full rounded border border-slate-300 px-3 py-2 font-normal" />
+                            <label className="block text-sm font-medium text-slate-700">Memo *
+                              <textarea required value={billDraft.memo} onChange={(event) => setBillDraft((draft) => ({ ...draft, memo: event.target.value }))} className="mt-1 min-h-20 w-full rounded border border-slate-300 px-3 py-2 font-normal" />
                             </label>
                             <label className="block text-sm font-medium text-slate-700">Attachments
                               <input type="file" multiple onChange={(event) => setBillDraft((draft) => ({ ...draft, attachments: [...draft.attachments, ...Array.from(event.target.files ?? [])] }))} className="mt-1 block w-full text-sm font-normal text-slate-600" />
