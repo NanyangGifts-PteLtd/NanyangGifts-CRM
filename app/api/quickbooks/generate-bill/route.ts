@@ -173,11 +173,18 @@ export async function POST(request: NextRequest) {
     const quickBooksBill = billResult?.Bill;
     if (!quickBooksBill?.Id) throw new Error("QuickBooks did not return a Bill ID.");
     const attachmentErrors: string[] = [];
+    const uploadedAttachments: Array<{ name: string; id?: string; contentType: string }> = [];
     for (const attachment of attachments) {
       try {
-        await qboUploadAttachment(attachment, {
+        const uploadResult = await qboUploadAttachment(attachment, {
           id: String(quickBooksBill.Id),
           type: "Bill",
+        });
+        const attachable = uploadResult?.AttachableResponse?.[0]?.Attachable;
+        uploadedAttachments.push({
+          name: attachment.name,
+          ...(attachable?.Id ? { id: String(attachable.Id) } : {}),
+          contentType: attachment.type || "application/octet-stream",
         });
       } catch (uploadError) {
         attachmentErrors.push(
@@ -202,6 +209,7 @@ export async function POST(request: NextRequest) {
       quickbooks_supplier_id: supplierId,
       quickbooks_supplier_name: String(bill.supplierName ?? quickBooksBill.VendorRef?.name ?? ""),
       quickbooks_bill_id: String(quickBooksBill.Id),
+      quickbooks_attachment_files: uploadedAttachments,
     }).select("*").single();
     if (voucherError) throw voucherError;
     try {

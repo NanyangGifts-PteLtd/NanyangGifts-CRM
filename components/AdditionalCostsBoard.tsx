@@ -54,6 +54,7 @@ type AdditionalCost = {
   quickbooks_supplier_id?: string;
   quickbooks_supplier_name?: string;
   quickbooks_bill_id?: string | null;
+  quickbooks_attachment_files?: Array<{ name?: string; id?: string; contentType?: string }>;
 };
 type LabelOption = {
   id?: string;
@@ -93,6 +94,7 @@ const otherVoucherColumns: Column[] = [
   { key: "has_quickbooks_bill", label: "Has QuickBooks Bill?", width: 165 },
   { key: "quickbooks_invoice_number", label: "Invoice No. (Bill No.)", width: 185 },
   { key: "quickbooks_supplier_name", label: "Supplier", width: 220 },
+  { key: "quickbooks_attachment_files", label: "Attached Files", width: 240 },
   { key: "created", label: "Date Created", width: 140 },
   { key: "actions", label: "", width: 52 },
 ];
@@ -1112,6 +1114,13 @@ export function AdditionalCostsBoard({
                             {billOptions.vendors.map((vendor) => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}
                           </select>
                         </td>
+                        <td className={`border-b border-r border-slate-200 px-3 py-2 text-xs ${row.has_quickbooks_bill ? "bg-white text-slate-700" : "bg-slate-100 text-slate-400"}`}>
+                          {row.has_quickbooks_bill && row.quickbooks_attachment_files?.length ? (
+                            <ul className="space-y-1" title={row.quickbooks_attachment_files.map((file) => file.name ?? "Unnamed file").join(", ")}>
+                              {row.quickbooks_attachment_files.map((file, index) => <li key={`${file.id ?? file.name ?? "file"}-${index}`} className="truncate">{file.name || "Unnamed file"}</li>)}
+                            </ul>
+                          ) : <span>—</span>}
+                        </td>
                       </>}
                       <td
                         title={`${new Date(row.created_at).toLocaleString("en-SG")}${row.created_by ? ` · Created by ${profiles.find((profile) => profile.id === row.created_by)?.full_name || profiles.find((profile) => profile.id === row.created_by)?.email || "Unknown user"}` : ""}`}
@@ -2038,7 +2047,7 @@ export function AdditionalCostsBoard({
             <AlertDialogTitle>Remove QuickBooks Bill details?</AlertDialogTitle>
             <AlertDialogDescription>
               Setting Has QuickBooks Bill? to No will permanently clear this
-              payment voucher’s Invoice No. and Supplier values. The Bill in
+              payment voucher’s Invoice No., Supplier, and Attached Files values. The Bill in
               QuickBooks itself will not be changed.
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -2053,6 +2062,7 @@ export function AdditionalCostsBoard({
                     quickbooks_invoice_number: "",
                     quickbooks_supplier_id: "",
                     quickbooks_supplier_name: "",
+                    quickbooks_attachment_files: [],
                   });
                 }
                 setPendingQuickBooksBillClear(null);
