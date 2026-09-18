@@ -7,6 +7,7 @@ import {
   ChevronDown,
   ChevronRight,
   LockKeyhole,
+  LoaderCircle,
   Search,
   Trash2,
   X,
@@ -104,6 +105,25 @@ const clientLabel = (client: Client) =>
 const compareByDefaultClientBoardOrder = (first: Client, second: Client) =>
   new Date(second.createdAt || 0).getTime() -
   new Date(first.createdAt || 0).getTime();
+const supplierSearchKey = (value: string) =>
+  value.toLocaleLowerCase().replace(/[^a-z0-9]/g, "");
+const levenshteinDistance = (first: string, second: string) => {
+  const previous = Array.from({ length: second.length + 1 }, (_, index) => index);
+  for (let firstIndex = 1; firstIndex <= first.length; firstIndex += 1) {
+    let diagonal = previous[0];
+    previous[0] = firstIndex;
+    for (let secondIndex = 1; secondIndex <= second.length; secondIndex += 1) {
+      const saved = previous[secondIndex];
+      previous[secondIndex] = Math.min(
+        previous[secondIndex] + 1,
+        previous[secondIndex - 1] + 1,
+        diagonal + Number(first[firstIndex - 1] !== second[secondIndex - 1]),
+      );
+      diagonal = saved;
+    }
+  }
+  return previous[second.length];
+};
 
 export function AdditionalCostsBoard({
   clients,
@@ -156,6 +176,17 @@ export function AdditionalCostsBoard({
   }>({ vendors: [], accounts: [], terms: [], taxCodes: [] });
   const [billOptionsLoading, setBillOptionsLoading] = useState(false);
   const [billOptionsError, setBillOptionsError] = useState<string | null>(null);
+  const [extractingBillDocument, setExtractingBillDocument] = useState(false);
+  const [billDocumentPreview, setBillDocumentPreview] = useState<{
+    name: string;
+    type: string;
+    url: string;
+    confidence: Record<string, number>;
+    supplierSuggestion?: { id: string; name: string };
+    isPrefill: boolean;
+  } | null>(null);
+  const [pendingExtractionFile, setPendingExtractionFile] = useState<File | null>(null);
+  const [prefillFileSignature, setPrefillFileSignature] = useState<string | null>(null);
   const [billDraft, setBillDraft] = useState({
     supplierId: "",
     mailingAddress: "",
@@ -176,6 +207,7 @@ export function AdditionalCostsBoard({
   });
   const relatedSubitemsRef = useRef<HTMLDetailsElement>(null);
   const boardRelatedSubitemsMenuRef = useRef<HTMLDivElement>(null);
+  const pickerScrollRef = useRef<HTMLDivElement>(null);
   const billExpenseTotal = useMemo(
     () =>
       billDraft.lines.reduce(
@@ -184,6 +216,17 @@ export function AdditionalCostsBoard({
       ),
     [billDraft.lines],
   );
+  useEffect(() => {
+    return () => {
+      if (billDocumentPreview?.url) URL.revokeObjectURL(billDocumentPreview.url);
+    };
+  }, [billDocumentPreview?.url]);
+  useEffect(() => {
+    if (pickerOpen && selectedVoucherClientId) return;
+    setBillDocumentPreview(null);
+    setPrefillFileSignature(null);
+    setPendingExtractionFile(null);
+  }, [pickerOpen, selectedVoucherClientId]);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<AdditionalCost | null>(
     null,
@@ -499,6 +542,8 @@ export function AdditionalCostsBoard({
       setPickerOpen(false);
       setPickerQuery("");
       setSelectedVoucherClientId(null);
+      setBillDocumentPreview(null);
+      setPrefillFileSignature(null);
       setVoucherDraft({
         cost: "",
         reason: "",
@@ -544,6 +589,8 @@ export function AdditionalCostsBoard({
       setPickerOpen(false);
       setSelectedVoucherClientId(null);
       setOtherBillChoice(null);
+      setBillDocumentPreview(null);
+      setPrefillFileSignature(null);
       toast.success(`QuickBooks Bill ${result.docNumber ?? ""} and payment voucher created.`);
       if (result.attachmentErrors?.length)
         toast.warning("The Bill was created, but some attachments could not be uploaded.", {
@@ -556,6 +603,99 @@ export function AdditionalCostsBoard({
     } finally {
       setCreatingFor(null);
     }
+  };
+  const extractBillDocument = async (file: File) => {
+    if (!selectedVoucherClientId) return;
+    const previewUrl = URL.createObjectURL(file);
+    setPrefillFileSignature(`${file.name}-${file.lastModified}`);
+    setBillDocumentPreview((current) => {
+      if (current?.url) URL.revokeObjectURL(current.url);
+      return { name: file.name, type: file.type, url: previewUrl, confidence: {}, isPrefill: true };
+    });
+    setBillDraft((draft) =>
+      draft.attachments.some((attachment) =>
+        attachment.name === file.name && attachment.lastModified === file.lastModified,
+      )
+        ? draft
+        : { ...draft, attachments: [...draft.attachments, file] },
+    );
+    setExtractingBillDocument(true);
+    try {
+      const payload = new FormData();
+      payload.append("file", file, file.name);
+      payload.append("clientId", selectedVoucherClientId);
+      const response = await fetch("/api/quickbooks/extract-bill-document", {
+        method: "POST",
+        body: payload,
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error ?? "Could not extract this document.");
+      const extraction = result.extraction as {
+        supplierName?: string;
+        mailingAddress?: string;
+        invoiceNumber?: string;
+        billDate?: string;
+        dueDate?: string;
+        confidence?: Record<string, number>;
+        lines?: Array<{ description?: string; amount?: number | null; tax?: string }>;
+      };
+      const normalise = (value: string) => value.trim().toLocaleLowerCase();
+      const extractedSupplier = supplierSearchKey(extraction.supplierName ?? "");
+      const suppliersByCloseness = billOptions.vendors
+        .map((option) => ({
+          ...option,
+          score: extractedSupplier
+            ? levenshteinDistance(supplierSearchKey(option.name), extractedSupplier) /
+              Math.max(supplierSearchKey(option.name).length, extractedSupplier.length, 1)
+            : Number.POSITIVE_INFINITY,
+        }))
+        .sort((first, second) => first.score - second.score);
+      const supplier = suppliersByCloseness[0];
+      const exactSupplier = supplier?.score === 0 ? supplier : undefined;
+      const findTaxCode = (tax: string) => {
+        const query = normalise(tax);
+        if (!query) return "";
+        return billOptions.taxCodes.find((option) => normalise(option.name).includes(query) || query.includes(normalise(option.name)))?.id ?? "";
+      };
+      setBillDraft((draft) => ({
+        ...draft,
+        supplierId: exactSupplier?.id ?? draft.supplierId,
+        mailingAddress: extraction.mailingAddress || draft.mailingAddress,
+        billDate: extraction.billDate || draft.billDate,
+        dueDate: extraction.dueDate || draft.dueDate,
+        billNumber: extraction.invoiceNumber || draft.billNumber,
+        lines: extraction.lines?.length
+          ? extraction.lines.map((line) => ({
+              categoryId: "",
+              description: line.description ?? "",
+              amount: line.amount ? String(line.amount) : "",
+              taxCodeId: findTaxCode(line.tax ?? ""),
+            }))
+          : draft.lines,
+      }));
+      setBillDocumentPreview((current) => current ? {
+        ...current,
+        confidence: extraction.confidence ?? {},
+        supplierSuggestion: supplier && extractedSupplier
+          ? { id: supplier.id, name: supplier.name }
+          : undefined,
+      } : current);
+      toast.success("Document fields were prefilled. Please review every value before creating the Bill.");
+    } catch (extractionError) {
+      toast.error("Document could not be read", {
+        description: extractionError instanceof Error ? extractionError.message : "Please enter the Bill details manually.",
+      });
+    } finally {
+      setExtractingBillDocument(false);
+    }
+  };
+  const previewAttachment = (file: File) => {
+    const url = URL.createObjectURL(file);
+    setBillDocumentPreview((current) => {
+      if (current?.url) URL.revokeObjectURL(current.url);
+      const isPrefill = prefillFileSignature === `${file.name}-${file.lastModified}`;
+      return { name: file.name, type: file.type, url, confidence: {}, isPrefill };
+    });
   };
   const canDelete = (row: AdditionalCost) => {
     const role = String(currentUserRole ?? "").toLowerCase();
@@ -1013,6 +1153,8 @@ export function AdditionalCostsBoard({
               setVoucherCreationGroup(group.id);
               setSelectedVoucherClientId(null);
               setOtherBillChoice(null);
+              setBillDocumentPreview(null);
+              setPrefillFileSignature(null);
               setVoucherDraft({
                 cost: "",
                 reason: "",
@@ -1357,11 +1499,27 @@ export function AdditionalCostsBoard({
       {error ? <p className="m-3 text-sm text-red-600">{error}</p> : null}
       {pickerOpen ? (
         <div
-          className="fixed inset-0 z-[300] flex items-center justify-center bg-slate-950/35 p-4"
+          className="fixed inset-0 z-[300] flex items-center justify-center gap-5 bg-slate-950/35 p-4"
           role="dialog"
           aria-modal="true"
         >
-          <div className="flex max-h-[calc(100vh-2rem)] w-full max-w-6xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
+          {billDocumentPreview ? (
+            <aside className="hidden h-[calc(100vh-2rem)] w-[clamp(360px,36vw,680px)] shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-slate-50 shadow-2xl lg:flex lg:flex-col">
+              <div className="flex items-center justify-between border-b border-slate-200 bg-white px-3 py-2">
+                <div className="min-w-0"><p className="truncate text-sm font-medium text-slate-700" title={billDocumentPreview.name}>{billDocumentPreview.name}</p>{billDocumentPreview.isPrefill ? <span className="text-xs font-medium text-sky-700">Used for prefill</span> : <span className="text-xs text-slate-500">Attachment preview</span>}</div>
+                <button type="button" onClick={() => setBillDocumentPreview(null)} className="ml-2 rounded p-1 text-slate-500 hover:bg-slate-100" aria-label="Hide document preview"><X size={16} /></button>
+              </div>
+              {billDocumentPreview.type === "application/pdf" ? (
+                <iframe title="Uploaded receipt or invoice" src={billDocumentPreview.url} className="min-h-0 flex-1 w-full bg-white" />
+              ) : (
+                <div className="min-h-0 flex-1 overflow-auto p-2"><img src={billDocumentPreview.url} alt="Uploaded receipt or invoice" className="w-full" /></div>
+              )}
+              {Object.keys(billDocumentPreview.confidence).length ? (
+                <div className="border-t border-slate-200 bg-white px-3 py-2 text-xs text-slate-500">Extraction confidence: {Object.values(billDocumentPreview.confidence).filter(Boolean).length ? `${Math.round((Object.values(billDocumentPreview.confidence).filter(Boolean).reduce((total, value) => total + value, 0) / Object.values(billDocumentPreview.confidence).filter(Boolean).length) * 100)}%` : "not available"}. Verify all prefilled fields.</div>
+              ) : null}
+            </aside>
+          ) : null}
+          <div className={`flex max-h-[calc(100vh-2rem)] w-full flex-col overflow-hidden rounded-xl bg-white shadow-2xl ${billDocumentPreview ? "max-w-none flex-1" : "max-w-6xl"}`}>
             <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
               <div>
                 <h2 className="font-semibold text-slate-800">
@@ -1383,7 +1541,11 @@ export function AdditionalCostsBoard({
                 </p>
               </div>
               <button
-                onClick={() => setPickerOpen(false)}
+                onClick={() => {
+                  setPickerOpen(false);
+                  setBillDocumentPreview(null);
+                  setPrefillFileSignature(null);
+                }}
                 className="rounded p-1 text-slate-400 hover:bg-slate-100"
               >
                 <X size={19} />
@@ -1397,6 +1559,8 @@ export function AdditionalCostsBoard({
                     onClick={() => {
                       setSelectedVoucherClientId(null);
                       setOtherBillChoice(null);
+                      setBillDocumentPreview(null);
+                      setPrefillFileSignature(null);
                     }}
                     className="text-sm text-sky-700 hover:underline"
                   >
@@ -1461,6 +1625,13 @@ export function AdditionalCostsBoard({
                         </div>
                         {otherBillChoice === "add" ? (
                           <div className="mt-4 space-y-4">
+                              <label className="block rounded-lg border border-dashed border-sky-300 bg-sky-50 p-3 text-sm font-medium text-slate-700">
+                                Upload Receipt/Invoice for Pre-filling
+                                <span className="mt-1 block text-xs font-normal text-slate-500">Maximum 1 upload here for pre-filling, upload other files below.</span>
+                                <span className="mt-1 block text-xs font-normal text-slate-500">PDF, JPEG, PNG, TIFF, BMP, or HEIF up to 4 MB. The original file is also added to the Bill attachments.</span>
+                                <input type="file" accept="application/pdf,image/jpeg,image/png,image/tiff,image/bmp,image/heif" disabled={extractingBillDocument} onChange={(event) => { const file = event.target.files?.[0]; event.currentTarget.value = ""; if (!file) return; if (prefillFileSignature) setPendingExtractionFile(file); else void extractBillDocument(file); }} className="mt-2 block w-full text-sm font-normal text-slate-600" />
+                                {extractingBillDocument ? <span className="mt-3 flex items-center gap-2 rounded-md bg-sky-700 px-3 py-2 text-sm font-semibold text-white"><LoaderCircle size={18} className="animate-spin" /> Reading file and extracting Bill details…</span> : null}
+                              </label>
                             {billOptionsLoading ? (
                               <p className="text-sm text-slate-500">Loading QuickBooks options…</p>
                             ) : null}
@@ -1475,6 +1646,9 @@ export function AdditionalCostsBoard({
                                   <option value="">Choose a supplier</option>
                                   {billOptions.vendors.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}
                                 </select>
+                                {billDocumentPreview?.supplierSuggestion && billDraft.supplierId !== billDocumentPreview.supplierSuggestion.id ? (
+                                  <button type="button" onClick={() => setBillDraft((draft) => ({ ...draft, supplierId: billDocumentPreview.supplierSuggestion!.id }))} className="mt-1 text-left text-xs font-normal text-sky-700 hover:underline">Use closest match: {billDocumentPreview.supplierSuggestion.name}</button>
+                                ) : null}
                               </label>
                               <label className="text-sm font-medium text-slate-700">Terms
                                 <select value={billDraft.termId} onChange={(event) => setBillDraft((draft) => ({ ...draft, termId: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 font-normal">
@@ -1521,9 +1695,10 @@ export function AdditionalCostsBoard({
                               <textarea required value={billDraft.memo} onChange={(event) => setBillDraft((draft) => ({ ...draft, memo: event.target.value }))} className="mt-1 min-h-20 w-full rounded border border-slate-300 px-3 py-2 font-normal" />
                             </label>
                             <label className="block text-sm font-medium text-slate-700">Attachments
+                              <span className="mt-1 block text-xs font-normal text-slate-500">Click any attachment to preview it in the left pane. Files used for prefill are marked.</span>
                               <input type="file" multiple onChange={(event) => setBillDraft((draft) => ({ ...draft, attachments: [...draft.attachments, ...Array.from(event.target.files ?? [])] }))} className="mt-1 block w-full text-sm font-normal text-slate-600" />
                             </label>
-                            {billDraft.attachments.length ? <ul className="space-y-1 text-sm text-slate-600">{billDraft.attachments.map((file, index) => <li key={`${file.name}-${file.lastModified}-${index}`} className="flex items-center gap-2"><span className="truncate">{file.name}</span><button type="button" aria-label={`Remove ${file.name}`} onClick={() => setBillDraft((draft) => ({ ...draft, attachments: draft.attachments.filter((_, fileIndex) => fileIndex !== index) }))} className="rounded p-0.5 text-slate-500 hover:bg-slate-100 hover:text-red-600"><X size={15} /></button></li>)}</ul> : null}
+                            {billDraft.attachments.length ? <ul className="space-y-1 text-sm text-slate-600">{billDraft.attachments.map((file, index) => <li key={`${file.name}-${file.lastModified}-${index}`} className="flex items-center gap-2"><button type="button" onClick={() => previewAttachment(file)} className="min-w-0 truncate text-left text-sky-700 hover:underline">{file.name}</button>{prefillFileSignature === `${file.name}-${file.lastModified}` ? <span className="shrink-0 rounded bg-sky-100 px-1.5 py-0.5 text-xs font-medium text-sky-700">Used for prefill</span> : null}<button type="button" aria-label={`Remove ${file.name}`} onClick={() => setBillDraft((draft) => ({ ...draft, attachments: draft.attachments.filter((_, fileIndex) => fileIndex !== index) }))} className="rounded p-0.5 text-slate-500 hover:bg-slate-100 hover:text-red-600"><X size={15} /></button></li>)}</ul> : null}
                           </div>
                         ) : null}
                       </section>
@@ -1566,7 +1741,11 @@ export function AdditionalCostsBoard({
               <div className="space-y-3 p-4">
                 <button
                   type="button"
-                  onClick={() => setSelectedVoucherClientId(null)}
+                  onClick={() => {
+                    setSelectedVoucherClientId(null);
+                    setBillDocumentPreview(null);
+                    setPrefillFileSignature(null);
+                  }}
                   className="text-sm text-sky-700 hover:underline"
                 >
                   Change project
@@ -1681,22 +1860,29 @@ export function AdditionalCostsBoard({
                     className="w-full rounded-md border border-slate-300 py-2 pl-9 pr-3 text-sm outline-none focus:border-sky-500"
                   />
                 </label>
-                <div className="min-h-0 overflow-y-auto border-t border-slate-100 px-2 pb-2">
+                <div ref={pickerScrollRef} className="min-h-0 overflow-y-auto border-t border-slate-100 px-2 pb-2">
                   {clientSections.map((section) => {
                     const expanded = expandedPickerGroups.has(section.id);
                     return (
                       <div key={section.id}>
                         <button
                           type="button"
-                          onClick={() =>
+                          onClick={(event) => {
+                            const header = event.currentTarget;
+                            const collapsing = expandedPickerGroups.has(section.id);
                             setExpandedPickerGroups((current) => {
                               const next = new Set(current);
                               if (next.has(section.id)) next.delete(section.id);
                               else next.add(section.id);
                               return next;
-                            })
-                          }
-                          className="sticky top-0 flex w-full items-center justify-between border-y border-slate-100 bg-slate-50 px-3 py-2 text-left text-xs font-semibold text-slate-500 hover:bg-slate-100"
+                            });
+                            if (collapsing) {
+                              requestAnimationFrame(() =>
+                                header.scrollIntoView({ block: "start" }),
+                              );
+                            }
+                          }}
+                          className="sticky top-0 z-10 flex w-full items-center justify-between border-y border-slate-100 bg-slate-50 px-3 py-2 text-left text-xs font-semibold text-slate-500 hover:bg-slate-100"
                         >
                           <span>{section.label}</span>
                           {expanded ? (
@@ -1720,9 +1906,13 @@ export function AdditionalCostsBoard({
                                       creatingFor !== null ||
                                       Boolean(restriction)
                                     }
-                                    onClick={() =>
-                                      setSelectedVoucherClientId(client.id)
-                                    }
+                                    onClick={() => {
+                                      setSelectedVoucherClientId(client.id);
+                                      setBillDraft((draft) => ({
+                                        ...draft,
+                                        memo: `${client.name || "Unnamed client"}${client.displayId ? ` · ${client.displayId}` : ""}`,
+                                      }));
+                                    }}
                                     className="flex w-full items-start rounded-md px-3 py-3 text-left text-sm hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-50"
                                   >
                                     <span className="min-w-0 flex-1">
@@ -1778,6 +1968,35 @@ export function AdditionalCostsBoard({
           </div>
         </div>
       ) : null}
+      <AlertDialog
+        open={Boolean(pendingExtractionFile)}
+        onOpenChange={(open) => !open && setPendingExtractionFile(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Use this file for prefill?</AlertDialogTitle>
+            <AlertDialogDescription>
+              A document has already been used to prefill this Bill. Replacing it will use the new file for extraction and update the prefilled fields. Adding it as an attachment keeps the current prefill unchanged.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <button type="button" onClick={() => {
+              const file = pendingExtractionFile;
+              setPendingExtractionFile(null);
+              if (!file) return;
+              setBillDraft((draft) => draft.attachments.some((attachment) => attachment.name === file.name && attachment.lastModified === file.lastModified) ? draft : { ...draft, attachments: [...draft.attachments, file] });
+              previewAttachment(file);
+            }} className="inline-flex h-10 items-center justify-center rounded-md border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 hover:bg-slate-50">Add as attachment only</button>
+            <AlertDialogAction onClick={(event) => {
+              event.preventDefault();
+              const file = pendingExtractionFile;
+              setPendingExtractionFile(null);
+              if (file) void extractBillDocument(file);
+            }}>Replace and extract</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <AlertDialog
         open={Boolean(pendingDelete)}
         onOpenChange={(open) => !open && setPendingDelete(null)}
