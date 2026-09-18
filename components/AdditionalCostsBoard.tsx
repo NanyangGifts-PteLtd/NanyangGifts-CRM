@@ -1073,7 +1073,7 @@ export function AdditionalCostsBoard({
                           readOnly={!canDelete(row)}
                         />
                       </td> : <>
-                        <td className="h-10 border-b border-r border-slate-200 p-0">
+                        <td className="h-10 border-b border-r border-slate-200 bg-slate-100 p-0">
                           <StatusBadge
                             value={row.has_quickbooks_bill ? "Yes" : "No"}
                             onChange={(value) => {
@@ -1088,34 +1088,22 @@ export function AdditionalCostsBoard({
                               { value: "No", color: "#94a3b8" },
                             ]}
                             includeBlankOption={false}
-                            readOnly={!canDelete(row)}
+                            readOnly
                           />
                         </td>
                         <td className="border-b border-r border-slate-200 p-0">
                           <input
                             key={`${row.id}-invoice-${row.quickbooks_invoice_number ?? ""}-${row.has_quickbooks_bill}`}
                             defaultValue={row.quickbooks_invoice_number ?? ""}
-                            disabled={!canDelete(row) || !row.has_quickbooks_bill}
-                            onBlur={(event) => event.target.value !== (row.quickbooks_invoice_number ?? "") && void update(row.id, { quickbooks_invoice_number: event.target.value })}
+                            disabled
                             className="h-10 w-full bg-transparent px-3 outline-none focus:bg-sky-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
                           />
                         </td>
-                        <td className="border-b border-r border-slate-200 p-0">
-                          <select
-                            value={row.quickbooks_supplier_id ?? ""}
-                            disabled={!canDelete(row) || !row.has_quickbooks_bill}
-                            onChange={(event) => {
-                              const supplier = billOptions.vendors.find((vendor) => vendor.id === event.target.value);
-                              void update(row.id, { quickbooks_supplier_id: event.target.value, quickbooks_supplier_name: supplier?.name ?? "" });
-                            }}
-                            className="h-10 w-full bg-transparent px-3 outline-none focus:bg-sky-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
-                          >
-                            <option value="">Choose a supplier</option>
-                            {billOptions.vendors.map((vendor) => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}
-                          </select>
+                        <td className="border-b border-r border-slate-200 bg-slate-100 px-3 py-2 text-sm text-slate-400">
+                          <span className="block truncate">{row.quickbooks_supplier_name || "—"}</span>
                         </td>
-                        <td className={`border-b border-r border-slate-200 px-3 py-2 text-xs ${row.has_quickbooks_bill ? "bg-white text-slate-700" : "bg-slate-100 text-slate-400"}`}>
-                          {row.has_quickbooks_bill && row.quickbooks_attachment_files?.length ? (
+                        <td className="border-b border-r border-slate-200 bg-slate-100 px-3 py-2 text-xs text-slate-400">
+                          {row.quickbooks_attachment_files?.length ? (
                             <ul className="space-y-1" title={row.quickbooks_attachment_files.map((file) => file.name ?? "Unnamed file").join(", ")}>
                               {row.quickbooks_attachment_files.map((file, index) => <li key={`${file.id ?? file.name ?? "file"}-${index}`} className="truncate">{file.name || "Unnamed file"}</li>)}
                             </ul>

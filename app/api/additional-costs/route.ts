@@ -15,10 +15,6 @@ const EDITABLE_FIELDS = new Set([
   "trip_id",
   "items_sent",
   "relatedSubitemIds",
-  "has_quickbooks_bill",
-  "quickbooks_invoice_number",
-  "quickbooks_supplier_id",
-  "quickbooks_supplier_name",
   "qty",
   "verified",
   "discussed",
@@ -364,6 +360,15 @@ export async function PATCH(request: NextRequest) {
     };
     if (!body.id || !body.values)
       throw new Error("An additional cost and changes are required.");
+    const lockedQuickBooksFields = [
+      "has_quickbooks_bill",
+      "quickbooks_invoice_number",
+      "quickbooks_supplier_id",
+      "quickbooks_supplier_name",
+      "quickbooks_attachment_files",
+    ];
+    if (Object.keys(body.values).some((field) => lockedQuickBooksFields.includes(field)))
+      throw new Error("QuickBooks Bill fields are generated from the Bill and cannot be edited here.");
     const { data: existing, error: existingError } = await supabaseAdmin
       .from("additional_costs")
       .select("*")
