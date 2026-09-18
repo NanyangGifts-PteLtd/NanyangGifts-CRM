@@ -15,6 +15,10 @@ const EDITABLE_FIELDS = new Set([
   "trip_id",
   "items_sent",
   "relatedSubitemIds",
+  "has_quickbooks_bill",
+  "quickbooks_invoice_number",
+  "quickbooks_supplier_id",
+  "quickbooks_supplier_name",
   "qty",
   "verified",
   "discussed",
@@ -71,6 +75,14 @@ async function resolveLabel(code: string, value: unknown) {
 const ADDITIONAL_COST_STATUS = "[Variation] Cost Difference";
 const ADDITIONAL_COST_STATUS_KEY = "subitem_status_variation_cost_difference";
 const COURIER_VOUCHER_COURIERS = new Set(["Lalamove", "Easyparcel"]);
+
+async function nextPaymentVoucherReference() {
+  const { data, error } = await supabaseAdmin.rpc(
+    "next_payment_voucher_reference_id",
+  );
+  if (error || data === null) throw error ?? new Error("Could not allocate a Payment Voucher Reference ID.");
+  return String(data);
+}
 
 async function ensureAdditionalCostStatus() {
   const { data: group, error: groupError } = await supabaseAdmin
@@ -158,6 +170,7 @@ export async function GET() {
     const { data, error } = await supabaseAdmin
       .from("additional_costs")
       .select("*")
+      .is("deleted_at", null)
       .order("created_at", { ascending: false });
     if (error) throw error;
     return NextResponse.json({ rows: data ?? [] });
@@ -267,16 +280,7 @@ export async function POST(request: NextRequest) {
       .limit(1)
       .maybeSingle();
     if (latestError) throw latestError;
-    const { data: references, error: referencesError } = await supabaseAdmin
-      .from("additional_costs")
-      .select("trip_id")
-      .order("created_at", { ascending: false });
-    if (referencesError) throw referencesError;
-    const nextReference =
-      (references ?? []).reduce((max, record) => {
-        const match = String(record.trip_id ?? "").match(/(\d+)$/);
-        return Math.max(max, Number(match?.[1] ?? 0));
-      }, 0) + 1;
+    const nextReference = await nextPaymentVoucherReference();
     const { data, error } = await supabaseAdmin
       .from("additional_costs")
       .insert({
@@ -291,7 +295,7 @@ export async function POST(request: NextRequest) {
         courier: courier.value,
         courier_option_id: courier.id,
         remarks: String(body.values?.remarks ?? "").trim(),
-        trip_id: String(nextReference),
+        trip_id: nextReference,
       })
       .select("*")
       .single();
@@ -398,6 +402,36 @@ export async function PATCH(request: NextRequest) {
     );
     if (!Object.keys(values).length)
       throw new Error("No editable changes were supplied.");
+    const isOtherVoucher = !COURIER_VOUCHER_COURIERS.has(
+      String(existing.courier ?? ""),
+    );
+    if (
+      (values.has_quickbooks_bill !== undefined ||
+        values.quickbooks_invoice_number !== undefined ||
+        values.quickbooks_supplier_id !== undefined ||
+        values.quickbooks_supplier_name !== undefined) &&
+      !isOtherVoucher
+    )
+      throw new Error("QuickBooks Bill fields are only available for the Manpower/UPS Charges/Other payments group.");
+    if (values.has_quickbooks_bill !== undefined) {
+      const hasBill = values.has_quickbooks_bill === true || values.has_quickbooks_bill === "true";
+      values.has_quickbooks_bill = hasBill;
+      if (!hasBill) {
+        values.quickbooks_invoice_number = "";
+        values.quickbooks_supplier_id = "";
+        values.quickbooks_supplier_name = "";
+      }
+    }
+    const hasQuickBooksBill = values.has_quickbooks_bill === undefined
+      ? Boolean(existing.has_quickbooks_bill)
+      : Boolean(values.has_quickbooks_bill);
+    if (!hasQuickBooksBill) {
+      if (values.quickbooks_invoice_number !== undefined || values.quickbooks_supplier_id !== undefined || values.quickbooks_supplier_name !== undefined) {
+        values.quickbooks_invoice_number = "";
+        values.quickbooks_supplier_id = "";
+        values.quickbooks_supplier_name = "";
+      }
+    }
     if (
       values.cost !== undefined &&
       values.cost !== null &&
@@ -541,6 +575,7 @@ export async function DELETE(request: NextRequest) {
       .from("additional_costs")
       .select("id, client_id")
       .eq("id", additionalCostId ?? "")
+      .is("deleted_at", null)
       .maybeSingle();
     if (recordError || !record) throw new Error("Additional cost not found.");
     // Match the CRM Board's deletion rule: admins/directors can delete any
@@ -593,8 +628,9 @@ export async function DELETE(request: NextRequest) {
     }
     const { error } = await supabaseAdmin
       .from("additional_costs")
-      .delete()
-      .eq("id", record.id);
+      .update({ deleted_at: deletedAt, deleted_by: user.id })
+      .eq("id", record.id)
+      .is("deleted_at", null);
     if (error) {
       if (linkedSubitem) {
         await supabaseAdmin

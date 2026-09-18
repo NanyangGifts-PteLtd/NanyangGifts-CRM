@@ -2161,7 +2161,7 @@ export async function restoreSubitemRow(subitemId: string) {
   await assertDeletionAllowed("subitems", subitemId);
   const { data: subitem, error: fetchError } = await supabase
     .from("subitems")
-    .select("id, client_id, name, deleted_at")
+    .select("id, client_id, name, deleted_at, custom_fields")
     .eq("id", subitemId)
     .single();
   if (fetchError) throw fetchError;
@@ -2169,6 +2169,17 @@ export async function restoreSubitemRow(subitemId: string) {
     throw new Error("This subitem is no longer in the Bin.");
   if (Date.now() - new Date(subitem.deleted_at).getTime() >= BIN_RETENTION_MS)
     throw new Error("The 30-day Bin retention period has ended.");
+  if (subitem.custom_fields?.additionalCostLinked === "true") {
+    const response = await fetch("/api/additional-costs/restore", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ subitemId }),
+    });
+    const result = await response.json();
+    if (!response.ok)
+      throw new Error(result.error ?? "The linked Payment Voucher could not be restored.");
+    return;
+  }
   const { error } = await supabase
     .from("subitems")
     .update({

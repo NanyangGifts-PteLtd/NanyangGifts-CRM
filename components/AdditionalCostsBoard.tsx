@@ -48,6 +48,11 @@ type AdditionalCost = {
   discussed: boolean | null;
   created_at: string;
   created_by?: string | null;
+  has_quickbooks_bill?: boolean;
+  quickbooks_invoice_number?: string;
+  quickbooks_supplier_id?: string;
+  quickbooks_supplier_name?: string;
+  quickbooks_bill_id?: string | null;
 };
 type LabelOption = {
   id?: string;
@@ -74,6 +79,19 @@ const initialColumns: Column[] = [
   { key: "trip_id", label: "Reference ID", width: 145 },
   { key: "items_sent", label: "Related Subitems", width: 210 },
   { key: "courier", label: "Courier", width: 140 },
+  { key: "created", label: "Date Created", width: 140 },
+  { key: "actions", label: "", width: 52 },
+];
+const otherVoucherColumns: Column[] = [
+  { key: "project", label: "Project Name", width: 250 },
+  { key: "cost", label: "Cost", width: 115 },
+  { key: "reason", label: "Reason", width: 155 },
+  { key: "remarks", label: "Remarks", width: 260 },
+  { key: "trip_id", label: "Reference ID", width: 145 },
+  { key: "items_sent", label: "Related Subitems", width: 210 },
+  { key: "has_quickbooks_bill", label: "Has QuickBooks Bill?", width: 165 },
+  { key: "quickbooks_invoice_number", label: "Invoice No. (Bill No.)", width: 185 },
+  { key: "quickbooks_supplier_name", label: "Supplier", width: 220 },
   { key: "created", label: "Date Created", width: 140 },
   { key: "actions", label: "", width: 52 },
 ];
@@ -134,7 +152,7 @@ export function AdditionalCostsBoard({
     vendors: Array<{ id: string; name: string }>;
     accounts: Array<{ id: string; name: string }>;
     terms: Array<{ id: string; name: string }>;
-    taxCodes: Array<{ id: string; name: string }>;
+    taxCodes: Array<{ id: string; name: string; rate?: number }>;
   }>({ vendors: [], accounts: [], terms: [], taxCodes: [] });
   const [billOptionsLoading, setBillOptionsLoading] = useState(false);
   const [billOptionsError, setBillOptionsError] = useState<string | null>(null);
@@ -145,7 +163,6 @@ export function AdditionalCostsBoard({
     billDate: new Date().toISOString().slice(0, 10),
     dueDate: new Date().toISOString().slice(0, 10),
     billNumber: "",
-    permitNumber: "",
     memo: "",
     attachments: [] as File[],
     lines: [{ categoryId: "", description: "", amount: "", taxCodeId: "" }],
@@ -171,6 +188,8 @@ export function AdditionalCostsBoard({
   const [pendingDelete, setPendingDelete] = useState<AdditionalCost | null>(
     null,
   );
+  const [pendingQuickBooksBillClear, setPendingQuickBooksBillClear] =
+    useState<AdditionalCost | null>(null);
   const rowRevisions = useRef(new Map<string, number>());
   const gridTemplateColumns = columns
     .map((column) => `${column.width}px`)
@@ -259,6 +278,20 @@ export function AdditionalCostsBoard({
   useEffect(() => {
     void loadLabelOptions();
   }, [loadLabelOptions]);
+  // The group-two table can be edited without opening the creation dialog,
+  // so its QuickBooks supplier selector needs its options up front.
+  useEffect(() => {
+    let active = true;
+    void fetch("/api/quickbooks/vendors")
+      .then(async (response) => ({ response, data: await response.json() }))
+      .then(({ response, data }) => {
+        if (active && response.ok)
+          setBillOptions((current) => ({ ...current, vendors: data.vendors ?? [] }));
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
   useEffect(() => {
     if (!relatedSubitemsOpen) return;
     const closeOnClickAway = (event: MouseEvent) => {
@@ -480,6 +513,45 @@ export function AdditionalCostsBoard({
           createError instanceof Error
             ? createError.message
             : "Please try again.",
+      });
+    } finally {
+      setCreatingFor(null);
+    }
+  };
+  const generateQuickBooksBill = async (clientId: string) => {
+    setCreatingFor(clientId);
+    try {
+      const { attachments: _attachments, ...billDraftValues } = billDraft;
+      const selectedSupplier = billOptions.vendors.find(
+        (vendor) => vendor.id === billDraft.supplierId,
+      );
+      const bill = {
+        ...billDraftValues,
+        supplierName: selectedSupplier?.name ?? "",
+      };
+      const payload = new FormData();
+      payload.append("payload", JSON.stringify({ clientId, voucher: voucherDraft, bill }));
+      billDraft.attachments.forEach((attachment) =>
+        payload.append("attachments", attachment, attachment.name),
+      );
+      const response = await fetch("/api/quickbooks/generate-bill", {
+        method: "POST",
+        body: payload,
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error ?? "Could not generate the QuickBooks Bill.");
+      setRows((current) => [result.row, ...current]);
+      setPickerOpen(false);
+      setSelectedVoucherClientId(null);
+      setOtherBillChoice(null);
+      toast.success(`QuickBooks Bill ${result.docNumber ?? ""} and payment voucher created.`);
+      if (result.attachmentErrors?.length)
+        toast.warning("The Bill was created, but some attachments could not be uploaded.", {
+          description: result.attachmentErrors.map((error: string) => error.split(":")[0]).join(", "),
+        });
+    } catch (generationError) {
+      toast.error("QuickBooks Bill could not be generated", {
+        description: generationError instanceof Error ? generationError.message : "Please try again.",
       });
     } finally {
       setCreatingFor(null);
@@ -707,7 +779,9 @@ export function AdditionalCostsBoard({
       accent: "#8b5cf6",
     },
   ];
-  const renderVoucherGroup = (group: (typeof voucherGroups)[number]) => (
+  const renderVoucherGroup = (group: (typeof voucherGroups)[number]) => {
+    const tableColumns = group.id === "courier" ? initialColumns : otherVoucherColumns;
+    return (
     <section
       key={group.id}
       className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm"
@@ -740,7 +814,7 @@ export function AdditionalCostsBoard({
           <table className="min-w-full border-collapse text-sm">
             <thead className="bg-slate-50 text-left text-xs font-semibold text-slate-500">
               <tr>
-                {initialColumns.map((column) => (
+                {tableColumns.map((column) => (
                   <th
                     key={column.key}
                     className="whitespace-nowrap border-b border-r border-slate-200 px-3 py-3 last:border-r-0"
@@ -754,7 +828,7 @@ export function AdditionalCostsBoard({
               {!group.rows.length ? (
                 <tr>
                   <td
-                    colSpan={initialColumns.length}
+                    colSpan={tableColumns.length}
                     className="px-3 py-8 text-center text-sm text-slate-400"
                   >
                     No payment vouchers in this group yet.
@@ -842,35 +916,63 @@ export function AdditionalCostsBoard({
                           key={`${row.id}-remarks-${row.remarks}`}
                           defaultValue={row.remarks}
                           disabled={!canDelete(row)}
-                          onBlur={(event) =>
-                            event.target.value !== row.remarks &&
-                            void update(row.id, { remarks: event.target.value })
-                          }
+                          onBlur={(event) => event.target.value !== row.remarks && void update(row.id, { remarks: event.target.value })}
                           className="h-10 w-full bg-transparent px-3 outline-none focus:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-60"
                         />
                       </td>
-                      <td className="border-b border-r border-slate-200 px-3 py-2">
-                        {row.trip_id}
-                      </td>
-                      <td className="border-b border-r border-slate-200 p-0">
-                        {renderBoardRelatedSubitemSelector(row, client)}
-                      </td>
-                      <td className="h-10 border-b border-r border-slate-200 p-0">
+                      <td className="border-b border-r border-slate-200 px-3 py-2">{row.trip_id}</td>
+                      <td className="border-b border-r border-slate-200 p-0">{renderBoardRelatedSubitemSelector(row, client)}</td>
+                      {group.id === "courier" ? <td className="h-10 border-b border-r border-slate-200 p-0">
                         <StatusBadge
                           value={row.courier}
                           onChange={(courier) => void update(row.id, { courier })}
-                          options={(labelOptions.additional_cost_courier ?? []).filter(
-                            (option) =>
-                              group.id === "courier"
-                                ? ["Lalamove", "Easyparcel"].includes(option.value)
-                                : !["", "Lalamove", "Easyparcel"].includes(
-                                    option.value,
-                                  ),
-                          )}
+                          options={(labelOptions.additional_cost_courier ?? []).filter((option) => ["Lalamove", "Easyparcel"].includes(option.value))}
                           includeBlankOption={false}
                           readOnly={!canDelete(row)}
                         />
-                      </td>
+                      </td> : <>
+                        <td className="h-10 border-b border-r border-slate-200 p-0">
+                          <StatusBadge
+                            value={row.has_quickbooks_bill ? "Yes" : "No"}
+                            onChange={(value) => {
+                              if (value === "Yes") {
+                                void update(row.id, { has_quickbooks_bill: true });
+                              } else if (row.has_quickbooks_bill) {
+                                setPendingQuickBooksBillClear(row);
+                              }
+                            }}
+                            options={[
+                              { value: "Yes", color: "#16a34a" },
+                              { value: "No", color: "#94a3b8" },
+                            ]}
+                            includeBlankOption={false}
+                            readOnly={!canDelete(row)}
+                          />
+                        </td>
+                        <td className="border-b border-r border-slate-200 p-0">
+                          <input
+                            key={`${row.id}-invoice-${row.quickbooks_invoice_number ?? ""}-${row.has_quickbooks_bill}`}
+                            defaultValue={row.quickbooks_invoice_number ?? ""}
+                            disabled={!canDelete(row) || !row.has_quickbooks_bill}
+                            onBlur={(event) => event.target.value !== (row.quickbooks_invoice_number ?? "") && void update(row.id, { quickbooks_invoice_number: event.target.value })}
+                            className="h-10 w-full bg-transparent px-3 outline-none focus:bg-sky-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                          />
+                        </td>
+                        <td className="border-b border-r border-slate-200 p-0">
+                          <select
+                            value={row.quickbooks_supplier_id ?? ""}
+                            disabled={!canDelete(row) || !row.has_quickbooks_bill}
+                            onChange={(event) => {
+                              const supplier = billOptions.vendors.find((vendor) => vendor.id === event.target.value);
+                              void update(row.id, { quickbooks_supplier_id: event.target.value, quickbooks_supplier_name: supplier?.name ?? "" });
+                            }}
+                            className="h-10 w-full bg-transparent px-3 outline-none focus:bg-sky-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                          >
+                            <option value="">Choose a supplier</option>
+                            {billOptions.vendors.map((vendor) => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}
+                          </select>
+                        </td>
+                      </>}
                       <td
                         title={`${new Date(row.created_at).toLocaleString("en-SG")}${row.created_by ? ` · Created by ${profiles.find((profile) => profile.id === row.created_by)?.full_name || profiles.find((profile) => profile.id === row.created_by)?.email || "Unknown user"}` : ""}`}
                         className="whitespace-nowrap border-b border-slate-200 px-3 py-2 text-xs text-slate-500"
@@ -926,7 +1028,6 @@ export function AdditionalCostsBoard({
                 billDate: today,
                 dueDate: today,
                 billNumber: "",
-                permitNumber: "",
                 memo: "",
                 attachments: [],
                 lines: [
@@ -947,7 +1048,8 @@ export function AdditionalCostsBoard({
         </div>
       )}
     </section>
-  );
+    );
+  };
   return (
     <section className="crm-board min-h-full bg-slate-50 p-4 sm:p-6">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -1392,22 +1494,19 @@ export function AdditionalCostsBoard({
                               <label className="text-sm font-medium text-slate-700">Invoice no. * <span className="font-normal text-slate-500">(Bill no. on QuickBooks)</span>
                                 <input required value={billDraft.billNumber} onChange={(event) => setBillDraft((draft) => ({ ...draft, billNumber: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 px-3 py-2 font-normal" />
                               </label>
-                              <label className="text-sm font-medium text-slate-700">Permit no.
-                                <input value={billDraft.permitNumber} onChange={(event) => setBillDraft((draft) => ({ ...draft, permitNumber: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 px-3 py-2 font-normal" />
-                              </label>
                             </div>
                             <div>
                               <p className="mb-2 text-sm font-semibold text-slate-700">Expense lines</p>
                               <div className="overflow-x-auto rounded-md border border-slate-200">
                                 <table className="min-w-[900px] w-full text-sm">
                                   <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                                    <tr><th className="px-3 py-2">Category *</th><th className="px-3 py-2">Description *</th><th className="px-3 py-2">Amount *</th><th className="px-3 py-2">GST *</th><th className="w-24 px-3 py-2"><span className="sr-only">Actions</span></th></tr>
+                                    <tr><th className="px-3 py-2">Category *</th><th className="px-3 py-2">Description</th><th className="px-3 py-2">Amount *</th><th className="px-3 py-2">GST *</th><th className="w-24 px-3 py-2"><span className="sr-only">Actions</span></th></tr>
                                   </thead>
                                   <tbody>
                                     {billDraft.lines.map((line, index) => (
                                       <tr key={index} className="border-t border-slate-200 align-top">
                                         <td className="px-3 py-2"><select required value={line.categoryId} onChange={(event) => setBillDraft((draft) => ({ ...draft, lines: draft.lines.map((current, currentIndex) => currentIndex === index ? { ...current, categoryId: event.target.value } : current) }))} className="w-full rounded border border-slate-300 bg-white px-3 py-2"><option value="">Choose a category</option>{billOptions.accounts.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}</select></td>
-                                        <td className="px-3 py-2"><input required value={line.description} onChange={(event) => setBillDraft((draft) => ({ ...draft, lines: draft.lines.map((current, currentIndex) => currentIndex === index ? { ...current, description: event.target.value } : current) }))} className="w-full rounded border border-slate-300 px-3 py-2" /></td>
+                                        <td className="px-3 py-2"><input value={line.description} onChange={(event) => setBillDraft((draft) => ({ ...draft, lines: draft.lines.map((current, currentIndex) => currentIndex === index ? { ...current, description: event.target.value } : current) }))} className="w-full rounded border border-slate-300 px-3 py-2" /></td>
                                         <td className="px-3 py-2"><input required type="number" min="0.01" step="0.01" value={line.amount} onChange={(event) => setBillDraft((draft) => ({ ...draft, lines: draft.lines.map((current, currentIndex) => currentIndex === index ? { ...current, amount: event.target.value } : current) }))} className="w-full rounded border border-slate-300 px-3 py-2" /></td>
                                         <td className="px-3 py-2"><select required value={line.taxCodeId} onChange={(event) => setBillDraft((draft) => ({ ...draft, lines: draft.lines.map((current, currentIndex) => currentIndex === index ? { ...current, taxCodeId: event.target.value } : current) }))} className="w-full rounded border border-slate-300 bg-white px-3 py-2"><option value="">Choose GST</option>{billOptions.taxCodes.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}</select></td>
                                         <td className="px-3 py-2">{billDraft.lines.length > 1 ? <button type="button" onClick={() => setBillDraft((draft) => ({ ...draft, lines: draft.lines.filter((_, currentIndex) => currentIndex !== index) }))} className="text-red-600 hover:underline">Remove</button> : null}</td>
@@ -1434,11 +1533,32 @@ export function AdditionalCostsBoard({
                           <label className="text-sm font-medium text-slate-700">Cost *<input type="number" min="0.01" step="0.01" value={voucherDraft.cost} readOnly={otherBillChoice === "add"} onChange={(event) => setVoucherDraft((draft) => ({ ...draft, cost: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 px-3 py-2 font-normal read-only:bg-slate-100" />{otherBillChoice === "add" ? <span className="mt-1 block text-xs font-normal text-slate-500">Calculated from the expense-line amounts.</span> : null}</label>
                           <label className="text-sm font-medium text-slate-700">Reason *<div className="mt-1 h-10 overflow-hidden rounded border border-slate-300"><StatusBadge value={voucherDraft.reason} onChange={(reason) => setVoucherDraft((draft) => ({ ...draft, reason }))} options={labelOptions.additional_cost_reason ?? []} /></div></label>
                           <label className="text-sm font-medium text-slate-700">Related Subitems *{renderRelatedSubitemSelector(selectedVoucherClientId)}</label>
-                          <label className="text-sm font-medium text-slate-700">Courier *<div className="mt-1 h-10 overflow-hidden rounded border border-slate-300"><StatusBadge value={voucherDraft.courier} onChange={(courier) => setVoucherDraft((draft) => ({ ...draft, courier }))} options={(labelOptions.additional_cost_courier ?? []).filter((option) => !["", "Lalamove", "Easyparcel"].includes(option.value))} includeBlankOption={false} /></div></label>
                         </div>
                         <label className="mt-3 block text-sm font-medium text-slate-700">Remarks{voucherDraft.reason.trim().toLocaleLowerCase() === "other" ? " * (Specify Reason)" : ""}<textarea value={voucherDraft.remarks} onChange={(event) => setVoucherDraft((draft) => ({ ...draft, remarks: event.target.value }))} className="mt-1 min-h-20 w-full rounded border border-slate-300 px-3 py-2 font-normal" /></label>
                       </section>
-                      <button type="button" disabled className="rounded bg-slate-300 px-4 py-2 text-sm font-semibold text-white">Create QuickBooks Bill and payment voucher (coming soon)</button>
+                      <button
+                        type="button"
+                        disabled={
+                          otherBillChoice !== "add" ||
+                          creatingFor !== null ||
+                          !billDraft.supplierId ||
+                          !billDraft.billNumber.trim() ||
+                          !billDraft.memo.trim() ||
+                          billDraft.lines.some((line) =>
+                            !line.categoryId ||
+                            Number(line.amount) <= 0 ||
+                            !line.taxCodeId,
+                          ) ||
+                          Number(voucherDraft.cost) <= 0 ||
+                          !voucherDraft.reason ||
+                          !voucherDraft.relatedSubitemIds.length ||
+                          (voucherDraft.reason.trim().toLocaleLowerCase() === "other" && !voucherDraft.remarks.trim())
+                        }
+                        onClick={() => void generateQuickBooksBill(selectedVoucherClientId)}
+                        className="rounded bg-[#16a5c4] px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-300"
+                      >
+                        {creatingFor ? "Creating QuickBooks Bill…" : "Create QuickBooks Bill and payment voucher"}
+                      </button>
                     </>
                   )}
                 </div>
@@ -1668,6 +1788,9 @@ export function AdditionalCostsBoard({
             <AlertDialogDescription>
               This payment voucher and its linked CRM subitem will both be
               deleted. This action cannot be undone.
+              {pendingDelete && !/lalamove|easyparcel/i.test(pendingDelete.courier)
+                ? ` The QuickBooks Bill${pendingDelete.quickbooks_invoice_number ? ` (${pendingDelete.quickbooks_invoice_number})` : ""} is not deleted automatically; handle it directly in QuickBooks.`
+                : ""}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1683,6 +1806,40 @@ export function AdditionalCostsBoard({
               className="bg-red-600 hover:bg-red-700"
             >
               {deletingId ? "Deleting…" : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog
+        open={Boolean(pendingQuickBooksBillClear)}
+        onOpenChange={(open) => !open && setPendingQuickBooksBillClear(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove QuickBooks Bill details?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Setting Has QuickBooks Bill? to No will permanently clear this
+              payment voucher’s Invoice No. and Supplier values. The Bill in
+              QuickBooks itself will not be changed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700"
+              onClick={() => {
+                if (pendingQuickBooksBillClear) {
+                  void update(pendingQuickBooksBillClear.id, {
+                    has_quickbooks_bill: false,
+                    quickbooks_invoice_number: "",
+                    quickbooks_supplier_id: "",
+                    quickbooks_supplier_name: "",
+                  });
+                }
+                setPendingQuickBooksBillClear(null);
+              }}
+            >
+              Set to No and clear values
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
