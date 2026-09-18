@@ -3990,6 +3990,17 @@ export function CRMBoard({
         const value = record[key];
         return Array.isArray(value) ? value : [value];
       };
+      const clientFinancialTotals = () =>
+        client.subitems.reduce(
+          (totals, subitem) => {
+            const financials = calculateSubitemFinancials(subitem);
+            return {
+              totalPrice: totals.totalPrice + (Number(financials.price) || 0),
+              totalMarkup: totals.totalMarkup + (Number(financials.markup) || 0),
+            };
+          },
+          { totalPrice: 0, totalMarkup: 0 },
+        );
       return [...selectedColumns].some((columnKey) => {
         const [scope, ...parts] = columnKey.split(":");
         const key = parts.join(":");
@@ -3999,12 +4010,24 @@ export function CRMBoard({
               ? (clientAssignees[client.id] ?? []).map(profileName)
               : key === "pm"
                 ? clientPmAssigneeIds(client).map(profileName)
+                : key === "client"
+                  ? [client.name, client.displayId]
+                : key === "dateCreated"
+                  ? [client.createdAt]
+                  : key === "totalPrice"
+                    ? [clientFinancialTotals().totalPrice]
+                    : key === "totalMarkup"
+                      ? [clientFinancialTotals().totalMarkup]
                 : key.startsWith("custom:")
                   ? [client.customFields?.[key.slice(7)]]
                   : valuesFor(client as unknown as Record<string, unknown>, key)
             : client.subitems.flatMap((subitem) =>
                 key === "people"
                   ? (subitemAssignees[subitem.id] ?? []).map(profileName)
+                  : key === "markup" || key === "percentMarkup"
+                    ? [calculateSubitemFinancials(subitem)[key]]
+                    : key === "idealMarkup" || key === "priceToSet"
+                      ? [subitem.customFields?.[key]]
                   : key.startsWith("custom:")
                     ? [subitem.customFields?.[key.slice(7)]]
                     : valuesFor(
