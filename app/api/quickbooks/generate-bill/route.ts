@@ -216,7 +216,7 @@ export async function POST(request: NextRequest) {
       const { data: lastSubitem } = await supabaseAdmin.from("subitems").select("position").eq("client_id", client.id).order("position", { ascending: false }).limit(1).maybeSingle();
       const { data: subitem, error: subitemError } = await supabaseAdmin.from("subitems").insert({
         client_id: client.id, position: Number(lastSubitem?.position ?? -1) + 1, created_at: createdAt,
-        name: "Payment Voucher", status: status.value, status_option_id: status.id, qty: "1", currency: "SGD", cost: String(cost),
+        name: reason.value, status: status.value, status_option_id: status.id, qty: "1", currency: "SGD", cost: String(cost),
         custom_fields: { additionalCostId: voucherRow.id, additionalCostLinked: "true", quickBooksBillId: String(quickBooksBill.Id) },
       }).select("id").single();
       if (subitemError) throw subitemError;

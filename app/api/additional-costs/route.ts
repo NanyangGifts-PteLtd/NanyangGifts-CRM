@@ -523,7 +523,11 @@ export async function PATCH(request: NextRequest) {
 
     const linkedChanges = {
       ...(values.cost !== undefined ? { cost: String(values.cost) } : {}),
-      ...(values.courier !== undefined ? { name: String(values.courier) } : {}),
+      ...(values.courier !== undefined
+        ? { name: String(values.courier) }
+        : isOtherVoucher && values.reason !== undefined
+          ? { name: String(values.reason) }
+          : {}),
     };
     if (Object.keys(linkedChanges).length) {
       const { error: linkedUpdateError } = await supabaseAdmin
