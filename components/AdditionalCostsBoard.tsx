@@ -98,6 +98,15 @@ const otherVoucherColumns: Column[] = [
   { key: "created", label: "Date Created", width: 140 },
   { key: "actions", label: "", width: 52 },
 ];
+const allVoucherColumns = Array.from(
+  new Map([...initialColumns, ...otherVoucherColumns].map((column) => [column.key, column])).values(),
+);
+type VoucherGroupId = "courier" | "other";
+type VoucherColumnLayout = { order: string[]; widths: Record<string, number> };
+const defaultVoucherColumnLayout = (baseColumns: Column[]): VoucherColumnLayout => ({
+  order: baseColumns.map((column) => column.key),
+  widths: Object.fromEntries(baseColumns.map((column) => [column.key, column.width])),
+});
 const cellClass =
   "h-10 min-w-0 bg-white px-2 text-sm text-slate-700 outline-none focus:bg-sky-50 focus:ring-1 focus:ring-inset focus:ring-sky-400";
 const clientLabel = (client: Client) =>
@@ -145,7 +154,13 @@ export function AdditionalCostsBoard({
   const [labelOptions, setLabelOptions] = useState<
     Record<string, LabelOption[]>
   >({});
-  const [columns, setColumns] = useState(initialColumns);
+  const [columns, setColumns] = useState(allVoucherColumns);
+  const [voucherColumnLayouts, setVoucherColumnLayouts] = useState<Record<VoucherGroupId, VoucherColumnLayout>>({
+    courier: defaultVoucherColumnLayout(initialColumns),
+    other: defaultVoucherColumnLayout(otherVoucherColumns),
+  });
+  const [draggedVoucherColumn, setDraggedVoucherColumn] = useState<{ group: VoucherGroupId; key: string } | null>(null);
+  const [voucherDropTarget, setVoucherDropTarget] = useState<{ group: VoucherGroupId; key: string; edge: "left" | "right" } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -465,25 +480,48 @@ export function AdditionalCostsBoard({
     }
     await loadLabelOptions();
   };
-  const resize = (index: number, startX: number, startWidth: number) => {
+  const resize = (group: VoucherGroupId, key: string, startX: number, startWidth: number) => {
     const onMove = (event: PointerEvent) =>
-      setColumns((current) =>
-        current.map((column, columnIndex) =>
-          columnIndex === index
-            ? {
-                ...column,
-                width: Math.max(72, startWidth + event.clientX - startX),
-              }
-            : column,
-        ),
-      );
+      setVoucherColumnLayouts((current) => ({
+        ...current,
+        [group]: { ...current[group], widths: { ...current[group].widths, [key]: Math.max(72, startWidth + event.clientX - startX) } },
+      }));
     const onUp = () => {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
+      setVoucherColumnLayouts((current) => { saveVoucherColumnLayout(current); return current; });
     };
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
   };
+  useEffect(() => {
+    let active = true;
+    void fetch("/api/payment-voucher-columns")
+      .then((response) => response.json())
+      .then((result) => {
+        if (!active || !result.value) return;
+        const normalise = (group: VoucherGroupId, base: Column[]) => {
+          const candidate = result.value[group];
+          // Migrate the previous one-layout format without linking the groups.
+          const order = Array.isArray(candidate?.order) ? candidate.order : Array.isArray(result.value.order) ? result.value.order : [];
+          const widths = candidate?.widths && typeof candidate.widths === "object" ? candidate.widths : result.value.widths ?? {};
+          return {
+            order: [...order.filter((key: string) => base.some((column) => column.key === key)), ...base.map((column) => column.key).filter((key) => !order.includes(key))],
+            widths: Object.fromEntries(base.map((column) => [column.key, Number.isFinite(widths[column.key]) ? Math.max(72, Number(widths[column.key])) : column.width])),
+          };
+        };
+        setVoucherColumnLayouts({ courier: normalise("courier", initialColumns), other: normalise("other", otherVoucherColumns) });
+      })
+      .catch(() => undefined);
+    return () => { active = false; };
+  }, []);
+  const saveVoucherColumnLayout = useCallback((layouts: Record<VoucherGroupId, VoucherColumnLayout>) => {
+    void fetch("/api/payment-voucher-columns", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ value: layouts }),
+    }).then((response) => { if (!response.ok) throw new Error(); }).catch(() => toast.error("Payment Voucher column layout could not be shared."));
+  }, []);
   const update = useCallback(
     async (id: string, values: Record<string, unknown>) => {
       const previous = rows.find((row) => row.id === id);
@@ -922,7 +960,13 @@ export function AdditionalCostsBoard({
     },
   ];
   const renderVoucherGroup = (group: (typeof voucherGroups)[number]) => {
-    const tableColumns = group.id === "courier" ? initialColumns : otherVoucherColumns;
+    const baseColumns = group.id === "courier" ? initialColumns : otherVoucherColumns;
+    const layout = voucherColumnLayouts[group.id];
+    const tableColumns = layout.order
+      .map((key) => baseColumns.find((column) => column.key === key))
+      .filter((column): column is Column => Boolean(column))
+      .map((column) => ({ ...column, width: layout.widths[column.key] ?? column.width }));
+    const columnGrid = tableColumns.map((column) => `${column.width}px`).join(" ");
     return (
     <section
       key={group.id}
@@ -954,14 +998,21 @@ export function AdditionalCostsBoard({
       {!collapsedVoucherGroups[group.id] && (
         <div className="overflow-x-auto">
           <table className="min-w-full border-collapse text-sm">
+            <style>{tableColumns.map((column, index) => `.payment-voucher-row [data-voucher-col="${column.key}"]{order:${index}}`).join("")}</style>
             <thead className="bg-slate-50 text-left text-xs font-semibold text-slate-500">
-              <tr>
+              <tr className="grid" style={{ gridTemplateColumns: columnGrid }}>
                 {tableColumns.map((column) => (
                   <th
                     key={column.key}
-                    className="whitespace-nowrap border-b border-r border-slate-200 px-3 py-3 last:border-r-0"
+                    draggable={column.key !== "actions"}
+                    onDragStart={(event) => { if (column.key === "actions") return; event.dataTransfer.effectAllowed = "move"; setDraggedVoucherColumn({ group: group.id, key: column.key }); }}
+                    onDragOver={(event) => { if (!draggedVoucherColumn || draggedVoucherColumn.group !== group.id || draggedVoucherColumn.key === column.key) return; event.preventDefault(); const edge = event.clientX < event.currentTarget.getBoundingClientRect().left + event.currentTarget.getBoundingClientRect().width / 2 ? "left" : "right"; setVoucherDropTarget({ group: group.id, key: column.key, edge }); }}
+                    onDrop={(event) => { event.preventDefault(); const dragged = draggedVoucherColumn; const target = voucherDropTarget; setDraggedVoucherColumn(null); setVoucherDropTarget(null); if (!dragged || !target || dragged.group !== group.id || target.key === dragged.key) return; setVoucherColumnLayouts((current) => { const nextOrder = current[group.id].order.filter((key) => key !== dragged.key); const targetIndex = nextOrder.indexOf(target.key) + (target.edge === "right" ? 1 : 0); nextOrder.splice(targetIndex, 0, dragged.key); const next = { ...current, [group.id]: { ...current[group.id], order: nextOrder } }; saveVoucherColumnLayout(next); return next; }); }}
+                    onDragEnd={() => { setDraggedVoucherColumn(null); setVoucherDropTarget(null); }}
+                    className={`relative whitespace-nowrap border-b border-r border-slate-200 px-3 py-3 last:border-r-0 ${voucherDropTarget?.group === group.id && voucherDropTarget.key === column.key ? voucherDropTarget.edge === "left" ? "border-l-2 border-l-sky-500" : "border-r-2 border-r-sky-500" : ""}`}
                   >
                     {column.label}
+                    <button aria-label={`Resize ${column.label || "actions"} column`} onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); resize(group.id, column.key, event.clientX, column.width); }} onDragStart={(event) => event.preventDefault()} className="absolute -right-1 top-0 z-10 h-full w-2 cursor-col-resize" />
                   </th>
                 ))}
               </tr>
@@ -980,8 +1031,8 @@ export function AdditionalCostsBoard({
                 group.rows.map((row) => {
                   const client = clientsById.get(row.client_id);
                   return (
-                    <tr key={row.id} className="hover:bg-slate-50">
-                      <td className="border-b border-r border-slate-200 px-3 py-2 font-medium text-slate-700">
+                    <tr key={row.id} className="payment-voucher-row grid hover:bg-slate-50" style={{ gridTemplateColumns: columnGrid }}>
+                      <td data-voucher-col="project" className="border-b border-r border-slate-200 px-3 py-2 font-medium text-slate-700">
                         {client ? (
                           <button
                             type="button"
@@ -995,7 +1046,7 @@ export function AdditionalCostsBoard({
                           "Deleted client"
                         )}
                       </td>
-                      <td className="border-b border-r border-slate-200 p-0">
+                      <td data-voucher-col="cost" className="border-b border-r border-slate-200 p-0">
                         <input
                           key={`${row.id}-cost-${row.cost ?? ""}`}
                           type="number"
@@ -1010,7 +1061,7 @@ export function AdditionalCostsBoard({
                           className="h-10 w-full bg-transparent px-3 text-right outline-none focus:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-60"
                         />
                       </td>
-                      <td className="h-10 border-b border-r border-slate-200 p-0">
+                      <td data-voucher-col="reason" className="h-10 border-b border-r border-slate-200 p-0">
                         <StatusBadge
                           value={row.reason}
                           onChange={(reason) => {
@@ -1053,7 +1104,7 @@ export function AdditionalCostsBoard({
                           readOnly={!canDelete(row)}
                         />
                       </td>
-                      <td className="border-b border-r border-slate-200 p-0">
+                      <td data-voucher-col="remarks" className="border-b border-r border-slate-200 p-0">
                         <input
                           key={`${row.id}-remarks-${row.remarks}`}
                           defaultValue={row.remarks}
@@ -1062,9 +1113,9 @@ export function AdditionalCostsBoard({
                           className="h-10 w-full bg-transparent px-3 outline-none focus:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-60"
                         />
                       </td>
-                      <td className="border-b border-r border-slate-200 px-3 py-2">{row.trip_id}</td>
-                      <td className="border-b border-r border-slate-200 p-0">{renderBoardRelatedSubitemSelector(row, client)}</td>
-                      {group.id === "courier" ? <td className="h-10 border-b border-r border-slate-200 p-0">
+                      <td data-voucher-col="trip_id" className="border-b border-r border-slate-200 px-3 py-2">{row.trip_id}</td>
+                      <td data-voucher-col="items_sent" className="border-b border-r border-slate-200 p-0">{renderBoardRelatedSubitemSelector(row, client)}</td>
+                      {group.id === "courier" ? <td data-voucher-col="courier" className="h-10 border-b border-r border-slate-200 p-0">
                         <StatusBadge
                           value={row.courier}
                           onChange={(courier) => void update(row.id, { courier })}
@@ -1073,7 +1124,7 @@ export function AdditionalCostsBoard({
                           readOnly={!canDelete(row)}
                         />
                       </td> : <>
-                        <td className="h-10 border-b border-r border-slate-200 bg-slate-100 p-0">
+                        <td data-voucher-col="has_quickbooks_bill" className="h-10 border-b border-r border-slate-200 bg-slate-100 p-0">
                           <StatusBadge
                             value={row.has_quickbooks_bill ? "Yes" : "No"}
                             onChange={(value) => {
@@ -1091,7 +1142,7 @@ export function AdditionalCostsBoard({
                             readOnly
                           />
                         </td>
-                        <td className="border-b border-r border-slate-200 p-0">
+                        <td data-voucher-col="quickbooks_invoice_number" className="border-b border-r border-slate-200 p-0">
                           <input
                             key={`${row.id}-invoice-${row.quickbooks_invoice_number ?? ""}-${row.has_quickbooks_bill}`}
                             defaultValue={row.quickbooks_invoice_number ?? ""}
@@ -1099,10 +1150,10 @@ export function AdditionalCostsBoard({
                             className="h-10 w-full bg-transparent px-3 outline-none focus:bg-sky-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
                           />
                         </td>
-                        <td className="border-b border-r border-slate-200 bg-slate-100 px-3 py-2 text-sm text-slate-400">
+                        <td data-voucher-col="quickbooks_supplier_name" className="border-b border-r border-slate-200 bg-slate-100 px-3 py-2 text-sm text-slate-400">
                           <span className="block truncate">{row.quickbooks_supplier_name || "—"}</span>
                         </td>
-                        <td className="border-b border-r border-slate-200 bg-slate-100 px-3 py-2 text-xs text-slate-400">
+                        <td data-voucher-col="quickbooks_attachment_files" className="border-b border-r border-slate-200 bg-slate-100 px-3 py-2 text-xs text-slate-400">
                           {row.quickbooks_attachment_files?.length ? (
                             <ul className="space-y-1" title={row.quickbooks_attachment_files.map((file) => file.name ?? "Unnamed file").join(", ")}>
                               {row.quickbooks_attachment_files.map((file, index) => <li key={`${file.id ?? file.name ?? "file"}-${index}`} className="truncate">{file.name || "Unnamed file"}</li>)}
@@ -1110,13 +1161,13 @@ export function AdditionalCostsBoard({
                           ) : <span>—</span>}
                         </td>
                       </>}
-                      <td
+                      <td data-voucher-col="created"
                         title={`${new Date(row.created_at).toLocaleString("en-SG")}${row.created_by ? ` · Created by ${profiles.find((profile) => profile.id === row.created_by)?.full_name || profiles.find((profile) => profile.id === row.created_by)?.email || "Unknown user"}` : ""}`}
                         className="whitespace-nowrap border-b border-slate-200 px-3 py-2 text-xs text-slate-500"
                       >
                         {new Date(row.created_at).toLocaleDateString("en-SG")}
                       </td>
-                      <td className="border-b border-slate-200 p-0 text-center">
+                      <td data-voucher-col="actions" className="border-b border-slate-200 p-0 text-center">
                         <button
                           type="button"
                           disabled={!canDelete(row) || deletingId === row.id}
@@ -1226,7 +1277,7 @@ export function AdditionalCostsBoard({
                   aria-label={`Resize ${column.label || "actions"} column`}
                   onPointerDown={(event) => {
                     event.preventDefault();
-                    resize(index, event.clientX, column.width);
+                    resize("courier", column.key, event.clientX, column.width);
                   }}
                   className="absolute -right-1 top-0 z-10 h-full w-2 cursor-col-resize"
                 />
