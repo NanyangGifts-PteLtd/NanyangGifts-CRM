@@ -132,6 +132,23 @@ async function ensureAdditionalCostStatus() {
   return created;
 }
 
+async function existingSubitemStatus(value: string) {
+  const { data: group, error: groupError } = await supabaseAdmin
+    .from("option_groups")
+    .select("id")
+    .eq("code", "subitem_status")
+    .maybeSingle();
+  if (groupError || !group) throw new Error("The standard Subitem Status labels could not be identified.");
+  const { data: status, error } = await supabaseAdmin
+    .from("option_values")
+    .select("id, value")
+    .eq("group_id", group.id)
+    .eq("value", value)
+    .maybeSingle();
+  if (error || !status) throw new Error(`${value} label is unavailable.`);
+  return status;
+}
+
 async function addActivityLog(params: {
   clientId: string;
   subitemId: string | null;
@@ -268,7 +285,9 @@ export async function POST(request: NextRequest) {
       }
     }
     const createdAt = new Date().toISOString();
-    const status = await ensureAdditionalCostStatus();
+    const status = isOtherVoucher && reason.value.trim().toLocaleLowerCase() === "shipping (ups)"
+      ? await existingSubitemStatus("Awarded")
+      : await ensureAdditionalCostStatus();
     const { data: latest, error: latestError } = await supabaseAdmin
       .from("additional_costs")
       .select("position")
