@@ -180,6 +180,7 @@ export async function POST(request: NextRequest) {
     const { user, role } = await authorize();
     const body = (await request.json()) as {
       clientId?: string;
+      paymentVoucherGroup?: "courier" | "other";
       values?: {
         cost?: unknown;
         reason?: unknown;
@@ -190,15 +191,15 @@ export async function POST(request: NextRequest) {
     };
     if (!body.clientId)
       throw new Error("Choose a client before creating an additional cost.");
+    const isOtherVoucher = body.paymentVoucherGroup === "other";
     const cost = Number(body.values?.cost);
     const reason = await resolveLabel(
       "additional_cost_reason",
       body.values?.reason,
     );
-    const courier = await resolveLabel(
-      "additional_cost_courier",
-      body.values?.courier,
-    );
+    const courier = isOtherVoucher
+      ? { value: "", id: null }
+      : await resolveLabel("additional_cost_courier", body.values?.courier);
     const relatedSubitemIds = Array.isArray(body.values?.relatedSubitemIds)
       ? [...new Set(body.values.relatedSubitemIds.filter((id): id is string => typeof id === "string" && id.trim().length > 0))]
       : [];
@@ -212,7 +213,7 @@ export async function POST(request: NextRequest) {
       !String(body.values?.remarks ?? "").trim()
     )
       throw new Error("Remarks is required when Reason is Other.");
-    if (!courier.value || !["Lalamove", "Easyparcel"].includes(courier.value))
+    if (!isOtherVoucher && (!courier.value || !["Lalamove", "Easyparcel"].includes(courier.value)))
       throw new Error("Choose Lalamove or Easyparcel as the Courier.");
     const { data: client, error: clientError } = await supabaseAdmin
       .from("clients")
@@ -311,7 +312,7 @@ export async function POST(request: NextRequest) {
           client_id: client.id,
           position: Number(lastSubitem?.position ?? -1) + 1,
           created_at: createdAt,
-          name: courier.value,
+          name: isOtherVoucher ? reason.value : courier.value,
           status: status.value,
           status_option_id: status.id,
           qty: "1",

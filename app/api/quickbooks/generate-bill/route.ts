@@ -61,6 +61,7 @@ export async function POST(request: NextRequest) {
     if (typeof payload !== "string") throw new Error("Bill details are required.");
     const body = JSON.parse(payload) as {
       clientId?: string;
+      voucherId?: string;
       voucher?: { cost?: unknown; reason?: unknown; remarks?: unknown; relatedSubitemIds?: unknown };
       bill?: {
         supplierId?: unknown; mailingAddress?: unknown; termId?: unknown; billDate?: unknown;
@@ -81,7 +82,8 @@ export async function POST(request: NextRequest) {
     if (!body.clientId) throw new Error("Choose a client before generating a Bill.");
     const bill = body.bill;
     const voucher = body.voucher;
-    if (!bill || !voucher) throw new Error("Bill and payment voucher details are required.");
+    const existingVoucherId = String(body.voucherId ?? "").trim();
+    if (!bill || (!voucher && !existingVoucherId)) throw new Error("Bill and payment voucher details are required.");
     const supplierId = String(bill.supplierId ?? "").trim();
     const invoiceNumber = String(bill.billNumber ?? "").trim();
     const memo = String(bill.memo ?? "").trim();
@@ -100,17 +102,17 @@ export async function POST(request: NextRequest) {
       if (!categoryId || !taxCodeId) throw new Error(`Choose a Category and GST for expense line ${index + 1}.`);
       return { categoryId, description, taxCodeId, amount: money(line.amount, `Expense line ${index + 1} amount`) };
     });
-    const cost = money(voucher.cost, "Cost");
+    const cost = voucher ? money(voucher.cost, "Cost") : null;
     const expenseTotal = lines.reduce((total, line) => total + line.amount, 0);
-    if (Math.abs(cost - expenseTotal) > 0.005) throw new Error("Payment Voucher Cost must equal the expense-line total.");
+    if (cost !== null && Math.abs(cost - expenseTotal) > 0.005) throw new Error("Payment Voucher Cost must equal the expense-line total.");
 
-    const relatedSubitemIds = Array.isArray(voucher.relatedSubitemIds)
+    const relatedSubitemIds = Array.isArray(voucher?.relatedSubitemIds)
       ? [...new Set(voucher.relatedSubitemIds.filter((id): id is string => typeof id === "string" && id.trim().length > 0))]
       : [];
-    if (!relatedSubitemIds.length) throw new Error("Select at least one Related Subitem.");
-    const reason = await resolveLabel("additional_cost_reason", voucher.reason);
-    const remarks = String(voucher.remarks ?? "").trim();
-    if (reason.value.trim().toLowerCase() === "other" && !remarks)
+    if (!existingVoucherId && !relatedSubitemIds.length) throw new Error("Select at least one Related Subitem.");
+    const reason = voucher ? await resolveLabel("additional_cost_reason", voucher.reason) : null;
+    const remarks = String(voucher?.remarks ?? "").trim();
+    if (reason?.value.trim().toLowerCase() === "other" && !remarks)
       throw new Error("Remarks is required when Reason is Other.");
 
     const { data: client, error: clientError } = await supabaseAdmin
@@ -128,11 +130,21 @@ export async function POST(request: NextRequest) {
       if (error) throw error;
       if (!assignment) throw new Error("You can only create payment vouchers for clients assigned to you.");
     }
+    let existingVoucher: { id: string; client_id: string; courier: string; has_quickbooks_bill: boolean | null } | null = null;
+    if (existingVoucherId) {
+      const { data, error } = await supabaseAdmin.from("additional_costs")
+        .select("id, client_id, courier, has_quickbooks_bill")
+        .eq("id", existingVoucherId).is("deleted_at", null).maybeSingle();
+      if (error || !data || data.client_id !== client.id) throw new Error("The payment voucher is no longer available.");
+      if (data.has_quickbooks_bill || /lalamove|easyparcel/i.test(data.courier))
+        throw new Error("This payment voucher already has a QuickBooks Bill or is not in the Bill group.");
+      existingVoucher = data;
+    }
     const { data: relatedSubitems, error: relatedError } = await supabaseAdmin
       .from("subitems").select("id, name, custom_fields")
       .eq("client_id", client.id).is("deleted_at", null).in("id", relatedSubitemIds);
     if (relatedError) throw relatedError;
-    if ((relatedSubitems ?? []).length !== relatedSubitemIds.length || (relatedSubitems ?? []).some((item) => item.custom_fields?.additionalCostId))
+    if (!existingVoucherId && ((relatedSubitems ?? []).length !== relatedSubitemIds.length || (relatedSubitems ?? []).some((item) => item.custom_fields?.additionalCostId)))
       throw new Error("One or more selected Related Subitems are unavailable.");
     const names = new Map((relatedSubitems ?? []).map((item) => [item.id, item.name]));
     const relatedNames = relatedSubitemIds.map((id) => names.get(id) ?? "").filter(Boolean).join(", ");
@@ -246,6 +258,25 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    if (existingVoucher) {
+      const { data: updatedVoucher, error: updateError } = await supabaseAdmin
+        .from("additional_costs")
+        .update({
+          has_quickbooks_bill: true,
+          quickbooks_invoice_number: String(quickBooksBill.DocNumber ?? invoiceNumber),
+          quickbooks_supplier_id: supplierId,
+          quickbooks_supplier_name: String(bill.supplierName ?? quickBooksBill.VendorRef?.name ?? ""),
+          quickbooks_bill_id: String(quickBooksBill.Id),
+          quickbooks_attachment_files: uploadedAttachments,
+        })
+        .eq("id", existingVoucher.id)
+        .select("*")
+        .single();
+      if (updateError) throw updateError;
+      return NextResponse.json({ row: updatedVoucher, billId: quickBooksBill.Id, docNumber: quickBooksBill.DocNumber ?? invoiceNumber, attachmentErrors });
+    }
+
+    if (!voucher || !reason || cost === null) throw new Error("Payment voucher details are required.");
     const createdAt = new Date().toISOString();
     const { data: statusGroup, error: statusGroupError } = await supabaseAdmin.from("option_groups").select("id").eq("code", "subitem_status").maybeSingle();
     if (statusGroupError || !statusGroup) throw new Error("Payment Voucher status labels are unavailable.");
