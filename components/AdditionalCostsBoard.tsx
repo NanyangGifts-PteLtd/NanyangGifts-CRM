@@ -839,8 +839,10 @@ export function AdditionalCostsBoard({
       } : current);
       toast.success("Document fields were prefilled. Please review every value before creating the Bill.");
     } catch (extractionError) {
-      toast.error("Document could not be read", {
-        description: extractionError instanceof Error ? extractionError.message : "Please enter the Bill details manually.",
+      setPrefillFileSignature(null);
+      setBillDocumentPreview((current) => current ? { ...current, isPrefill: false } : current);
+      toast.warning("OCR could not read this document", {
+        description: "The file has still been attached and remains open for manual reference. Please enter the Bill details manually.",
       });
     } finally {
       setExtractingBillDocument(false);
