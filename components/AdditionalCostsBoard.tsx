@@ -212,6 +212,7 @@ export function AdditionalCostsBoard({
     dueDate: new Date().toISOString().slice(0, 10),
     billNumber: "",
     memo: "",
+    overallGstAmount: "",
     attachments: [] as File[],
     lines: [{ categoryId: "", description: "", amount: "", taxCodeId: "" }],
   });
@@ -232,6 +233,14 @@ export function AdditionalCostsBoard({
         0,
       ),
     [billDraft.lines],
+  );
+  const showOverallGstAmount = useMemo(
+    () =>
+      !billDraft.lines.every((line) => {
+        const taxCode = billOptions.taxCodes.find((option) => option.id === line.taxCodeId);
+        return Boolean(taxCode && taxCode.rate === 0 && /out\s*of\s*scope/i.test(taxCode.name));
+      }),
+    [billDraft.lines, billOptions.taxCodes],
   );
   useEffect(() => {
     return () => {
@@ -1219,6 +1228,7 @@ export function AdditionalCostsBoard({
                 dueDate: today,
                 billNumber: "",
                 memo: "",
+                overallGstAmount: "",
                 attachments: [],
                 lines: [
                   {
@@ -1739,6 +1749,13 @@ export function AdditionalCostsBoard({
                                 </table>
                               </div>
                             </div>
+                            {showOverallGstAmount ? (
+                              <label className="block text-sm font-medium text-slate-700">
+                                Overall GST amount <span className="font-normal text-slate-500">(optional override)</span>
+                                <input type="number" min="0" step="0.01" value={billDraft.overallGstAmount} onChange={(event) => setBillDraft((draft) => ({ ...draft, overallGstAmount: event.target.value }))} placeholder="Let QuickBooks calculate" className="mt-1 w-full rounded border border-slate-300 px-3 py-2 font-normal" />
+                                <span className="mt-1 block text-xs font-normal text-slate-500">Use only when the invoice GST total differs from the selected GST codes. The total is distributed across taxable expense lines when sent to QuickBooks.</span>
+                              </label>
+                            ) : null}
                             <label className="block text-sm font-medium text-slate-700">Memo *
                               <textarea required value={billDraft.memo} onChange={(event) => setBillDraft((draft) => ({ ...draft, memo: event.target.value }))} className="mt-1 min-h-20 w-full rounded border border-slate-300 px-3 py-2 font-normal" />
                             </label>

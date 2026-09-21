@@ -65,6 +65,7 @@ export async function POST(request: NextRequest) {
       bill?: {
         supplierId?: unknown; mailingAddress?: unknown; termId?: unknown; billDate?: unknown;
         dueDate?: unknown; billNumber?: unknown; supplierName?: unknown; memo?: unknown;
+        overallGstAmount?: unknown;
         lines?: Array<{ categoryId?: unknown; description?: unknown; amount?: unknown; taxCodeId?: unknown }>;
       };
     };
@@ -84,9 +85,13 @@ export async function POST(request: NextRequest) {
     const supplierId = String(bill.supplierId ?? "").trim();
     const invoiceNumber = String(bill.billNumber ?? "").trim();
     const memo = String(bill.memo ?? "").trim();
+    const overallGstText = String(bill.overallGstAmount ?? "").trim();
+    const overallGstAmount = overallGstText === "" ? null : Number(overallGstText);
     if (!supplierId) throw new Error("Supplier is required.");
     if (!invoiceNumber) throw new Error("Invoice no. is required.");
     if (!memo) throw new Error("Memo is required.");
+    if (overallGstAmount !== null && (!Number.isFinite(overallGstAmount) || overallGstAmount < 0))
+      throw new Error("Overall GST amount must be zero or greater.");
     if (!Array.isArray(bill.lines) || !bill.lines.length) throw new Error("Add at least one expense line.");
     const lines = bill.lines.map((line, index) => {
       const categoryId = String(line.categoryId ?? "").trim();
@@ -134,17 +139,43 @@ export async function POST(request: NextRequest) {
     const taxCodeById = new Map(
       (await listQuickBooksTaxCodes()).map((taxCode) => [taxCode.id, taxCode]),
     );
-    const billLines = lines.map((line) => {
+    const allLinesOutOfScope = lines.every((line) => {
+      const taxCode = taxCodeById.get(line.taxCodeId);
+      return Boolean(taxCode && taxCode.rate === 0 && /out\s*of\s*scope/i.test(taxCode.name));
+    });
+    const effectiveOverallGstAmount = allLinesOutOfScope ? null : overallGstAmount;
+    const taxableLineIndexes = lines.flatMap((line, index) => {
+      const taxCode = taxCodeById.get(line.taxCodeId);
+      if (!taxCode) throw new Error("Choose a valid GST code for every expense line.");
+      return taxCode.rate > 0 ? [index] : [];
+    });
+    if (effectiveOverallGstAmount !== null && effectiveOverallGstAmount > 0 && !taxableLineIndexes.length)
+      throw new Error("An Overall GST amount requires at least one taxable expense line.");
+
+    const billLines = lines.map((line, index) => {
       const taxCode = taxCodeById.get(line.taxCodeId);
       if (!taxCode) throw new Error("Choose a valid GST code for every expense line.");
       return {
         ...line,
-        // QBO's global tax mode is not enough for mixed GST Bills. Supplying
-        // the code and calculated amount on each expense line preserves the
-        // selected GST against that individual line.
-        taxAmount: Math.round(line.amount * taxCode.rate) / 100,
+        taxCode,
       };
     });
+    const taxLinesByRate = new Map<string, { rate: number; taxableAmount: number }>();
+    billLines.forEach((line) => {
+      line.taxCode.purchaseTaxRates.forEach((taxRate: { id: string; rate: number }) => {
+        const existing = taxLinesByRate.get(taxRate.id) ?? { rate: taxRate.rate, taxableAmount: 0 };
+        existing.taxableAmount += line.amount;
+        taxLinesByRate.set(taxRate.id, existing);
+      });
+    });
+    const calculatedTaxTotal = [...taxLinesByRate.values()].reduce(
+      (total, taxLine) => total + Math.round(taxLine.taxableAmount * taxLine.rate) / 100,
+      0,
+    );
+    const overrideDelta = effectiveOverallGstAmount === null
+      ? 0
+      : Math.round((effectiveOverallGstAmount - calculatedTaxTotal) * 100) / 100;
+    const taxRateEntries = [...taxLinesByRate.entries()];
 
     const billResult = await qboRequest("/bill", {
       method: "POST",
@@ -157,6 +188,29 @@ export async function POST(request: NextRequest) {
         ...(String(bill.mailingAddress ?? "").trim() ? { VendorAddr: { Line1: String(bill.mailingAddress).trim() } } : {}),
         PrivateNote: memo,
         GlobalTaxCalculation: "TaxExcluded",
+        ...(effectiveOverallGstAmount !== null ? {
+          // QBO applies a manual GST change only when it is represented as an
+          // override on a TaxLineDetail; TotalTax by itself is recalculated.
+          TxnTaxDetail: {
+            TotalTax: effectiveOverallGstAmount,
+            TaxLine: taxRateEntries.map(([taxRateId, taxLine], index) => {
+              const receivesDelta = index === taxRateEntries.length - 1;
+              const calculatedAmount = Math.round(taxLine.taxableAmount * taxLine.rate) / 100;
+              const amount = Math.round((calculatedAmount + (receivesDelta ? overrideDelta : 0)) * 100) / 100;
+              return {
+                Amount: amount,
+                DetailType: "TaxLineDetail",
+                TaxLineDetail: {
+                  TaxRateRef: { value: taxRateId },
+                  PercentBased: true,
+                  TaxPercent: taxLine.rate,
+                  NetAmountTaxable: taxLine.taxableAmount,
+                  ...(receivesDelta && overrideDelta !== 0 ? { OverrideDeltaAmount: overrideDelta } : {}),
+                },
+              };
+            }),
+          },
+        } : {}),
         Line: billLines.map((line, index) => ({
           LineNum: index + 1,
           Amount: line.amount,
@@ -165,7 +219,6 @@ export async function POST(request: NextRequest) {
           AccountBasedExpenseLineDetail: {
             AccountRef: { value: line.categoryId },
             TaxCodeRef: { value: line.taxCodeId },
-            TaxAmount: line.taxAmount,
           },
         })),
       }),

@@ -102,6 +102,12 @@ export async function listQuickBooksTaxCodes() {
       name: String(taxCode.Name ?? "Unnamed tax code"),
       taxable: Boolean(taxCode.Taxable),
       // Bills are purchase transactions, so use the purchase-rate list.
+      purchaseTaxRates: (taxCode.PurchaseTaxRateList?.TaxRateDetail ?? [])
+        .map((detail: any) => {
+          const id = String(detail.TaxRateRef?.value ?? "");
+          return { id, rate: rateById.get(id) ?? 0 };
+        })
+        .filter((detail: { id: string }) => Boolean(detail.id)),
       rate: (taxCode.PurchaseTaxRateList?.TaxRateDetail ?? []).reduce(
         (total: number, detail: any) =>
           total + (rateById.get(String(detail.TaxRateRef?.value ?? "")) ?? 0),
