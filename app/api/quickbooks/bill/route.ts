@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { qboRequest, qboUploadAttachment } from "@/lib/quickbooks/api";
 import { listQuickBooksTaxCodes } from "@/lib/quickbooks/bill-options";
+import { ensureQuickBooksBillNumberAvailable } from "@/lib/quickbooks/bill-duplicate-check";
 
 const INTERNAL_ROLES = new Set(["sales", "pm", "admin", "director", "dev"]);
 const BILL_NOT_FOUND_ERROR = "ERROR - Could not find Bill";
@@ -115,6 +116,11 @@ export async function PATCH(request: NextRequest) {
       supplierId = String(createdVendor?.Vendor?.Id ?? "");
       if (!supplierId) throw new Error("QuickBooks could not create the new Supplier.");
     }
+    await ensureQuickBooksBillNumberAvailable({
+      supplierId,
+      billNumber,
+      excludeBillId: String(voucher.quickbooks_bill_id),
+    });
     if (!Array.isArray(draft.lines) || !draft.lines.length) throw new Error("Add at least one expense line.");
     const lines: Array<{ categoryId: string; taxCodeId: string; description: string; amount: number }> = draft.lines.map((line: any, index: number) => {
       const categoryId = String(line.categoryId ?? "").trim();

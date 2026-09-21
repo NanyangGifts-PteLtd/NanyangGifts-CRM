@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { qboRequest, qboUploadAttachment } from "@/lib/quickbooks/api";
 import { listQuickBooksTaxCodes } from "@/lib/quickbooks/bill-options";
+import { ensureQuickBooksBillNumberAvailable } from "@/lib/quickbooks/bill-duplicate-check";
 
 const INTERNAL_ROLES = new Set(["sales", "pm", "admin", "director", "dev"]);
 
@@ -101,6 +102,7 @@ export async function POST(request: NextRequest) {
     }
     if (!invoiceNumber) throw new Error("Invoice no. is required.");
     if (!memo) throw new Error("Memo is required.");
+    await ensureQuickBooksBillNumberAvailable({ supplierId, billNumber: invoiceNumber });
     if (overallGstAmount !== null && (!Number.isFinite(overallGstAmount) || overallGstAmount < 0))
       throw new Error("Overall GST amount must be zero or greater.");
     if (!Array.isArray(bill.lines) || !bill.lines.length) throw new Error("Add at least one expense line.");
