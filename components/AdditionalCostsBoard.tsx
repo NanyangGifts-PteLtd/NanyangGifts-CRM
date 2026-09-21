@@ -54,6 +54,7 @@ type AdditionalCost = {
   quickbooks_supplier_id?: string;
   quickbooks_supplier_name?: string;
   quickbooks_bill_id?: string | null;
+  quickbooks_bill_sync_error?: string | null;
   quickbooks_attachment_files?: Array<{ name?: string; id?: string; contentType?: string }>;
 };
 type LabelOption = {
@@ -187,6 +188,7 @@ export function AdditionalCostsBoard({
     "add" | "none" | null
   >(null);
   const [billTargetVoucher, setBillTargetVoucher] = useState<AdditionalCost | null>(null);
+  const [editingQuickBooksBill, setEditingQuickBooksBill] = useState(false);
   const [billOptions, setBillOptions] = useState<{
     vendors: Array<{ id: string; name: string }>;
     accounts: Array<{ id: string; name: string }>;
@@ -261,6 +263,7 @@ export function AdditionalCostsBoard({
   );
   const [pendingQuickBooksBillClear, setPendingQuickBooksBillClear] =
     useState<AdditionalCost | null>(null);
+  const [pendingBillErrorResolution, setPendingBillErrorResolution] = useState<AdditionalCost | null>(null);
   const rowRevisions = useRef(new Map<string, number>());
   const gridTemplateColumns = columns
     .map((column) => `${column.width}px`)
@@ -662,28 +665,101 @@ export function AdditionalCostsBoard({
       setCreatingFor(null);
     }
   };
-  const openAddBill = (row: AdditionalCost) => {
+  const openAddBill = (row: AdditionalCost, prefillFromBrokenLink = false) => {
     const client = clientsById.get(row.client_id);
     setVoucherCreationGroup("other");
     setSelectedVoucherClientId(row.client_id);
     setBillTargetVoucher(row);
+    setEditingQuickBooksBill(false);
     setOtherBillChoice("add");
     setBillDocumentPreview(null);
     setPrefillFileSignature(null);
     setPendingExtractionFile(null);
     setBillDraft({
-      supplierId: "",
+      supplierId: prefillFromBrokenLink ? row.quickbooks_supplier_id ?? "" : "",
       mailingAddress: "",
       termId: "",
       billDate: new Date().toISOString().slice(0, 10),
       dueDate: new Date().toISOString().slice(0, 10),
-      billNumber: "",
+      billNumber: prefillFromBrokenLink ? row.quickbooks_invoice_number ?? "" : "",
       memo: client ? clientLabel(client) : "",
       overallGstAmount: "",
       attachments: [],
-      lines: [{ categoryId: "", description: "", amount: "", taxCodeId: "" }],
+      lines: [{ categoryId: "", description: "", amount: prefillFromBrokenLink && row.cost != null ? String(row.cost) : "", taxCodeId: "" }],
     });
     setPickerOpen(true);
+  };
+  const removeBrokenBillLink = async (voucher: AdditionalCost) => {
+    try {
+      const response = await fetch("/api/quickbooks/bill", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ voucherId: voucher.id }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error ?? "Could not remove the Bill link.");
+      setRows((current) => current.map((row) => row.id === voucher.id ? result.row : row));
+      setPendingBillErrorResolution(null);
+      toast.success("QuickBooks Bill information removed from this payment voucher.");
+    } catch (removeError) {
+      toast.error("Bill link could not be removed", { description: removeError instanceof Error ? removeError.message : "Please try again." });
+    }
+  };
+  const openEditBill = async (row: AdditionalCost) => {
+    setCreatingFor(row.id);
+    try {
+      const response = await fetch(`/api/quickbooks/bill?voucherId=${encodeURIComponent(row.id)}`);
+      const result = await response.json();
+      if (!response.ok) {
+        if (result.billSyncError) {
+          setRows((current) => current.map((currentRow) => currentRow.id === row.id
+            ? { ...currentRow, quickbooks_bill_sync_error: result.billSyncError }
+            : currentRow));
+        }
+        throw new Error(result.error ?? "Could not load the QuickBooks Bill.");
+      }
+      const bill = result.bill;
+      setVoucherCreationGroup("other");
+      setSelectedVoucherClientId(row.client_id);
+      setBillTargetVoucher(row);
+      setEditingQuickBooksBill(true);
+      setOtherBillChoice("add");
+      setBillDocumentPreview(null);
+      setPrefillFileSignature(null);
+      setPendingExtractionFile(null);
+      setBillDraft({ ...bill, attachments: [] });
+      setPickerOpen(true);
+    } catch (loadError) {
+      toast.error("QuickBooks Bill could not be loaded", { description: loadError instanceof Error ? loadError.message : "Please try again." });
+    } finally {
+      setCreatingFor(null);
+    }
+  };
+  const updateQuickBooksBill = async (voucher: AdditionalCost) => {
+    setCreatingFor(voucher.id);
+    try {
+      const { attachments: _attachments, ...billDraftValues } = billDraft;
+      const selectedSupplier = billOptions.vendors.find((vendor) => vendor.id === billDraft.supplierId);
+      const payload = new FormData();
+      payload.append("payload", JSON.stringify({ voucherId: voucher.id, bill: { ...billDraftValues, supplierName: selectedSupplier?.name ?? "" } }));
+      billDraft.attachments.forEach((attachment) => payload.append("attachments", attachment, attachment.name));
+      const response = await fetch("/api/quickbooks/bill", { method: "PATCH", body: payload });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error ?? "Could not update the QuickBooks Bill.");
+      setRows((current) => current.map((row) => row.id === voucher.id ? result.row : row));
+      setPickerOpen(false);
+      setSelectedVoucherClientId(null);
+      setBillTargetVoucher(null);
+      setEditingQuickBooksBill(false);
+      setOtherBillChoice(null);
+      setBillDocumentPreview(null);
+      setPrefillFileSignature(null);
+      toast.success("QuickBooks Bill and Payment Voucher cost updated.");
+    } catch (updateError) {
+      toast.error("QuickBooks Bill could not be updated", { description: updateError instanceof Error ? updateError.message : "Please try again." });
+    } finally {
+      setCreatingFor(null);
+    }
   };
   const extractBillDocument = async (file: File) => {
     if (!selectedVoucherClientId) return;
@@ -1039,7 +1115,7 @@ export function AdditionalCostsBoard({
       {!collapsedVoucherGroups[group.id] && (
         <div className="overflow-x-auto">
           <table className="min-w-full border-collapse text-sm">
-            <style>{tableColumns.map((column, index) => `.payment-voucher-row [data-voucher-col="${column.key}"]{order:${index}}`).join("")}</style>
+            <style>{`${tableColumns.map((column, index) => `.payment-voucher-row [data-voucher-col="${column.key}"]{order:${index}}`).join("")} .payment-voucher-row>[data-voucher-col]{display:flex;align-items:center;}`}</style>
             <thead className="bg-slate-50 text-left text-xs font-semibold text-slate-500">
               <tr className="grid" style={{ gridTemplateColumns: columnGrid }}>
                 {tableColumns.map((column) => (
@@ -1102,7 +1178,7 @@ export function AdditionalCostsBoard({
                           className="h-10 w-full bg-transparent px-3 text-right outline-none focus:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-60"
                         />
                       </td>
-                      <td data-voucher-col="reason" className="h-10 border-b border-r border-slate-200 p-0">
+                      <td data-voucher-col="reason" className="min-h-10 h-full border-b border-r border-slate-200 p-0">
                         <StatusBadge
                           value={row.reason}
                           onChange={(reason) => {
@@ -1156,7 +1232,7 @@ export function AdditionalCostsBoard({
                       </td>
                       <td data-voucher-col="trip_id" className="border-b border-r border-slate-200 px-3 py-2">{row.trip_id}</td>
                       <td data-voucher-col="items_sent" className="border-b border-r border-slate-200 p-0">{renderBoardRelatedSubitemSelector(row, client)}</td>
-                      {group.id === "courier" ? <td data-voucher-col="courier" className="h-10 border-b border-r border-slate-200 p-0">
+                      {group.id === "courier" ? <td data-voucher-col="courier" className="min-h-10 h-full border-b border-r border-slate-200 p-0">
                         <StatusBadge
                           value={row.courier}
                           onChange={(courier) => void update(row.id, { courier })}
@@ -1165,25 +1241,23 @@ export function AdditionalCostsBoard({
                           readOnly={!canDelete(row)}
                         />
                       </td> : <>
-                        <td data-voucher-col="has_quickbooks_bill" className="h-10 border-b border-r border-slate-200 bg-slate-100 p-0">
-                          <StatusBadge
-                            value={row.has_quickbooks_bill ? "Yes" : "No"}
-                            onChange={(value) => {
-                              if (value === "Yes") {
-                                void update(row.id, { has_quickbooks_bill: true });
-                              } else if (row.has_quickbooks_bill) {
-                                setPendingQuickBooksBillClear(row);
-                              }
-                            }}
-                            options={[
-                              { value: "Yes", color: "#16a34a" },
-                              { value: "No", color: "#94a3b8" },
-                            ]}
-                            includeBlankOption={false}
-                            readOnly
-                          />
+                        <td data-voucher-col="has_quickbooks_bill" className="min-h-10 h-full border-b border-r border-slate-200 bg-slate-100 p-0">
+                            <StatusBadge
+                              value={row.quickbooks_bill_sync_error || (row.has_quickbooks_bill ? "Yes" : "No")}
+                              onChange={() => undefined}
+                              options={[
+                                { value: "Yes", color: "#16a34a" },
+                                { value: "No", color: "#94a3b8" },
+                                { value: "ERROR - Could not find Bill", color: "#dc2626" },
+                              ]}
+                              includeBlankOption={false}
+                              readOnly
+                              readOnlyReason={row.quickbooks_bill_sync_error
+                                ? "QuickBooks could not retrieve this linked Bill."
+                                : "QuickBooks Bill status is managed automatically."}
+                            />
                         </td>
-                        <td data-voucher-col="quickbooks_invoice_number" className="border-b border-r border-slate-200 p-0">
+                        <td data-voucher-col="quickbooks_invoice_number" className="border-b border-r border-slate-200 bg-slate-100 p-0">
                           <input
                             key={`${row.id}-invoice-${row.quickbooks_invoice_number ?? ""}-${row.has_quickbooks_bill}`}
                             defaultValue={row.quickbooks_invoice_number ?? ""}
@@ -1203,14 +1277,25 @@ export function AdditionalCostsBoard({
                         </td>
                         <td data-voucher-col="bill_action" className="border-b border-r border-slate-200 px-2 py-1">
                           {row.has_quickbooks_bill ? (
-                            <button
-                              type="button"
-                              disabled
-                              title="Bill editing will be added next"
-                              className="w-full rounded bg-red-600 px-2 py-1.5 text-xs font-semibold text-white opacity-70"
-                            >
-                              Edit bill
-                            </button>
+                            <div className="space-y-1">
+                              <button
+                                type="button"
+                                disabled={!canDelete(row) || creatingFor === row.id}
+                                onClick={() => void openEditBill(row)}
+                                title={canDelete(row) ? "Load the latest QuickBooks Bill for editing" : "You can only edit payment vouchers for clients assigned to you"}
+                                className="w-full rounded bg-emerald-600 px-2 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+                              >
+                                {creatingFor === row.id ? "Loading…" : "Edit bill"}
+                              </button>
+                              {row.quickbooks_bill_sync_error ? <button
+                                type="button"
+                                disabled={!canDelete(row)}
+                                onClick={() => setPendingBillErrorResolution(row)}
+                                className="w-full rounded bg-red-600 px-2 py-1.5 text-xs font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+                              >
+                                Resolve error
+                              </button> : null}
+                            </div>
                           ) : (
                             <button
                               type="button"
@@ -1265,6 +1350,7 @@ export function AdditionalCostsBoard({
               setSelectedVoucherClientId(null);
               setOtherBillChoice(null);
               setBillTargetVoucher(null);
+              setEditingQuickBooksBill(false);
               setBillDocumentPreview(null);
               setPrefillFileSignature(null);
               setVoucherDraft({
@@ -1659,6 +1745,7 @@ export function AdditionalCostsBoard({
                 onClick={() => {
                   setPickerOpen(false);
                   setBillTargetVoucher(null);
+                  setEditingQuickBooksBill(false);
                   setBillDocumentPreview(null);
                   setPrefillFileSignature(null);
                 }}
@@ -1728,7 +1815,9 @@ export function AdditionalCostsBoard({
                             <p className="mt-1 text-sm text-slate-500">
                               {otherBillChoice === "none"
                                 ? "No QuickBooks Bill will be created for this voucher."
-                                : "Complete the details for the QuickBooks Bill."}
+                                : editingQuickBooksBill
+                                  ? "Loaded from QuickBooks just now. Review and update the Bill when ready."
+                                  : "Complete the details for the QuickBooks Bill."}
                             </p>
                           </div>
                           {!billTargetVoucher ? <button
@@ -1819,6 +1908,7 @@ export function AdditionalCostsBoard({
                             </label>
                             <label className="block text-sm font-medium text-slate-700">Attachments
                               <span className="mt-1 block text-xs font-normal text-slate-500">Click any attachment to preview it in the left pane. Files used for prefill are marked.</span>
+                              {editingQuickBooksBill && billTargetVoucher?.quickbooks_attachment_files?.length ? <span className="mt-1 block text-xs font-normal text-slate-500">Existing QuickBooks attachments are retained. Add files here to attach more.</span> : null}
                               <input type="file" multiple onChange={(event) => setBillDraft((draft) => ({ ...draft, attachments: [...draft.attachments, ...Array.from(event.target.files ?? [])] }))} className="mt-1 block w-full text-sm font-normal text-slate-600" />
                             </label>
                             {billDraft.attachments.length ? <ul className="space-y-1 text-sm text-slate-600">{billDraft.attachments.map((file, index) => <li key={`${file.name}-${file.lastModified}-${index}`} className="flex items-center gap-2"><button type="button" onClick={() => previewAttachment(file)} className="min-w-0 truncate text-left text-sky-700 hover:underline">{file.name}</button>{prefillFileSignature === `${file.name}-${file.lastModified}` ? <span className="shrink-0 rounded bg-sky-100 px-1.5 py-0.5 text-xs font-medium text-sky-700">Used for prefill</span> : null}<button type="button" aria-label={`Remove ${file.name}`} onClick={() => setBillDraft((draft) => ({ ...draft, attachments: draft.attachments.filter((_, fileIndex) => fileIndex !== index) }))} className="rounded p-0.5 text-slate-500 hover:bg-slate-100 hover:text-red-600"><X size={15} /></button></li>)}</ul> : null}
@@ -1853,12 +1943,14 @@ export function AdditionalCostsBoard({
                             !voucherDraft.relatedSubitemIds.length ||
                             (voucherDraft.reason.trim().toLocaleLowerCase() === "other" && !voucherDraft.remarks.trim())))
                         }
-                        onClick={() => otherBillChoice === "add"
+                        onClick={() => editingQuickBooksBill && billTargetVoucher
+                          ? void updateQuickBooksBill(billTargetVoucher)
+                          : otherBillChoice === "add"
                           ? void generateQuickBooksBill(selectedVoucherClientId, billTargetVoucher)
                           : void create(selectedVoucherClientId)}
                         className="rounded bg-[#16a5c4] px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-300"
                       >
-                        {creatingFor ? (otherBillChoice === "add" ? "Creating QuickBooks Bill…" : "Creating payment voucher…") : otherBillChoice === "add" ? billTargetVoucher ? "Create and link QuickBooks Bill" : "Create QuickBooks Bill and payment voucher" : "Create payment voucher"}
+                        {creatingFor ? (editingQuickBooksBill ? "Updating QuickBooks Bill…" : otherBillChoice === "add" ? "Creating QuickBooks Bill…" : "Creating payment voucher…") : editingQuickBooksBill ? "Update QuickBooks Bill" : otherBillChoice === "add" ? billTargetVoucher ? "Create and link QuickBooks Bill" : "Create QuickBooks Bill and payment voucher" : "Create payment voucher"}
                       </button>
                     </>
                   )}
@@ -2187,6 +2279,53 @@ export function AdditionalCostsBoard({
             >
               Set to No and clear values
             </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog
+        open={Boolean(pendingBillErrorResolution)}
+        onOpenChange={(open) => !open && setPendingBillErrorResolution(null)}
+      >
+        <AlertDialogContent className="sm:max-w-4xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Resolve missing QuickBooks Bill</AlertDialogTitle>
+            <AlertDialogDescription>
+              QuickBooks could not find the Bill linked to this payment voucher. Choose how to resolve the broken link.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <button
+              type="button"
+              onClick={() => pendingBillErrorResolution && void removeBrokenBillLink(pendingBillErrorResolution)}
+              className="min-h-32 rounded-md bg-red-600 px-5 py-4 text-left text-base font-semibold text-white hover:bg-red-700"
+            >
+              Remove Bill and its existing information
+              <span className="mt-1 block text-xs font-normal text-red-100">Keep the payment voucher, but return it to the no-Bill state.</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const voucher = pendingBillErrorResolution;
+                setPendingBillErrorResolution(null);
+                if (voucher) openAddBill(voucher, true);
+              }}
+              className="min-h-32 rounded-md bg-sky-600 px-5 py-4 text-left text-base font-semibold text-white hover:bg-sky-700"
+            >
+              Create new Bill
+              <span className="mt-1 block text-xs font-normal text-sky-100">Open a new Bill draft prefilled with the remaining voucher information.</span>
+            </button>
+            <button
+              type="button"
+              disabled
+              title="Linking an existing QuickBooks Bill will be added in a future update."
+              className="min-h-32 cursor-not-allowed rounded-md bg-slate-200 px-5 py-4 text-left text-base font-semibold text-slate-500"
+            >
+              Link existing QuickBooks Bill
+              <span className="mt-1 block text-xs font-normal text-slate-400">Coming soon.</span>
+            </button>
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

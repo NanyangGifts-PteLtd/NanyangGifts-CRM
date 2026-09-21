@@ -262,7 +262,9 @@ export async function POST(request: NextRequest) {
       const { data: updatedVoucher, error: updateError } = await supabaseAdmin
         .from("additional_costs")
         .update({
+          cost: expenseTotal,
           has_quickbooks_bill: true,
+          quickbooks_bill_sync_error: null,
           quickbooks_invoice_number: String(quickBooksBill.DocNumber ?? invoiceNumber),
           quickbooks_supplier_id: supplierId,
           quickbooks_supplier_name: String(bill.supplierName ?? quickBooksBill.VendorRef?.name ?? ""),
@@ -273,6 +275,12 @@ export async function POST(request: NextRequest) {
         .select("*")
         .single();
       if (updateError) throw updateError;
+      const { error: linkedSubitemError } = await supabaseAdmin
+        .from("subitems")
+        .update({ cost: String(expenseTotal) })
+        .eq("custom_fields->>additionalCostId", existingVoucher.id)
+        .is("deleted_at", null);
+      if (linkedSubitemError) throw linkedSubitemError;
       return NextResponse.json({ row: updatedVoucher, billId: quickBooksBill.Id, docNumber: quickBooksBill.DocNumber ?? invoiceNumber, attachmentErrors });
     }
 
@@ -289,6 +297,7 @@ export async function POST(request: NextRequest) {
       cost, reason: reason.value, reason_option_id: reason.id, items_sent: relatedNames,
       courier: "", courier_option_id: null, remarks, trip_id: nextReference,
       has_quickbooks_bill: true,
+      quickbooks_bill_sync_error: null,
       quickbooks_invoice_number: String(quickBooksBill.DocNumber ?? invoiceNumber),
       quickbooks_supplier_id: supplierId,
       quickbooks_supplier_name: String(bill.supplierName ?? quickBooksBill.VendorRef?.name ?? ""),

@@ -610,7 +610,7 @@ export function StatusBadge({
         aria-label={value || "Set label"}
         title={
           readOnly
-            ? readOnlyReason ?? "Cost fields are locked because this subitem is paid"
+            ? readOnlyReason ?? "This field is locked."
             : undefined
         }
         className={`ck h-full w-full whitespace-nowrap font-medium leading-none transition duration-150 ${readOnly ? "cursor-not-allowed opacity-70" : open ? "" : "active:scale-95"} ${small ? "text-[12.6px]" : "text-[12.6px]"}`}
