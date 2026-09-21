@@ -137,6 +137,12 @@ const levenshteinDistance = (first: string, second: string) => {
   }
   return previous[second.length];
 };
+const closestQuickBooksOption = <T extends { id: string; name: string }>(value: string, options: T[]) => {
+  const query = supplierSearchKey(value);
+  if (!query) return null;
+  return options.map((option) => ({ option, score: levenshteinDistance(supplierSearchKey(option.name), query) / Math.max(supplierSearchKey(option.name).length, query.length, 1) }))
+    .sort((first, second) => first.score - second.score)[0]?.option ?? null;
+};
 
 export function AdditionalCostsBoard({
   clients,
@@ -189,9 +195,25 @@ export function AdditionalCostsBoard({
   >(null);
   const [billTargetVoucher, setBillTargetVoucher] = useState<AdditionalCost | null>(null);
   const [editingQuickBooksBill, setEditingQuickBooksBill] = useState(false);
+  const [supplierOptionsOpen, setSupplierOptionsOpen] = useState(false);
+  const [categoryOptionsOpen, setCategoryOptionsOpen] = useState<{
+    index: number;
+    top: number;
+    left: number;
+    width: number;
+  } | null>(null);
+  const openCategoryOptions = (index: number, target: HTMLInputElement) => {
+    const rect = target.getBoundingClientRect();
+    setCategoryOptionsOpen({
+      index,
+      top: rect.bottom + 4,
+      left: rect.left,
+      width: Math.max(rect.width, Math.min(560, window.innerWidth - rect.left - 16)),
+    });
+  };
   const [billOptions, setBillOptions] = useState<{
     vendors: Array<{ id: string; name: string }>;
-    accounts: Array<{ id: string; name: string }>;
+    accounts: Array<{ id: string; name: string; accountType?: string; accountSubType?: string }>;
     terms: Array<{ id: string; name: string }>;
     taxCodes: Array<{ id: string; name: string; rate?: number }>;
   }>({ vendors: [], accounts: [], terms: [], taxCodes: [] });
@@ -210,6 +232,7 @@ export function AdditionalCostsBoard({
   const [prefillFileSignature, setPrefillFileSignature] = useState<string | null>(null);
   const [billDraft, setBillDraft] = useState({
     supplierId: "",
+    supplierName: "",
     mailingAddress: "",
     termId: "",
     billDate: new Date().toISOString().slice(0, 10),
@@ -218,7 +241,7 @@ export function AdditionalCostsBoard({
     memo: "",
     overallGstAmount: "",
     attachments: [] as File[],
-    lines: [{ categoryId: "", description: "", amount: "", taxCodeId: "" }],
+    lines: [{ categoryId: "", categoryName: "", description: "", amount: "", taxCodeId: "" }],
   });
   const [voucherDraft, setVoucherDraft] = useState({
     cost: "",
@@ -621,12 +644,8 @@ export function AdditionalCostsBoard({
     setCreatingFor(clientId);
     try {
       const { attachments: _attachments, ...billDraftValues } = billDraft;
-      const selectedSupplier = billOptions.vendors.find(
-        (vendor) => vendor.id === billDraft.supplierId,
-      );
       const bill = {
         ...billDraftValues,
-        supplierName: selectedSupplier?.name ?? "",
       };
       const payload = new FormData();
       payload.append("payload", JSON.stringify(existingVoucher
@@ -677,6 +696,7 @@ export function AdditionalCostsBoard({
     setPendingExtractionFile(null);
     setBillDraft({
       supplierId: prefillFromBrokenLink ? row.quickbooks_supplier_id ?? "" : "",
+      supplierName: prefillFromBrokenLink ? row.quickbooks_supplier_name ?? "" : "",
       mailingAddress: "",
       termId: "",
       billDate: new Date().toISOString().slice(0, 10),
@@ -685,7 +705,7 @@ export function AdditionalCostsBoard({
       memo: client ? clientLabel(client) : "",
       overallGstAmount: "",
       attachments: [],
-      lines: [{ categoryId: "", description: "", amount: prefillFromBrokenLink && row.cost != null ? String(row.cost) : "", taxCodeId: "" }],
+      lines: [{ categoryId: "", categoryName: "", description: "", amount: prefillFromBrokenLink && row.cost != null ? String(row.cost) : "", taxCodeId: "" }],
     });
     setPickerOpen(true);
   };
@@ -739,9 +759,8 @@ export function AdditionalCostsBoard({
     setCreatingFor(voucher.id);
     try {
       const { attachments: _attachments, ...billDraftValues } = billDraft;
-      const selectedSupplier = billOptions.vendors.find((vendor) => vendor.id === billDraft.supplierId);
       const payload = new FormData();
-      payload.append("payload", JSON.stringify({ voucherId: voucher.id, bill: { ...billDraftValues, supplierName: selectedSupplier?.name ?? "" } }));
+      payload.append("payload", JSON.stringify({ voucherId: voucher.id, bill: billDraftValues }));
       billDraft.attachments.forEach((attachment) => payload.append("attachments", attachment, attachment.name));
       const response = await fetch("/api/quickbooks/bill", { method: "PATCH", body: payload });
       const result = await response.json();
@@ -816,7 +835,8 @@ export function AdditionalCostsBoard({
       };
       setBillDraft((draft) => ({
         ...draft,
-        supplierId: exactSupplier?.id ?? draft.supplierId,
+        supplierId: exactSupplier?.id ?? "",
+        supplierName: extraction.supplierName || draft.supplierName,
         mailingAddress: extraction.mailingAddress || draft.mailingAddress,
         billDate: extraction.billDate || draft.billDate,
         dueDate: extraction.dueDate || draft.dueDate,
@@ -824,6 +844,7 @@ export function AdditionalCostsBoard({
         lines: extraction.lines?.length
           ? extraction.lines.map((line) => ({
               categoryId: "",
+              categoryName: "",
               description: line.description ?? "",
               amount: line.amount ? String(line.amount) : "",
               taxCodeId: findTaxCode(line.tax ?? ""),
@@ -1365,6 +1386,7 @@ export function AdditionalCostsBoard({
               const today = new Date().toISOString().slice(0, 10);
               setBillDraft({
                 supplierId: "",
+                supplierName: "",
                 mailingAddress: "",
                 termId: "",
                 billDate: today,
@@ -1376,6 +1398,7 @@ export function AdditionalCostsBoard({
                 lines: [
                   {
                     categoryId: "",
+                    categoryName: "",
                     description: "",
                     amount: "",
                     taxCodeId: "",
@@ -1849,13 +1872,15 @@ export function AdditionalCostsBoard({
                             ) : null}
                             <div className="grid gap-3 sm:grid-cols-2">
                               <label className="text-sm font-medium text-slate-700">Supplier *
-                                <select required value={billDraft.supplierId} onChange={(event) => setBillDraft((draft) => ({ ...draft, supplierId: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 font-normal">
-                                  <option value="">Choose a supplier</option>
-                                  {billOptions.vendors.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}
-                                </select>
+                                <div className="relative mt-1">
+                                  <input required value={billDraft.supplierName} onFocus={() => setSupplierOptionsOpen(true)} onBlur={() => window.setTimeout(() => setSupplierOptionsOpen(false), 120)} onChange={(event) => { const supplierName = event.target.value; const match = billOptions.vendors.find((option) => option.name.toLocaleLowerCase() === supplierName.trim().toLocaleLowerCase()); setBillDraft((draft) => ({ ...draft, supplierName, supplierId: match?.id ?? "" })); setSupplierOptionsOpen(true); }} placeholder="Choose or type a supplier" className="w-full rounded border border-slate-300 bg-white px-3 py-2 font-normal" />
+                                  {supplierOptionsOpen ? <div className="absolute z-30 mt-1 max-h-52 w-full overflow-y-auto rounded border border-slate-200 bg-white shadow-lg">{billOptions.vendors.filter((option) => !billDraft.supplierName || option.name.toLocaleLowerCase().includes(billDraft.supplierName.toLocaleLowerCase())).map((option) => <button key={option.id} type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => { setBillDraft((draft) => ({ ...draft, supplierId: option.id, supplierName: option.name })); setSupplierOptionsOpen(false); }} className="block w-full px-3 py-2 text-left text-sm hover:bg-sky-50">{option.name}</button>)}</div> : null}
+                                </div>
                                 {billDocumentPreview?.supplierSuggestion && billDraft.supplierId !== billDocumentPreview.supplierSuggestion.id ? (
-                                  <button type="button" onClick={() => setBillDraft((draft) => ({ ...draft, supplierId: billDocumentPreview.supplierSuggestion!.id }))} className="mt-1 text-left text-xs font-normal text-sky-700 hover:underline">Use closest match: {billDocumentPreview.supplierSuggestion.name}</button>
+                                  <button type="button" onClick={() => setBillDraft((draft) => ({ ...draft, supplierId: billDocumentPreview.supplierSuggestion!.id, supplierName: billDocumentPreview.supplierSuggestion!.name }))} className="mt-1 text-left text-xs font-normal text-sky-700 hover:underline">Use closest match: {billDocumentPreview.supplierSuggestion.name}</button>
                                 ) : null}
+                                {!billDocumentPreview?.supplierSuggestion && !billDraft.supplierId && closestQuickBooksOption(billDraft.supplierName, billOptions.vendors) ? <button type="button" onClick={() => { const match = closestQuickBooksOption(billDraft.supplierName, billOptions.vendors)!; setBillDraft((draft) => ({ ...draft, supplierId: match.id, supplierName: match.name })); }} className="mt-1 text-left text-xs font-normal text-sky-700 hover:underline">Use closest match: {closestQuickBooksOption(billDraft.supplierName, billOptions.vendors)!.name}</button> : null}
+                                {billDocumentPreview?.isPrefill && billDraft.supplierName ? <span className="mt-1 block text-xs font-normal text-slate-500">Extracted: {billDraft.supplierName}</span> : null}
                               </label>
                               <label className="text-sm font-medium text-slate-700">Terms
                                 <select value={billDraft.termId} onChange={(event) => setBillDraft((draft) => ({ ...draft, termId: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 font-normal">
@@ -1886,7 +1911,37 @@ export function AdditionalCostsBoard({
                                   <tbody>
                                     {billDraft.lines.map((line, index) => (
                                       <tr key={index} className="border-t border-slate-200 align-top">
-                                        <td className="px-3 py-2"><select required value={line.categoryId} onChange={(event) => setBillDraft((draft) => ({ ...draft, lines: draft.lines.map((current, currentIndex) => currentIndex === index ? { ...current, categoryId: event.target.value } : current) }))} className="w-full rounded border border-slate-300 bg-white px-3 py-2"><option value="">Choose a category</option>{billOptions.accounts.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}</select></td>
+                                        <td className="px-3 py-2">
+                                          <input
+                                            required
+                                            value={line.categoryName ?? ""}
+                                            onFocus={(event) => openCategoryOptions(index, event.currentTarget)}
+                                            onBlur={() => window.setTimeout(() => setCategoryOptionsOpen(null), 120)}
+                                            onChange={(event) => {
+                                              const categoryName = event.target.value;
+                                              const match = billOptions.accounts.find((option) => option.name.toLocaleLowerCase() === categoryName.trim().toLocaleLowerCase());
+                                              setBillDraft((draft) => ({ ...draft, lines: draft.lines.map((current, currentIndex) => currentIndex === index ? { ...current, categoryName, categoryId: match?.id ?? "" } : current) }));
+                                              openCategoryOptions(index, event.currentTarget);
+                                            }}
+                                            placeholder="Choose or type a category"
+                                            className="w-full rounded border border-slate-300 px-3 py-2"
+                                          />
+                                          {categoryOptionsOpen?.index === index && typeof document !== "undefined" ? createPortal(
+                                            <div
+                                              style={{ position: "fixed", top: categoryOptionsOpen.top, left: categoryOptionsOpen.left, width: categoryOptionsOpen.width, zIndex: 500 }}
+                                              className="max-h-52 overflow-y-auto rounded border border-slate-200 bg-white shadow-xl"
+                                            >
+                                              {billOptions.accounts.filter((option) => !line.categoryName || option.name.toLocaleLowerCase().includes((line.categoryName ?? "").toLocaleLowerCase())).map((option) => (
+                                                <button key={option.id} type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => { setBillDraft((draft) => ({ ...draft, lines: draft.lines.map((current, currentIndex) => currentIndex === index ? { ...current, categoryId: option.id, categoryName: option.name } : current) })); setCategoryOptionsOpen(null); }} className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-sky-50">
+                                                  <span className="truncate">{option.name}</span>
+                                                  <span className="shrink-0 text-xs italic text-slate-500">{option.accountSubType || option.accountType || "Account"}</span>
+                                                </button>
+                                              ))}
+                                            </div>,
+                                            document.body,
+                                          ) : null}
+                                          {!line.categoryId && closestQuickBooksOption(line.categoryName ?? "", billOptions.accounts) ? <button type="button" onClick={() => { const match = closestQuickBooksOption(line.categoryName ?? "", billOptions.accounts)!; setBillDraft((draft) => ({ ...draft, lines: draft.lines.map((current, currentIndex) => currentIndex === index ? { ...current, categoryId: match.id, categoryName: match.name } : current) })); }} className="mt-1 text-left text-xs text-sky-700 hover:underline">Use closest match: {closestQuickBooksOption(line.categoryName ?? "", billOptions.accounts)!.name}</button> : null}
+                                        </td>
                                         <td className="px-3 py-2"><input value={line.description} onChange={(event) => setBillDraft((draft) => ({ ...draft, lines: draft.lines.map((current, currentIndex) => currentIndex === index ? { ...current, description: event.target.value } : current) }))} className="w-full rounded border border-slate-300 px-3 py-2" /></td>
                                         <td className="px-3 py-2"><input required type="number" min="0.01" step="0.01" value={line.amount} onChange={(event) => setBillDraft((draft) => ({ ...draft, lines: draft.lines.map((current, currentIndex) => currentIndex === index ? { ...current, amount: event.target.value } : current) }))} className="w-full rounded border border-slate-300 px-3 py-2" /></td>
                                         <td className="px-3 py-2"><select required value={line.taxCodeId} onChange={(event) => setBillDraft((draft) => ({ ...draft, lines: draft.lines.map((current, currentIndex) => currentIndex === index ? { ...current, taxCodeId: event.target.value } : current) }))} className="w-full rounded border border-slate-300 bg-white px-3 py-2"><option value="">Choose GST</option>{billOptions.taxCodes.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}</select></td>
@@ -1894,7 +1949,7 @@ export function AdditionalCostsBoard({
                                       </tr>
                                     ))}
                                   </tbody>
-                                  <tfoot className="border-t border-slate-200 bg-slate-50"><tr><td colSpan={5} className="px-3 py-2"><button type="button" onClick={() => setBillDraft((draft) => ({ ...draft, lines: [...draft.lines, { categoryId: "", description: "", amount: "", taxCodeId: "" }] }))} className="font-medium text-sky-700 hover:underline">+ Add expense line</button></td></tr></tfoot>
+                                  <tfoot className="border-t border-slate-200 bg-slate-50"><tr><td colSpan={5} className="px-3 py-2"><button type="button" onClick={() => setBillDraft((draft) => ({ ...draft, lines: [...draft.lines, { categoryId: "", categoryName: "", description: "", amount: "", taxCodeId: "" }] }))} className="font-medium text-sky-700 hover:underline">+ Add expense line</button></td></tr></tfoot>
                                 </table>
                               </div>
                             </div>
@@ -1931,7 +1986,7 @@ export function AdditionalCostsBoard({
                         disabled={
                           creatingFor !== null ||
                           (otherBillChoice === "add" && (
-                            !billDraft.supplierId ||
+                            !billDraft.supplierName.trim() ||
                             !billDraft.billNumber.trim() ||
                             !billDraft.memo.trim() ||
                             billDraft.lines.some((line) =>

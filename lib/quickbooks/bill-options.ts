@@ -57,11 +57,7 @@ export async function listQuickBooksVendors() {
 
 export async function listQuickBooksExpenseAccounts() {
   const accounts = await allActiveRows("SELECT * FROM Account WHERE Active = true", "Account");
-  const eligibleTypes = new Set(["Expense", "Cost of Goods Sold", "Other Expense"]);
   return accounts
-    .filter((account: { AccountType?: string }) =>
-      eligibleTypes.has(String(account.AccountType ?? "")),
-    )
     .map((account: any) => ({
       id: String(account.Id),
       name: String(account.FullyQualifiedName ?? account.Name ?? "Unnamed account"),

@@ -73,6 +73,7 @@ export async function GET(request: NextRequest) {
       voucher,
       bill: {
         supplierId: String(bill.VendorRef?.value ?? ""),
+        supplierName: String(bill.VendorRef?.name ?? ""),
         mailingAddress: [bill.VendorAddr?.Line1, bill.VendorAddr?.Line2, bill.VendorAddr?.Line3].filter(Boolean).join("\n"),
         termId: String(bill.SalesTermRef?.value ?? ""),
         billDate: String(bill.TxnDate ?? ""),
@@ -82,6 +83,7 @@ export async function GET(request: NextRequest) {
         overallGstAmount: bill.TxnTaxDetail?.TotalTax == null ? "" : String(bill.TxnTaxDetail.TotalTax),
         lines: (bill.Line ?? []).filter((line: any) => line.DetailType === "AccountBasedExpenseLineDetail").map((line: any) => ({
           categoryId: String(line.AccountBasedExpenseLineDetail?.AccountRef?.value ?? ""),
+          categoryName: String(line.AccountBasedExpenseLineDetail?.AccountRef?.name ?? line.AccountBasedExpenseLineDetail?.AccountRef?.value ?? ""),
           description: String(line.Description ?? ""),
           amount: String(line.Amount ?? ""),
           taxCodeId: String(line.AccountBasedExpenseLineDetail?.TaxCodeRef?.value ?? ""),
@@ -100,10 +102,19 @@ export async function PATCH(request: NextRequest) {
     const { voucher } = await authorisedVoucher(String(body.voucherId ?? ""));
     const draft = body.bill;
     if (!draft) throw new Error("Bill details are required.");
-    const supplierId = String(draft.supplierId ?? "").trim();
+    let supplierId = String(draft.supplierId ?? "").trim();
+    const supplierName = String(draft.supplierName ?? "").trim();
     const billNumber = String(draft.billNumber ?? "").trim();
     const memo = String(draft.memo ?? "").trim();
-    if (!supplierId || !billNumber || !memo) throw new Error("Supplier, Invoice no., and Memo are required.");
+    if ((!supplierId && !supplierName) || !billNumber || !memo) throw new Error("Supplier, Invoice no., and Memo are required.");
+    if (!supplierId) {
+      const createdVendor = await qboRequest("/vendor", {
+        method: "POST",
+        body: JSON.stringify({ DisplayName: supplierName, CompanyName: supplierName }),
+      });
+      supplierId = String(createdVendor?.Vendor?.Id ?? "");
+      if (!supplierId) throw new Error("QuickBooks could not create the new Supplier.");
+    }
     if (!Array.isArray(draft.lines) || !draft.lines.length) throw new Error("Add at least one expense line.");
     const lines: Array<{ categoryId: string; taxCodeId: string; description: string; amount: number }> = draft.lines.map((line: any, index: number) => {
       const categoryId = String(line.categoryId ?? "").trim();
