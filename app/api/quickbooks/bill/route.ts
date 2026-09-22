@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { qboRequest, qboUploadAttachment } from "@/lib/quickbooks/api";
+import { qboQuery, qboRequest, qboUploadAttachment } from "@/lib/quickbooks/api";
 import { listQuickBooksTaxCodes } from "@/lib/quickbooks/bill-options";
 import { ensureQuickBooksBillNumberAvailable } from "@/lib/quickbooks/bill-duplicate-check";
 
@@ -45,6 +45,51 @@ function lineInput(value: unknown, field: string) {
   const result = Number(value);
   if (!Number.isFinite(result) || result <= 0) throw new Error(`${field} must be greater than zero.`);
   return result;
+}
+const escapeQuery = (value: string) => value.replace(/'/g, "\\'");
+
+async function authorisedLinkVoucher(voucherId: string) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Unauthorized");
+  const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
+  const role = String(profile?.role ?? "").toLowerCase();
+  if (!INTERNAL_ROLES.has(role)) throw new Error("Unauthorized");
+  const { data: voucher, error } = await supabaseAdmin.from("additional_costs").select("*").eq("id", voucherId).is("deleted_at", null).maybeSingle();
+  if (error || !voucher) throw new Error("Payment voucher not found.");
+  if (!['admin', 'director'].includes(role)) {
+    const { data: assignment } = await supabaseAdmin.from("client_assignees").select("client_id").eq("client_id", voucher.client_id).eq("user_id", user.id).in("assignment_type", ["people", "pm"]).maybeSingle();
+    if (!assignment) throw new Error("You can only link Bills for clients assigned to you.");
+  }
+  return { voucher };
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json() as { action?: "lookup" | "link"; voucherId?: string; billNumber?: string; billId?: string };
+    const { voucher } = await authorisedLinkVoucher(String(body.voucherId ?? ""));
+    if (body.action === "lookup") {
+      const billNumber = String(body.billNumber ?? "").trim();
+      if (!billNumber) throw new Error("Enter a Bill / invoice number.");
+      const result = await qboQuery(`SELECT * FROM Bill WHERE DocNumber = '${escapeQuery(billNumber)}'`);
+      const bills = result?.QueryResponse?.Bill ?? [];
+      const ids = bills.map((bill: any) => String(bill.Id)).filter(Boolean);
+      const { data: linked } = ids.length ? await supabaseAdmin.from("additional_costs").select("id, quickbooks_bill_id, trip_id").in("quickbooks_bill_id", ids).is("deleted_at", null) : { data: [] as any[] };
+      const linkedById = new Map((linked ?? []).filter((row: any) => row.id !== voucher.id).map((row: any) => [String(row.quickbooks_bill_id), row]));
+      return NextResponse.json({ bills: bills.map((bill: any) => ({ id: String(bill.Id), billNumber: String(bill.DocNumber ?? ""), supplierName: String(bill.VendorRef?.name ?? ""), supplierId: String(bill.VendorRef?.value ?? ""), billDate: String(bill.TxnDate ?? ""), dueDate: String(bill.DueDate ?? ""), total: Number(bill.TotalAmt ?? 0), memo: String(bill.PrivateNote ?? ""), alreadyLinked: linkedById.has(String(bill.Id)), linkedVoucherReference: linkedById.get(String(bill.Id))?.trip_id ?? null })) });
+    }
+    if (body.action !== "link" || !body.billId) throw new Error("Choose a QuickBooks Bill to link.");
+    const existing = await supabaseAdmin.from("additional_costs").select("id, trip_id").eq("quickbooks_bill_id", String(body.billId)).is("deleted_at", null).neq("id", voucher.id).maybeSingle();
+    if (existing.data) throw new Error(`This QuickBooks Bill is already linked to payment voucher ${existing.data.trip_id || existing.data.id}.`);
+    const result = await qboRequest(`/bill/${encodeURIComponent(String(body.billId))}`, { method: "GET" });
+    const bill = result?.Bill;
+    if (!bill?.Id) throw new Error("QuickBooks Bill could not be found.");
+    const total = Number(bill.Line?.filter((line: any) => line.DetailType === "AccountBasedExpenseLineDetail").reduce((sum: number, line: any) => sum + Number(line.Amount ?? 0), 0) ?? 0);
+    const { data: row, error } = await supabaseAdmin.from("additional_costs").update({ has_quickbooks_bill: true, quickbooks_bill_id: String(bill.Id), quickbooks_bill_sync_error: null, quickbooks_invoice_number: String(bill.DocNumber ?? ""), quickbooks_supplier_id: String(bill.VendorRef?.value ?? ""), quickbooks_supplier_name: String(bill.VendorRef?.name ?? ""), cost: total, updated_at: new Date().toISOString() }).eq("id", voucher.id).select("*").single();
+    if (error) throw error;
+    await supabaseAdmin.from("subitems").update({ cost: String(total) }).eq("custom_fields->>additionalCostId", voucher.id).is("deleted_at", null);
+    return NextResponse.json({ row });
+  } catch (error) { return fail(error); }
 }
 
 export async function GET(request: NextRequest) {

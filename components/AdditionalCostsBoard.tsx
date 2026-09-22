@@ -304,6 +304,12 @@ export function AdditionalCostsBoard({
   const [pendingQuickBooksBillClear, setPendingQuickBooksBillClear] =
     useState<AdditionalCost | null>(null);
   const [pendingBillErrorResolution, setPendingBillErrorResolution] = useState<AdditionalCost | null>(null);
+  const [billLinkVoucher, setBillLinkVoucher] = useState<AdditionalCost | null>(null);
+  const [billLinkMode, setBillLinkMode] = useState<"choice" | "lookup">("choice");
+  const [billLinkNumber, setBillLinkNumber] = useState("");
+  const [billLinkResults, setBillLinkResults] = useState<Array<{ id: string; billNumber: string; supplierName: string; billDate: string; dueDate: string; total: number; memo: string; alreadyLinked: boolean; linkedVoucherReference?: string | null }>>([]);
+  const [billLinkSearched, setBillLinkSearched] = useState(false);
+  const [billLinkLoading, setBillLinkLoading] = useState(false);
   const rowRevisions = useRef(new Map<string, number>());
   const gridTemplateColumns = columns
     .map((column) => `${column.width}px`)
@@ -749,6 +755,31 @@ export function AdditionalCostsBoard({
       lines: [{ categoryId: "", categoryName: "", description: "", amount: prefillFromBrokenLink && row.cost != null ? String(row.cost) : "", taxCodeId: "" }],
     });
     setPickerOpen(true);
+  };
+  const lookupExistingBill = async () => {
+    if (!billLinkVoucher || !billLinkNumber.trim()) return;
+    setBillLinkLoading(true);
+    try {
+      const response = await fetch("/api/quickbooks/bill", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "lookup", voucherId: billLinkVoucher.id, billNumber: billLinkNumber }) });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error ?? "Could not find QuickBooks Bills.");
+      setBillLinkResults(result.bills ?? []);
+      setBillLinkSearched(true);
+    } catch (error) { toast.error("QuickBooks Bill lookup failed", { description: error instanceof Error ? error.message : "Please try again." }); }
+    finally { setBillLinkLoading(false); }
+  };
+  const linkExistingBill = async (billId: string) => {
+    if (!billLinkVoucher) return;
+    setBillLinkLoading(true);
+    try {
+      const response = await fetch("/api/quickbooks/bill", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "link", voucherId: billLinkVoucher.id, billId }) });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error ?? "Could not link QuickBooks Bill.");
+      setRows((current) => current.map((row) => row.id === billLinkVoucher.id ? result.row : row));
+      setBillLinkVoucher(null); setBillLinkResults([]); setBillLinkNumber("");
+      toast.success("QuickBooks Bill linked to payment voucher.");
+    } catch (error) { toast.error("QuickBooks Bill could not be linked", { description: error instanceof Error ? error.message : "Please try again." }); }
+    finally { setBillLinkLoading(false); }
   };
   const removeBrokenBillLink = async (voucher: AdditionalCost) => {
     try {
@@ -1388,7 +1419,7 @@ export function AdditionalCostsBoard({
                             <button
                               type="button"
                               disabled={!canDelete(row)}
-                              onClick={() => openAddBill(row)}
+                              onClick={() => { setBillLinkVoucher(row); setBillLinkMode("choice"); setBillLinkNumber(""); setBillLinkResults([]); setBillLinkSearched(false); }}
                               title={canDelete(row) ? "Create and link a QuickBooks Bill" : "You can only edit payment vouchers for clients assigned to you"}
                               className="w-full rounded bg-sky-600 px-2 py-1.5 text-xs font-semibold text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:bg-slate-300"
                             >
@@ -2441,17 +2472,32 @@ export function AdditionalCostsBoard({
             </button>
             <button
               type="button"
-              disabled
-              title="Linking an existing QuickBooks Bill will be added in a future update."
-              className="min-h-32 cursor-not-allowed rounded-md bg-slate-200 px-5 py-4 text-left text-base font-semibold text-slate-500"
+              onClick={() => {
+                const voucher = pendingBillErrorResolution;
+                setPendingBillErrorResolution(null);
+                if (voucher) { setBillLinkVoucher(voucher); setBillLinkMode("lookup"); setBillLinkNumber(""); setBillLinkResults([]); setBillLinkSearched(false); }
+              }}
+              className="min-h-32 rounded-md bg-violet-600 px-5 py-4 text-left text-base font-semibold text-white hover:bg-violet-700"
             >
               Link existing QuickBooks Bill
-              <span className="mt-1 block text-xs font-normal text-slate-400">Coming soon.</span>
+              <span className="mt-1 block text-xs font-normal text-violet-100">Find and link a replacement Bill by its invoice number.</span>
             </button>
           </div>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
           </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog open={Boolean(billLinkVoucher)} onOpenChange={(open) => {
+        if (!open) { setBillLinkVoucher(null); setBillLinkResults([]); setBillLinkNumber(""); setBillLinkSearched(false); setBillLinkMode("choice"); }
+      }}>
+        <AlertDialogContent className="sm:max-w-2xl">
+          <AlertDialogHeader><AlertDialogTitle>Link a QuickBooks Bill</AlertDialogTitle><AlertDialogDescription>Choose a new Bill, or find an existing QuickBooks Bill by its invoice number.</AlertDialogDescription></AlertDialogHeader>
+          {billLinkMode === "choice" ? <div className="grid gap-4 sm:grid-cols-2">
+            <button type="button" onClick={() => { const voucher = billLinkVoucher; if (voucher) { setBillLinkVoucher(null); openAddBill(voucher); } }} className="min-h-36 rounded-md bg-sky-600 px-6 py-5 text-left text-lg font-semibold text-white hover:bg-sky-700">Create a new QuickBooks Bill<span className="mt-2 block text-sm font-normal text-sky-100">Prepare a new Bill using this payment voucher.</span></button>
+            <button type="button" onClick={() => { setBillLinkMode("lookup"); setBillLinkNumber(""); setBillLinkResults([]); setBillLinkSearched(false); }} className="min-h-36 rounded-md bg-violet-600 px-6 py-5 text-left text-lg font-semibold text-white hover:bg-violet-700">Link an existing QuickBooks Bill<span className="mt-2 block text-sm font-normal text-violet-100">Search by an existing Bill / invoice number.</span></button>
+          </div> : !billLinkSearched ? <div className="rounded-md border border-slate-200 p-4"><label className="block text-sm font-medium text-slate-700">Existing Bill / invoice number on QuickBooks<input value={billLinkNumber} onChange={(event) => setBillLinkNumber(event.target.value)} onKeyDown={(event) => event.key === "Enter" && void lookupExistingBill()} className="mt-1 w-full rounded border border-slate-300 px-3 py-2" placeholder="Enter Bill number" /></label><button type="button" disabled={billLinkLoading || !billLinkNumber.trim()} onClick={() => void lookupExistingBill()} className="mt-3 rounded bg-violet-600 px-4 py-2 text-sm font-semibold text-white disabled:bg-slate-300">{billLinkLoading ? "Searching…" : "Find existing Bill"}</button></div> : <div className="space-y-3"><button type="button" onClick={() => { setBillLinkResults([]); setBillLinkSearched(false); }} className="text-sm text-sky-700 hover:underline">Search again</button>{!billLinkResults.length ? <div className="rounded border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">No QuickBooks Bills were found with invoice number “{billLinkNumber}”. Check the number and try again.</div> : billLinkResults.map((bill) => <div key={bill.id} className="rounded border border-slate-200 p-4"><div className="flex items-start justify-between gap-3"><div><p className="font-semibold">Bill {bill.billNumber || bill.id}</p><p className="text-sm text-slate-600">{bill.supplierName || "No supplier"} · ${bill.total.toFixed(2)}</p><p className="text-xs text-slate-500">Bill date: {bill.billDate || "—"} · Due: {bill.dueDate || "—"}</p></div><button type="button" disabled={bill.alreadyLinked || billLinkLoading} onClick={() => void linkExistingBill(bill.id)} className="rounded bg-violet-600 px-3 py-2 text-sm font-semibold text-white disabled:bg-slate-300">{bill.alreadyLinked ? `Already linked${bill.linkedVoucherReference ? ` (${bill.linkedVoucherReference})` : ""}` : "Link this Bill"}</button></div>{bill.alreadyLinked && <p className="mt-2 text-xs font-medium text-red-600">This Bill is already linked to another payment voucher and cannot be selected.</p>}</div>)}</div>}
+          <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel></AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
     </section>
