@@ -69,6 +69,7 @@ export async function POST(request: NextRequest) {
         supplierId?: unknown; mailingAddress?: unknown; termId?: unknown; billDate?: unknown;
         dueDate?: unknown; billNumber?: unknown; supplierName?: unknown; memo?: unknown;
         overallGstAmount?: unknown;
+        attachmentFiles?: Array<{ name?: string; url?: string; storagePath?: string; mimeType?: string }>;
         lines?: Array<{ categoryId?: unknown; description?: unknown; amount?: unknown; taxCodeId?: unknown }>;
       };
     };
@@ -269,8 +270,8 @@ export async function POST(request: NextRequest) {
         : "subitem_status_variation_cost_difference",
     );
     const attachmentErrors: string[] = [];
-    const uploadedAttachments: Array<{ name: string; id?: string; contentType: string }> = [];
-    for (const attachment of attachments) {
+    const uploadedAttachments: Array<{ name: string; id?: string; contentType: string; url?: string; storagePath?: string }> = [];
+    for (const [index, attachment] of attachments.entries()) {
       try {
         const uploadResult = await qboUploadAttachment(attachment, {
           id: String(quickBooksBill.Id),
@@ -281,6 +282,8 @@ export async function POST(request: NextRequest) {
           name: attachment.name,
           ...(attachable?.Id ? { id: String(attachable.Id) } : {}),
           contentType: attachment.type || "application/octet-stream",
+          ...(bill.attachmentFiles?.[index]?.url ? { url: bill.attachmentFiles[index].url } : {}),
+          ...(bill.attachmentFiles?.[index]?.storagePath ? { storagePath: bill.attachmentFiles[index].storagePath } : {}),
         });
       } catch (uploadError) {
         attachmentErrors.push(

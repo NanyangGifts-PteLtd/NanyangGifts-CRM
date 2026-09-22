@@ -30,6 +30,8 @@ import {
   type BadgeOptionLayout,
 } from "@/components/ui/statusbadge";
 import { createClient as createSupabaseClient } from "@/lib/supabase/client";
+import { uploadCrmFiles } from "@/lib/crm-files";
+import { FilePreview } from "@/components/ui/file-preview";
 
 type AdditionalCost = {
   id: string;
@@ -58,7 +60,7 @@ type AdditionalCost = {
   quickbooks_supplier_name?: string;
   quickbooks_bill_id?: string | null;
   quickbooks_bill_sync_error?: string | null;
-  quickbooks_attachment_files?: Array<{ name?: string; id?: string; contentType?: string }>;
+  quickbooks_attachment_files?: Array<{ name?: string; id?: string; contentType?: string; url?: string; storagePath?: string }>;
 };
 type LabelOption = {
   id?: string;
@@ -678,6 +680,13 @@ export function AdditionalCostsBoard({
       const { attachments: _attachments, ...billDraftValues } = billDraft;
       const bill = {
         ...billDraftValues,
+        attachmentFiles: billDraft.attachments.length
+          ? await uploadCrmFiles(
+              billDraft.attachments,
+              `payment-vouchers/${existingVoucher?.id ?? "new"}/quickbooks-bills`,
+              { clientId },
+            )
+          : [],
       };
       const payload = new FormData();
       payload.append("payload", JSON.stringify(existingVoucher
@@ -792,7 +801,14 @@ export function AdditionalCostsBoard({
     try {
       const { attachments: _attachments, ...billDraftValues } = billDraft;
       const payload = new FormData();
-      payload.append("payload", JSON.stringify({ voucherId: voucher.id, bill: billDraftValues }));
+      const attachmentFiles = billDraft.attachments.length
+        ? await uploadCrmFiles(
+            billDraft.attachments,
+            `payment-vouchers/${voucher.id}/quickbooks-bills`,
+            { clientId: voucher.client_id },
+          )
+        : [];
+      payload.append("payload", JSON.stringify({ voucherId: voucher.id, bill: { ...billDraftValues, attachmentFiles } }));
       billDraft.attachments.forEach((attachment) => payload.append("attachments", attachment, attachment.name));
       const response = await fetch("/api/quickbooks/bill", { method: "PATCH", body: payload });
       const result = await response.json();
@@ -1338,9 +1354,13 @@ export function AdditionalCostsBoard({
                         </td>
                         <td data-voucher-col="quickbooks_attachment_files" className="border-b border-r border-slate-200 bg-slate-100 px-3 py-2 text-xs text-slate-400">
                           {row.quickbooks_attachment_files?.length ? (
-                            <ul className="space-y-1" title={row.quickbooks_attachment_files.map((file) => file.name ?? "Unnamed file").join(", ")}>
-                              {row.quickbooks_attachment_files.map((file, index) => <li key={`${file.id ?? file.name ?? "file"}-${index}`} className="truncate">{file.name || "Unnamed file"}</li>)}
-                            </ul>
+                            <div className="flex flex-wrap gap-1" title={row.quickbooks_attachment_files.map((file) => file.name ?? "Unnamed file").join(", ")}>
+                              {row.quickbooks_attachment_files.map((file, index) => file.url ? (
+                                <a key={`${file.id ?? file.name ?? "file"}-${index}`} href={file.url} target="_blank" rel="noreferrer" title={file.name || "Open file"} className="h-8 w-9 overflow-hidden rounded border border-sky-200 bg-sky-50 hover:border-sky-400">
+                                  <FilePreview url={file.url} name={file.name || "Attachment"} mimeType={file.contentType} className="h-full w-full border-0" />
+                                </a>
+                              ) : <span key={`${file.id ?? file.name ?? "file"}-${index}`} className="max-w-24 truncate">{file.name || "Unnamed file"}</span>)}
+                            </div>
                           ) : <span>—</span>}
                         </td>
                         <td data-voucher-col="bill_action" className="border-b border-r border-slate-200 px-2 py-1">

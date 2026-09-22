@@ -171,10 +171,16 @@ export async function PATCH(request: NextRequest) {
     });
     const attachments = formData.getAll("attachments").filter((file): file is File => file instanceof File && file.size > 0);
     const uploaded = [...(voucher.quickbooks_attachment_files ?? [])];
-    for (const attachment of attachments) {
+    for (const [index, attachment] of attachments.entries()) {
       const upload = await qboUploadAttachment(attachment, { id: String(current.Id), type: "Bill" });
       const attachable = upload?.AttachableResponse?.[0]?.Attachable;
-      uploaded.push({ name: attachment.name, ...(attachable?.Id ? { id: String(attachable.Id) } : {}), contentType: attachment.type || "application/octet-stream" });
+      uploaded.push({
+        name: attachment.name,
+        ...(attachable?.Id ? { id: String(attachable.Id) } : {}),
+        contentType: attachment.type || "application/octet-stream",
+        ...(draft.attachmentFiles?.[index]?.url ? { url: draft.attachmentFiles[index].url } : {}),
+        ...(draft.attachmentFiles?.[index]?.storagePath ? { storagePath: draft.attachmentFiles[index].storagePath } : {}),
+      });
     }
     const { data: row, error } = await supabaseAdmin.from("additional_costs").update({
       cost: total, quickbooks_invoice_number: String(updated?.Bill?.DocNumber ?? billNumber), quickbooks_supplier_id: supplierId,
