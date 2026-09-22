@@ -17,6 +17,7 @@ import { Notification } from "../app/types";
 import { LogoutButton } from "./logout-button";
 import type { User } from "@supabase/supabase-js";
 import OcfConfigurationSettingsModal from "@/components/OcfConfigurationSettingsModal";
+import AutomationsPermissionsModal from "@/components/AutomationsPermissionsModal";
 import { gradientForId } from "./ui/assignee-multiselect";
 import ChangePasswordModal from "./Change-Password-Modal";
 import {
@@ -439,6 +440,7 @@ export default function TopBar({
   const profileRef = useRef<HTMLDivElement>(null);
   const settingsRef = useRef<HTMLDivElement>(null);
   const [showOcfSettings, setShowOcfSettings] = useState(false);
+  const [showAutomationsReference, setShowAutomationsReference] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [hasNewNotification, setHasNewNotification] = useState(false);
   const results = searchResults(
@@ -874,6 +876,17 @@ export default function TopBar({
                   <button
                     type="button"
                     onClick={() => {
+                      setShowSettings(false);
+                      setShowAutomationsReference(true);
+                    }}
+                    className="w-full rounded-md px-3 py-2 text-left text-xs text-gray-700 hover:bg-gray-50"
+                  >
+                    Automations &amp; Permission Restrictions
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
                       const rows = buildClientSubitemCsvRows(
                         clients,
                         clientAssignees,
@@ -961,6 +974,10 @@ export default function TopBar({
         open={showOcfSettings}
         onClose={() => setShowOcfSettings(false)}
         currentUserRole={currentUserRole}
+      />
+      <AutomationsPermissionsModal
+        open={showAutomationsReference}
+        onClose={() => setShowAutomationsReference(false)}
       />
       <ChangePasswordModal
         open={showChangePassword}
