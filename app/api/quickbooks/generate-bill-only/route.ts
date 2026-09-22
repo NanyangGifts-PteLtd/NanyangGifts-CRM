@@ -86,14 +86,19 @@ export async function POST(request: NextRequest) {
     let row: unknown;
     let error: { message: string } | null = null;
     if (voucherId) {
-      const result = await supabaseAdmin.from("additional_costs").update(billFields)
+      const result = await supabase.from("additional_costs").update(billFields)
         .eq("id", voucherId).eq("voucher_group", "quickbooks_bills_only").is("deleted_at", null).select("*").single();
       row = result.data; error = result.error;
     } else {
-      const result = await supabaseAdmin.from("additional_costs").insert({
-        client_id: null, voucher_group: "quickbooks_bills_only", position: 0, created_by: user.id,
-        reason: "", items_sent: "", courier: "", remarks: "", trip_id: await nextReference(), ...billFields,
-      }).select("*").single();
+      const result = await supabase.rpc("create_quickbooks_bills_only_voucher", {
+        p_cost: total,
+        p_reference_id: await nextReference(),
+        p_quickbooks_bill_id: String(quickBooksBill.Id),
+        p_invoice_number: String(quickBooksBill.DocNumber ?? billNumber),
+        p_supplier_id: supplierId,
+        p_supplier_name: String(quickBooksBill.VendorRef?.name ?? supplierName),
+        p_attachment_files: savedAttachments,
+      });
       row = result.data; error = result.error;
     }
     if (error) throw error;
