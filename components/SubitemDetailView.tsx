@@ -301,14 +301,32 @@ export function SubitemDetailView({
   useEffect(() => {
     if (!canEdit) return;
     const today = new Date().toISOString().slice(0, 10);
+    const completeProgressIds = new Set(
+      options.subProgress
+        .filter((option) =>
+          [
+            "subitem_subprogress_done",
+            "subitem_subprogress_delivered",
+            "subitem_subprogress_shipped_out",
+          ].includes(option.systemKey ?? ""),
+        )
+        .map((option) => option.id)
+        .filter((id): id is string => Boolean(id)),
+    );
+    const lateProgress = options.subProgress.find(
+      (option) => option.systemKey === "subitem_subprogress_late",
+    );
     const nextRows = (subitem.timelineRows ?? []).map((row) => {
-      const progress = (row.subProgress ?? "").trim().toLowerCase();
-      const complete = ["done", "delivered", "shipped out"].includes(progress);
       return row.timelineEnd &&
         row.timelineEnd < today &&
-        !complete &&
-        progress !== "late"
-        ? { ...row, subProgress: "Late" }
+        !completeProgressIds.has(row.subProgressOptionId ?? "") &&
+        row.subProgressOptionId !== lateProgress?.id &&
+        lateProgress
+        ? {
+            ...row,
+            subProgress: lateProgress.value,
+            subProgressOptionId: lateProgress.id ?? null,
+          }
         : row;
     });
     const count = nextRows.filter(
@@ -320,7 +338,7 @@ export function SubitemDetailView({
         description: `${count} process${count === 1 ? "" : "es"} automatically marked Late because its end date has passed.`,
       });
     }
-  }, [subitem.id]);
+  }, [subitem.id, canEdit, options.subProgress]);
   return (
     <div data-crm-subitem-detail className="fixed inset-0 z-[220] bg-slate-950/40 p-3 sm:p-6">
       <section className="flex h-full flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">

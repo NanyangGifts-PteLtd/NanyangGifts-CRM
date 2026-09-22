@@ -40,8 +40,11 @@ type AdditionalCost = {
   cost: number | null;
   remarks: string;
   status: string;
+  status_option_id?: string | null;
   reason: string;
+  reason_option_id?: string | null;
   courier: string;
+  courier_option_id?: string | null;
   trip_id: string;
   items_sent: string;
   qty: string;
@@ -62,6 +65,7 @@ type LabelOption = {
   value: string;
   color: string;
   section?: number;
+  systemKey?: string | null;
 };
 type Props = {
   clients: Client[];
@@ -246,6 +250,7 @@ export function AdditionalCostsBoard({
   const [voucherDraft, setVoucherDraft] = useState({
     cost: "",
     reason: "",
+    reasonOptionId: "",
     relatedSubitemIds: [] as string[],
     courier: "",
     remarks: "",
@@ -261,6 +266,16 @@ export function AdditionalCostsBoard({
       ),
     [billDraft.lines],
   );
+  const otherReasonOptionId = useMemo(
+    () =>
+      labelOptions.additional_cost_reason?.find(
+        (option) => option.systemKey === "additional_cost_reason_other",
+      )?.id ?? "",
+    [labelOptions.additional_cost_reason],
+  );
+  const voucherReasonIsOther =
+    Boolean(otherReasonOptionId) &&
+    voucherDraft.reasonOptionId === otherReasonOptionId;
   const showOverallGstAmount = useMemo(
     () =>
       !billDraft.lines.every((line) => {
@@ -368,6 +383,7 @@ export function AdditionalCostsBoard({
         value: option.value,
         color: option.color,
         section: option.section_index ?? 0,
+        systemKey: option.system_key ?? null,
       });
     }
     setLabelOptions(next);
@@ -375,6 +391,20 @@ export function AdditionalCostsBoard({
   useEffect(() => {
     void loadLabelOptions();
   }, [loadLabelOptions]);
+  const courierVoucherOptionIds = useMemo(
+    () =>
+      new Set(
+        (labelOptions.additional_cost_courier ?? [])
+          .filter(
+            (option) =>
+              option.systemKey === "additional_cost_courier_lalamove" ||
+              option.systemKey === "additional_cost_courier_easyparcel",
+          )
+          .map((option) => option.id)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    [labelOptions.additional_cost_courier],
+  );
   // The group-two table can be edited without opening the creation dialog,
   // so its QuickBooks supplier selector needs its options up front.
   useEffect(() => {
@@ -459,6 +489,7 @@ export function AdditionalCostsBoard({
     action: "add" | "color" | "rename",
     value: string,
     extra?: string,
+    optionId?: string,
   ) => {
     const response = await fetch("/api/additional-costs/options", {
       method: "POST",
@@ -467,8 +498,8 @@ export function AdditionalCostsBoard({
         action === "add"
           ? { code, action, value }
           : action === "color"
-            ? { code, action, value, color: extra }
-            : { code, action, value, nextValue: extra },
+            ? { code, action, value, color: extra, optionId }
+            : { code, action, value, nextValue: extra, optionId },
       ),
     });
     const result = await response.json();
@@ -478,11 +509,11 @@ export function AdditionalCostsBoard({
     }
     await loadLabelOptions();
   };
-  const deleteLabel = async (code: string, value: string) => {
+  const deleteLabel = async (code: string, value: string, optionId?: string) => {
     const response = await fetch("/api/options/delete", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "delete", code, name: value }),
+      body: JSON.stringify({ action: "delete", code, optionId }),
     });
     const result = await response.json();
     if (!response.ok) {
@@ -624,6 +655,7 @@ export function AdditionalCostsBoard({
       setVoucherDraft({
         cost: "",
         reason: "",
+        reasonOptionId: "",
         relatedSubitemIds: [],
         courier: "",
         remarks: "",
@@ -1089,13 +1121,22 @@ export function AdditionalCostsBoard({
     {
       id: "courier" as const,
       name: "Lalamove/Easyparcel",
-      rows: rows.filter((row) => /lalamove|easyparcel/i.test(row.courier)),
+      rows: rows.filter((row) =>
+        Boolean(
+          row.courier_option_id &&
+            courierVoucherOptionIds.has(row.courier_option_id),
+        ),
+      ),
       accent: "#16a5c4",
     },
     {
       id: "other" as const,
       name: "Manpower/UPS Charges/Other payments",
-      rows: rows.filter((row) => !/lalamove|easyparcel/i.test(row.courier)),
+      rows: rows.filter(
+        (row) =>
+          !row.courier_option_id ||
+          !courierVoucherOptionIds.has(row.courier_option_id),
+      ),
       accent: "#8b5cf6",
     },
   ];
@@ -1204,9 +1245,9 @@ export function AdditionalCostsBoard({
                       <td data-voucher-col="reason" className="min-h-10 h-full border-b border-r border-slate-200 p-0">
                         <StatusBadge
                           value={row.reason}
-                          onChange={(reason) => {
+                          onChange={(reason, option) => {
                             if (
-                              reason.trim().toLocaleLowerCase() === "other" &&
+                              option?.id === otherReasonOptionId &&
                               !row.remarks.trim()
                             ) {
                               toast.error("Remarks is required when Reason is Other.");
@@ -1218,23 +1259,23 @@ export function AdditionalCostsBoard({
                           onAddOption={(value) =>
                             manageLabel("additional_cost_reason", "add", value)
                           }
-                          onDeleteOption={(value) =>
-                            deleteLabel("additional_cost_reason", value)
+                          onDeleteOption={(value, optionId) =>
+                            deleteLabel("additional_cost_reason", value, optionId)
                           }
-                          onUpdateOptionColor={(value, color) =>
+                          onUpdateOptionColor={(value, color, optionId) =>
                             manageLabel(
                               "additional_cost_reason",
                               "color",
                               value,
-                              color,
+                              color, optionId,
                             )
                           }
-                          onRenameOption={(value, nextValue) =>
+                          onRenameOption={(value, nextValue, optionId) =>
                             manageLabel(
                               "additional_cost_reason",
                               "rename",
                               value,
-                              nextValue,
+                              nextValue, optionId,
                             )
                           }
                           onReorderOptions={(layout) =>
@@ -1259,7 +1300,11 @@ export function AdditionalCostsBoard({
                         <StatusBadge
                           value={row.courier}
                           onChange={(courier) => void update(row.id, { courier })}
-                          options={(labelOptions.additional_cost_courier ?? []).filter((option) => ["Lalamove", "Easyparcel"].includes(option.value))}
+                          options={(labelOptions.additional_cost_courier ?? []).filter(
+                            (option) =>
+                              option.systemKey === "additional_cost_courier_lalamove" ||
+                              option.systemKey === "additional_cost_courier_easyparcel",
+                          )}
                           includeBlankOption={false}
                           readOnly={!canDelete(row)}
                         />
@@ -1379,6 +1424,7 @@ export function AdditionalCostsBoard({
               setVoucherDraft({
                 cost: "",
                 reason: "",
+                reasonOptionId: "",
                 relatedSubitemIds: [],
                 courier: "",
                 remarks: "",
@@ -1565,23 +1611,23 @@ export function AdditionalCostsBoard({
                     onAddOption={(value) =>
                       manageLabel("additional_cost_status", "add", value)
                     }
-                    onDeleteOption={(value) =>
-                      deleteLabel("additional_cost_status", value)
+                    onDeleteOption={(value, optionId) =>
+                      deleteLabel("additional_cost_status", value, optionId)
                     }
-                    onUpdateOptionColor={(value, color) =>
+                    onUpdateOptionColor={(value, color, optionId) =>
                       manageLabel(
                         "additional_cost_status",
                         "color",
                         value,
-                        color,
+                        color, optionId,
                       )
                     }
-                    onRenameOption={(value, nextValue) =>
+                    onRenameOption={(value, nextValue, optionId) =>
                       manageLabel(
                         "additional_cost_status",
                         "rename",
                         value,
-                        nextValue,
+                        nextValue, optionId,
                       )
                     }
                     onReorderOptions={(layout) =>
@@ -1599,23 +1645,23 @@ export function AdditionalCostsBoard({
                     onAddOption={(value) =>
                       manageLabel("additional_cost_reason", "add", value)
                     }
-                    onDeleteOption={(value) =>
-                      deleteLabel("additional_cost_reason", value)
+                    onDeleteOption={(value, optionId) =>
+                      deleteLabel("additional_cost_reason", value, optionId)
                     }
-                    onUpdateOptionColor={(value, color) =>
+                    onUpdateOptionColor={(value, color, optionId) =>
                       manageLabel(
                         "additional_cost_reason",
                         "color",
                         value,
-                        color,
+                        color, optionId,
                       )
                     }
-                    onRenameOption={(value, nextValue) =>
+                    onRenameOption={(value, nextValue, optionId) =>
                       manageLabel(
                         "additional_cost_reason",
                         "rename",
                         value,
-                        nextValue,
+                        nextValue, optionId,
                       )
                     }
                     onReorderOptions={(layout) =>
@@ -1633,23 +1679,23 @@ export function AdditionalCostsBoard({
                     onAddOption={(value) =>
                       manageLabel("additional_cost_courier", "add", value)
                     }
-                    onDeleteOption={(value) =>
-                      deleteLabel("additional_cost_courier", value)
+                    onDeleteOption={(value, optionId) =>
+                      deleteLabel("additional_cost_courier", value, optionId)
                     }
-                    onUpdateOptionColor={(value, color) =>
+                    onUpdateOptionColor={(value, color, optionId) =>
                       manageLabel(
                         "additional_cost_courier",
                         "color",
                         value,
-                        color,
+                        color, optionId,
                       )
                     }
-                    onRenameOption={(value, nextValue) =>
+                    onRenameOption={(value, nextValue, optionId) =>
                       manageLabel(
                         "additional_cost_courier",
                         "rename",
                         value,
-                        nextValue,
+                        nextValue, optionId,
                       )
                     }
                     onReorderOptions={(layout) =>
@@ -1976,10 +2022,10 @@ export function AdditionalCostsBoard({
                         <h3 className="font-semibold text-slate-800">Voucher information</h3>
                         <div className="mt-3 grid gap-3 sm:grid-cols-2">
                           <label className="text-sm font-medium text-slate-700">Cost *<input type="number" min="0.01" step="0.01" value={voucherDraft.cost} readOnly={otherBillChoice === "add"} onChange={(event) => setVoucherDraft((draft) => ({ ...draft, cost: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 px-3 py-2 font-normal read-only:bg-slate-100" />{otherBillChoice === "add" ? <span className="mt-1 block text-xs font-normal text-slate-500">Calculated from the expense-line amounts.</span> : null}</label>
-                          <label className="text-sm font-medium text-slate-700">Reason *<div className="mt-1 h-10 overflow-hidden rounded border border-slate-300"><StatusBadge value={voucherDraft.reason} onChange={(reason) => setVoucherDraft((draft) => ({ ...draft, reason }))} options={labelOptions.additional_cost_reason ?? []} /></div></label>
+                          <label className="text-sm font-medium text-slate-700">Reason *<div className="mt-1 h-10 overflow-hidden rounded border border-slate-300"><StatusBadge value={voucherDraft.reason} onChange={(reason, option) => setVoucherDraft((draft) => ({ ...draft, reason, reasonOptionId: option?.id ?? "" }))} options={labelOptions.additional_cost_reason ?? []} /></div></label>
                           <label className="text-sm font-medium text-slate-700">Related Subitems *{renderRelatedSubitemSelector(selectedVoucherClientId)}</label>
                         </div>
-                        <label className="mt-3 block text-sm font-medium text-slate-700">Remarks{voucherDraft.reason.trim().toLocaleLowerCase() === "other" ? " * (Specify Reason)" : ""}<textarea value={voucherDraft.remarks} onChange={(event) => setVoucherDraft((draft) => ({ ...draft, remarks: event.target.value }))} className="mt-1 min-h-20 w-full rounded border border-slate-300 px-3 py-2 font-normal" /></label>
+                        <label className="mt-3 block text-sm font-medium text-slate-700">Remarks{voucherReasonIsOther ? " * (Specify Reason)" : ""}<textarea value={voucherDraft.remarks} onChange={(event) => setVoucherDraft((draft) => ({ ...draft, remarks: event.target.value }))} className="mt-1 min-h-20 w-full rounded border border-slate-300 px-3 py-2 font-normal" /></label>
                       </section> : null}
                       <button
                         type="button"
@@ -1998,7 +2044,7 @@ export function AdditionalCostsBoard({
                           (!billTargetVoucher && (Number(voucherDraft.cost) <= 0 ||
                             !voucherDraft.reason ||
                             !voucherDraft.relatedSubitemIds.length ||
-                            (voucherDraft.reason.trim().toLocaleLowerCase() === "other" && !voucherDraft.remarks.trim())))
+                            (voucherReasonIsOther && !voucherDraft.remarks.trim())))
                         }
                         onClick={() => editingQuickBooksBill && billTargetVoucher
                           ? void updateQuickBooksBill(billTargetVoucher)
@@ -2056,10 +2102,11 @@ export function AdditionalCostsBoard({
                     <div className="mt-1 h-10 overflow-hidden rounded border border-slate-300">
                       <StatusBadge
                         value={voucherDraft.reason}
-                        onChange={(reason) =>
+                        onChange={(reason, option) =>
                           setVoucherDraft((draft) => ({
                             ...draft,
                             reason,
+                            reasonOptionId: option?.id ?? "",
                           }))
                         }
                         options={labelOptions.additional_cost_reason ?? []}
@@ -2084,14 +2131,15 @@ export function AdditionalCostsBoard({
                         options={(labelOptions.additional_cost_courier ?? []).filter(
                           (option) =>
                             !option.value ||
-                            ["Lalamove", "Easyparcel"].includes(option.value),
+                            option.systemKey === "additional_cost_courier_lalamove" ||
+                            option.systemKey === "additional_cost_courier_easyparcel",
                         )}
                       />
                     </div>
                   </label>
                 </div>
                 <label className="block text-sm font-medium text-slate-700">
-                  Remarks{voucherDraft.reason.trim().toLocaleLowerCase() === "other" ? " * (Specify Reason)" : ""}{" "}
+                  Remarks{voucherReasonIsOther ? " * (Specify Reason)" : ""}{" "}
                   <textarea
                     value={voucherDraft.remarks}
                     onChange={(event) =>
@@ -2111,7 +2159,7 @@ export function AdditionalCostsBoard({
                     !voucherDraft.reason ||
                     !voucherDraft.relatedSubitemIds.length ||
                     !voucherDraft.courier
-                    || (voucherDraft.reason.trim().toLocaleLowerCase() === "other" && !voucherDraft.remarks.trim())
+                    || (voucherReasonIsOther && !voucherDraft.remarks.trim())
                   }
                   onClick={() => void create(selectedVoucherClientId)}
                   className="rounded bg-[#16a5c4] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"

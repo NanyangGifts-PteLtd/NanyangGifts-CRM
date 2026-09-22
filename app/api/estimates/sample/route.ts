@@ -1,12 +1,17 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { getSystemLabel } from "@/lib/system-labels";
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFImage } from "pdf-lib";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 
-const ELIGIBLE = new Set(["Quoted", "Shortlisted", "Awarded"]);
+const ELIGIBLE_STATUS_KEYS = [
+    "subitem_status_quoted",
+    "subitem_status_shortlisted",
+    "subitem_status_awarded",
+] as const;
 const W = 595.28;
 const H = 841.89;
 type ArtworkInput = { subitemId: string; dataUrl: string };
@@ -177,7 +182,12 @@ export async function POST(req: NextRequest) {
     const { data: client, error } = await supabase.from("clients").select("*, subitems!subitems_client_id_fkey(*)").eq("id", clientId).single();
     if (error || !client) return NextResponse.json({ error: "Client not found" }, { status: 404 });
     if (!client.company?.trim()) return NextResponse.json({ error: "Client company name is required" }, { status: 400 });
-    const subitems = (client.subitems ?? []).filter((item: any) => ELIGIBLE.has((item.status ?? "").trim())).sort((a: any, b: any) => Number(a.position ?? Number.MAX_SAFE_INTEGER) - Number(b.position ?? Number.MAX_SAFE_INTEGER));
+    const eligibleStatusIds = new Set(
+        (await Promise.all(
+            ELIGIBLE_STATUS_KEYS.map((key) => getSystemLabel("subitem_status", key)),
+        )).map((label) => label.id),
+    );
+    const subitems = (client.subitems ?? []).filter((item: any) => eligibleStatusIds.has(item.status_option_id)).sort((a: any, b: any) => Number(a.position ?? Number.MAX_SAFE_INTEGER) - Number(b.position ?? Number.MAX_SAFE_INTEGER));
     if (!subitems.length) return NextResponse.json({ error: "No eligible subitems with Quoted, Shortlisted, or Awarded status" }, { status: 400 });
     const artworkById = new Map(artworks.filter((item): item is ArtworkInput => typeof item?.subitemId === "string" && typeof item?.dataUrl === "string").map((item) => [item.subitemId, item.dataUrl]));
     const missing = subitems.find((item: any) => !dataUrlBytes(artworkById.get(item.id) ?? ""));

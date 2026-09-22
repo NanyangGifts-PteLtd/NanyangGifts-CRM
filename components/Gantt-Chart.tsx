@@ -31,6 +31,7 @@ import type {
   SubitemAssigneeMap,
   TimelineRow,
 } from "../app/types";
+import { createClient as createSupabaseClient } from "@/lib/supabase/client";
 
 const Scheduler = dynamic(
   () => import("@bitnoi.se/react-scheduler").then((mod) => mod.Scheduler),
@@ -202,13 +203,13 @@ function addOneDay(date: Date) {
   copy.setDate(copy.getDate() + 1);
   return copy;
 }
-function getColor(progress?: string) {
-  if (progress === "Done") return "#6cbaa2";
-  if (progress === "Started") return "#ff8e71";
-  if (progress === "Pending") return "#aba6dd";
-  if (progress === "Late") return "#aa0015";
-  if (progress === "Delivered") return "#0090c8";
-  if (progress === "Shipped out") return "#ff5ea1";
+function getColor(systemKey?: string | null) {
+  if (systemKey === "subitem_subprogress_done") return "#6cbaa2";
+  if (systemKey === "subitem_subprogress_started") return "#ff8e71";
+  if (systemKey === "subitem_subprogress_pending") return "#aba6dd";
+  if (systemKey === "subitem_subprogress_late") return "#aa0015";
+  if (systemKey === "subitem_subprogress_delivered") return "#0090c8";
+  if (systemKey === "subitem_subprogress_shipped_out") return "#ff5ea1";
   return "#60a5fa";
 }
 
@@ -228,11 +229,16 @@ function buildSchedulerData(
   groups: CRMGroup[],
   clientAssignees: ClientAssigneeMap,
   subitemAssignees: SubitemAssigneeMap,
+  progressById: Map<string, { value: string; systemKey: string | null }>,
 ): SchedulerResource[] {
   const groupMap = new Map(groups.map((group) => [group.id, group]));
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const completedStatuses = new Set(["done", "delivered", "shipped out"]);
+  const completedSystemKeys = new Set([
+    "subitem_subprogress_done",
+    "subitem_subprogress_delivered",
+    "subitem_subprogress_shipped_out",
+  ]);
   return clients
     .filter(
       (client): client is Client => !!client && typeof client === "object",
@@ -266,15 +272,14 @@ function buildSchedulerData(
             : [];
         const resourceId = `${client.id}::${subitem?.id ?? "empty"}`;
         const items = timelineRows.flatMap((row): SchedulerItem[] => {
+          const progress = progressById.get(row.subProgressOptionId ?? "");
           const start = parseDate(row?.timelineStart);
           const explicitEnd = parseDate(row?.timelineEnd);
           const end = start ? (explicitEnd ?? addOneDay(start)) : null;
           const isOverdue = Boolean(
             explicitEnd &&
             explicitEnd < today &&
-            !completedStatuses.has(
-              (row?.subProgress || "").trim().toLowerCase(),
-            ),
+            !completedSystemKeys.has(progress?.systemKey ?? ""),
           );
           if (!start || !end || !subitem) return [];
           return [
@@ -283,9 +288,9 @@ function buildSchedulerData(
               startDate: start,
               endDate: end,
               occupancy:
-                row.subProgress === "Done"
+                progress?.systemKey === "subitem_subprogress_done"
                   ? 100
-                  : row.subProgress === "Started"
+                  : progress?.systemKey === "subitem_subprogress_started"
                     ? 60
                     : 20,
               title: row.name || "Untitled Process",
@@ -299,7 +304,7 @@ function buildSchedulerData(
                 ]
                   .filter(Boolean)
                   .join(" - ") || "No details",
-              bgColor: isOverdue ? "#dc2626" : getColor(row.subProgress),
+              bgColor: isOverdue ? "#dc2626" : getColor(progress?.systemKey),
               processStatus: row.subProgress || "No status",
               isOverdue,
             },
@@ -346,6 +351,33 @@ export default function GanttChart({
   subitemAssignees,
   onOpenClientTimeline,
 }: Props) {
+  const [progressById, setProgressById] = useState<
+    Map<string, { value: string; systemKey: string | null }>
+  >(new Map());
+  useEffect(() => {
+    const supabase = createSupabaseClient();
+    let active = true;
+    void (async () => {
+      const { data: group } = await supabase
+        .from("option_groups")
+        .select("id")
+        .eq("code", "subitem_subprogress")
+        .maybeSingle();
+      if (!group) return;
+      const { data } = await supabase
+        .from("option_values")
+        .select("id, value, system_key")
+        .eq("group_id", group.id);
+      if (active)
+        setProgressById(
+          new Map((data ?? []).map((option) => [option.id, {
+            value: option.value,
+            systemKey: option.system_key,
+          }])),
+        );
+    })();
+    return () => { active = false; };
+  }, []);
   const schedulerRootRef = useRef<HTMLDivElement>(null);
   const timelinePanRef = useRef<TimelinePan | null>(null);
   const suppressTimelineClickRef = useRef(false);
@@ -446,8 +478,9 @@ export default function GanttChart({
         orderedGroups,
         clientAssignees,
         subitemAssignees,
+        progressById,
       ),
-    [orderedClients, orderedGroups, clientAssignees, subitemAssignees],
+    [orderedClients, orderedGroups, clientAssignees, subitemAssignees, progressById],
   );
   const data = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();

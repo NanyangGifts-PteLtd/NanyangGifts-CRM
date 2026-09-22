@@ -245,8 +245,6 @@ const CLIENT_HEADER_COLS: HeaderCol[] = [
 const UNQUALIFIED_GROUP_NAME = "unqualified lead";
 const isUnqualifiedGroupName = (name?: string | null) =>
   name?.trim().toLowerCase() === UNQUALIFIED_GROUP_NAME;
-const isUnqualifiedStatus = (status?: string | null) =>
-  status?.trim().toLowerCase() === "unqualified";
 const TRACKING_HEADER_COLS: HeaderCol[] = [
   { key: "selectCheckbox", label: "", width: 60, minWidth: 7 },
   { key: "client", label: "Client", width: 250, minWidth: 7 },
@@ -747,6 +745,22 @@ export function CRMBoard({
 
   const replyStatuses = replyStatusEntries.map((e) => e.value);
   const clientStatuses = clientStatusEntries.map((e) => e.value);
+  const clientStatusBySystemKey = useMemo(
+    () => new Map(clientStatusEntries.map((option) => [option.systemKey, option])),
+    [clientStatusEntries],
+  );
+  const unqualifiedClientStatus =
+    clientStatusBySystemKey.get("client_status_unqualified");
+  const closedClientStatus = clientStatusBySystemKey.get("client_status_closed");
+  const isUnqualifiedClient = (client: Pick<Client, "statusOptionId">) =>
+    Boolean(
+      unqualifiedClientStatus?.id &&
+        client.statusOptionId === unqualifiedClientStatus.id,
+    );
+  const isClosedClient = (client: Pick<Client, "statusOptionId">) =>
+    Boolean(
+      closedClientStatus?.id && client.statusOptionId === closedClientStatus.id,
+    );
   const channelOptions = channelEntries.map((e) => e.value);
   const importanceOptions = importanceEntries.map((e) => e.value);
   const progressOptions = progressEntries.map((e) => e.value);
@@ -2384,7 +2398,7 @@ export function CRMBoard({
   }, [notifyChange, pendingOptionDeletion, reloadClients]);
 
   const updateOptionColor = useCallback(
-    async (code: string, name: string, color: string) => {
+    async (code: string, name: string, color: string, optionId?: string) => {
       const groupId = await getOptionGroupId(code);
       if (!groupId) {
         toast.error("Label color could not be changed", {
@@ -2419,11 +2433,26 @@ export function CRMBoard({
         tracking_price_invoice_match: setTrackingPriceInvoiceMatchEntries,
       };
       const setEntries = setters[code];
+      let targetOptionId = optionId;
+      if (!targetOptionId) {
+        const supabase = createSupabaseClient();
+        const { data } = await supabase
+          .from("option_values")
+          .select("id")
+          .eq("group_id", groupId)
+          .eq("value", name)
+          .maybeSingle();
+        targetOptionId = data?.id;
+      }
+      if (!targetOptionId) {
+        toast.error("Label color could not be changed", { description: "The label option was not found." });
+        return;
+      }
       let previous: OptionEntry[] | null = null;
       setEntries?.((current) => {
         previous = current;
         return current.map((entry) =>
-          entry.value === name ? { ...entry, color } : entry,
+          entry.id === targetOptionId ? { ...entry, color } : entry,
         );
       });
 
@@ -2431,8 +2460,8 @@ export function CRMBoard({
       const { error } = await supabase
         .from("option_values")
         .update({ color })
-        .eq("group_id", groupId)
-        .eq("value", name);
+        .eq("id", targetOptionId)
+        .eq("group_id", groupId);
 
       if (error) {
         if (previous) setEntries?.(previous);
@@ -2537,7 +2566,7 @@ export function CRMBoard({
   );
 
   const renameOptionValue = useCallback(
-    async (code: string, oldName: string, newName: string) => {
+    async (code: string, oldName: string, newName: string, optionId?: string) => {
       const trimmed = newName.trim();
       if (!trimmed || trimmed === oldName) return;
 
@@ -2554,7 +2583,7 @@ export function CRMBoard({
         .from("option_values")
         .select("id")
         .eq("group_id", groupId)
-        .eq("value", oldName)
+        .eq(optionId ? "id" : "value", optionId || oldName)
         .maybeSingle();
       if (optionReadError || !option) {
         toast.error("Label could not be renamed", {
@@ -2704,8 +2733,8 @@ export function CRMBoard({
           }
           for (const row of rows ?? []) {
             const timelineRows = (row.timeline_rows ?? []).map(
-              (timelineRow: { subProgress?: string }) =>
-                timelineRow.subProgress === oldName
+              (timelineRow: { subProgress?: string; subProgressOptionId?: string | null }) =>
+                timelineRow.subProgressOptionId === option.id
                   ? { ...timelineRow, subProgress: trimmed }
                   : timelineRow,
             );
@@ -3772,15 +3801,23 @@ export function CRMBoard({
         showAssignmentPermissionError();
         return;
       }
-      const matchingStatus = clientStatuses.find(
-        (s) => s.toLowerCase() === targetGroup.name.toLowerCase(),
-      ) as ClientStatus | undefined;
+      const matchingStatus = clientStatusEntries.find(
+        (option) => option.value.toLowerCase() === targetGroup.name.toLowerCase(),
+      );
       const updates: Partial<Client> = { groupId };
-      if (isUnqualifiedGroupName(targetGroup.name))
-        updates.status = "Unqualified";
-      else if (targetGroup.name.trim().toLowerCase().startsWith("closed leads"))
-        updates.status = "Closed";
-      else if (matchingStatus) updates.status = matchingStatus;
+      if (isUnqualifiedGroupName(targetGroup.name) && unqualifiedClientStatus) {
+        updates.status = unqualifiedClientStatus.value as ClientStatus;
+        updates.statusOptionId = unqualifiedClientStatus.id ?? null;
+      } else if (
+        targetGroup.name.trim().toLowerCase().startsWith("closed leads") &&
+        closedClientStatus
+      ) {
+        updates.status = closedClientStatus.value as ClientStatus;
+        updates.statusOptionId = closedClientStatus.id ?? null;
+      } else if (matchingStatus) {
+        updates.status = matchingStatus.value as ClientStatus;
+        updates.statusOptionId = matchingStatus.id ?? null;
+      }
       if (isUnqualifiedGroupName(targetGroup.name)) {
         setUnqualifiedReasonDraft(draggedClient.unqualifiedReason ?? "");
         setPendingUnqualifiedLead({
@@ -3788,7 +3825,10 @@ export function CRMBoard({
         });
         return;
       }
-      if (updates.status === "Closed" && draggedClient.status !== "Closed") {
+      if (
+        updates.statusOptionId === closedClientStatus?.id &&
+        !isClosedClient(draggedClient)
+      ) {
         if (!draggedClient.email.trim()) {
           toast.error("An Email address is required to close this lead", {
             description: "Fill in the lead’s Email column before closing it.",
@@ -3825,7 +3865,10 @@ export function CRMBoard({
       draggedClientId,
       clients,
       groups,
-      clientStatuses,
+      clientStatusEntries,
+      unqualifiedClientStatus,
+      closedClientStatus,
+      isClosedClient,
       canEditClientRecord,
       setClients,
       showAssignmentPermissionError,
@@ -4069,20 +4112,32 @@ export function CRMBoard({
   }, [boardSearchActive, collapsedGroups, groups]);
 
   // --- Filtering ---
+  const optionIdForValue = (options: OptionEntry[], value: string) =>
+    options.find((option) => option.value === value)?.id ?? null;
   const displayedClients = clients.filter((client) => {
     const matchesStatus =
-      filterStatus === "All" || client.status === filterStatus;
+      filterStatus === "All" ||
+      client.statusOptionId === optionIdForValue(clientStatusEntries, filterStatus);
 
     const matchesSubitemStatus =
       filterSubitemStatus === "All" ||
-      client.subitems.some((subitem) => subitem.status === filterSubitemStatus);
+      client.subitems.some(
+        (subitem) =>
+          subitem.statusOptionId ===
+          optionIdForValue(subitemStatusEntries, filterSubitemStatus),
+      );
     const matchesPayment =
       filterPayment === "All" ||
-      client.subitems.some((subitem) => subitem.payment === filterPayment);
+      client.subitems.some(
+        (subitem) =>
+          subitem.paymentOptionId === optionIdForValue(paymentEntries, filterPayment),
+      );
     const matchesPaymentStatus =
       filterPaymentStatus === "All" ||
       client.subitems.some(
-        (subitem) => subitem.paymentStatus === filterPaymentStatus,
+        (subitem) =>
+          subitem.paymentStatusOptionId ===
+          optionIdForValue(paymentStatusEntries, filterPaymentStatus),
       );
     const matchesPeople =
       filterPeople === "All" ||
@@ -4091,17 +4146,22 @@ export function CRMBoard({
         (subitemAssignees[subitem.id] ?? []).includes(filterPeople),
       );
     const matchesImportance =
-      filterImportance === "All" || client.importance === filterImportance;
+      filterImportance === "All" ||
+      client.importanceOptionId === optionIdForValue(importanceEntries, filterImportance);
     const matchesReplyStatus =
-      filterReplyStatus === "All" || client.replyStatus === filterReplyStatus;
+      filterReplyStatus === "All" ||
+      client.replyStatusOptionId === optionIdForValue(replyStatusEntries, filterReplyStatus);
     const matchesChannel =
-      filterChannel === "All" || client.channel === filterChannel;
+      filterChannel === "All" ||
+      client.channelOptionId === optionIdForValue(channelEntries, filterChannel);
 
     const matchesSubprogress =
       filterSubprogress === "All" ||
       client.subitems.some((subitem) =>
         (subitem.timelineRows ?? []).some(
-          (row) => (row.subProgress ?? "") === filterSubprogress,
+          (row) =>
+            row.subProgressOptionId ===
+            optionIdForValue(subitemSubprogressEntries, filterSubprogress),
         ),
       );
 
@@ -4985,20 +5045,18 @@ export function CRMBoard({
     Shortlisted: "Shortlisted",
     Unqualified: "Unqualified Lead",
   };
-  const CLOSING_QUALIFYING_SUBITEM_STATUSES = new Set([
-    "awarded",
-    "to verify at a later date",
-    "verified",
-    "[variation] cost difference",
-  ]);
+  const closingQualifiedSubitemStatusIds = useMemo(
+    () => new Set([
+      "subitem_status_awarded",
+      "subitem_status_verify_later",
+      "subitem_status_verified",
+      "subitem_status_variation_cost_difference",
+    ].map((key) => subitemStatusEntries.find((option) => option.systemKey === key)?.id)
+      .filter((id): id is string => Boolean(id))),
+    [subitemStatusEntries],
+  );
   const hasClosingQualifiedSubitem = (client: Client) =>
-    client.subitems.some((subitem) => {
-      const status = subitem.status?.trim().toLowerCase() ?? "";
-      return (
-        CLOSING_QUALIFYING_SUBITEM_STATUSES.has(status) ||
-        /cost difference$/i.test(status)
-      );
-    });
+    client.subitems.some((subitem) => Boolean(subitem.statusOptionId && closingQualifiedSubitemStatusIds.has(subitem.statusOptionId)));
 
   const currentClosedLeadsGroupName = () =>
     `Closed Leads - ${new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric", timeZone: "Asia/Singapore" }).format(new Date())}`;
@@ -5192,7 +5250,8 @@ export function CRMBoard({
         .startsWith("closed leads");
       const isMovingToUnqualified = isUnqualifiedGroupName(selectedGroup?.name);
       const isBecomingUnqualified =
-        isMovingToUnqualified || isUnqualifiedStatus(updates.status);
+        isMovingToUnqualified ||
+        updates.statusOptionId === unqualifiedClientStatus?.id;
       if (isBecomingUnqualified && !unqualifiedReasonApproved) {
         setUnqualifiedReasonDraft(
           updates.unqualifiedReason ?? existingClient?.unqualifiedReason ?? "",
@@ -5201,7 +5260,7 @@ export function CRMBoard({
         return;
       }
       const isBecomingClosed =
-        updates.status === "Closed" || isMovingToClosedLeads;
+        updates.statusOptionId === closedClientStatus?.id || isMovingToClosedLeads;
       if (isBecomingClosed && !existingClient?.email.trim()) {
         toast.error("An Email address is required to close this lead", {
           description: "Fill in the lead’s Email column before closing it.",
@@ -5210,7 +5269,8 @@ export function CRMBoard({
       }
       if (
         isBecomingClosed &&
-        existingClient?.status !== "Closed" &&
+        existingClient &&
+        !isClosedClient(existingClient) &&
         !closeRequirementsApproved
       ) {
         setCloseLeadFiles({
@@ -5222,13 +5282,15 @@ export function CRMBoard({
         return;
       }
       if (isMovingToUnqualified) {
-        nextUpdates.status = "Unqualified";
+        nextUpdates.status = (unqualifiedClientStatus?.value ?? "") as ClientStatus;
+        nextUpdates.statusOptionId = unqualifiedClientStatus?.id ?? null;
         movedToGroupName = selectedGroup?.name ?? null;
       } else if (isMovingToClosedLeads) {
-        nextUpdates.status = "Closed";
+        nextUpdates.status = (closedClientStatus?.value ?? "") as ClientStatus;
+        nextUpdates.statusOptionId = closedClientStatus?.id ?? null;
         movedToGroupName = selectedGroup?.name ?? null;
       }
-      if (updates.status === "Closed") {
+      if (updates.statusOptionId === closedClientStatus?.id) {
         try {
           const closedLeadsGroup = await ensureCurrentClosedLeadsGroup();
           nextUpdates.groupId = closedLeadsGroup.id;
@@ -6188,7 +6250,11 @@ export function CRMBoard({
         setPendingUnqualifiedLead({
           changes: clientIds.map((clientId) => ({
             clientId,
-            updates: { groupId: targetGroupId, status: "Unqualified" },
+            updates: {
+              groupId: targetGroupId,
+              status: (unqualifiedClientStatus?.value ?? "") as ClientStatus,
+              statusOptionId: unqualifiedClientStatus?.id ?? null,
+            },
           })),
         });
         setShowClientMoveMenu(false);
@@ -6198,9 +6264,11 @@ export function CRMBoard({
       setIsMovingClients(true);
       try {
         const updates: Partial<Client> = { groupId: targetGroupId };
-        if (targetGroup?.name.trim().toLowerCase().startsWith("closed leads"))
-          updates.status = "Closed";
-        if (updates.status === "Closed") {
+        if (targetGroup?.name.trim().toLowerCase().startsWith("closed leads")) {
+          updates.status = (closedClientStatus?.value ?? "") as ClientStatus;
+          updates.statusOptionId = closedClientStatus?.id ?? null;
+        }
+        if (updates.statusOptionId === closedClientStatus?.id) {
           if (selectedIds.size !== 1) {
             toast.error("Close leads one at a time", {
               description:
@@ -10053,6 +10121,7 @@ export function CRMBoard({
       <GenerateOcfModal
         open={isOcfModalOpen}
         client={ocfClient}
+        subitemStatusOptions={subitemStatusEntries}
         onClose={handleCloseOcfModal}
         onSaveFinalArtwork={async (subitemId, file) => {
           if (!ocfClient) return;

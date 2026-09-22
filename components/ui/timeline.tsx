@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { StatusBadge } from "./statusbadge";
 import { toast } from "sonner";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -23,7 +23,7 @@ import {
   AlertDialogTitle,
 } from "./alert-dialog";
 
-export type OptionEntry = { value: string; color: string };
+export type OptionEntry = { id?: string; systemKey?: string | null; value: string; color: string };
 
 export function parseDateUTC(value: string | null | undefined): Date | null {
   if (!value) return null;
@@ -174,6 +174,17 @@ export function TimelineSection({
   );
   const [draftCnTracking, setDraftCnTracking] = useState(cnTracking);
   const [draftSgTracking, setDraftSgTracking] = useState(sgTracking);
+  const progressBySystemKey = useMemo(
+    () => new Map(timelineProgressOptions.map((option) => [option.systemKey, option])),
+    [timelineProgressOptions],
+  );
+  const pendingProgress = progressBySystemKey.get("subitem_subprogress_pending");
+  const lateProgress = progressBySystemKey.get("subitem_subprogress_late");
+  const completeProgressIds = useMemo(() => new Set([
+    progressBySystemKey.get("subitem_subprogress_done")?.id,
+    progressBySystemKey.get("subitem_subprogress_delivered")?.id,
+    progressBySystemKey.get("subitem_subprogress_shipped_out")?.id,
+  ].filter((id): id is string => Boolean(id))), [progressBySystemKey]);
 
   useEffect(() => setDraftCnTracking(cnTracking), [cnTracking]);
   useEffect(() => setDraftSgTracking(sgTracking), [sgTracking]);
@@ -193,16 +204,12 @@ export function TimelineSection({
     const markOverdueRows = () => {
       const today = formatDateUTC(new Date());
       const nextRows = rows.map((row) => {
-        const progress = (row.subProgress ?? "").trim().toLowerCase();
-        const isComplete =
-          progress === "done" ||
-          progress === "delivered" ||
-          progress === "shipped out";
+        const isComplete = Boolean(row.subProgressOptionId && completeProgressIds.has(row.subProgressOptionId));
         const isPastEndDate = Boolean(
           row.timelineEnd && row.timelineEnd < today,
         );
-        return isPastEndDate && !isComplete && progress !== "late"
-          ? { ...row, subProgress: "Late" }
+        return isPastEndDate && !isComplete && row.subProgressOptionId !== lateProgress?.id && lateProgress
+          ? { ...row, subProgress: lateProgress.value, subProgressOptionId: lateProgress.id }
           : row;
       });
       const lateCount = nextRows.filter(
@@ -219,9 +226,9 @@ export function TimelineSection({
     markOverdueRows();
     const interval = window.setInterval(markOverdueRows, 60_000);
     return () => window.clearInterval(interval);
-  }, [onUpdate, readOnly, rows]);
+  }, [completeProgressIds, lateProgress, onUpdate, readOnly, rows]);
 
-  const updateRow = (id: string, field: keyof TimelineRow, val: string) => {
+  const updateRow = (id: string, field: keyof TimelineRow, val: string, optionId?: string | null) => {
     const currentRow = rows.find((row) => row.id === id);
     const normalizedValue = field === "name" ? val.trim() : val;
     if (field === "name") {
@@ -243,7 +250,7 @@ export function TimelineSection({
       }
     }
     const nextRows = rows.map((r) => {
-      if (r.id === id) return { ...r, [field]: normalizedValue };
+      if (r.id === id) return { ...r, [field]: normalizedValue, ...(field === "subProgress" && optionId !== undefined ? { subProgressOptionId: optionId } : {}) };
       return field === "name" && currentRow && r.dependency === currentRow.name
         ? { ...r, dependency: normalizedValue }
         : r;
@@ -546,7 +553,8 @@ export function TimelineSection({
           <tbody>
             {rows.map((row) => {
               const textColor =
-                row.subProgress === "Done" || row.subProgress === "Started"
+                row.subProgressOptionId === progressBySystemKey.get("subitem_subprogress_done")?.id ||
+                row.subProgressOptionId === progressBySystemKey.get("subitem_subprogress_started")?.id
                   ? "#fff"
                   : "#333";
 
@@ -636,8 +644,8 @@ export function TimelineSection({
 
                   <td className="overflow-hidden whitespace-nowrap text-ellipsis !text-center border-r border-[#D0D4E4] p-0 h-[33.1px] flex-shrink-0 transition transform active:scale-95 duration-150">
                     <StatusBadge
-                      value={row.subProgress || "Pending"}
-                      onChange={(v) => updateRow(row.id, "subProgress", v)}
+                      value={row.subProgress || pendingProgress?.value || ""}
+                      onChange={(v, option) => updateRow(row.id, "subProgress", v, option?.id ?? null)}
                       options={timelineProgressOptions}
                       onAddOption={onAddTimelineProgress}
                       onDeleteOption={onDeleteTimelineProgress}

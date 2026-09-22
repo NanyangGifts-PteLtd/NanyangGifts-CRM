@@ -54,6 +54,7 @@ const LABEL_COLORS = [
 
 export type BadgeOption = {
   id?: string;
+  systemKey?: string | null;
   value: string;
   color?: string;
   section?: number;
@@ -88,14 +89,14 @@ export function StatusBadge({
   sectionCount = 1,
 }: {
   value: string;
-  onChange: (value: string) => void;
+  onChange: (value: string, option?: BadgeOption) => void;
   options: (string | BadgeOption)[];
   small?: boolean;
   onAddOption?: (name: string) => void | Promise<void>;
-  onDeleteOption?: (name: string) => void | Promise<void>;
+  onDeleteOption?: (name: string, optionId?: string) => void | Promise<void>;
   canDeleteOption?: (name: string) => boolean;
-  onUpdateOptionColor?: (name: string, color: string) => void | Promise<void>;
-  onRenameOption?: (oldName: string, newName: string) => void | Promise<void>;
+  onUpdateOptionColor?: (name: string, color: string, optionId?: string) => void | Promise<void>;
+  onRenameOption?: (oldName: string, newName: string, optionId?: string) => void | Promise<void>;
   onReorderOptions?: (layout: BadgeOptionLayout[]) => void | Promise<void>;
   manageLabel?: string;
   readOnly?: boolean;
@@ -294,10 +295,10 @@ export function StatusBadge({
     setOpen(true);
   };
 
-  const rename = async (oldName: string) => {
+  const rename = async (oldName: string, optionId?: string) => {
     const nextName = (draftNames[oldName] ?? oldName).trim();
     if (nextName && nextName !== oldName)
-      await onRenameOption?.(oldName, nextName);
+      await onRenameOption?.(oldName, nextName, optionId);
   };
 
   const moveOption = (targetSection: number, targetKey?: string) => {
@@ -400,7 +401,7 @@ export function StatusBadge({
           <button
             type="button"
             onClick={() => {
-              onChange(option.value);
+              onChange(option.value, option);
               closeMenu();
             }}
             aria-label={option.value || "Clear label"}
@@ -469,7 +470,7 @@ export function StatusBadge({
                   [option.value]: event.target.value,
                 }))
               }
-              onBlur={() => void rename(option.value)}
+              onBlur={() => void rename(option.value, option.id)}
               onKeyDown={(event) => {
                 if (event.key === "Enter") event.currentTarget.blur();
               }}
@@ -478,7 +479,7 @@ export function StatusBadge({
             {onDeleteOption && allowDelete && (
               <button
                 type="button"
-                onClick={() => void onDeleteOption(option.value)}
+                onClick={() => void onDeleteOption(option.value, option.id)}
                 className="shrink-0 rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600"
                 title={`Delete ${manageLabel}`}
               >
@@ -502,7 +503,7 @@ export function StatusBadge({
                     ) ?? current,
                   );
                   setColorEditor(null);
-                  void onUpdateOptionColor(option.value, color);
+                  void onUpdateOptionColor(option.value, color, option.id);
                 }}
                 className="h-6 w-6 rounded-md border border-white ring-1 ring-gray-200 transition hover:scale-110"
                 style={{ background: color }}

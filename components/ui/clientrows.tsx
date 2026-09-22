@@ -66,21 +66,6 @@ type AttachmentItem = {
 
 type SampleArtworkUpload = { name: string; url: string; mimeType: string };
 
-const AWARDED_OR_LATER_SUBITEM_STATUSES = new Set([
-  "awarded",
-  "to verify at a later date",
-  "verified",
-  "[variation] cost difference",
-]);
-
-function contributesToAwardedTotals(subitem: Subitem) {
-  const status = subitem.status?.trim().toLowerCase() ?? "";
-  return (
-    AWARDED_OR_LATER_SUBITEM_STATUSES.has(status) ||
-    /cost difference$/i.test(status)
-  );
-}
-
 const quickBooksNumber = (value: unknown) => {
   const parsed = Number(
     String(value ?? "")
@@ -318,11 +303,13 @@ export type ClientRowProps = {
     code: string,
     name: string,
     color: string,
+    optionId?: string,
   ) => void | Promise<void>;
   onRenameOption?: (
     code: string,
     oldName: string,
     newName: string,
+    optionId?: string,
   ) => void | Promise<void>;
   onReorderOptions?: (
     code: string,
@@ -557,6 +544,43 @@ export function ClientRow({
   const resolvedPaymentOption = paymentStatusOption(
     "payment_status_resolved",
     "Resolved",
+  );
+  const closedClientStatus = useMemo(
+    () =>
+      statusOptions.find(
+        (option) => option.systemKey === "client_status_closed",
+      ) ?? null,
+    [statusOptions],
+  );
+  const awardedOrLaterStatusIds = useMemo(
+    () => new Set([
+      "subitem_status_awarded",
+      "subitem_status_verify_later",
+      "subitem_status_verified",
+      "subitem_status_variation_cost_difference",
+    ].map((key) => subitemStatusOptions.find((option) => option.systemKey === key)?.id)
+      .filter((id): id is string => Boolean(id))),
+    [subitemStatusOptions],
+  );
+  const contributesToAwardedTotals = (subitem: Subitem) =>
+    Boolean(subitem.statusOptionId && awardedOrLaterStatusIds.has(subitem.statusOptionId));
+  const estimateEligibleStatusIds = useMemo(
+    () =>
+      new Set(
+        [
+          "subitem_status_quoted",
+          "subitem_status_shortlisted",
+          "subitem_status_awarded",
+        ]
+          .map(
+            (systemKey) =>
+              subitemStatusOptions.find(
+                (option) => option.systemKey === systemKey,
+              )?.id,
+          )
+          .filter((id): id is string => Boolean(id)),
+      ),
+    [subitemStatusOptions],
   );
   const awardedSubitems = client.subitems.filter(contributesToAwardedTotals);
   const paidAwardedSubitems = awardedSubitems.filter(
@@ -969,7 +993,10 @@ export function ClientRow({
     resetEstimateState,
   } = useGenerateEstimate();
   const estimateEligibleSubitems = client.subitems.filter((subitem) =>
-    ["Quoted", "Shortlisted", "Awarded"].includes(subitem.status?.trim()),
+    Boolean(
+      subitem.statusOptionId &&
+        estimateEligibleStatusIds.has(subitem.statusOptionId),
+    ),
   );
   const editableQuoteTaxLineIds = [
     ...estimateEligibleSubitems.map((subitem) => ({
@@ -3238,16 +3265,16 @@ export function ClientRow({
         >
           <StatusBadge
             value={client.replyStatus}
-            onChange={(v) => onUpdate({ replyStatus: v as ReplyStatus })}
+            onChange={(v, option) => onUpdate({ replyStatus: v as ReplyStatus, replyStatusOptionId: option?.id ?? null })}
             options={replyStatusOptions}
             onAddOption={onAddReplyStatus}
             onDeleteOption={onDeleteReplyStatus}
             manageLabel="reply status"
-            onUpdateOptionColor={(name, color) =>
-              onUpdateOptionColor?.("reply_status", name, color)
+            onUpdateOptionColor={(name, color, optionId) =>
+              onUpdateOptionColor?.("reply_status", name, color, optionId)
             }
-            onRenameOption={(oldName, newName) =>
-              onRenameOption?.("reply_status", oldName, newName)
+            onRenameOption={(oldName, newName, optionId) =>
+              onRenameOption?.("reply_status", oldName, newName, optionId)
             }
             onReorderOptions={(values) =>
               onReorderOptions?.("reply_status", values)
@@ -3283,19 +3310,19 @@ export function ClientRow({
         >
           <StatusBadge
             value={client.status}
-            onChange={(v) => {
+            onChange={(v, option) => {
               const nextStatus = v as ClientStatus;
-              onUpdate({ status: nextStatus });
+              onUpdate({ status: nextStatus, statusOptionId: option?.id ?? null });
             }}
             options={statusOptions}
             onAddOption={onAddStatus}
             onDeleteOption={onDeleteStatus}
             manageLabel="status"
-            onUpdateOptionColor={(name, color) =>
-              onUpdateOptionColor?.("client_status", name, color)
+            onUpdateOptionColor={(name, color, optionId) =>
+              onUpdateOptionColor?.("client_status", name, color, optionId)
             }
-            onRenameOption={(oldName, newName) =>
-              onRenameOption?.("client_status", oldName, newName)
+            onRenameOption={(oldName, newName, optionId) =>
+              onRenameOption?.("client_status", oldName, newName, optionId)
             }
             onReorderOptions={(values) =>
               onReorderOptions?.("client_status", values)
@@ -3401,14 +3428,15 @@ export function ClientRow({
                     if (
                       !closeFiles.length ||
                       !closeConfirmed ||
-                      pendingStatus !== "Closed"
+                      !closedClientStatus?.id
                     ) {
                       e.preventDefault();
                       return;
                     }
 
                     onUpdate({
-                      status: "Closed",
+                      status: closedClientStatus.value as ClientStatus,
+                      statusOptionId: closedClientStatus.id,
                     });
 
                     setShowCloseDialog(false);
@@ -3496,16 +3524,16 @@ export function ClientRow({
         >
           <StatusBadge
             value={client.channel}
-            onChange={(v) => onUpdate({ channel: v })}
+            onChange={(v, option) => onUpdate({ channel: v, channelOptionId: option?.id ?? null })}
             options={channelOptions}
             onAddOption={onAddChannel}
             onDeleteOption={onDeleteChannel}
             manageLabel="channel"
-            onUpdateOptionColor={(name, color) =>
-              onUpdateOptionColor?.("channel", name, color)
+            onUpdateOptionColor={(name, color, optionId) =>
+              onUpdateOptionColor?.("channel", name, color, optionId)
             }
-            onRenameOption={(oldName, newName) =>
-              onRenameOption?.("channel", oldName, newName)
+            onRenameOption={(oldName, newName, optionId) =>
+              onRenameOption?.("channel", oldName, newName, optionId)
             }
             onReorderOptions={(values) => onReorderOptions?.("channel", values)}
             sectionCount={4}
@@ -3523,16 +3551,16 @@ export function ClientRow({
         >
           <StatusBadge
             value={client.importance}
-            onChange={(v) => onUpdate({ importance: v })}
+            onChange={(v, option) => onUpdate({ importance: v, importanceOptionId: option?.id ?? null })}
             options={importanceOptions}
             onAddOption={onAddImportance}
             onDeleteOption={onDeleteImportance}
             manageLabel="importance"
-            onUpdateOptionColor={(name, color) =>
-              onUpdateOptionColor?.("importance", name, color)
+            onUpdateOptionColor={(name, color, optionId) =>
+              onUpdateOptionColor?.("importance", name, color, optionId)
             }
-            onRenameOption={(oldName, newName) =>
-              onRenameOption?.("importance", oldName, newName)
+            onRenameOption={(oldName, newName, optionId) =>
+              onRenameOption?.("importance", oldName, newName, optionId)
             }
             onReorderOptions={(values) =>
               onReorderOptions?.("importance", values)
@@ -3712,16 +3740,16 @@ export function ClientRow({
         >
           <StatusBadge
             value={client.progress}
-            onChange={(value) => onUpdate({ progress: value })}
+            onChange={(value, option) => onUpdate({ progress: value, progressOptionId: option?.id ?? null })}
             options={progressOptions}
             onAddOption={onAddProgress}
             onDeleteOption={onDeleteProgress}
             manageLabel="progress"
-            onUpdateOptionColor={(name, color) =>
-              onUpdateOptionColor?.("progress", name, color)
+            onUpdateOptionColor={(name, color, optionId) =>
+              onUpdateOptionColor?.("progress", name, color, optionId)
             }
-            onRenameOption={(oldName, newName) =>
-              onRenameOption?.("progress", oldName, newName)
+            onRenameOption={(oldName, newName, optionId) =>
+              onRenameOption?.("progress", oldName, newName, optionId)
             }
             onReorderOptions={(values) =>
               onReorderOptions?.("progress", values)
@@ -3742,11 +3770,12 @@ export function ClientRow({
             >
               <StatusBadge
                 value={client.customFields?.trackingSummary ?? ""}
-                onChange={(value) =>
+                onChange={(value, option) =>
                   onUpdate({
                     customFields: {
                       ...(client.customFields ?? {}),
                       trackingSummary: value,
+                      trackingSummaryOptionId: option?.id ?? "",
                     },
                   })
                 }
@@ -3781,11 +3810,12 @@ export function ClientRow({
             >
               <StatusBadge
                 value={client.customFields?.trackingInvoiceCreated ?? ""}
-                onChange={(value) =>
+                onChange={(value, option) =>
                   onUpdate({
                     customFields: {
                       ...(client.customFields ?? {}),
                       trackingInvoiceCreated: value,
+                      trackingInvoiceCreatedOptionId: option?.id ?? "",
                     },
                   })
                 }
@@ -3910,11 +3940,12 @@ export function ClientRow({
             >
               <StatusBadge
                 value={client.customFields?.trackingMultipleInvoices ?? ""}
-                onChange={(value) =>
+                onChange={(value, option) =>
                   onUpdate({
                     customFields: {
                       ...(client.customFields ?? {}),
                       trackingMultipleInvoices: value,
+                      trackingMultipleInvoicesOptionId: option?.id ?? "",
                     },
                   })
                 }
@@ -3959,11 +3990,12 @@ export function ClientRow({
                 value={
                   client.customFields?.trackingPaymentStatus || "To Fill Up"
                 }
-                onChange={(value) =>
+                onChange={(value, option) =>
                   onUpdate({
                     customFields: {
                       ...(client.customFields ?? {}),
                       trackingPaymentStatus: value,
+                      trackingPaymentStatusOptionId: option?.id ?? "",
                     },
                   })
                 }

@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { qboRequest, qboUploadAttachment } from "@/lib/quickbooks/api";
 import { listQuickBooksTaxCodes } from "@/lib/quickbooks/bill-options";
 import { ensureQuickBooksBillNumberAvailable } from "@/lib/quickbooks/bill-duplicate-check";
+import { getSystemLabel } from "@/lib/system-labels";
 
 const INTERNAL_ROLES = new Set(["sales", "pm", "admin", "director", "dev"]);
 
@@ -13,23 +14,6 @@ async function nextPaymentVoucherReference() {
   );
   if (error || data === null) throw error ?? new Error("Could not allocate a Payment Voucher Reference ID.");
   return String(data);
-}
-
-async function paymentVoucherSubitemStatus(value: "Awarded" | "[Variation] Cost Difference") {
-  const { data: group, error: groupError } = await supabaseAdmin
-    .from("option_groups")
-    .select("id")
-    .eq("code", "subitem_status")
-    .maybeSingle();
-  if (groupError || !group) throw new Error("Payment Voucher status labels are unavailable.");
-  const { data: status, error: statusError } = await supabaseAdmin
-    .from("option_values")
-    .select("id, value")
-    .eq("group_id", group.id)
-    .eq("value", value)
-    .maybeSingle();
-  if (statusError || !status) throw new Error(`${value} label is unavailable.`);
-  return status;
 }
 
 function failure(error: unknown) {
@@ -47,12 +31,12 @@ async function resolveLabel(code: string, value: unknown) {
   if (groupError || !group) throw new Error(`The ${code.replaceAll("_", " ")} labels are unavailable.`);
   const { data: option, error } = await supabaseAdmin
     .from("option_values")
-    .select("id, value")
+    .select("id, value, system_key")
     .eq("group_id", group.id)
     .eq("value", text)
     .maybeSingle();
   if (error || !option) throw new Error(`Choose a valid ${code.replace("additional_cost_", "")} label.`);
-  return option;
+  return { ...option, systemKey: (option as { system_key?: string | null }).system_key ?? null };
 }
 
 function money(value: unknown, field: string) {
@@ -140,7 +124,8 @@ export async function POST(request: NextRequest) {
     if (!existingVoucherId && !relatedSubitemIds.length) throw new Error("Select at least one Related Subitem.");
     const reason = voucher ? await resolveLabel("additional_cost_reason", voucher.reason) : null;
     const remarks = String(voucher?.remarks ?? "").trim();
-    if (reason?.value.trim().toLowerCase() === "other" && !remarks)
+    const otherReason = await getSystemLabel("additional_cost_reason", "additional_cost_reason_other");
+    if (reason?.id === otherReason.id && !remarks)
       throw new Error("Remarks is required when Reason is Other.");
 
     const { data: client, error: clientError } = await supabaseAdmin
@@ -158,13 +143,22 @@ export async function POST(request: NextRequest) {
       if (error) throw error;
       if (!assignment) throw new Error("You can only create payment vouchers for clients assigned to you.");
     }
-    let existingVoucher: { id: string; client_id: string; courier: string; reason: string; has_quickbooks_bill: boolean | null } | null = null;
+    let existingVoucher: { id: string; client_id: string; courier_option_id: string | null; reason: string; has_quickbooks_bill: boolean | null } | null = null;
     if (existingVoucherId) {
       const { data, error } = await supabaseAdmin.from("additional_costs")
-        .select("id, client_id, courier, reason, has_quickbooks_bill")
+        .select("id, client_id, courier_option_id, reason, has_quickbooks_bill")
         .eq("id", existingVoucherId).is("deleted_at", null).maybeSingle();
       if (error || !data || data.client_id !== client.id) throw new Error("The payment voucher is no longer available.");
-      if (data.has_quickbooks_bill || /lalamove|easyparcel/i.test(data.courier))
+      const [lalamoveCourier, easyparcelCourier] = await Promise.all([
+        getSystemLabel("additional_cost_courier", "additional_cost_courier_lalamove"),
+        getSystemLabel("additional_cost_courier", "additional_cost_courier_easyparcel"),
+      ]);
+      if (
+        data.has_quickbooks_bill ||
+        [lalamoveCourier.id, easyparcelCourier.id].includes(
+          String(data.courier_option_id ?? ""),
+        )
+      )
         throw new Error("This payment voucher already has a QuickBooks Bill or is not in the Bill group.");
       existingVoucher = data;
     }
@@ -265,11 +259,14 @@ export async function POST(request: NextRequest) {
     });
     const quickBooksBill = billResult?.Bill;
     if (!quickBooksBill?.Id) throw new Error("QuickBooks did not return a Bill ID.");
-    const linkedReason = String(reason?.value ?? existingVoucher?.reason ?? "").trim();
-    const isUpsLinkedSubitem = linkedReason.toLocaleLowerCase() === "shipping (ups)" ||
+    const shippingUpsReason = await getSystemLabel("additional_cost_reason", "additional_cost_reason_shipping_ups");
+    const isUpsLinkedSubitem = reason?.id === shippingUpsReason.id ||
       /\bups\b/i.test(String(bill.supplierName ?? quickBooksBill.VendorRef?.name ?? ""));
-    const linkedSubitemStatus = await paymentVoucherSubitemStatus(
-      isUpsLinkedSubitem ? "Awarded" : "[Variation] Cost Difference",
+    const linkedSubitemStatus = await getSystemLabel(
+      "subitem_status",
+      isUpsLinkedSubitem
+        ? "subitem_status_awarded"
+        : "subitem_status_variation_cost_difference",
     );
     const attachmentErrors: string[] = [];
     const uploadedAttachments: Array<{ name: string; id?: string; contentType: string }> = [];

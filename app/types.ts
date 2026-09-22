@@ -70,6 +70,7 @@ export interface TimelineRow {
   remarks: string;
   numOfCartons: string;
   subProgress: TimelineProgress | string;
+  subProgressOptionId?: string | null;
   timelineStart: string;
   timelineEnd: string;
   duration: string;
@@ -108,11 +109,14 @@ export interface Subitem {
   name: string;
   people: string;
   status: SubitemStatus | string;
+  statusOptionId?: string | null;
   localOverseas: string;
+  localOverseasOptionId?: string | null;
   qty: string;
   description: string;
   remarks: string;
   shipper: string;
+  shipperOptionId?: string | null;
   shipperId: string | null;
   supplier: string;
   cost: string;
@@ -120,6 +124,7 @@ export interface Subitem {
   ls: string;
   os: string;
   currency: string;
+  currencyOptionId?: string | null;
   cSgd: string;
   tc: string;
   uc: string;
@@ -136,6 +141,7 @@ export interface Subitem {
   // Payment fields
   owner: string;
   payment: string;
+  paymentOptionId?: string | null;
   paymentStatus: string;
   paymentStatusOptionId?: string | null;
   totalUc: string;
@@ -143,6 +149,7 @@ export interface Subitem {
   manpowerRmb: string;
   totalC: string;
   modeOfPayment: string;
+  modeOfPaymentOptionId?: string | null;
   orderNumber: string;
   quantityProduced: string;
   qtyFree: string;
@@ -211,11 +218,16 @@ export interface Client {
   name: string;
   people: string;
   replyStatus: string;
+  replyStatusOptionId?: string | null;
   followUp: string;
   status: ClientStatus;
+  statusOptionId?: string | null;
   channel: string;
+  channelOptionId?: string | null;
   importance: string;
+  importanceOptionId?: string | null;
   progress: string;
+  progressOptionId?: string | null;
   company: string;
   email: string;
   phone: string;

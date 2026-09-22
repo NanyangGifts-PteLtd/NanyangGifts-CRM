@@ -114,7 +114,7 @@ async function canManageLabels() {
   );
 }
 
-async function findOption(code: string, name: string) {
+async function findOption(code: string, optionId: string, legacyName?: string) {
   const { data: group, error: groupError } = await supabaseAdmin
     .from("option_groups")
     .select("id")
@@ -125,9 +125,9 @@ async function findOption(code: string, name: string) {
 
   const { data: option, error: optionError } = await supabaseAdmin
     .from("option_values")
-    .select("id, system_key")
+    .select("id, value, system_key")
     .eq("group_id", group.id)
-    .eq("value", name)
+    .eq(optionId ? "id" : "value", optionId || legacyName || "")
     .maybeSingle();
   if (optionError || !option)
     return { error: optionError?.message ?? "Label option was not found." };
@@ -161,7 +161,8 @@ async function usageFor(code: string, name: string, optionId: string) {
             (row) =>
               Array.isArray(row.timeline_rows) &&
               row.timeline_rows.some(
-                (item: { subProgress?: string }) => item?.subProgress === name,
+                (item: { subProgressOptionId?: string | null }) =>
+                  item?.subProgressOptionId === optionId,
               ),
           )
           .map((row) => row.id),
@@ -217,8 +218,10 @@ async function clearUsage(code: string, name: string, optionId: string) {
     for (const row of data ?? []) {
       if (!Array.isArray(row.timeline_rows)) continue;
       const timelineRows = row.timeline_rows.map(
-        (item: { subProgress?: string }) =>
-          item?.subProgress === name ? { ...item, subProgress: "" } : item,
+        (item: { subProgressOptionId?: string | null }) =>
+          item?.subProgressOptionId === optionId
+            ? { ...item, subProgress: "", subProgressOptionId: null }
+            : item,
       );
       if (JSON.stringify(timelineRows) === JSON.stringify(row.timeline_rows))
         continue;
@@ -255,13 +258,15 @@ export async function POST(request: NextRequest) {
   const body = (await request.json()) as {
     action?: "preview" | "delete";
     code?: string;
+    optionId?: string;
     name?: string;
   };
   const code = body.code?.trim() ?? "";
-  const name = body.name?.trim() ?? "";
+  const optionId = body.optionId?.trim() ?? "";
+  const legacyName = body.name?.trim() ?? "";
   if (
     !code ||
-    !name ||
+    (!optionId && !legacyName) ||
     ![
       ...Object.keys(LABEL_FIELDS),
       "overall_payment_status",
@@ -275,9 +280,10 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const found = await findOption(code, name);
+  const found = await findOption(code, optionId, legacyName);
   if ("error" in found)
     return NextResponse.json({ error: found.error }, { status: 404 });
+  const name = found.option.value;
   if (AUTOMATED_OPTION_LABELS[code]?.has(name)) {
     return NextResponse.json(
       {

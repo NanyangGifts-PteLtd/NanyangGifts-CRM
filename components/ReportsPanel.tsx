@@ -1,7 +1,8 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { BarChart2, TrendingUp, DollarSign, Users, Package, Target, Award, Clock } from 'lucide-react';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { Client } from '../app/types';
+import { createClient as createSupabaseClient } from '@/lib/supabase/client';
 
 interface ReportsPanelProps {
   clients: Client[];
@@ -40,11 +41,43 @@ function KPICard({ title, value, subtitle, icon, color }: {
 }
 
 export function ReportsPanel({ clients }: ReportsPanelProps) {
+  const [labelOptions, setLabelOptions] = useState<Array<{
+    id: string; systemKey: string | null; value: string; color: string;
+  }>>([]);
+  useEffect(() => {
+    const supabase = createSupabaseClient();
+    let active = true;
+    void (async () => {
+      const { data: groups } = await supabase
+        .from('option_groups')
+        .select('id, code')
+        .in('code', ['client_status', 'payment_status']);
+      const groupIds = (groups ?? []).map((group) => group.id);
+      if (!groupIds.length) return;
+      const { data } = await supabase
+        .from('option_values')
+        .select('id, system_key, value, color')
+        .in('group_id', groupIds);
+      if (active) setLabelOptions((data ?? []).map((option) => ({
+        id: option.id,
+        systemKey: option.system_key,
+        value: option.value,
+        color: option.color,
+      })));
+    })();
+    return () => { active = false; };
+  }, []);
   const stats = useMemo(() => {
+    const optionId = (systemKey: string) =>
+      labelOptions.find((option) => option.systemKey === systemKey)?.id;
+    const countClientStatuses = (keys: string[]) => {
+      const ids = new Set(keys.map(optionId).filter((id): id is string => Boolean(id)));
+      return clients.filter((client) => Boolean(client.statusOptionId && ids.has(client.statusOptionId))).length;
+    };
     const totalClients = clients.length;
-    const activeClients = clients.filter(c => ['Project Started', 'Project Done', 'Shortlisted', 'Quoted', 'Contacted', 'New Lead'].includes(c.status)).length;
-    const wonClients = clients.filter(c => ['Project Started', 'Project Done', 'Closed'].includes(c.status)).length;
-    const lostClients = clients.filter(c => ['Failed', 'Unqualified'].includes(c.status)).length;
+    const activeClients = countClientStatuses(['client_status_project_started', 'client_status_project_done', 'client_status_shortlisted', 'client_status_quoted', 'client_status_contacted', 'client_status_new_lead']);
+    const wonClients = countClientStatuses(['client_status_project_started', 'client_status_project_done', 'client_status_closed']);
+    const lostClients = countClientStatuses(['client_status_failed', 'client_status_unqualified']);
     const winRate = totalClients > 0 ? Math.round((wonClients / totalClients) * 100) : 0;
 
     const totalRevenue = clients.reduce((sum, c) => {
@@ -80,15 +113,17 @@ export function ReportsPanel({ clients }: ReportsPanelProps) {
       { name: 'Low', count: clients.filter(c => c.importance === 'Low').length, color: '#00C875' },
     ].filter(d => d.count > 0);
 
-    const paidItems = clients.flatMap(c => c.subitems).filter(s => s.paymentStatus === 'Paid').length;
-    const pendingPaymentItems = clients.flatMap(c => c.subitems).filter(s => s.paymentStatus === 'To Pay').length;
+    const paidOptionId = optionId('payment_status_paid');
+    const toPayOptionId = optionId('payment_status_to_pay');
+    const paidItems = clients.flatMap(c => c.subitems).filter(s => s.paymentStatusOptionId === paidOptionId).length;
+    const pendingPaymentItems = clients.flatMap(c => c.subitems).filter(s => s.paymentStatusOptionId === toPayOptionId).length;
 
     return {
       totalClients, activeClients, wonClients, lostClients, winRate,
       totalRevenue, totalItems, statusBreakdown, pipelineByStatus,
       channelBreakdown, importanceBreakdown, paidItems, pendingPaymentItems,
     };
-  }, [clients]);
+  }, [clients, labelOptions]);
 
   const RADIAN = Math.PI / 180;
   const renderCustomLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, name, value }: any) => {

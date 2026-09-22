@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { qboQuery, qboRequest } from '@/lib/quickbooks/api';
+import { getSystemLabel } from '@/lib/system-labels';
 
-const ELIGIBLE = new Set(['Quoted', 'Shortlisted', 'Awarded']);
+const ELIGIBLE_STATUS_KEYS = [
+    'subitem_status_quoted',
+    'subitem_status_shortlisted',
+    'subitem_status_awarded',
+] as const;
 const isFreightLine = (name: unknown) => /\bfreight\b/i.test(String(name ?? ""));
 
 function esc(value: string) {
@@ -144,8 +149,13 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Client not found' }, { status: 404 });
         }
 
+        const eligibleStatusIds = new Set(
+            (await Promise.all(
+                ELIGIBLE_STATUS_KEYS.map((key) => getSystemLabel('subitem_status', key)),
+            )).map((label) => label.id),
+        );
         const subitems = (client.subitems ?? [])
-            .filter((s: any) => ELIGIBLE.has((s.status ?? '').trim()))
+            .filter((s: any) => eligibleStatusIds.has(s.status_option_id))
             .sort((first: any, second: any) => Number(first.position ?? Number.MAX_SAFE_INTEGER) - Number(second.position ?? Number.MAX_SAFE_INTEGER));
 
         if (!subitems.length) {

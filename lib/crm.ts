@@ -159,11 +159,14 @@ type Subitems = {
   name: string | null;
   people: string | null;
   status: string | null;
+  status_option_id?: string | null;
   local_overseas: string | null;
+  local_overseas_option_id?: string | null;
   qty: string | null;
   description: string | null;
   remarks: string | null;
   shipper: string | null;
+  shipper_option_id?: string | null;
   supplier: string | null;
   cost: string | null;
   manpower: string | null;
@@ -171,6 +174,7 @@ type Subitems = {
   ls: string | null;
   os: string | null;
   currency: string | null;
+  currency_option_id?: string | null;
   c_sgd: string | null;
   tc: string | null;
   uc: string | null;
@@ -184,12 +188,14 @@ type Subitems = {
   sl: string | null;
   owner: string | null;
   payment: string | null;
+  payment_option_id?: string | null;
   payment_status: string | null;
   payment_status_option_id?: string | null;
   total_uc: string | null;
   ls_rmb: string | null;
   total_c: string | null;
   mode_of_payment: string | null;
+  mode_of_payment_option_id?: string | null;
   order_number: string | null;
   quantity_produced: string | null;
   qty_free: string | null;
@@ -233,11 +239,16 @@ type Clients = {
   name: string | null;
   people: string | null;
   reply_status: string | null;
+  reply_status_option_id?: string | null;
   follow_up: string | null;
   status: string | null;
+  status_option_id?: string | null;
   channel: string | null;
+  channel_option_id?: string | null;
   importance: string | null;
+  importance_option_id?: string | null;
   progress: string | null;
+  progress_option_id?: string | null;
   company: string | null;
   email: string | null;
   phone: string | null;
@@ -397,11 +408,14 @@ function mapSubitems(row: Subitems): Subitem {
     name: row.name ?? "",
     people: row.people ?? "",
     status: row.status ?? "",
+    statusOptionId: row.status_option_id ?? null,
     localOverseas: row.local_overseas ?? "Local",
+    localOverseasOptionId: row.local_overseas_option_id ?? null,
     qty: row.qty ?? "",
     description: row.description ?? "",
     remarks: row.remarks ?? "",
     shipper: row.shipper ?? "",
+    shipperOptionId: row.shipper_option_id ?? null,
     supplier: row.supplier ?? "",
     cost: row.cost ?? "",
     manpower: row.manpower ?? "",
@@ -409,6 +423,7 @@ function mapSubitems(row: Subitems): Subitem {
     ls: row.ls ?? "",
     os: row.os ?? "",
     currency: row.currency ?? "",
+    currencyOptionId: row.currency_option_id ?? null,
     cSgd: row.c_sgd ?? "",
     tc: row.tc ?? "",
     uc: row.uc ?? "",
@@ -422,12 +437,14 @@ function mapSubitems(row: Subitems): Subitem {
     sl: row.sl ?? "",
     owner: row.owner ?? "",
     payment: row.payment ?? "",
+    paymentOptionId: row.payment_option_id ?? null,
     paymentStatus: row.payment_status ?? "",
     paymentStatusOptionId: row.payment_status_option_id ?? null,
     totalUc: row.total_uc ?? "",
     lsRmb: row.ls_rmb ?? "",
     totalC: row.total_c ?? "",
     modeOfPayment: row.mode_of_payment ?? "",
+    modeOfPaymentOptionId: row.mode_of_payment_option_id ?? null,
     orderNumber: row.order_number ?? "",
     quantityProduced: row.quantity_produced ?? "",
     qtyFree: row.qty_free ?? "",
@@ -489,11 +506,16 @@ function mapClients(row: Clients): Client {
     name: row.name ?? "",
     people: row.people ?? "",
     replyStatus: row.reply_status ?? "",
+    replyStatusOptionId: row.reply_status_option_id ?? null,
     followUp: row.follow_up ?? "",
     status: (row.status as Client["status"]) ?? "New Lead",
+    statusOptionId: row.status_option_id ?? null,
     channel: row.channel ?? "",
+    channelOptionId: row.channel_option_id ?? null,
     importance: row.importance ?? "",
+    importanceOptionId: row.importance_option_id ?? null,
     progress: row.progress ?? "",
+    progressOptionId: row.progress_option_id ?? null,
     company: row.company ?? "",
     email: row.email ?? "",
     phone: row.phone ?? "",
@@ -957,6 +979,19 @@ async function resolveOptionId(groupCode: string, value: string) {
   return data.id;
 }
 
+async function resolveOptionById(groupCode: string, optionId: string) {
+  if (!optionId.trim()) return null;
+  const { data, error } = await supabase
+    .from("option_values")
+    .select("id, value, option_groups!inner(code)")
+    .eq("id", optionId)
+    .eq("option_groups.code", groupCode)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error(`The selected ${groupCode.replaceAll("_", " ")} label is no longer available.`);
+  return { id: data.id, value: data.value };
+}
+
 async function resolveOptionEntry(groupCode: string, value: string) {
   const normalized = value.trim();
   if (!normalized) return null;
@@ -999,17 +1034,26 @@ export async function updateClientRow(
   delete mapped.groupId;
 
   const clientLabelFields = [
-    ["replyStatus", "reply_status", "reply_status_option_id", "reply_status"],
-    ["status", "status", "status_option_id", "client_status"],
-    ["channel", "channel", "channel_option_id", "channel"],
-    ["importance", "importance", "importance_option_id", "importance"],
-    ["progress", "progress", "progress_option_id", "progress"],
+    ["replyStatus", "reply_status", "reply_status_option_id", "reply_status", "replyStatusOptionId"],
+    ["status", "status", "status_option_id", "client_status", "statusOptionId"],
+    ["channel", "channel", "channel_option_id", "channel", "channelOptionId"],
+    ["importance", "importance", "importance_option_id", "importance", "importanceOptionId"],
+    ["progress", "progress", "progress_option_id", "progress", "progressOptionId"],
   ] as const;
   const clientOptionIds: Record<string, string | null> = {};
-  for (const [modelKey, , idColumn, groupCode] of clientLabelFields) {
+  for (const [modelKey, , idColumn, groupCode, modelIdKey] of clientLabelFields) {
+    const explicitId = nextUpdates[modelIdKey];
     const value = nextUpdates[modelKey];
-    if (value === undefined) continue;
-    clientOptionIds[idColumn] = await resolveOptionId(groupCode, String(value));
+    if (explicitId === undefined && value === undefined) continue;
+    const option = explicitId !== undefined
+      ? await resolveOptionById(groupCode, String(explicitId ?? ""))
+      : null;
+    if (option) {
+      (nextUpdates as Record<string, unknown>)[modelKey] = option.value;
+      clientOptionIds[idColumn] = option.id;
+    } else {
+      clientOptionIds[idColumn] = await resolveOptionId(groupCode, String(value ?? ""));
+    }
   }
   if (
     updates.replyStatus !== undefined &&
@@ -1760,22 +1804,28 @@ export async function updateSubitemRow(
   }
 
   const subitemLabelFields = [
-    ["status", "status_option_id", "subitem_status"],
-    ["shipper", "shipper_option_id", "shipper"],
-    ["currency", "currency_option_id", "currency"],
-    ["payment", "payment_option_id", "payment"],
-    ["paymentStatus", "payment_status_option_id", "payment_status"],
-    ["modeOfPayment", "mode_of_payment_option_id", "mode_of_payment"],
-    ["localOverseas", "local_overseas_option_id", "local_overseas"],
+    ["status", "status_option_id", "subitem_status", "statusOptionId"],
+    ["shipper", "shipper_option_id", "shipper", "shipperOptionId"],
+    ["currency", "currency_option_id", "currency", "currencyOptionId"],
+    ["payment", "payment_option_id", "payment", "paymentOptionId"],
+    ["paymentStatus", "payment_status_option_id", "payment_status", "paymentStatusOptionId"],
+    ["modeOfPayment", "mode_of_payment_option_id", "mode_of_payment", "modeOfPaymentOptionId"],
+    ["localOverseas", "local_overseas_option_id", "local_overseas", "localOverseasOptionId"],
   ] as const;
   const subitemOptionIds: Record<string, string | null> = {};
-  for (const [modelKey, idColumn, groupCode] of subitemLabelFields) {
+  for (const [modelKey, idColumn, groupCode, modelIdKey] of subitemLabelFields) {
+    const explicitId = nextUpdates[modelIdKey];
     const value = nextUpdates[modelKey];
-    if (value === undefined) continue;
-    subitemOptionIds[idColumn] = await resolveOptionId(
-      groupCode,
-      String(value),
-    );
+    if (explicitId === undefined && value === undefined) continue;
+    const option = explicitId !== undefined
+      ? await resolveOptionById(groupCode, String(explicitId ?? ""))
+      : null;
+    if (option) {
+      (nextUpdates as Record<string, unknown>)[modelKey] = option.value;
+      subitemOptionIds[idColumn] = option.id;
+    } else {
+      subitemOptionIds[idColumn] = await resolveOptionId(groupCode, String(value ?? ""));
+    }
   }
 
   const { error } = await supabase

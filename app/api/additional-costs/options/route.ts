@@ -49,7 +49,7 @@ export async function GET() {
     const { data: values, error: valueError } = ids.length
       ? await supabaseAdmin
           .from("option_values")
-          .select("id, group_id, value, color, section_index")
+          .select("id, group_id, value, color, section_index, system_key")
           .in("group_id", ids)
           .order("section_index")
           .order("sort_order")
@@ -68,6 +68,7 @@ export async function POST(request: NextRequest) {
       action?: "add" | "color" | "rename";
       code?: string;
       value?: string;
+      optionId?: string;
       nextValue?: string;
       color?: string;
     };
@@ -96,13 +97,14 @@ export async function POST(request: NextRequest) {
       if (error) throw error;
       return NextResponse.json({ option: data });
     }
-    const value = body.value ?? "";
+    const optionId = String(body.optionId ?? "").trim();
+    if (!optionId) throw new Error("Label option ID is required.");
     if (body.action === "color") {
       const { error } = await supabaseAdmin
         .from("option_values")
         .update({ color: body.color })
-        .eq("group_id", group.id)
-        .eq("value", value);
+        .eq("id", optionId)
+        .eq("group_id", group.id);
       if (error) throw error;
       return NextResponse.json({ ok: true });
     }
@@ -112,8 +114,8 @@ export async function POST(request: NextRequest) {
       const { error } = await supabaseAdmin
         .from("option_values")
         .update({ value: nextValue })
-        .eq("group_id", group.id)
-        .eq("value", value);
+        .eq("id", optionId)
+        .eq("group_id", group.id);
       if (error) throw error;
       const field =
         code === "additional_cost_status"
@@ -122,17 +124,10 @@ export async function POST(request: NextRequest) {
             ? "reason"
             : "courier";
       const idField = `${field}_option_id`;
-      const { data: option } = await supabaseAdmin
-        .from("option_values")
-        .select("id")
-        .eq("group_id", group.id)
-        .eq("value", nextValue)
-        .maybeSingle();
-      if (option)
-        await supabaseAdmin
-          .from("additional_costs")
-          .update({ [field]: nextValue })
-          .eq(idField, option.id);
+      await supabaseAdmin
+        .from("additional_costs")
+        .update({ [field]: nextValue })
+        .eq(idField, optionId);
       return NextResponse.json({ ok: true });
     }
     throw new Error("Invalid label update.");

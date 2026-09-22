@@ -41,6 +41,7 @@ type UploadRow = {
 type GenerateOcfModalProps = {
   open: boolean;
   client: Client | null;
+  subitemStatusOptions: Array<{ id?: string; systemKey?: string | null }>;
   onClose: () => void;
   onCreated?: (result: {
     ocfId: string;
@@ -111,6 +112,7 @@ function nbdTimelineRow(subitem: Pick<Subitem, "timelineRows" | "timelineGroups"
 export function GenerateOcfModal({
   open,
   client,
+  subitemStatusOptions,
   onClose,
   onCreated,
   onSaveFinalArtwork,
@@ -127,12 +129,20 @@ export function GenerateOcfModal({
   const [formError, setFormError] = useState<string | null>(null);
 
   const clientId = client?.id ?? null;
+  const awardedStatusId = useMemo(
+    () =>
+      subitemStatusOptions.find(
+        (option) => option.systemKey === "subitem_status_awarded",
+      )?.id ?? null,
+    [subitemStatusOptions],
+  );
 
   useEffect(() => {
     if (!open || !client) return;
 
     const awarded = (client.subitems ?? []).filter(
-      (s) => (s.status ?? "").toLowerCase() === "awarded",
+      (subitem) =>
+        Boolean(awardedStatusId) && subitem.statusOptionId === awardedStatusId,
     );
 
     const mappedAwarded = awarded.map((s) => ({
@@ -181,7 +191,7 @@ export function GenerateOcfModal({
     setFormError(null);
     setCreating(false);
     setLoadingItems(false);
-  }, [open, client]);
+  }, [open, client, awardedStatusId]);
 
   const hasAwarded = awardedSubitems.length > 0;
 

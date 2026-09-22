@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { getSystemLabel } from "@/lib/system-labels";
 
 const INTERNAL_ROLES = new Set(["sales", "pm", "admin", "director", "dev"]);
 const EDITABLE_FIELDS = new Set([
@@ -60,17 +61,16 @@ async function resolveLabel(code: string, value: unknown) {
   if (!text) return { value: "", id: null };
   const { data, error } = await supabaseAdmin
     .from("option_values")
-    .select("id, value, option_groups!inner(code)")
+    .select("id, value, system_key, option_groups!inner(code)")
     .eq("option_groups.code", code)
     .eq("value", text)
     .maybeSingle();
   if (error || !data) throw new Error(`“${text}” is not a valid label.`);
-  return { value: data.value, id: data.id };
+  return { value: data.value, id: data.id, systemKey: data.system_key ?? null };
 }
 
 const ADDITIONAL_COST_STATUS = "[Variation] Cost Difference";
 const ADDITIONAL_COST_STATUS_KEY = "subitem_status_variation_cost_difference";
-const COURIER_VOUCHER_COURIERS = new Set(["Lalamove", "Easyparcel"]);
 
 async function nextPaymentVoucherReference() {
   const { data, error } = await supabaseAdmin.rpc(
@@ -130,23 +130,6 @@ async function ensureAdditionalCostStatus() {
     .single();
   if (createError) throw createError;
   return created;
-}
-
-async function existingSubitemStatus(value: string) {
-  const { data: group, error: groupError } = await supabaseAdmin
-    .from("option_groups")
-    .select("id")
-    .eq("code", "subitem_status")
-    .maybeSingle();
-  if (groupError || !group) throw new Error("The standard Subitem Status labels could not be identified.");
-  const { data: status, error } = await supabaseAdmin
-    .from("option_values")
-    .select("id, value")
-    .eq("group_id", group.id)
-    .eq("value", value)
-    .maybeSingle();
-  if (error || !status) throw new Error(`${value} label is unavailable.`);
-  return status;
 }
 
 async function addActivityLog(params: {
@@ -225,12 +208,15 @@ export async function POST(request: NextRequest) {
     if (!reason.value) throw new Error("Choose a Reason label.");
     if (!relatedSubitemIds.length)
       throw new Error("Select at least one Related Subitem.");
-    if (
-      reason.value.trim().toLocaleLowerCase() === "other" &&
-      !String(body.values?.remarks ?? "").trim()
-    )
+    const otherReason = await getSystemLabel("additional_cost_reason", "additional_cost_reason_other");
+    if (reason.id === otherReason.id && !String(body.values?.remarks ?? "").trim())
       throw new Error("Remarks is required when Reason is Other.");
-    if (!isOtherVoucher && (!courier.value || !["Lalamove", "Easyparcel"].includes(courier.value)))
+    const [lalamoveCourier, easyparcelCourier, shippingUpsReason] = await Promise.all([
+      getSystemLabel("additional_cost_courier", "additional_cost_courier_lalamove"),
+      getSystemLabel("additional_cost_courier", "additional_cost_courier_easyparcel"),
+      getSystemLabel("additional_cost_reason", "additional_cost_reason_shipping_ups"),
+    ]);
+    if (!isOtherVoucher && (!courier.id || ![lalamoveCourier.id, easyparcelCourier.id].includes(courier.id)))
       throw new Error("Choose Lalamove or Easyparcel as the Courier.");
     const { data: client, error: clientError } = await supabaseAdmin
       .from("clients")
@@ -285,8 +271,8 @@ export async function POST(request: NextRequest) {
       }
     }
     const createdAt = new Date().toISOString();
-    const status = isOtherVoucher && reason.value.trim().toLocaleLowerCase() === "shipping (ups)"
-      ? await existingSubitemStatus("Awarded")
+    const status = isOtherVoucher && reason.id === shippingUpsReason.id
+      ? await getSystemLabel("subitem_status", "subitem_status_awarded")
       : await ensureAdditionalCostStatus();
     const { data: latest, error: latestError } = await supabaseAdmin
       .from("additional_costs")
@@ -427,9 +413,14 @@ export async function PATCH(request: NextRequest) {
     );
     if (!Object.keys(values).length)
       throw new Error("No editable changes were supplied.");
-    const isOtherVoucher = !COURIER_VOUCHER_COURIERS.has(
-      String(existing.courier ?? ""),
-    );
+    const [lalamoveCourier, easyparcelCourier] = await Promise.all([
+      getSystemLabel("additional_cost_courier", "additional_cost_courier_lalamove"),
+      getSystemLabel("additional_cost_courier", "additional_cost_courier_easyparcel"),
+    ]);
+    const isOtherVoucher = !new Set([
+      lalamoveCourier.id,
+      easyparcelCourier.id,
+    ]).has(String(existing.courier_option_id ?? ""));
     if (
       (values.has_quickbooks_bill !== undefined ||
         values.quickbooks_invoice_number !== undefined ||
@@ -508,21 +499,18 @@ export async function PATCH(request: NextRequest) {
       values[field] = label.value;
       values[`${field}_option_id`] = label.id;
     }
+    const otherReason = await getSystemLabel("additional_cost_reason", "additional_cost_reason_other");
     if (
-      String(values.reason ?? existing.reason ?? "").trim().toLocaleLowerCase() ===
-        "other" &&
+      String(values.reason_option_id ?? existing.reason_option_id ?? "") === otherReason.id &&
       !String(values.remarks ?? existing.remarks ?? "").trim()
     )
       throw new Error("Remarks is required when Reason is Other.");
     if (values.courier !== undefined && !values.courier)
       throw new Error("Choose a Courier label.");
     if (values.courier !== undefined) {
-      const existingIsCourierVoucher = COURIER_VOUCHER_COURIERS.has(
-        String(existing.courier ?? ""),
-      );
-      const nextIsCourierVoucher = COURIER_VOUCHER_COURIERS.has(
-        String(values.courier),
-      );
+      const courierVoucherIds = new Set([lalamoveCourier.id, easyparcelCourier.id]);
+      const existingIsCourierVoucher = courierVoucherIds.has(String(existing.courier_option_id ?? ""));
+      const nextIsCourierVoucher = courierVoucherIds.has(String(values.courier_option_id ?? ""));
       if (existingIsCourierVoucher !== nextIsCourierVoucher) {
         throw new Error(
           "A Payment Voucher cannot be moved between voucher groups by changing its Courier.",

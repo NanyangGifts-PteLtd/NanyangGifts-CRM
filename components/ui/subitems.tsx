@@ -76,13 +76,6 @@ const SUBITEM_COLUMN_DESCRIPTIONS: Record<string, string> = {
   sl: "Shipping Lead Time",
 };
 
-const AWARDED_OR_LATER_SUBITEM_STATUSES = new Set([
-  "awarded",
-  "to verify at a later date",
-  "verified",
-  "[variation] cost difference",
-]);
-
 const LOCKED_COST_INPUTS = new Set([
   "qty",
   "cost",
@@ -94,18 +87,6 @@ const LOCKED_COST_INPUTS = new Set([
   "idealMarkup",
   "paymentAmount",
 ]);
-
-function isCostLocked(subitem: Subitem) {
-  return subitem.payment?.trim().toLowerCase() === "paid";
-}
-
-function hasReachedAwardedPhase(status: string | null | undefined) {
-  const normalized = status?.trim().toLowerCase() ?? "";
-  return (
-    AWARDED_OR_LATER_SUBITEM_STATUSES.has(normalized) ||
-    /cost difference$/i.test(normalized)
-  );
-}
 
 type ColumnDef = {
   key: string;
@@ -315,11 +296,13 @@ type SubitemProps = {
     code: string,
     name: string,
     color: string,
+    optionId?: string,
   ) => void | Promise<void>;
   onRenameOption?: (
     code: string,
     oldName: string,
     newName: string,
+    optionId?: string,
   ) => void | Promise<void>;
   onReorderOptions?: (
     code: string,
@@ -511,13 +494,48 @@ export function SubitemsTable({
     !!currentUserId &&
     (clientAssignedIds.includes(currentUserId) ||
       clientPmAssignedIds.includes(currentUserId));
+  const awardedOrLaterStatusIds = useMemo(
+    () =>
+      new Set(
+        [
+          "subitem_status_awarded",
+          "subitem_status_verify_later",
+          "subitem_status_verified",
+          "subitem_status_variation_cost_difference",
+        ]
+          .map(
+            (systemKey) =>
+              subitemStatusOptions.find(
+                (option) => option.systemKey === systemKey,
+              )?.id,
+          )
+          .filter((id): id is string => Boolean(id)),
+      ),
+    [subitemStatusOptions],
+  );
+  const hasReachedAwardedPhase = (subitem: Subitem) =>
+    Boolean(
+      subitem.statusOptionId &&
+        awardedOrLaterStatusIds.has(subitem.statusOptionId),
+    );
+  const paidPaymentOptionId = useMemo(
+    () =>
+      paymentOptions.find(
+        (option) => option.systemKey === "subitem_payment_paid",
+      )?.id ?? null,
+    [paymentOptions],
+  );
+  const isCostLocked = (subitem: Subitem) =>
+    Boolean(
+      paidPaymentOptionId && subitem.paymentOptionId === paidPaymentOptionId,
+    );
   const hasPaymentEligibleSubitems = subitems.some((subitem) =>
-    hasReachedAwardedPhase(subitem.status),
+    hasReachedAwardedPhase(subitem),
   );
   const toggleClientTimelines = (clickedSubitem: Subitem) => {
     if (
       !hasPaymentEligibleSubitems ||
-      !hasReachedAwardedPhase(clickedSubitem.status)
+      !hasReachedAwardedPhase(clickedSubitem)
     ) {
       toast.warning("This subitem has not been awarded yet", {
         description:
@@ -527,7 +545,7 @@ export function SubitemsTable({
     }
 
     const eligibleSubitems = subitems.filter((subitem) =>
-      hasReachedAwardedPhase(subitem.status),
+      hasReachedAwardedPhase(subitem),
     );
     setSubitemViewById((current) => {
       const allTimelinesOpen =
@@ -879,7 +897,7 @@ export function SubitemsTable({
   );
   const displayedSubitems =
     tableMode === "payment"
-      ? subitems.filter((subitem) => hasReachedAwardedPhase(subitem.status))
+      ? subitems.filter((subitem) => hasReachedAwardedPhase(subitem))
       : subitems;
 
   React.useEffect(() => {
@@ -1901,7 +1919,7 @@ export function SubitemsTable({
           <div className="overflow-hidden whitespace-nowrap text-ellipsis !text-center border-r border-[#D0D4E4] p-0 h-[33.1px] flex-shrink-0 transition transform active:scale-95 duration-150">
             <StatusBadge
               value={sub.localOverseas ?? ""}
-              onChange={(v) => onUpdateSubitem(sub.id, { localOverseas: v })}
+              onChange={(v, option) => onUpdateSubitem(sub.id, { localOverseas: v, localOverseasOptionId: option?.id ?? null })}
               options={localOverseasOptions}
               onAddOption={onAddLocalOverseas}
               onDeleteOption={onDeleteLocalOverseas}
@@ -1924,7 +1942,7 @@ export function SubitemsTable({
           <div className="overflow-hidden whitespace-nowrap text-ellipsis !text-center border-r border-[#D0D4E4] p-0 h-[33.1px] flex-shrink-0 transition transform active:scale-95 duration-150">
             <StatusBadge
               value={sub.status ?? ""}
-              onChange={(v) => onUpdateSubitem(sub.id, { status: v })}
+              onChange={(v, option) => onUpdateSubitem(sub.id, { status: v, statusOptionId: option?.id ?? null })}
               options={subitemStatusOptions}
               onAddOption={onAddSubitemStatus}
               onDeleteOption={onDeleteSubitemStatus}
@@ -1980,7 +1998,7 @@ export function SubitemsTable({
           <div className="overflow-hidden whitespace-nowrap text-ellipsis !text-center border-r border-[#D0D4E4] p-0 h-[33.1px] flex-shrink-0 transition transform active:scale-95 duration-150">
             <StatusBadge
               value={sub.shipper ?? ""}
-              onChange={(v) => onUpdateSubitem(sub.id, { shipper: v })}
+              onChange={(v, option) => onUpdateSubitem(sub.id, { shipper: v, shipperOptionId: option?.id ?? null })}
               options={shipperOptions}
               onAddOption={onAddShipper}
               onDeleteOption={onDeleteShipper}
@@ -2019,7 +2037,7 @@ export function SubitemsTable({
           <div className="overflow-hidden whitespace-nowrap text-ellipsis !text-center border-r border-[#D0D4E4] p-0 h-[33.1px] flex-shrink-0 transition transform active:scale-95 duration-150">
             <StatusBadge
               value={sub.currency ?? ""}
-              onChange={(v) => onUpdateSubitem(sub.id, { currency: v })}
+              onChange={(v, option) => onUpdateSubitem(sub.id, { currency: v, currencyOptionId: option?.id ?? null })}
               options={currencyOptions}
               onAddOption={onAddCurrency}
               onDeleteOption={onDeleteCurrency}
@@ -2238,7 +2256,7 @@ export function SubitemsTable({
           <div className="overflow-hidden whitespace-nowrap text-ellipsis !text-center border-r border-[#D0D4E4] p-0 h-[33.1px] flex-shrink-0 transition transform active:scale-95 duration-150">
             <StatusBadge
               value={sub.payment ?? ""}
-              onChange={(v) => onUpdateSubitem(sub.id, { payment: v })}
+              onChange={(v, option) => onUpdateSubitem(sub.id, { payment: v, paymentOptionId: option?.id ?? null })}
               options={paymentOptions}
               onAddOption={onAddPayment}
               onDeleteOption={onDeletePayment}
@@ -2262,7 +2280,7 @@ export function SubitemsTable({
           <div className="overflow-hidden whitespace-nowrap text-ellipsis !text-center border-r border-[#D0D4E4] p-0 h-[33.1px] flex-shrink-0 transition transform active:scale-95 duration-150">
             <StatusBadge
               value={sub.status ?? ""}
-              onChange={(v) => onUpdateSubitem(sub.id, { status: v })}
+              onChange={(v, option) => onUpdateSubitem(sub.id, { status: v, statusOptionId: option?.id ?? null })}
               options={subitemStatusOptions}
               onAddOption={onAddSubitemStatus}
               onDeleteOption={onDeleteSubitemStatus}
@@ -2286,18 +2304,19 @@ export function SubitemsTable({
           <div className="overflow-hidden whitespace-nowrap text-ellipsis !text-center border-r border-[#D0D4E4] p-0 h-[33.1px] flex-shrink-0 transition transform active:scale-95 duration-150">
             <StatusBadge
               value={paymentStatus}
-              onChange={(v) => {
-                if (v === resolvedOption.value && canResolvePayment) {
+              onChange={(v, option) => {
+                if (option?.id === resolvedOption.id && canResolvePayment) {
                   onUpdateSubitem(sub.id, {
                     paymentStatus: resolvedOption.value,
+                    paymentStatusOptionId: resolvedOption.id,
                   });
                 } else if (
-                  v !== resolvedOption.value &&
+                  option?.id !== resolvedOption.id &&
                   sub.paymentStatusOptionId === resolvedOption.id &&
                   canResolvePayment
                 ) {
-                  onUpdateSubitem(sub.id, { paymentStatus: "" });
-                } else if (v === resolvedOption.value) {
+                  onUpdateSubitem(sub.id, { paymentStatus: "", paymentStatusOptionId: null });
+                } else if (option?.id === resolvedOption.id) {
                   toast.error(
                     "Only admins, directors, and developers can resolve a payment.",
                   );
@@ -2339,7 +2358,7 @@ export function SubitemsTable({
           <div className="overflow-hidden whitespace-nowrap text-ellipsis !text-center border-r border-[#D0D4E4] p-0 h-[33.1px] flex-shrink-0 transition transform active:scale-95 duration-150">
             <StatusBadge
               value={sub.shipper ?? ""}
-              onChange={(v) => onUpdateSubitem(sub.id, { shipper: v })}
+              onChange={(v, option) => onUpdateSubitem(sub.id, { shipper: v, shipperOptionId: option?.id ?? null })}
               options={shipperOptions}
               onAddOption={onAddShipper}
               onDeleteOption={onDeleteShipper}
@@ -2394,7 +2413,7 @@ export function SubitemsTable({
           <div className="overflow-hidden whitespace-nowrap text-ellipsis !text-center border-r border-[#D0D4E4] p-0 h-[33.1px] flex-shrink-0 transition transform active:scale-95 duration-150">
             <StatusBadge
               value={sub.currency ?? ""}
-              onChange={(v) => onUpdateSubitem(sub.id, { currency: v })}
+              onChange={(v, option) => onUpdateSubitem(sub.id, { currency: v, currencyOptionId: option?.id ?? null })}
               options={currencyOptions}
               onAddOption={onAddCurrency}
               onDeleteOption={onDeleteCurrency}
@@ -2460,7 +2479,7 @@ export function SubitemsTable({
           <div className="overflow-hidden whitespace-nowrap text-ellipsis !text-center border-r border-[#D0D4E4] p-0 h-[33.1px] flex-shrink-0 transition transform active:scale-95 duration-150">
             <StatusBadge
               value={sub.modeOfPayment ?? ""}
-              onChange={(v) => onUpdateSubitem(sub.id, { modeOfPayment: v })}
+              onChange={(v, option) => onUpdateSubitem(sub.id, { modeOfPayment: v, modeOfPaymentOptionId: option?.id ?? null })}
               options={modeOfPaymentOptions}
               onAddOption={onAddModeOfPayment}
               onDeleteOption={onDeleteModeOfPayment}
@@ -3552,7 +3571,7 @@ export function SubitemsTable({
                 </tr>
 
                 {tableMode === "payment" &&
-                  hasReachedAwardedPhase(sub.status) && (
+                  hasReachedAwardedPhase(sub) && (
                     <tr className="bg-slate-50/70">
                       <td
                         colSpan={totalColSpan}
@@ -3783,7 +3802,7 @@ export function SubitemsTable({
 
                 {tableMode === "payment" &&
                   activeSubitemView(sub) === "timeline" &&
-                  hasReachedAwardedPhase(sub.status) && (
+                  hasReachedAwardedPhase(sub) && (
                     <ExpandedRow colSpan={totalColSpan} tone="blue">
                       <div className="flex items-start gap-3 overflow-x-auto px-0 py-1">
                         {(sub.timelineGroups?.length

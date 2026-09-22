@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { qboQuery, qboRequest } from "@/lib/quickbooks/api";
+import { getSystemLabel } from "@/lib/system-labels";
 
-const ELIGIBLE = new Set(["Quoted", "Shortlisted", "Awarded"]);
+const ELIGIBLE_STATUS_KEYS = [
+  "subitem_status_quoted",
+  "subitem_status_shortlisted",
+  "subitem_status_awarded",
+] as const;
 const isFreightLine = (name: unknown) => /\bfreight\b/i.test(String(name ?? ""));
 
 const esc = (value: string) => value.replace(/'/g, "\\'");
@@ -10,6 +15,14 @@ const numberValue = (value: unknown) => {
   const parsed = Number(String(value ?? "").replace(/,/g, "").trim());
   return Number.isFinite(parsed) ? parsed : 0;
 };
+
+async function eligibleSubitemStatusIds() {
+  return new Set(
+    (await Promise.all(
+      ELIGIBLE_STATUS_KEYS.map((key) => getSystemLabel("subitem_status", key)),
+    )).map((label) => label.id),
+  );
+}
 
 function quickBooksErrorMessage(error: unknown) {
   const raw = error instanceof Error ? error.message : String(error ?? "");
@@ -86,10 +99,11 @@ const customFields = (existingFields: any[], salesperson: string, paymentTerm: s
 
 function incomingPreview(
   client: any,
+  eligibleStatusIds: Set<string>,
   deliveryBySubitem: Record<string, "singapore" | "other"> = {},
 ) {
   const lines = (client.subitems ?? [])
-    .filter((item: any) => ELIGIBLE.has(String(item.status ?? "").trim()))
+    .filter((item: any) => eligibleStatusIds.has(item.status_option_id))
     .sort((a: any, b: any) => Number(a.position ?? Number.MAX_SAFE_INTEGER) - Number(b.position ?? Number.MAX_SAFE_INTEGER))
     .map((item: any) => {
       const qty = numberValue(item.qty) || 1;
@@ -187,12 +201,13 @@ export async function GET(request: NextRequest) {
     const clientId = request.nextUrl.searchParams.get("clientId");
     if (generationId) {
       const { generation, client } = await authorisedGeneration(supabase, generationId, user.id);
+      const eligibleStatusIds = await eligibleSubitemStatusIds();
       const result = await qboRequest(`/estimate/${generation.quickbooks_estimate_id}`, { method: "GET" });
       const linkedInvoices = await linkedInvoicesForEstimate(result.Estimate);
       return NextResponse.json({
         generation,
         current: currentPreview(result.Estimate),
-        incoming: incomingPreview(client),
+        incoming: incomingPreview(client, eligibleStatusIds),
         isInvoiced: linkedInvoices.length > 0,
         invoiceDocNumbers: linkedInvoices.map((invoice) => invoice.DocNumber ?? invoice.Id).filter(Boolean),
       });
@@ -317,7 +332,11 @@ export async function POST(request: NextRequest) {
         `This QuickBooks quote already has an invoice (${invoiceNumbers}). It cannot be updated from the CRM.`,
       );
     }
-    const preview = incomingPreview(client, deliveryBySubitem);
+    const preview = incomingPreview(
+      client,
+      await eligibleSubitemStatusIds(),
+      deliveryBySubitem,
+    );
     if (!preview.lines.length) throw new Error("No eligible subitems with Quoted, Shortlisted, or Awarded status");
     if (preview.lines.some((line: { taxCode: string }) => !line.taxCode)) {
       return NextResponse.json(

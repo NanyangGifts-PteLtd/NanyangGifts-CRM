@@ -112,9 +112,11 @@ export function TrackingView({
     client: Client,
     field: TrackingField,
     value: string,
+    optionId?: string,
   ) => {
+    const optionIdField = `${field}OptionId`;
     onUpdate(client, {
-      customFields: { ...(client.customFields ?? {}), [field]: value },
+      customFields: { ...(client.customFields ?? {}), [field]: value, ...(optionId !== undefined ? { [optionIdField]: optionId } : {}) },
     });
   };
   const setMultipleInvoices = (value: "Yes" | "No") => {
@@ -261,8 +263,8 @@ export function TrackingView({
                         <td className="w-[130px] border border-[#D0D4E4] p-0">
                           <StatusBadge
                             value={valueOf(client, "trackingSummary")}
-                            onChange={(value) =>
-                              updateTracking(client, "trackingSummary", value)
+                            onChange={(value, option) =>
+                              updateTracking(client, "trackingSummary", value, option?.id)
                             }
                             options={summaryOptions}
                             manageLabel="tracking summary"
@@ -286,11 +288,11 @@ export function TrackingView({
                         <td className="w-[130px] border border-[#D0D4E4] p-0">
                           <StatusBadge
                             value={valueOf(client, "trackingInvoiceCreated")}
-                            onChange={(value) =>
+                            onChange={(value, option) =>
                               updateTracking(
                                 client,
                                 "trackingInvoiceCreated",
-                                value,
+                                value, option?.id,
                               )
                             }
                             options={invoiceCreatedOptions}
@@ -318,11 +320,11 @@ export function TrackingView({
                         >
                           <StatusBadge
                             value={multipleInvoices}
-                            onChange={(value) =>
+                            onChange={(value, option) =>
                               updateTracking(
                                 client,
                                 "trackingMultipleInvoices",
-                                value,
+                                value, option?.id,
                               )
                             }
                             options={multipleInvoiceOptions}
@@ -332,11 +334,11 @@ export function TrackingView({
                         <td className="w-[190px] border border-[#D0D4E4] p-0">
                           <StatusBadge
                             value={valueOf(client, "trackingPaymentStatus")}
-                            onChange={(value) =>
+                            onChange={(value, option) =>
                               updateTracking(
                                 client,
                                 "trackingPaymentStatus",
-                                value,
+                                value, option?.id,
                               )
                             }
                             options={paymentStatusOptions}
