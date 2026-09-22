@@ -26,6 +26,7 @@ import { UserAdminPanel } from "@/components/UserAdminPanel";
 import { CustomerProfilesPanel } from "@/components/CustomerProfilesPanel";
 import { AdditionalCostsBoard } from "@/components/AdditionalCostsBoard";
 import { EmailReviewPanel } from "@/components/EmailReviewPanel";
+import { WorkingCalendarPanel } from "@/components/WorkingCalendarPanel";
 import { AppLiveRefresh } from "@/components/AppLiveRefresh";
 import {
   boardProtectionDelay,
@@ -458,6 +459,11 @@ export default function Page() {
             />
           </div>
         );
+
+      case "calendar":
+        return ["admin", "director", "dev"].includes(String(currentUserRole ?? "").toLowerCase()) ? (
+          <WorkingCalendarPanel currentUserRole={currentUserRole} />
+        ) : null;
 
       case "additionalcosts":
         return (

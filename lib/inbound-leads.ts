@@ -5,6 +5,7 @@ import { getSystemLabel } from "@/lib/system-labels";
 import { ensureCustomerProfilesForLead } from "@/lib/customer-profile-links";
 import { queueLeadAssignedMakeEvent } from "@/lib/make-integration";
 import { capitaliseFirstCharacter } from "@/lib/text-format";
+import { addSingaporeWorkingDays } from "@/lib/working-calendar";
 
 export type InboundSubitem = { name: string; qty: string };
 
@@ -110,16 +111,6 @@ function singaporeDate(date = new Date()) {
   return `${values.year}-${values.month}-${values.day}`;
 }
 
-function addWorkingDays(dateText: string, days: number) {
-  const date = new Date(`${dateText}T04:00:00Z`);
-  let remaining = days;
-  while (remaining > 0) {
-    date.setUTCDate(date.getUTCDate() + 1);
-    const day = date.getUTCDay();
-    if (day !== 0 && day !== 6) remaining -= 1;
-  }
-  return date.toISOString().slice(0, 10);
-}
 
 function safePayload(lead: NormalizedInboundLead) {
   return {
@@ -237,7 +228,7 @@ export async function ingestLead(lead: NormalizedInboundLead): Promise<InboundRe
         people: "",
         reply_status: waitingLabel.value,
         reply_status_option_id: waitingLabel.id,
-        follow_up: addWorkingDays(dateCreated, 3),
+        follow_up: await addSingaporeWorkingDays(dateCreated, 3),
         status: newLeadLabel.value,
         status_option_id: newLeadLabel.id,
         channel: channelLabel.value,

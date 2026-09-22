@@ -8,6 +8,7 @@ import {
   Mail,
   BarChart2,
   SquareChartGantt,
+  CalendarDays,
   BotMessageSquare,
   PackageSearch,
   Users,
@@ -24,6 +25,7 @@ export type SidePanel =
   | "emails"
   | "reports"
   | "ganttchart"
+  | "calendar"
   | "roundrobin"
   | "team"
   | "customerprofiles"
@@ -66,6 +68,7 @@ const navItems: {
     icon: <SquareChartGantt size={17.5} />,
     label: "Gantt Chart",
   },
+  { id: "calendar", icon: <CalendarDays size={17.5} />, label: "Calendar" },
   {
     id: "roundrobin",
     icon: <BotMessageSquare size={17.5} />,
@@ -130,10 +133,12 @@ export default function Sidebar({
       <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-0.5">
         {navItems
           .filter(
-            (item) =>
-              item.id !== "useradmin" ||
-              currentUserRole === "director" ||
-              currentUserRole === "dev",
+            (item) => {
+              const role = String(currentUserRole ?? "").toLowerCase();
+              if (item.id === "calendar") return ["admin", "director", "dev"].includes(role);
+              if (item.id === "useradmin") return role === "director" || role === "dev";
+              return true;
+            },
           )
           .map((item) => {
             const isRouteItem = !!item.href;

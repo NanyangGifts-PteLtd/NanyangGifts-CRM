@@ -15,6 +15,10 @@
     {
       "path": "/api/cron/quickbooks-bill-sync",
       "schedule": "10 18 * * *"
+    },
+    {
+      "path": "/api/cron/working-calendar-sync",
+      "schedule": "0 18 1 10 *"
     }
   ]
 }

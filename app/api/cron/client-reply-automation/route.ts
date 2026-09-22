@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { queueLeadReassignedMakeEvent } from "@/lib/make-integration";
 import { getSystemLabel } from "@/lib/system-labels";
+import { addSingaporeWorkingDays } from "@/lib/working-calendar";
 
 const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -29,22 +30,17 @@ function singaporeMidnightUtc(year: number, month: number, day: number) {
     return new Date(Date.UTC(year, month - 1, day) - 8 * 60 * 60 * 1000);
 }
 
-function singaporeWorkingDayCutoff(value: Date) {
+async function singaporeWorkingDayCutoff(value: Date) {
     const date = singaporeDateParts(value);
-    const nextWorkingDay = new Date(Date.UTC(date.year, date.month - 1, date.day));
-
-    do {
-        nextWorkingDay.setUTCDate(nextWorkingDay.getUTCDate() + 1);
-    } while (nextWorkingDay.getUTCDay() === 0 || nextWorkingDay.getUTCDay() === 6);
-
-    // The assignee keeps the whole following working day; reassign at its midnight.
-    nextWorkingDay.setUTCDate(nextWorkingDay.getUTCDate() + 1);
-
-    return singaporeMidnightUtc(
-        nextWorkingDay.getUTCFullYear(),
-        nextWorkingDay.getUTCMonth() + 1,
-        nextWorkingDay.getUTCDate(),
+    // The assignee keeps the whole following Singapore working day. This used
+    // to skip weekends only; it now also honours public/company closure days.
+    const deadlineDate = await addSingaporeWorkingDays(
+        `${date.year}-${String(date.month).padStart(2, "0")}-${String(date.day).padStart(2, "0")}`,
+        2,
     );
+    const [year, month, day] = deadlineDate.split("-").map(Number);
+
+    return singaporeMidnightUtc(year, month, day);
 }
 
 async function getNextAssigneeExcluding(currentUserId: string) {
@@ -79,7 +75,7 @@ export async function GET(request: NextRequest) {
     let notificationsCreated = 0;
     for (const client of clients ?? []) {
         const startedAt = new Date(client.waiting_started_at);
-        const reassignmentDueAt = singaporeWorkingDayCutoff(startedAt);
+        const reassignmentDueAt = await singaporeWorkingDayCutoff(startedAt);
         if (now < reassignmentDueAt) continue;
 
         const oldAssigneeIds = (client.client_assignees ?? [])
