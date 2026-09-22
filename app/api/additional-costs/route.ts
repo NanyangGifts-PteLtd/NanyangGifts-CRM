@@ -592,7 +592,7 @@ export async function DELETE(request: NextRequest) {
     }
     const { data: record, error: recordError } = await supabaseAdmin
       .from("additional_costs")
-      .select("id, client_id")
+      .select("id, client_id, voucher_group")
       .eq("id", additionalCostId ?? "")
       .is("deleted_at", null)
       .maybeSingle();
@@ -600,7 +600,11 @@ export async function DELETE(request: NextRequest) {
     // Match the CRM Board's deletion rule: admins/directors can delete any
     // record; other internal staff must be assigned to its linked client as
     // either People or PM. Edit rules will be added separately.
-    if (!["admin", "director"].includes(role)) {
+    const quickBooksBillOnly = record.voucher_group === "quickbooks_bills_only";
+    if (quickBooksBillOnly && !["admin", "director", "dev"].includes(role)) {
+      throw new Error("You can only delete QuickBooks-only Bills as an admin, director, or dev user.");
+    }
+    if (!quickBooksBillOnly && !["admin", "director"].includes(role)) {
       const { data: assignment, error: assignmentError } = await supabaseAdmin
         .from("client_assignees")
         .select("client_id")
@@ -614,7 +618,7 @@ export async function DELETE(request: NextRequest) {
           "You can only delete additional costs for clients assigned to you.",
         );
     }
-    if (id) {
+    if (id && record.client_id) {
       const { data: subitem, error: subitemError } = await supabaseAdmin
         .from("subitems")
         .select("id, client_id, name")

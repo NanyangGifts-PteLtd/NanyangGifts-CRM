@@ -31,7 +31,7 @@ async function authorisedVoucher(voucherId: string) {
     .eq("id", voucherId).is("deleted_at", null).maybeSingle();
   if (error || !voucher || !voucher.quickbooks_bill_id || !voucher.has_quickbooks_bill)
     throw new Error("This payment voucher does not have a QuickBooks Bill.");
-  if (!['admin', 'director'].includes(role)) {
+  if (!['admin', 'director', 'dev'].includes(role)) {
     const { data: assignment, error: assignmentError } = await supabaseAdmin.from("client_assignees")
       .select("client_id").eq("client_id", voucher.client_id).eq("user_id", user.id)
       .in("assignment_type", ["people", "pm"]).maybeSingle();
@@ -57,7 +57,7 @@ async function authorisedLinkVoucher(voucherId: string) {
   if (!INTERNAL_ROLES.has(role)) throw new Error("Unauthorized");
   const { data: voucher, error } = await supabaseAdmin.from("additional_costs").select("*").eq("id", voucherId).is("deleted_at", null).maybeSingle();
   if (error || !voucher) throw new Error("Payment voucher not found.");
-  if (!['admin', 'director'].includes(role)) {
+  if (!['admin', 'director', 'dev'].includes(role)) {
     const { data: assignment } = await supabaseAdmin.from("client_assignees").select("client_id").eq("client_id", voucher.client_id).eq("user_id", user.id).in("assignment_type", ["people", "pm"]).maybeSingle();
     if (!assignment) throw new Error("You can only link Bills for clients assigned to you.");
   }

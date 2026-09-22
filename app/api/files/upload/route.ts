@@ -20,13 +20,21 @@ export async function POST(request: NextRequest) {
   const clientId = String(formData.get("clientId") ?? "").trim();
   const subitemId = String(formData.get("subitemId") ?? "").trim();
   if (!(file instanceof File)) return NextResponse.json({ error: "A file is required" }, { status: 400 });
+  const billOnlyUpload = scope === "quickbooks-bills-only" && clientId === "quickbooks-bills-only";
   if (!clientId) return NextResponse.json({ error: "A linked client is required" }, { status: 400 });
+  if (billOnlyUpload) {
+    const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
+    if (!["admin", "director", "dev"].includes(String(profile?.role ?? "").toLowerCase()))
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
   if (!file.size) return NextResponse.json({ error: "The selected file is empty" }, { status: 400 });
   if (file.size > MAX_FILE_SIZE) return NextResponse.json({ error: "Files must be 25 MB or smaller" }, { status: 400 });
 
   const extension = safeSegment(file.name.split(".").pop() || "bin");
   const cleanScope = scope.split("/").map(safeSegment).filter(Boolean).slice(0, 5).join("/");
-  const storagePath = subitemId
+  const storagePath = billOnlyUpload
+    ? `quickbooks-bills-only/${user.id}/${randomUUID()}.${extension}`
+    : subitemId
     ? `subitems/${clientId}/${subitemId}/${cleanScope}/${user.id}/${randomUUID()}.${extension}`
     : `clients/${clientId}/${cleanScope}/${user.id}/${randomUUID()}.${extension}`;
   const { error } = await supabase.storage.from(BUCKET).upload(storagePath, Buffer.from(await file.arrayBuffer()), {

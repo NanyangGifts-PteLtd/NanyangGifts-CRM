@@ -61,6 +61,7 @@ type AdditionalCost = {
   quickbooks_bill_id?: string | null;
   quickbooks_bill_sync_error?: string | null;
   quickbooks_attachment_files?: Array<{ name?: string; id?: string; contentType?: string; url?: string; storagePath?: string }>;
+  voucher_group?: "courier" | "other" | "quickbooks_bills_only";
 };
 type LabelOption = {
   id?: string;
@@ -106,10 +107,20 @@ const otherVoucherColumns: Column[] = [
   { key: "created", label: "Date Created", width: 140 },
   { key: "actions", label: "", width: 52 },
 ];
+const quickBooksBillsOnlyColumns: Column[] = [
+  { key: "cost", label: "Cost", width: 115 },
+  { key: "trip_id", label: "Reference ID", width: 145 },
+  { key: "has_quickbooks_bill", label: "Has QuickBooks Bill?", width: 165 },
+  { key: "quickbooks_supplier_name", label: "Supplier", width: 220 },
+  { key: "quickbooks_invoice_number", label: "Invoice No. (Bill No.)", width: 185 },
+  { key: "quickbooks_attachment_files", label: "Attached Files", width: 240 },
+  { key: "bill_action", label: "Bill Action", width: 125 },
+  { key: "created", label: "Date Created", width: 140 },
+];
 const allVoucherColumns = Array.from(
-  new Map([...initialColumns, ...otherVoucherColumns].map((column) => [column.key, column])).values(),
+  new Map([...initialColumns, ...otherVoucherColumns, ...quickBooksBillsOnlyColumns].map((column) => [column.key, column])).values(),
 );
-type VoucherGroupId = "courier" | "other";
+type VoucherGroupId = "courier" | "other" | "quickbooks_bills_only";
 type VoucherColumnLayout = { order: string[]; widths: Record<string, number> };
 const defaultVoucherColumnLayout = (baseColumns: Column[]): VoucherColumnLayout => ({
   order: baseColumns.map((column) => column.key),
@@ -161,9 +172,10 @@ export function AdditionalCostsBoard({
   onOpenProject,
 }: Props) {
   const [rows, setRows] = useState<AdditionalCost[]>([]);
-  const [collapsedVoucherGroups, setCollapsedVoucherGroups] = useState({
+  const [collapsedVoucherGroups, setCollapsedVoucherGroups] = useState<Record<VoucherGroupId, boolean>>({
     courier: false,
     other: false,
+    quickbooks_bills_only: false,
   });
   const [labelOptions, setLabelOptions] = useState<
     Record<string, LabelOption[]>
@@ -172,6 +184,7 @@ export function AdditionalCostsBoard({
   const [voucherColumnLayouts, setVoucherColumnLayouts] = useState<Record<VoucherGroupId, VoucherColumnLayout>>({
     courier: defaultVoucherColumnLayout(initialColumns),
     other: defaultVoucherColumnLayout(otherVoucherColumns),
+    quickbooks_bills_only: defaultVoucherColumnLayout(quickBooksBillsOnlyColumns),
   });
   const [draggedVoucherColumn, setDraggedVoucherColumn] = useState<{ group: VoucherGroupId; key: string } | null>(null);
   const [voucherDropTarget, setVoucherDropTarget] = useState<{ group: VoucherGroupId; key: string; edge: "left" | "right" } | null>(null);
@@ -194,13 +207,14 @@ export function AdditionalCostsBoard({
     string | null
   >(null);
   const [voucherCreationGroup, setVoucherCreationGroup] = useState<
-    "courier" | "other"
+    VoucherGroupId
   >("courier");
   const [otherBillChoice, setOtherBillChoice] = useState<
     "add" | "none" | null
   >(null);
   const [billTargetVoucher, setBillTargetVoucher] = useState<AdditionalCost | null>(null);
   const [editingQuickBooksBill, setEditingQuickBooksBill] = useState(false);
+  const [quickBooksBillOnlyMode, setQuickBooksBillOnlyMode] = useState(false);
   const [supplierOptionsOpen, setSupplierOptionsOpen] = useState(false);
   const [categoryOptionsOpen, setCategoryOptionsOpen] = useState<{
     index: number;
@@ -236,6 +250,10 @@ export function AdditionalCostsBoard({
   } | null>(null);
   const [pendingExtractionFile, setPendingExtractionFile] = useState<File | null>(null);
   const [prefillFileSignature, setPrefillFileSignature] = useState<string | null>(null);
+  const [supplierExtraction, setSupplierExtraction] = useState<{
+    name: string;
+    suggestion?: { id: string; name: string };
+  } | null>(null);
   const [billDraft, setBillDraft] = useState({
     supplierId: "",
     supplierName: "",
@@ -292,11 +310,12 @@ export function AdditionalCostsBoard({
     };
   }, [billDocumentPreview?.url]);
   useEffect(() => {
-    if (pickerOpen && selectedVoucherClientId) return;
+    if (pickerOpen && (selectedVoucherClientId || quickBooksBillOnlyMode)) return;
     setBillDocumentPreview(null);
     setPrefillFileSignature(null);
     setPendingExtractionFile(null);
-  }, [pickerOpen, selectedVoucherClientId]);
+    setSupplierExtraction(null);
+  }, [pickerOpen, quickBooksBillOnlyMode, selectedVoucherClientId]);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<AdditionalCost | null>(
     null,
@@ -453,7 +472,7 @@ export function AdditionalCostsBoard({
     return () => document.removeEventListener("mousedown", closeOnClickAway);
   }, [boardRelatedSubitemsMenu]);
   useEffect(() => {
-    if (!pickerOpen || voucherCreationGroup !== "other" || otherBillChoice !== "add")
+    if (!pickerOpen || !["other", "quickbooks_bills_only"].includes(voucherCreationGroup) || otherBillChoice !== "add")
       return;
     let active = true;
     setBillOptionsLoading(true);
@@ -586,7 +605,7 @@ export function AdditionalCostsBoard({
             widths: Object.fromEntries(base.map((column) => [column.key, Number.isFinite(widths[column.key]) ? Math.max(72, Number(widths[column.key])) : column.width])),
           };
         };
-        setVoucherColumnLayouts({ courier: normalise("courier", initialColumns), other: normalise("other", otherVoucherColumns) });
+        setVoucherColumnLayouts({ courier: normalise("courier", initialColumns), other: normalise("other", otherVoucherColumns), quickbooks_bills_only: normalise("quickbooks_bills_only", quickBooksBillsOnlyColumns) });
       })
       .catch(() => undefined);
     return () => { active = false; };
@@ -731,10 +750,49 @@ export function AdditionalCostsBoard({
       setCreatingFor(null);
     }
   };
+  const generateQuickBooksBillOnly = async (existingVoucher?: AdditionalCost | null) => {
+    setCreatingFor(existingVoucher?.id ?? "quickbooks-bills-only");
+    try {
+      const { attachments: _attachments, ...billDraftValues } = billDraft;
+      const bill = {
+        ...billDraftValues,
+        attachmentFiles: billDraft.attachments.length
+          ? await uploadCrmFiles(
+              billDraft.attachments,
+              existingVoucher?.voucher_group === "quickbooks_bills_only" || !existingVoucher ? "quickbooks-bills-only" : `payment-vouchers/${existingVoucher.id}/quickbooks-bills`,
+              { clientId: existingVoucher?.voucher_group === "quickbooks_bills_only" || !existingVoucher ? "quickbooks-bills-only" : existingVoucher.client_id },
+            )
+          : [],
+      };
+      const payload = new FormData();
+      payload.append("payload", JSON.stringify({ ...(existingVoucher ? { voucherId: existingVoucher.id } : {}), bill }));
+      billDraft.attachments.forEach((attachment) => payload.append("attachments", attachment, attachment.name));
+      const response = await fetch("/api/quickbooks/generate-bill-only", { method: "POST", body: payload });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error ?? "Could not generate the QuickBooks Bill.");
+      setRows((current) => existingVoucher
+        ? current.map((row) => row.id === existingVoucher.id ? result.row : row)
+        : [result.row, ...current]);
+      setPickerOpen(false);
+      setQuickBooksBillOnlyMode(false);
+      setBillDocumentPreview(null);
+      setPrefillFileSignature(null);
+      toast.success(existingVoucher ? `QuickBooks Bill ${result.docNumber ?? ""} recreated.` : `QuickBooks Bill ${result.docNumber ?? ""} created.`);
+      if (result.attachmentErrors?.length) {
+        toast.warning("The Bill was created, but some attachments could not be uploaded.", {
+          description: result.attachmentErrors.map((entry: string) => entry.split(":")[0]).join(", "),
+        });
+      }
+    } catch (generationError) {
+      toast.error("QuickBooks Bill could not be generated", { description: generationError instanceof Error ? generationError.message : "Please try again." });
+    } finally { setCreatingFor(null); }
+  };
   const openAddBill = (row: AdditionalCost, prefillFromBrokenLink = false) => {
     const client = clientsById.get(row.client_id);
-    setVoucherCreationGroup("other");
-    setSelectedVoucherClientId(row.client_id);
+    const billOnly = row.voucher_group === "quickbooks_bills_only";
+    setVoucherCreationGroup(billOnly ? "quickbooks_bills_only" : "other");
+    setQuickBooksBillOnlyMode(billOnly);
+    setSelectedVoucherClientId(billOnly ? null : row.client_id);
     setBillTargetVoucher(row);
     setEditingQuickBooksBill(false);
     setOtherBillChoice("add");
@@ -811,7 +869,8 @@ export function AdditionalCostsBoard({
         throw new Error(result.error ?? "Could not load the QuickBooks Bill.");
       }
       const bill = result.bill;
-      setVoucherCreationGroup("other");
+      setVoucherCreationGroup(row.voucher_group === "quickbooks_bills_only" ? "quickbooks_bills_only" : "other");
+      setQuickBooksBillOnlyMode(row.voucher_group === "quickbooks_bills_only");
       setSelectedVoucherClientId(row.client_id);
       setBillTargetVoucher(row);
       setEditingQuickBooksBill(true);
@@ -835,8 +894,8 @@ export function AdditionalCostsBoard({
       const attachmentFiles = billDraft.attachments.length
         ? await uploadCrmFiles(
             billDraft.attachments,
-            `payment-vouchers/${voucher.id}/quickbooks-bills`,
-            { clientId: voucher.client_id },
+            voucher.voucher_group === "quickbooks_bills_only" ? "quickbooks-bills-only" : `payment-vouchers/${voucher.id}/quickbooks-bills`,
+            { clientId: voucher.voucher_group === "quickbooks_bills_only" ? "quickbooks-bills-only" : voucher.client_id },
           )
         : [];
       payload.append("payload", JSON.stringify({ voucherId: voucher.id, bill: { ...billDraftValues, attachmentFiles } }));
@@ -849,6 +908,7 @@ export function AdditionalCostsBoard({
       setSelectedVoucherClientId(null);
       setBillTargetVoucher(null);
       setEditingQuickBooksBill(false);
+      setQuickBooksBillOnlyMode(false);
       setOtherBillChoice(null);
       setBillDocumentPreview(null);
       setPrefillFileSignature(null);
@@ -860,9 +920,10 @@ export function AdditionalCostsBoard({
     }
   };
   const extractBillDocument = async (file: File) => {
-    if (!selectedVoucherClientId) return;
+    if (!selectedVoucherClientId && !quickBooksBillOnlyMode) return;
     const previewUrl = URL.createObjectURL(file);
     setPrefillFileSignature(`${file.name}-${file.lastModified}`);
+    setSupplierExtraction(null);
     setBillDocumentPreview((current) => {
       if (current?.url) URL.revokeObjectURL(current.url);
       return { name: file.name, type: file.type, url: previewUrl, confidence: {}, isPrefill: true };
@@ -878,7 +939,7 @@ export function AdditionalCostsBoard({
     try {
       const payload = new FormData();
       payload.append("file", file, file.name);
-      payload.append("clientId", selectedVoucherClientId);
+      if (selectedVoucherClientId) payload.append("clientId", selectedVoucherClientId);
       const response = await fetch("/api/quickbooks/extract-bill-document", {
         method: "POST",
         body: payload,
@@ -937,9 +998,16 @@ export function AdditionalCostsBoard({
           ? { id: supplier.id, name: supplier.name }
           : undefined,
       } : current);
+      setSupplierExtraction({
+        name: String(extraction.supplierName ?? "").trim(),
+        suggestion: supplier && extractedSupplier
+          ? { id: supplier.id, name: supplier.name }
+          : undefined,
+      });
       toast.success("Document fields were prefilled. Please review every value before creating the Bill.");
     } catch (extractionError) {
       setPrefillFileSignature(null);
+      setSupplierExtraction(null);
       setBillDocumentPreview((current) => current ? { ...current, isPrefill: false } : current);
       toast.warning("OCR could not read this document", {
         description: "The file has still been attached and remains open for manual reference. Please enter the Bill details manually.",
@@ -958,6 +1026,9 @@ export function AdditionalCostsBoard({
   };
   const canDelete = (row: AdditionalCost) => {
     const role = String(currentUserRole ?? "").toLowerCase();
+    if (row.voucher_group === "quickbooks_bills_only") {
+      return ["admin", "director", "dev"].includes(role);
+    }
     return (
       ["admin", "director"].includes(role) ||
       (!!currentUserId &&
@@ -1181,14 +1252,23 @@ export function AdditionalCostsBoard({
       name: "Manpower/UPS Charges/Other payments",
       rows: rows.filter(
         (row) =>
-          !row.courier_option_id ||
-          !courierVoucherOptionIds.has(row.courier_option_id),
+          row.voucher_group !== "quickbooks_bills_only" &&
+          (!row.courier_option_id ||
+          !courierVoucherOptionIds.has(row.courier_option_id))
       ),
       accent: "#8b5cf6",
     },
+    ...(["admin", "director", "dev"].includes(String(currentUserRole ?? "").toLowerCase())
+      ? [{
+          id: "quickbooks_bills_only" as const,
+          name: "QuickBooks Bills only",
+          rows: rows.filter((row) => row.voucher_group === "quickbooks_bills_only"),
+          accent: "#f59e0b",
+        }]
+      : []),
   ];
   const renderVoucherGroup = (group: (typeof voucherGroups)[number]) => {
-    const baseColumns = group.id === "courier" ? initialColumns : otherVoucherColumns;
+    const baseColumns = group.id === "courier" ? initialColumns : group.id === "other" ? otherVoucherColumns : quickBooksBillsOnlyColumns;
     const layout = voucherColumnLayouts[group.id];
     const tableColumns = layout.order
       .map((key) => baseColumns.find((column) => column.key === key))
@@ -1225,8 +1305,8 @@ export function AdditionalCostsBoard({
       </button>
       {!collapsedVoucherGroups[group.id] && (
         <div className="overflow-x-auto">
-          <table className="min-w-full border-collapse text-sm">
-            <style>{`${tableColumns.map((column, index) => `.payment-voucher-row [data-voucher-col="${column.key}"]{order:${index}}`).join("")} .payment-voucher-row>[data-voucher-col]{display:flex;align-items:center;}`}</style>
+          <table data-voucher-group={group.id} className="min-w-full border-collapse text-sm">
+            <style>{`[data-voucher-group="${group.id}"] .payment-voucher-row>[data-voucher-col]{display:none;align-items:center;} ${tableColumns.map((column, index) => `[data-voucher-group="${group.id}"] .payment-voucher-row [data-voucher-col="${column.key}"]{display:flex;order:${index};}`).join("")}`}</style>
             <thead className="bg-slate-50 text-left text-xs font-semibold text-slate-500">
               <tr className="grid" style={{ gridTemplateColumns: columnGrid }}>
                 {tableColumns.map((column) => (
@@ -1466,8 +1546,9 @@ export function AdditionalCostsBoard({
                 new Set(clientSections.map((section) => section.id)),
               );
               setVoucherCreationGroup(group.id);
+              setQuickBooksBillOnlyMode(group.id === "quickbooks_bills_only");
               setSelectedVoucherClientId(null);
-              setOtherBillChoice(null);
+              setOtherBillChoice(group.id === "quickbooks_bills_only" ? "add" : null);
               setBillTargetVoucher(null);
               setEditingQuickBooksBill(false);
               setBillDocumentPreview(null);
@@ -1506,7 +1587,7 @@ export function AdditionalCostsBoard({
             }}
             className="text-sm font-medium text-sky-700 hover:text-sky-800"
           >
-            + Add payment voucher
+            {group.id === "quickbooks_bills_only" ? "+ Add QuickBooks Bill" : "+ Add payment voucher"}
           </button>
         </div>
       )}
@@ -1844,21 +1925,21 @@ export function AdditionalCostsBoard({
             <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
               <div>
                 <h2 className="font-semibold text-slate-800">
-                  {selectedVoucherClientId
+                  {quickBooksBillOnlyMode ? "Create QuickBooks Bill" : selectedVoucherClientId
                     ? billTargetVoucher || (voucherCreationGroup === "other" && otherBillChoice === "add")
                       ? "Prepare QuickBooks Bill"
                       : "Payment voucher details"
                     : "Choose a client"}
                 </h2>
-                {selectedVoucherClientId ? (
+                {selectedVoucherClientId || quickBooksBillOnlyMode ? (
                   <p className="mt-0.5 text-sm text-slate-500">
-                    {billTargetVoucher
+                    {quickBooksBillOnlyMode ? "Create a QuickBooks Bill without a linked CRM client or subitem." : billTargetVoucher
                       ? "Create a QuickBooks Bill for this existing payment voucher."
                       : "Complete the required payment voucher information."}
                   </p>
                 ) : null}
                 <p
-                  className={`mt-0.5 text-sm text-slate-500 ${selectedVoucherClientId ? "hidden" : ""}`}
+                  className={`mt-0.5 text-sm text-slate-500 ${selectedVoucherClientId || quickBooksBillOnlyMode ? "hidden" : ""}`}
                 >
                   The client becomes this record’s Project Name.
                 </p>
@@ -1868,6 +1949,7 @@ export function AdditionalCostsBoard({
                   setPickerOpen(false);
                   setBillTargetVoucher(null);
                   setEditingQuickBooksBill(false);
+                  setQuickBooksBillOnlyMode(false);
                   setBillDocumentPreview(null);
                   setPrefillFileSignature(null);
                 }}
@@ -1876,10 +1958,10 @@ export function AdditionalCostsBoard({
                 <X size={19} />
               </button>
             </div>
-            {selectedVoucherClientId ? (
-              voucherCreationGroup === "other" ? (
+            {selectedVoucherClientId || quickBooksBillOnlyMode ? (
+              voucherCreationGroup !== "courier" ? (
                 <div className="min-h-0 space-y-4 overflow-y-auto p-5">
-                  {!billTargetVoucher ? <button
+                  {!billTargetVoucher && !quickBooksBillOnlyMode ? <button
                     type="button"
                     onClick={() => {
                       setSelectedVoucherClientId(null);
@@ -1891,15 +1973,15 @@ export function AdditionalCostsBoard({
                   >
                     Change project
                   </button> : null}
-                  <section>
+                  {!quickBooksBillOnlyMode ? <section>
                     <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                       Project Name
                     </p>
                     <p className="mt-1 text-sm font-medium text-slate-800">
-                      {clientLabel(clientsById.get(selectedVoucherClientId)!)}
+                      {clientLabel(clientsById.get(selectedVoucherClientId!)!)}
                     </p>
-                  </section>
-                  {!billTargetVoucher && otherBillChoice === null ? (
+                  </section> : null}
+                  {!billTargetVoucher && !quickBooksBillOnlyMode && otherBillChoice === null ? (
                     <section className="border-t border-slate-200 pt-4">
                       <h3 className="font-semibold text-slate-800">Bill</h3>
                       <p className="mt-1 text-sm text-slate-500">
@@ -1973,11 +2055,11 @@ export function AdditionalCostsBoard({
                                   <input required value={billDraft.supplierName} onFocus={() => setSupplierOptionsOpen(true)} onBlur={() => window.setTimeout(() => setSupplierOptionsOpen(false), 120)} onChange={(event) => { const supplierName = event.target.value; const match = billOptions.vendors.find((option) => option.name.toLocaleLowerCase() === supplierName.trim().toLocaleLowerCase()); setBillDraft((draft) => ({ ...draft, supplierName, supplierId: match?.id ?? "" })); setSupplierOptionsOpen(true); }} placeholder="Choose or type a supplier" className="w-full rounded border border-slate-300 bg-white px-3 py-2 font-normal" />
                                   {supplierOptionsOpen ? <div className="absolute z-30 mt-1 max-h-52 w-full overflow-y-auto rounded border border-slate-200 bg-white shadow-lg">{billOptions.vendors.filter((option) => !billDraft.supplierName || option.name.toLocaleLowerCase().includes(billDraft.supplierName.toLocaleLowerCase())).map((option) => <button key={option.id} type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => { setBillDraft((draft) => ({ ...draft, supplierId: option.id, supplierName: option.name })); setSupplierOptionsOpen(false); }} className="block w-full px-3 py-2 text-left text-sm hover:bg-sky-50">{option.name}</button>)}</div> : null}
                                 </div>
-                                {billDocumentPreview?.supplierSuggestion && billDraft.supplierId !== billDocumentPreview.supplierSuggestion.id ? (
-                                  <button type="button" onClick={() => setBillDraft((draft) => ({ ...draft, supplierId: billDocumentPreview.supplierSuggestion!.id, supplierName: billDocumentPreview.supplierSuggestion!.name }))} className="mt-1 text-left text-xs font-normal text-sky-700 hover:underline">Use closest match: {billDocumentPreview.supplierSuggestion.name}</button>
+                                {supplierExtraction?.suggestion && billDraft.supplierId !== supplierExtraction.suggestion.id ? (
+                                  <button type="button" onClick={() => setBillDraft((draft) => ({ ...draft, supplierId: supplierExtraction.suggestion!.id, supplierName: supplierExtraction.suggestion!.name }))} className="mt-1 text-left text-xs font-normal text-sky-700 hover:underline">Use closest match: {supplierExtraction.suggestion.name}</button>
                                 ) : null}
-                                {!billDocumentPreview?.supplierSuggestion && !billDraft.supplierId && closestQuickBooksOption(billDraft.supplierName, billOptions.vendors) ? <button type="button" onClick={() => { const match = closestQuickBooksOption(billDraft.supplierName, billOptions.vendors)!; setBillDraft((draft) => ({ ...draft, supplierId: match.id, supplierName: match.name })); }} className="mt-1 text-left text-xs font-normal text-sky-700 hover:underline">Use closest match: {closestQuickBooksOption(billDraft.supplierName, billOptions.vendors)!.name}</button> : null}
-                                {billDocumentPreview?.isPrefill && billDraft.supplierName ? <span className="mt-1 block text-xs font-normal text-slate-500">Extracted: {billDraft.supplierName}</span> : null}
+                                {!supplierExtraction?.suggestion && !billDraft.supplierId && closestQuickBooksOption(billDraft.supplierName, billOptions.vendors) ? <button type="button" onClick={() => { const match = closestQuickBooksOption(billDraft.supplierName, billOptions.vendors)!; setBillDraft((draft) => ({ ...draft, supplierId: match.id, supplierName: match.name })); }} className="mt-1 text-left text-xs font-normal text-sky-700 hover:underline">Use closest match: {closestQuickBooksOption(billDraft.supplierName, billOptions.vendors)!.name}</button> : null}
+                                {supplierExtraction?.name ? <span className="mt-1 block text-xs font-normal text-slate-500">Extracted: {supplierExtraction.name}</span> : null}
                               </label>
                               <label className="text-sm font-medium text-slate-700">Terms
                                 <select value={billDraft.termId} onChange={(event) => setBillDraft((draft) => ({ ...draft, termId: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 font-normal">
@@ -2069,12 +2151,12 @@ export function AdditionalCostsBoard({
                           </div>
                         ) : null}
                       </section>
-                      {!billTargetVoucher ? <section className="border-t border-slate-200 pt-4">
+                      {!billTargetVoucher && !quickBooksBillOnlyMode ? <section className="border-t border-slate-200 pt-4">
                         <h3 className="font-semibold text-slate-800">Voucher information</h3>
                         <div className="mt-3 grid gap-3 sm:grid-cols-2">
                           <label className="text-sm font-medium text-slate-700">Cost *<input type="number" min="0.01" step="0.01" value={voucherDraft.cost} readOnly={otherBillChoice === "add"} onChange={(event) => setVoucherDraft((draft) => ({ ...draft, cost: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 px-3 py-2 font-normal read-only:bg-slate-100" />{otherBillChoice === "add" ? <span className="mt-1 block text-xs font-normal text-slate-500">Calculated from the expense-line amounts.</span> : null}</label>
                           <label className="text-sm font-medium text-slate-700">Reason *<div className="mt-1 h-10 overflow-hidden rounded border border-slate-300"><StatusBadge value={voucherDraft.reason} onChange={(reason, option) => setVoucherDraft((draft) => ({ ...draft, reason, reasonOptionId: option?.id ?? "" }))} options={labelOptions.additional_cost_reason ?? []} /></div></label>
-                          <label className="text-sm font-medium text-slate-700">Related Subitems *{renderRelatedSubitemSelector(selectedVoucherClientId)}</label>
+                          <label className="text-sm font-medium text-slate-700">Related Subitems *{renderRelatedSubitemSelector(selectedVoucherClientId!)}</label>
                         </div>
                         <label className="mt-3 block text-sm font-medium text-slate-700">Remarks{voucherReasonIsOther ? " * (Specify Reason)" : ""}<textarea value={voucherDraft.remarks} onChange={(event) => setVoucherDraft((draft) => ({ ...draft, remarks: event.target.value }))} className="mt-1 min-h-20 w-full rounded border border-slate-300 px-3 py-2 font-normal" /></label>
                       </section> : null}
@@ -2092,16 +2174,18 @@ export function AdditionalCostsBoard({
                               !line.taxCodeId,
                             )
                           )) ||
-                          (!billTargetVoucher && (Number(voucherDraft.cost) <= 0 ||
+                          (!billTargetVoucher && !quickBooksBillOnlyMode && (Number(voucherDraft.cost) <= 0 ||
                             !voucherDraft.reason ||
                             !voucherDraft.relatedSubitemIds.length ||
                             (voucherReasonIsOther && !voucherDraft.remarks.trim())))
                         }
                         onClick={() => editingQuickBooksBill && billTargetVoucher
                           ? void updateQuickBooksBill(billTargetVoucher)
+                          : quickBooksBillOnlyMode
+                          ? void generateQuickBooksBillOnly(billTargetVoucher)
                           : otherBillChoice === "add"
-                          ? void generateQuickBooksBill(selectedVoucherClientId, billTargetVoucher)
-                          : void create(selectedVoucherClientId)}
+                          ? void generateQuickBooksBill(selectedVoucherClientId!, billTargetVoucher)
+                          : void create(selectedVoucherClientId!)}
                         className="rounded bg-[#16a5c4] px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-300"
                       >
                         {creatingFor ? (editingQuickBooksBill ? "Updating QuickBooks Bill…" : otherBillChoice === "add" ? "Creating QuickBooks Bill…" : "Creating payment voucher…") : editingQuickBooksBill ? "Update QuickBooks Bill" : otherBillChoice === "add" ? billTargetVoucher ? "Create and link QuickBooks Bill" : "Create QuickBooks Bill and payment voucher" : "Create payment voucher"}
@@ -2124,7 +2208,7 @@ export function AdditionalCostsBoard({
                 </button>
                 <p className="text-sm font-medium text-slate-700">
                   Project:{" "}
-                  {clientLabel(clientsById.get(selectedVoucherClientId)!)}
+                  {clientLabel(clientsById.get(selectedVoucherClientId!)!)}
                 </p>
                 <div className="border-t border-slate-200 pt-3">
                   <p className="text-sm font-semibold text-slate-700">
@@ -2166,7 +2250,7 @@ export function AdditionalCostsBoard({
                   </label>
                   <label className="text-sm font-medium text-slate-700">
                     Related Subitems *
-                    {renderRelatedSubitemSelector(selectedVoucherClientId)}
+                    {renderRelatedSubitemSelector(selectedVoucherClientId!)}
                   </label>
                   <label className="text-sm font-medium text-slate-700">
                     Courier *
@@ -2212,7 +2296,7 @@ export function AdditionalCostsBoard({
                     !voucherDraft.courier
                     || (voucherReasonIsOther && !voucherDraft.remarks.trim())
                   }
-                  onClick={() => void create(selectedVoucherClientId)}
+                  onClick={() => void create(selectedVoucherClientId!)}
                   className="rounded bg-[#16a5c4] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
                 >
                   {creatingFor ? "Creating…" : "Create payment voucher"}
@@ -2446,17 +2530,26 @@ export function AdditionalCostsBoard({
           <AlertDialogHeader>
             <AlertDialogTitle>Resolve missing QuickBooks Bill</AlertDialogTitle>
             <AlertDialogDescription>
-              QuickBooks could not find the Bill linked to this payment voucher. Choose how to resolve the broken link.
+              {pendingBillErrorResolution?.voucher_group === "quickbooks_bills_only"
+                ? "QuickBooks could not find this Bill. Choose whether to remove this Bill-only row or recreate the Bill."
+                : "QuickBooks could not find the Bill linked to this payment voucher. Choose how to resolve the broken link."}
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className={`grid gap-3 ${pendingBillErrorResolution?.voucher_group === "quickbooks_bills_only" ? "sm:grid-cols-2" : "sm:grid-cols-3"}`}>
             <button
               type="button"
-              onClick={() => pendingBillErrorResolution && void removeBrokenBillLink(pendingBillErrorResolution)}
+              onClick={() => {
+                const voucher = pendingBillErrorResolution;
+                setPendingBillErrorResolution(null);
+                if (voucher) {
+                  if (voucher.voucher_group === "quickbooks_bills_only") void remove(voucher);
+                  else void removeBrokenBillLink(voucher);
+                }
+              }}
               className="min-h-32 rounded-md bg-red-600 px-5 py-4 text-left text-base font-semibold text-white hover:bg-red-700"
             >
-              Remove Bill and its existing information
-              <span className="mt-1 block text-xs font-normal text-red-100">Keep the payment voucher, but return it to the no-Bill state.</span>
+              {pendingBillErrorResolution?.voucher_group === "quickbooks_bills_only" ? "Remove Bill and this row" : "Remove Bill and its existing information"}
+              <span className="mt-1 block text-xs font-normal text-red-100">{pendingBillErrorResolution?.voucher_group === "quickbooks_bills_only" ? "This removes the Bill-only payment-voucher row from the board." : "Keep the payment voucher, but return it to the no-Bill state."}</span>
             </button>
             <button
               type="button"
@@ -2470,7 +2563,7 @@ export function AdditionalCostsBoard({
               Create new Bill
               <span className="mt-1 block text-xs font-normal text-sky-100">Open a new Bill draft prefilled with the remaining voucher information.</span>
             </button>
-            <button
+            {pendingBillErrorResolution?.voucher_group !== "quickbooks_bills_only" ? <button
               type="button"
               onClick={() => {
                 const voucher = pendingBillErrorResolution;
@@ -2481,7 +2574,7 @@ export function AdditionalCostsBoard({
             >
               Link existing QuickBooks Bill
               <span className="mt-1 block text-xs font-normal text-violet-100">Find and link a replacement Bill by its invoice number.</span>
-            </button>
+            </button> : null}
           </div>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>

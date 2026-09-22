@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
   const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
   if (!INTERNAL_ROLES.has(String(profile?.role ?? "").toLowerCase())) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const { value } = await request.json();
-  if (!value || !["courier", "other"].every((group) => Array.isArray(value[group]?.order) && typeof value[group]?.widths === "object"))
+  if (!value || !["courier", "other", "quickbooks_bills_only"].every((group) => Array.isArray(value[group]?.order) && typeof value[group]?.widths === "object"))
     return NextResponse.json({ error: "Invalid Payment Voucher column layout." }, { status: 400 });
   const { error } = await supabase.from("app_settings").upsert({ key: KEY, value: JSON.stringify(value) }, { onConflict: "key" });
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
