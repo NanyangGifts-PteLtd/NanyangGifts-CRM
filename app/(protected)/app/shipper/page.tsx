@@ -1,8 +1,5 @@
-import { getShipperSubitems } from "@/lib/shipper/get-shipper-subitems";
 import { getShippers } from "@/lib/shipper/get-shipper-by-token";
 import { ShipperMasterSheets } from "./ShipperMasterSheets";
-import { getShipperStagingRows } from "@/lib/shipper/get-shipper-staging-rows";
-import { getShipperShipments } from "@/lib/shipper/shipments";
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 
@@ -19,12 +16,7 @@ export default async function ShipperMasterPage() {
         if (!["pm", "admin", "director", "dev"].includes(profile?.role?.toLowerCase() ?? "")) {
             redirect("/app");
         }
-        const [rows, shippers, stagingRows, shipments] = await Promise.all([
-            getShipperSubitems(),
-            getShippers(),
-            getShipperStagingRows(),
-            getShipperShipments(),
-        ]);
+        const shippers = await getShippers();
         const requestedShipperOrder = ["Tiger", "小李", "A5 汇荣"];
         const orderedShippers = requestedShipperOrder
             .map((name) => shippers.find((shipper) => shipper.name?.trim() === name))
@@ -33,7 +25,7 @@ export default async function ShipperMasterPage() {
         return (
             <main className="p-4">
                 <h1 className="mb-4 text-lg font-semibold">PM Master View</h1>
-                <ShipperMasterSheets shippers={orderedShippers} rows={rows} stagingRows={stagingRows} shipments={shipments} />
+                <ShipperMasterSheets shippers={orderedShippers} />
             </main>
         );
     } catch (e) {

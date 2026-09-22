@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { ExternalLink } from "lucide-react";
@@ -15,26 +15,42 @@ const SpreadsheetPilot = dynamic(
 );
 
 type Shipper = { id: string; name: string | null; website_url?: string | null };
-type Props = {
-  shippers: Shipper[];
-  rows: ShipperRow[];
-  stagingRows: ShipperStagingRow[];
-  shipments: ShipmentRecord[];
-};
+type Props = { shippers: Shipper[] };
 
 export function ShipperMasterSheets({
   shippers,
-  rows,
-  stagingRows,
-  shipments,
 }: Props) {
   const router = useRouter();
   const [activeShipperId, setActiveShipperId] = useState(shippers[0]?.id ?? "");
-  const [gridRows, setGridRows] = useState(rows);
-  const [stagedRows, setStagedRows] = useState(stagingRows);
+  const [gridRows, setGridRows] = useState<ShipperRow[]>([]);
+  const [stagedRows, setStagedRows] = useState<ShipperStagingRow[]>([]);
+  const [shipments, setShipments] = useState<ShipmentRecord[]>([]);
+  const [isLoadingSecondaryData, setIsLoadingSecondaryData] = useState(false);
+  const [secondaryDataError, setSecondaryDataError] = useState<string | null>(null);
   const [view, setView] = useState<"shipments" | "legacy" | "spreadsheet">("spreadsheet");
   const activeShipper =
     shippers.find((shipper) => shipper.id === activeShipperId) ?? shippers[0];
+
+  useEffect(() => {
+    if (view === "spreadsheet" || !activeShipper) return;
+    let cancelled = false;
+    setIsLoadingSecondaryData(true);
+    setSecondaryDataError(null);
+    void fetch(`/api/shipper/master-data?shipperId=${encodeURIComponent(activeShipper.id)}`)
+      .then(async (response) => {
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error ?? "Could not load shipper data.");
+        if (cancelled) return;
+        setGridRows(result.rows ?? []);
+        setStagedRows(result.stagingRows ?? []);
+        setShipments(result.shipments ?? []);
+      })
+      .catch((loadError) => {
+        if (!cancelled) setSecondaryDataError(loadError instanceof Error ? loadError.message : "Could not load shipper data.");
+      })
+      .finally(() => { if (!cancelled) setIsLoadingSecondaryData(false); });
+    return () => { cancelled = true; };
+  }, [activeShipper?.id, view]);
 
   if (!activeShipper)
     return (
@@ -103,6 +119,10 @@ export function ShipperMasterSheets({
       <div className={`min-h-0 flex-1 ${view === "spreadsheet" ? "overflow-hidden" : "overflow-auto"}`}>
         {view === "spreadsheet" ? (
           <SpreadsheetPilot key={activeShipper.id} shipperId={activeShipper.id} />
+        ) : isLoadingSecondaryData ? (
+          <div className="p-4 text-sm text-slate-500">Loading shipper data…</div>
+        ) : secondaryDataError ? (
+          <div className="p-4 text-sm text-red-600">{secondaryDataError}</div>
         ) : view === "shipments" ? (
           <>
             <div className="p-4">

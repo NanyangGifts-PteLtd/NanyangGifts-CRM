@@ -21,10 +21,13 @@ async function currentProfile() {
 export async function GET(request: NextRequest) {
     const session = await currentProfile();
     if ("error" in session) return NextResponse.json({ error: session.error }, { status: session.error === "Unauthorized" ? 401 : 403 });
-    if (!ALLOWED_ROLES.has(session.profile.role ?? "")) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
     try {
         const shipperId = request.nextUrl.searchParams.get("shipperId") ?? undefined;
+        const role = session.profile.role ?? "";
+        if (!ALLOWED_ROLES.has(role) && !(role === "shipper" && shipperId === session.profile.shipper_id)) {
+            return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+        }
         return NextResponse.json({ shipments: await getShipperShipments(shipperId) });
     } catch (error: any) {
         return NextResponse.json({ error: error?.message ?? "Could not load shipments." }, { status: 500 });

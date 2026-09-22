@@ -1,7 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getShipperByToken } from "@/lib/shipper/get-shipper-by-token";
-import { getShipperShipments } from "@/lib/shipper/shipments";
 import { ShipperWorkbookTabs } from "../ShipperWorkbookTabs";
 import ShipperAccountMenu from "./ShipperAccountMenu";
 
@@ -27,15 +26,13 @@ export default async function ShipperPage({
     if (!role || !["pm", "admin", "director", "dev", "shipper"].includes(role)) notFound();
     if (role === "shipper" && profile?.shipper_id !== shipper.id) notFound();
 
-    const shipments = await getShipperShipments(shipper.id);
-
     return (
         <main className="p-2">
             <div className="mb-4 flex items-center justify-between gap-3">
                 <h1 className="text-lg font-semibold">{shipper.name}</h1>
                 <ShipperAccountMenu name={profile?.full_name ?? profile?.email ?? user.email} />
             </div>
-            <ShipperWorkbookTabs shipperId={shipper.id} shipments={shipments} />
+            <ShipperWorkbookTabs shipperId={shipper.id} />
         </main>
     );
 }
