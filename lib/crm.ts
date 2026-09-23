@@ -787,18 +787,6 @@ export async function fetchClientsWithSubitems() {
     subitems!subitems_client_id_fkey (
       *,
       payment_rows:subitem_payment_rows (*)
-    ),
-    client_assignees (
-        client_id,
-        user_id,
-        assigned_by,
-        assigned_at,
-        profiles!client_assignees_user_id_fkey (
-        id,
-        full_name,
-        email,
-        avatar_url
-        )
     )
     `,
     )
@@ -810,10 +798,20 @@ export async function fetchClientsWithSubitems() {
     throw clientsError;
   }
 
-  const { data: activityData, error: activityError } = await supabase
-    .from("activity_log")
-    .select("*")
-    .order("created_at", { ascending: false });
+  // Assignment maps are loaded separately by the Board, so embedding them in
+  // every client response only duplicated a large payload. Likewise, never
+  // fetch activity history belonging to soft-deleted clients: activity_log is
+  // unbounded and used to be the largest part of every Board refresh.
+  const activeClientIds = (clientsData ?? []).map((row) => String(row.id));
+  const { data: activityData, error: activityError } = activeClientIds.length
+    ? await supabase
+        .from("activity_log")
+        .select(
+          "id, client_id, subitem_id, actor_name, action, field_name, old_value, new_value, subitem_name, created_at, link, title, description, meta",
+        )
+        .in("client_id", activeClientIds)
+        .order("created_at", { ascending: false })
+    : { data: [], error: null };
 
   if (activityError) {
     console.error("fetchClientsWithSubitems activity error:", activityError);

@@ -318,6 +318,56 @@ interface CRMBoardProps {
   groupVersion?: number;
 }
 
+// Keep the draft outside the Board's top-level state. The Board can contain
+// hundreds of rows, and making the add-client input controlled by CRMBoard
+// caused every keystroke to rerender all currently open rows.
+const AddClientInput = React.memo(function AddClientInput({
+  groupId,
+  groupName,
+  accentColor,
+  marginLeft,
+  disabled,
+  isSubmitting,
+  onSubmit,
+}: {
+  groupId: string;
+  groupName: string;
+  accentColor: string;
+  marginLeft: number;
+  disabled: boolean;
+  isSubmitting: boolean;
+  onSubmit: (groupId: string, name: string) => Promise<boolean>;
+}) {
+  const [draft, setDraft] = useState("");
+  const submit = async () => {
+    const name = draft.trim();
+    if (!name) return;
+    if (await onSubmit(groupId, name)) setDraft("");
+  };
+
+  return (
+    <div className="group/add-client relative min-h-[34px] border border-[#D0D4E4] border-t-0 bg-white px-2 py-1 hover:bg-[#f5fbff] focus-within:bg-[#f5fbff]">
+      <div aria-hidden="true" className="pointer-events-none absolute inset-y-0 left-0 z-[60] w-[5px]" style={{ backgroundColor: `${accentColor}80` }} />
+      <div className="relative max-w-sm" style={{ marginLeft }}>
+        <Plus size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500" />
+        <input
+          value={draft}
+          disabled={disabled}
+          onChange={(event) => setDraft(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") { event.preventDefault(); void submit(); }
+            if (event.key === "Escape") { event.preventDefault(); setDraft(""); event.currentTarget.blur(); }
+          }}
+          onBlur={() => void submit()}
+          placeholder={isSubmitting ? "Adding client…" : "Add client"}
+          aria-label={`New client name for ${groupName}`}
+          className="h-7 w-full rounded border border-transparent bg-transparent pl-7 pr-2 text-xs text-gray-700 outline-none transition group-hover/add-client:border-gray-500 group-hover/add-client:bg-white focus:border-[#3799b1] focus:bg-white focus:ring-2 focus:ring-[#7BCBD5]/25 disabled:cursor-not-allowed disabled:opacity-50"
+        />
+      </div>
+    </div>
+  );
+});
+
 export async function fetchAllSubitemAssignees(): Promise<SubitemAssigneeMap> {
   const supabase = createSupabaseClient();
   const { data } = await supabase
@@ -384,6 +434,8 @@ export function CRMBoard({
   const [boardSearchColumnQuery, setBoardSearchColumnQuery] = useState("");
   const searchCollapsedGroupsRef = useRef<Record<string, boolean> | null>(null);
   const boardSearchRef = useRef<HTMLDivElement>(null);
+  const boardSearchInputRef = useRef<HTMLInputElement>(null);
+  const boardSearchDebounceRef = useRef<number | null>(null);
   const [showPeopleFilter, setShowPeopleFilter] = useState(false);
   const [peopleFilterSearch, setPeopleFilterSearch] = useState("");
   const [filterImportance, setFilterImportance] = useState("All");
@@ -845,7 +897,6 @@ export function CRMBoard({
   const [addingClientGroupId, setAddingClientGroupId] = useState<string | null>(
     null,
   );
-  const [newClientName, setNewClientName] = useState("");
   const [isAddingClient, setIsAddingClient] = useState(false);
   const isSubmittingNewClient = useRef(false);
   const optionReorderQueuesRef = useRef<Record<string, Promise<void>>>({});
@@ -2181,7 +2232,13 @@ export function CRMBoard({
   }, [showPeopleFilter]);
 
   useEffect(() => {
-    if (!showBoardSearch) return;
+    if (!showBoardSearch) {
+      if (boardSearchDebounceRef.current !== null) {
+        window.clearTimeout(boardSearchDebounceRef.current);
+        boardSearchDebounceRef.current = null;
+      }
+      return;
+    }
     const handleClickAway = (event: MouseEvent) => {
       if (!boardSearchRef.current?.contains(event.target as Node)) {
         setShowBoardSearch(false);
@@ -2192,6 +2249,14 @@ export function CRMBoard({
     document.addEventListener("mousedown", handleClickAway);
     return () => document.removeEventListener("mousedown", handleClickAway);
   }, [showBoardSearch]);
+
+  useEffect(
+    () => () => {
+      if (boardSearchDebounceRef.current !== null)
+        window.clearTimeout(boardSearchDebounceRef.current);
+    },
+    [],
+  );
 
   useEffect(() => {
     if (
@@ -6017,27 +6082,21 @@ export function CRMBoard({
     ],
   );
 
-  const submitNewClient = useCallback(async () => {
-    const groupId = addingClientGroupId;
-    const name = newClientName.trim();
-    if (!groupId || isSubmittingNewClient.current) return;
-    if (!name) {
-      setAddingClientGroupId(null);
-      setNewClientName("");
-      return;
-    }
+  const submitNewClient = useCallback(async (groupId: string, rawName: string) => {
+    const name = rawName.trim();
+    if (!name || isSubmittingNewClient.current) return false;
 
     isSubmittingNewClient.current = true;
+    setAddingClientGroupId(groupId);
     setIsAddingClient(true);
-    const created = await addClient(groupId, name);
-    isSubmittingNewClient.current = false;
-    setIsAddingClient(false);
-
-    if (created) {
+    try {
+      return await addClient(groupId, name);
+    } finally {
+      isSubmittingNewClient.current = false;
+      setIsAddingClient(false);
       setAddingClientGroupId(null);
-      setNewClientName("");
     }
-  }, [addClient, addingClientGroupId, newClientName]);
+  }, [addClient]);
 
   const deleteClient = useCallback(
     async (clientId: string) => {
@@ -7433,16 +7492,32 @@ export function CRMBoard({
             <div className="flex h-8 w-72 items-center rounded border border-sky-500 bg-white">
               <Search size={16} className="ml-2 shrink-0 text-slate-500" />
               <input
+                ref={boardSearchInputRef}
                 autoFocus
-                value={boardSearchTerm}
-                onChange={(event) => setBoardSearchTerm(event.target.value)}
+                defaultValue={boardSearchTerm}
+                onChange={(event) => {
+                  if (boardSearchDebounceRef.current !== null)
+                    window.clearTimeout(boardSearchDebounceRef.current);
+                  const nextValue = event.target.value;
+                  boardSearchDebounceRef.current = window.setTimeout(() => {
+                    boardSearchDebounceRef.current = null;
+                    setBoardSearchTerm(nextValue);
+                  }, 120);
+                }}
                 placeholder="Search this board"
                 className="min-w-0 flex-1 px-2 text-sm outline-none"
               />
               {boardSearchTerm && (
                 <button
                   type="button"
-                  onClick={() => setBoardSearchTerm("")}
+                  onClick={() => {
+                    if (boardSearchDebounceRef.current !== null)
+                      window.clearTimeout(boardSearchDebounceRef.current);
+                    boardSearchDebounceRef.current = null;
+                    if (boardSearchInputRef.current)
+                      boardSearchInputRef.current.value = "";
+                    setBoardSearchTerm("");
+                  }}
                   className="px-1 text-slate-400 hover:text-slate-700"
                   aria-label="Clear board search"
                 >
@@ -9976,6 +10051,22 @@ export function CRMBoard({
                         }
                       />
                     ))}
+                    <AddClientInput
+                      groupId={group.id}
+                      groupName={group.name}
+                      accentColor={groupAccentColor(group)}
+                      marginLeft={
+                        activeClientHeaderCols.find(
+                          (column) => column.key === "selectCheckbox",
+                        )?.width ?? 34
+                      }
+                      disabled={isAddingClient}
+                      isSubmitting={
+                        isAddingClient && addingClientGroupId === group.id
+                      }
+                      onSubmit={submitNewClient}
+                    />
+                    {/*
                     <div className="group/add-client relative min-h-[34px] border border-[#D0D4E4] border-t-0 bg-white px-2 py-1 hover:bg-[#f5fbff] focus-within:bg-[#f5fbff]">
                       <div
                         aria-hidden="true"
@@ -10035,7 +10126,7 @@ export function CRMBoard({
                           className="h-7 w-full rounded border border-transparent bg-transparent pl-7 pr-2 text-xs text-gray-700 outline-none transition group-hover/add-client:border-gray-500 group-hover/add-client:bg-white focus:border-[#3799b1] focus:bg-white focus:ring-2 focus:ring-[#7BCBD5]/25 disabled:cursor-not-allowed disabled:opacity-50"
                         />
                       </div>
-                    </div>
+                    </div> */}
                   </div>
                 )}
 
