@@ -31,6 +31,7 @@ import {
   ArrowDown,
   LockKeyhole,
   LockKeyholeOpen,
+  LoaderCircle,
   SlidersHorizontal,
 } from "lucide-react";
 import {
@@ -505,6 +506,7 @@ export function CRMBoard({
   const [collapsedGroups, setCollapsedGroups] = useState<
     Record<string, boolean>
   >({});
+  const [autoEditClientNameId, setAutoEditClientNameId] = useState<string | null>(null);
   const [pendingGroupContentIds, setPendingGroupContentIds] = useState<
     Set<string>
   >(new Set());
@@ -6054,6 +6056,20 @@ export function CRMBoard({
             [newClient.id]: [currentUserId],
           }));
         setExpandedIds((prev) => [...prev, newClient.id]);
+        const newClientGroupId = newClient.groupId;
+        if (newClientGroupId) {
+          setCollapsedGroups((current) =>
+            current[newClientGroupId]
+              ? { ...current, [newClientGroupId]: false }
+              : current,
+          );
+        }
+        setAutoEditClientNameId(newClient.id);
+        window.setTimeout(() => {
+          document
+            .querySelector<HTMLElement>(`[data-client-id="${newClient.id}"]`)
+            ?.scrollIntoView({ block: "center", inline: "nearest", behavior: "smooth" });
+        }, 0);
         notifyChange(
           "Client added",
           `${newClient.name} was added to the board.`,
@@ -6099,6 +6115,21 @@ export function CRMBoard({
       setAddingClientGroupId(null);
     }
   }, [addClient]);
+
+  const createNewClientFromToolbar = useCallback(async () => {
+    if (isSubmittingNewClient.current || isAddingClient) return;
+    isSubmittingNewClient.current = true;
+    setTrackingView(false);
+    setAddingClientGroupId(groups[0]?.id ?? null);
+    setIsAddingClient(true);
+    try {
+      await addClient();
+    } finally {
+      isSubmittingNewClient.current = false;
+      setIsAddingClient(false);
+      setAddingClientGroupId(null);
+    }
+  }, [addClient, groups, isAddingClient]);
 
   const deleteClient = useCallback(
     async (clientId: string) => {
@@ -7484,6 +7515,19 @@ export function CRMBoard({
 
         <button
           type="button"
+          disabled={isAddingClient}
+          onClick={() => void createNewClientFromToolbar()}
+          className="flex min-w-[104px] items-center justify-center gap-1.5 rounded-md bg-[#0f8da8] px-3 py-1.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#0b7188] disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {isAddingClient ? (
+            <><LoaderCircle size={16} className="animate-spin" /> Creating...</>
+          ) : (
+            <><Plus size={16} /> New client</>
+          )}
+        </button>
+
+        <button
+          type="button"
           onClick={() => setTrackingView((enabled) => !enabled)}
           className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors ${trackingView ? "bg-[#0f8da8] text-white" : "text-slate-700 hover:bg-slate-100"}`}
         >
@@ -8227,16 +8271,6 @@ export function CRMBoard({
               data-crm-menu
               className="absolute right-0 top-full z-50 mt-1 w-64 rounded-lg border border-gray-200 bg-white p-1.5 shadow-xl"
             >
-              <button
-                type="button"
-                onClick={() => {
-                  setShowBoardMoreMenu(false);
-                  void addClient();
-                }}
-                className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs font-medium text-gray-700 hover:bg-gray-50"
-              >
-                <Plus size={15} className="text-[#43adc4]" /> Add client
-              </button>
               <button
                 type="button"
                 onClick={() => {
@@ -9856,6 +9890,8 @@ export function CRMBoard({
                             Boolean(normalizeBlacklistPhone(client.phone ?? "")))
                         }
                         isExpanded={expandedIdSet.has(client.id)}
+                        autoEditName={autoEditClientNameId === client.id}
+                        onAutoEditNameStarted={() => setAutoEditClientNameId(null)}
                         groupAccentColor={groupAccentColor(group)}
                         onToggleExpand={() =>
                           setExpandedIds((prev) =>

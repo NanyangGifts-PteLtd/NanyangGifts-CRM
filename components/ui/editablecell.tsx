@@ -9,6 +9,8 @@ export function EditableCell({
     className = '',
     readOnly = false,
     multiline = false,
+    autoEdit = false,
+    onAutoEditStarted,
 }: {
     value: string;
     onChange: (v: string) => void;
@@ -17,6 +19,8 @@ export function EditableCell({
     className?: string;
     readOnly?: boolean;
     multiline?: boolean;
+    autoEdit?: boolean;
+    onAutoEditStarted?: () => void;
 }) {
     const [editing, setEditing] = useState(false);
     const [local, setLocal] = useState(value);
@@ -30,6 +34,12 @@ export function EditableCell({
     }, [value, editing]);
 
     useEffect(() => {
+        if (!autoEdit || editing || readOnly) return;
+        setEditing(true);
+        onAutoEditStarted?.();
+    }, [autoEdit, editing, readOnly, onAutoEditStarted]);
+
+    useEffect(() => {
         if (!editing) return;
 
         if (multiline && textareaRef.current) {
@@ -40,8 +50,9 @@ export function EditableCell({
 
         if (!multiline && inputRef.current) {
             inputRef.current.focus();
+            if (autoEdit) inputRef.current.select();
         }
-    }, [editing, multiline]);
+    }, [autoEdit, editing, multiline]);
 
     useEffect(() => {
         if (!editing || !multiline || !textareaRef.current) return;
@@ -60,10 +71,15 @@ export function EditableCell({
         return (
             <textarea
                 ref={textareaRef}
+                data-inline-editor
+                draggable={false}
                 value={local}
                 rows={1}
                 onChange={(e) => setLocal(e.target.value)}
                 onBlur={save}
+                onMouseDown={(event) => event.stopPropagation()}
+                onPointerDown={(event) => event.stopPropagation()}
+                onDragStart={(event) => event.preventDefault()}
                 onKeyDown={(e) => {
                     if (e.key === 'Enter') save();
                     if (e.key === 'Escape') {
@@ -81,10 +97,15 @@ export function EditableCell({
         return (
             <input
                 ref={inputRef}
+                data-inline-editor
+                draggable={false}
                 type={type}
                 value={local}
                 onChange={e => setLocal(e.target.value)}
                 onBlur={save}
+                onMouseDown={(event) => event.stopPropagation()}
+                onPointerDown={(event) => event.stopPropagation()}
+                onDragStart={(event) => event.preventDefault()}
                 onKeyDown={e => {
                     if (e.key === 'Enter') save();
                     if (e.key === 'Escape') {

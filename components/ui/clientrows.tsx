@@ -464,6 +464,8 @@ export type ClientRowProps = {
     rows: import("../../app/types").PaymentRow[],
   ) => void;
   trackingMode?: boolean;
+  autoEditName?: boolean;
+  onAutoEditNameStarted?: () => void;
 };
 
 export function ClientRow({
@@ -586,6 +588,8 @@ export function ClientRow({
   onOpenSubitemDetail,
   onPaymentRowsChanged,
   trackingMode = false,
+  autoEditName = false,
+  onAutoEditNameStarted,
 }: ClientRowProps) {
   const [permissionNotice, setPermissionNotice] = useState<{
     left: number;
@@ -3015,7 +3019,13 @@ export function ClientRow({
         <div
           draggable
           data-client-column="client"
-          onDragStart={(event) => onDragStart(event)}
+          onDragStart={(event) => {
+            if ((event.target as HTMLElement).closest("[data-inline-editor]")) {
+              event.preventDefault();
+              return;
+            }
+            onDragStart(event);
+          }}
           onDragEnd={onDragEnd}
           onClick={(event) => {
             if (
@@ -3038,6 +3048,8 @@ export function ClientRow({
               value={client.name}
               onChange={(v) => onUpdate({ name: v })}
               placeholder="Client name"
+              autoEdit={autoEditName}
+              onAutoEditStarted={onAutoEditNameStarted}
               className={`!justify-start text-left font-semibold ${isBlacklisted ? "!bg-transparent !text-white !hover:bg-red-800" : "text-gray-800"}`}
             />
           </div>

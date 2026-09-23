@@ -1733,6 +1733,10 @@ export function SubitemsTable({
         !isAdditionalCostSubitem(sub)
       }
       onDragStart={(event) => {
+        if ((event.target as HTMLElement).closest("[data-inline-editor]")) {
+          event.preventDefault();
+          return;
+        }
         if (!canEditSubitem(sub.id) || isAdditionalCostSubitem(sub)) {
           event.preventDefault();
           return;
