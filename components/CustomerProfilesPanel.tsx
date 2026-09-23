@@ -972,7 +972,7 @@ function ProfileLeads({
   }, [boardClients, matchValue, type]);
 
   return (
-    <section className="mt-5 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+    <section className="mt-5 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm xl:mt-0">
       <header className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
         <div>
           <h2 className="font-semibold text-slate-900">
@@ -1423,7 +1423,7 @@ export function CustomerProfilesPanel({
       : (validationError ?? (!hasChanges ? "No changes to save." : null));
     return (
       <div className="min-h-full bg-[#f8fafc] p-5">
-        <div className="mx-auto max-w-5xl">
+        <div className="mx-auto max-w-[1680px]">
           <button
             type="button"
             onClick={() => setSelectedProfile(null)}
@@ -1431,6 +1431,8 @@ export function CustomerProfilesPanel({
           >
             <ArrowLeft size={17} /> Back to Customer Profiles
           </button>
+          <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.25fr)_minmax(420px,0.75fr)]">
+          <div>
           <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
             <header className="flex items-center gap-4 border-b border-slate-200 px-6 py-5">
               <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-cyan-50 text-[#16a5c4]">
@@ -1514,6 +1516,7 @@ export function CustomerProfilesPanel({
             </div>
           </section>
           <ProfileRemarks type="client" profileId={client.id} />
+          </div>
           <ProfileLeads
             type="client"
             matchValue={clientPhoneNumbers(client).map(
@@ -1522,6 +1525,7 @@ export function CustomerProfilesPanel({
             boardClients={boardClients}
             onOpenLead={onOpenLead}
           />
+          </div>
         </div>
         {confirmingDelete && (
           <DeleteProfileDialog
@@ -1563,7 +1567,7 @@ export function CustomerProfilesPanel({
       : (validationError ?? (!hasChanges ? "No changes to save." : null));
     return (
       <div className="min-h-full bg-[#f8fafc] p-5">
-        <div className="mx-auto max-w-5xl">
+        <div className="mx-auto max-w-[1680px]">
           <button
             type="button"
             onClick={() => setSelectedProfile(null)}
@@ -1571,6 +1575,8 @@ export function CustomerProfilesPanel({
           >
             <ArrowLeft size={17} /> Back to Customer Profiles
           </button>
+          <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.25fr)_minmax(420px,0.75fr)]">
+          <div>
           <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
             <header className="flex items-center gap-4 border-b border-slate-200 px-6 py-5">
               <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-violet-50 text-violet-600">
@@ -1700,12 +1706,14 @@ export function CustomerProfilesPanel({
             </div>
           </section>
           <ProfileRemarks type="company" profileId={company.id} />
+          </div>
           <ProfileLeads
             type="company"
             matchValue={company.name}
             boardClients={boardClients}
             onOpenLead={onOpenLead}
           />
+          </div>
         </div>
         {confirmingDelete && (
           <DeleteProfileDialog
