@@ -1000,6 +1000,9 @@ function ProfileLeads({
               <span className="block truncate text-sm font-semibold text-slate-800">
                 {lead.name || "Unnamed lead"}
               </span>
+              <span className="mt-0.5 block truncate font-mono text-[11px] font-medium text-slate-500">
+                Lead ID: {lead.displayId || lead.id}
+              </span>
               <span className="mt-0.5 block truncate text-xs text-slate-500">
                 {type === "client" ? lead.phone : lead.company}
                 {lead.createdAt

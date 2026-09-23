@@ -53,9 +53,6 @@ export default function Page() {
   const [groups, setGroups] = useState<CRMGroup[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [searchTarget, setSearchTarget] = useState<SearchResult | null>(null);
-  const [profileLeadClientId, setProfileLeadClientId] = useState<string | null>(
-    null,
-  );
   const [crmMetadataVersion, setCrmMetadataVersion] = useState(0);
   const [labelOptionsVersion, setLabelOptionsVersion] = useState(0);
   const [groupVersion, setGroupVersion] = useState(0);
@@ -439,8 +436,6 @@ export default function Page() {
             subitemAssignees={subitemAssignees}
             setSubitemAssignees={setSubitemAssignees}
             searchTarget={searchTarget}
-            openClientId={profileLeadClientId}
-            onOpenClientHandled={() => setProfileLeadClientId(null)}
             labelOptionsVersion={labelOptionsVersion}
             groupVersion={groupVersion}
           />
@@ -516,8 +511,18 @@ export default function Page() {
             currentUserRole={currentUserRole}
             boardClients={clients}
             onOpenLead={(clientId) => {
-              setProfileLeadClientId(clientId);
-              setActivePanel("crm");
+              const client = clients.find((item) => item.id === clientId);
+              if (!client) return;
+              selectSearchResult({
+                id: `customer-profile-lead-${clientId}-${Date.now()}`,
+                clientId,
+                kind: "client",
+                label: "Client",
+                context: "Opened from Customer Profile",
+                field: "Client",
+                value: client.name,
+                query: "",
+              });
             }}
           />
         );
