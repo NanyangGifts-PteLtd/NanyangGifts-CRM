@@ -441,6 +441,9 @@ export function CRMBoard({
   const [blacklistedPhones, setBlacklistedPhones] = useState<Set<string>>(
     new Set(),
   );
+  const [blacklistedClientIds, setBlacklistedClientIds] = useState<Set<string>>(
+    new Set(),
+  );
   const [customerMatchPending, setCustomerMatchPending] =
     useState<CustomerMatchPending | null>(null);
   const [savingCustomerMatch, setSavingCustomerMatch] = useState(false);
@@ -575,41 +578,51 @@ export function CRMBoard({
     onOpenClientHandledRef.current?.();
   }, [clients, openClientId]);
 
-  useEffect(() => {
-    let active = true;
-    void fetch("/api/customer-profiles")
-      .then(async (response) => {
-        const result = await response.json();
-        if (!response.ok)
-          throw new Error(result.error || "Unable to load blacklist.");
-        return result;
-      })
-      .then((result) => {
-        if (!active) return;
-        const numbers = (result.clients ?? [])
-          .filter(
-            (profile: { is_blacklisted?: boolean }) => profile.is_blacklisted,
-          )
-          .flatMap(
-            (profile: {
-              phone_number?: string;
-              phone_numbers?: Array<{ phone_number?: string }>;
-            }) =>
-              profile.phone_numbers?.length
-                ? profile.phone_numbers.map((phone) => phone.phone_number ?? "")
-                : [profile.phone_number ?? ""],
-          )
-          .map(normalizeBlacklistPhone)
-          .filter(Boolean);
-        setBlacklistedPhones(new Set(numbers));
-      })
-      .catch((error) =>
-        console.error("Failed to load client blacklist", error),
-      );
-    return () => {
-      active = false;
-    };
+  const refreshBlacklist = useCallback(async () => {
+    const response = await fetch("/api/customer-profiles");
+    const result = await response.json();
+    if (!response.ok)
+      throw new Error(result.error || "Unable to load blacklist.");
+    const blacklistedProfiles = (result.clients ?? []).filter(
+      (profile: { is_blacklisted?: boolean }) => profile.is_blacklisted,
+    );
+    const profileIds = new Set(
+      blacklistedProfiles
+        .map((profile: { id?: string }) => profile.id)
+        .filter((id: unknown): id is string => typeof id === "string"),
+    );
+    const numbers = blacklistedProfiles
+      .flatMap(
+        (profile: {
+          phone_number?: string;
+          phone_numbers?: Array<{ phone_number?: string }>;
+        }) =>
+          profile.phone_numbers?.length
+            ? profile.phone_numbers.map((phone) => phone.phone_number ?? "")
+            : [profile.phone_number ?? ""],
+      )
+      .map(normalizeBlacklistPhone)
+      .filter(Boolean);
+    const linkedClientIds = (result.links ?? [])
+      .filter(
+        (link: { client_id?: string; client_profile_id?: string | null }) =>
+          Boolean(link.client_id) && profileIds.has(String(link.client_profile_id ?? "")),
+      )
+      .map((link: { client_id: string }) => link.client_id);
+    setBlacklistedPhones(new Set(numbers));
+    setBlacklistedClientIds(new Set(linkedClientIds));
   }, []);
+
+  useEffect(() => {
+    void refreshBlacklist().catch((error) =>
+      console.error("Failed to load client blacklist", error),
+    );
+    const refresh = () => void refreshBlacklist().catch((error) => console.error("Failed to refresh client blacklist", error));
+    window.addEventListener("crm:blacklist-updated", refresh);
+    return () => {
+      window.removeEventListener("crm:blacklist-updated", refresh);
+    };
+  }, [refreshBlacklist]);
 
   const clientPmAssigneeIds = useCallback(
     (client: Client) => clientPmAssignees[client.id] ?? [],
@@ -3826,7 +3839,8 @@ export function CRMBoard({
         return;
       }
       if (
-        updates.statusOptionId === closedClientStatus?.id &&
+        closedClientStatus?.id != null &&
+        updates.statusOptionId === closedClientStatus.id &&
         !isClosedClient(draggedClient)
       ) {
         if (!draggedClient.email.trim()) {
@@ -5251,7 +5265,8 @@ export function CRMBoard({
       const isMovingToUnqualified = isUnqualifiedGroupName(selectedGroup?.name);
       const isBecomingUnqualified =
         isMovingToUnqualified ||
-        updates.statusOptionId === unqualifiedClientStatus?.id;
+        (unqualifiedClientStatus?.id != null &&
+          updates.statusOptionId === unqualifiedClientStatus.id);
       if (isBecomingUnqualified && !unqualifiedReasonApproved) {
         setUnqualifiedReasonDraft(
           updates.unqualifiedReason ?? existingClient?.unqualifiedReason ?? "",
@@ -5260,7 +5275,9 @@ export function CRMBoard({
         return;
       }
       const isBecomingClosed =
-        updates.statusOptionId === closedClientStatus?.id || isMovingToClosedLeads;
+        (closedClientStatus?.id != null &&
+          updates.statusOptionId === closedClientStatus.id) ||
+        isMovingToClosedLeads;
       if (isBecomingClosed && !existingClient?.email.trim()) {
         toast.error("An Email address is required to close this lead", {
           description: "Fill in the lead’s Email column before closing it.",
@@ -5290,7 +5307,10 @@ export function CRMBoard({
         nextUpdates.statusOptionId = closedClientStatus?.id ?? null;
         movedToGroupName = selectedGroup?.name ?? null;
       }
-      if (updates.statusOptionId === closedClientStatus?.id) {
+      if (
+        closedClientStatus?.id != null &&
+        updates.statusOptionId === closedClientStatus.id
+      ) {
         try {
           const closedLeadsGroup = await ensureCurrentClosedLeadsGroup();
           nextUpdates.groupId = closedLeadsGroup.id;
@@ -6268,7 +6288,10 @@ export function CRMBoard({
           updates.status = (closedClientStatus?.value ?? "") as ClientStatus;
           updates.statusOptionId = closedClientStatus?.id ?? null;
         }
-        if (updates.statusOptionId === closedClientStatus?.id) {
+        if (
+          closedClientStatus?.id != null &&
+          updates.statusOptionId === closedClientStatus.id
+        ) {
           if (selectedIds.size !== 1) {
             toast.error("Close leads one at a time", {
               description:
@@ -6682,6 +6705,15 @@ export function CRMBoard({
               currentUserId={currentUserId}
               currentUserRole={currentUserRole}
               groups={groups}
+              isBlacklisted={
+                blacklistedClientIds.has(detailClient.id) ||
+                (blacklistedPhones.has(
+                  normalizeBlacklistPhone(detailClient.phone ?? ""),
+                ) &&
+                  Boolean(
+                    normalizeBlacklistPhone(detailClient.phone ?? ""),
+                  ))
+              }
               initialTab={detailClientInitialTab ?? undefined}
               onDuplicate={() => requestClientDuplication(detailClient.id)}
               onMove={(groupId) => moveClientAction(detailClient.id, groupId)}
@@ -9719,10 +9751,11 @@ export function CRMBoard({
                         key={client.id}
                         client={client}
                         isBlacklisted={
-                          blacklistedPhones.has(
+                          blacklistedClientIds.has(client.id) ||
+                          (blacklistedPhones.has(
                             normalizeBlacklistPhone(client.phone ?? ""),
                           ) &&
-                          Boolean(normalizeBlacklistPhone(client.phone ?? ""))
+                            Boolean(normalizeBlacklistPhone(client.phone ?? "")))
                         }
                         isExpanded={expandedIdSet.has(client.id)}
                         groupAccentColor={groupAccentColor(group)}

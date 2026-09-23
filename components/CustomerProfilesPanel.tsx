@@ -1273,6 +1273,7 @@ export function CustomerProfilesPanel({
       );
       setSelectedProfile({ type: "client", profile: result.client });
       setConfirmingBlacklist(false);
+      window.dispatchEvent(new Event("crm:blacklist-updated"));
       toast.success(
         nextBlacklisted
           ? "Client added to blacklist"

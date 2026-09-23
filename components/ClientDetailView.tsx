@@ -8,6 +8,7 @@ import {
   FileText,
   Paperclip,
   Send,
+  ShieldAlert,
   Trash2,
   UserRound,
   X,
@@ -119,6 +120,7 @@ export function ClientDetailView({
   importanceOptions,
   groupNamesById,
   initialTab,
+  isBlacklisted = false,
 }: {
   client: Client;
   clients: Client[];
@@ -145,6 +147,7 @@ export function ClientDetailView({
   importanceOptions: BadgeOption[];
   groupNamesById: Record<string, string>;
   initialTab?: Tab;
+  isBlacklisted?: boolean;
 }) {
   const [tab, setTab] = useState<Tab>(initialTab ?? "overview");
   const canManageSubitemLock = ["director", "dev"].includes(
@@ -441,7 +444,13 @@ export function ClientDetailView({
   return (
     <div data-crm-client-detail className="fixed inset-0 z-[200] bg-slate-950/40 p-3 sm:p-6">
       <section className="flex h-full flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
-        <header className="flex items-center gap-4 border-b border-slate-200 px-6 py-4">
+        <header
+          className={`flex items-center gap-4 border-b px-6 py-4 ${
+            isBlacklisted
+              ? "border-red-800 bg-red-700 text-white"
+              : "border-slate-200"
+          }`}
+        >
           <div
             onMouseEnter={() => setHoverName(true)}
             onMouseLeave={() => setHoverName(false)}
@@ -453,15 +462,27 @@ export function ClientDetailView({
                 value={client.name}
                 readOnly={!canEdit}
                 onChange={(event) => onUpdate({ name: event.target.value })}
-                className={`min-w-0 shrink rounded border px-2 py-1 text-2xl font-semibold outline-none transition ${hoverName && canEdit ? "border-sky-400 bg-white" : "border-transparent bg-transparent"} ${!canEdit ? "cursor-default" : ""}`}
+                className={`min-w-0 shrink rounded border px-2 py-1 text-2xl font-semibold outline-none transition ${
+                  isBlacklisted
+                    ? "border-transparent bg-transparent text-white placeholder:text-red-100"
+                    : hoverName && canEdit
+                      ? "border-sky-400 bg-white"
+                      : "border-transparent bg-transparent"
+                } ${!canEdit ? "cursor-default" : ""}`}
                 style={{
                   width: `${Math.min(Math.max(client.name.length + 3, 16), 48)}ch`,
                   maxWidth: "calc(100% - 10rem)",
                 }}
               />
               {client.displayId ? (
-                <span title="Client ID" className="shrink-0 rounded border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-medium text-slate-500">
+                <span title="Client ID" className={`shrink-0 rounded border px-2 py-1 text-xs font-medium ${isBlacklisted ? "border-red-300/70 bg-red-800/40 text-red-50" : "border-slate-200 bg-slate-50 text-slate-500"}`}>
                   Client ID: <span className="font-mono">{client.displayId}</span>
+                </span>
+              ) : null}
+              {isBlacklisted ? (
+                <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-red-200/70 bg-white/15 px-3 py-1 text-xs font-bold uppercase tracking-wide text-white">
+                  <ShieldAlert size={14} aria-hidden="true" />
+                  Customer blacklisted
                 </span>
               ) : null}
             </div>

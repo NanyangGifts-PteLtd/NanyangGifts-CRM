@@ -3026,7 +3026,7 @@ export function ClientRow({
             )
               onOpenDetail();
           }}
-          className={`group/client box-border relative flex items-center min-w-0 px-1 border-l border-r border-[#D0D4E4] overflow-visible ${isDragging ? "opacity-40" : ""} ${isDragging ? "cursor-grabbing" : "cursor-grab"}`}
+          className={`group/client box-border relative flex items-center min-w-0 px-1 border-l border-r border-[#D0D4E4] overflow-visible ${isBlacklisted ? "bg-red-700 text-white" : ""} ${isDragging ? "opacity-40" : ""} ${isDragging ? "cursor-grabbing" : "cursor-grab"}`}
           style={{
             height: 30,
             minWidth: colWidth.client,
@@ -3039,7 +3039,7 @@ export function ClientRow({
               value={client.name}
               onChange={(v) => onUpdate({ name: v })}
               placeholder="Client name"
-              className={`!justify-start text-left font-semibold ${isBlacklisted ? "bg-red-100 !text-red-700 ring-1 ring-inset ring-red-300" : "text-gray-800"}`}
+              className={`!justify-start text-left font-semibold ${isBlacklisted ? "!bg-transparent !text-white !hover:bg-red-800" : "text-gray-800"}`}
             />
           </div>
           <div className="ml-auto flex items-center justify-start gap-1 flex-shrink-0">
@@ -3767,7 +3767,7 @@ export function ClientRow({
 
         <div
           data-client-column="phone"
-          className={`flex-1 min-w-0 py-1 items-center border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis ${isBlacklisted ? "bg-red-100 text-red-700" : "text-blue-600"}`}
+          className={`flex-1 min-w-0 py-1 items-center border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis ${isBlacklisted ? "bg-red-700 text-white" : "text-blue-600"}`}
           style={{
             height: 30,
             minWidth: colWidth.phone,
@@ -3778,7 +3778,7 @@ export function ClientRow({
           <EditableCell
             className={
               isBlacklisted
-                ? "bg-red-100 !text-red-700 ring-1 ring-inset ring-red-300"
+                ? "!bg-transparent !text-white !hover:bg-red-800 font-semibold"
                 : "text-blue-600"
             }
             value={client.phone}
