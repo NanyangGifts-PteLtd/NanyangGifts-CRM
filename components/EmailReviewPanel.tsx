@@ -41,6 +41,9 @@ export function EmailReviewPanel({ currentUserRole }: Props) {
   const [selectedReviewedId, setSelectedReviewedId] = useState<string | null>(
     null,
   );
+  const [reviewedFilter, setReviewedFilter] = useState<
+    "all" | "kept" | "promoted"
+  >("all");
   const [pendingAction, setPendingAction] = useState<{
     row: ReviewRow;
     action: "promote" | "mark-reviewed";
@@ -103,9 +106,16 @@ export function EmailReviewPanel({ currentUserRole }: Props) {
     (row) =>
       row.review_status === "reviewed" || row.review_status === "promoted",
   );
+  const filteredReviewedRows = reviewedRows.filter((row) =>
+    reviewedFilter === "all"
+      ? true
+      : reviewedFilter === "promoted"
+        ? row.review_status === "promoted"
+        : row.review_status === "reviewed",
+  );
   const selectedReviewed =
-    reviewedRows.find((row) => row.id === selectedReviewedId) ??
-    reviewedRows[0] ??
+    filteredReviewedRows.find((row) => row.id === selectedReviewedId) ??
+    filteredReviewedRows[0] ??
     null;
   const reviewedOutcome = (row: ReviewRow) =>
     row.review_status === "promoted"
@@ -285,18 +295,38 @@ export function EmailReviewPanel({ currentUserRole }: Props) {
           </section>
           <aside className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
             <div className="border-b border-slate-200 px-4 py-3">
-              <h2 className="text-xl font-semibold text-slate-800">Reviewed</h2>
-              <p className="text-sm text-slate-500">
-                {reviewedRows.length} kept or promoted emails
-              </p>
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <h2 className="text-xl font-semibold text-slate-800">Reviewed</h2>
+                  <p className="text-sm text-slate-500">
+                    {filteredReviewedRows.length}{reviewedFilter !== "all" ? ` of ${reviewedRows.length}` : ""} kept or promoted emails
+                  </p>
+                </div>
+                <div className="inline-flex rounded-md border border-slate-200 bg-slate-50 p-0.5 text-xs">
+                  {([
+                    ["all", "All"],
+                    ["kept", "Kept non-enquiry"],
+                    ["promoted", "Promoted"],
+                  ] as const).map(([value, label]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setReviewedFilter(value)}
+                      className={`rounded px-2 py-1.5 font-medium transition-colors ${reviewedFilter === value ? "bg-white text-sky-700 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
             <div className="max-h-72 overflow-y-auto border-b border-slate-200">
-              {!reviewedRows.length ? (
+              {!filteredReviewedRows.length ? (
                 <p className="px-4 py-8 text-center text-sm text-slate-400">
-                  No reviewed emails yet.
+                  No {reviewedFilter === "all" ? "reviewed emails" : reviewedFilter === "promoted" ? "promoted emails" : "kept non-enquiry emails"} yet.
                 </p>
               ) : (
-                reviewedRows.map((row) => (
+                filteredReviewedRows.map((row) => (
                   <button
                     key={row.id}
                     type="button"

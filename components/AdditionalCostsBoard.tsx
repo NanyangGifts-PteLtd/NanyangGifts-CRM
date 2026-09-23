@@ -116,6 +116,7 @@ const quickBooksBillsOnlyColumns: Column[] = [
   { key: "quickbooks_attachment_files", label: "Attached Files", width: 240 },
   { key: "bill_action", label: "Bill Action", width: 125 },
   { key: "created", label: "Date Created", width: 140 },
+  { key: "actions", label: "Delete", width: 96 },
 ];
 const allVoucherColumns = Array.from(
   new Map([...initialColumns, ...otherVoucherColumns, ...quickBooksBillsOnlyColumns].map((column) => [column.key, column])).values(),
@@ -1516,19 +1517,31 @@ export function AdditionalCostsBoard({
                         {new Date(row.created_at).toLocaleDateString("en-SG")}
                       </td>
                       <td data-voucher-col="actions" className="border-b border-slate-200 p-0 text-center">
-                        <button
-                          type="button"
-                          disabled={!canDelete(row) || deletingId === row.id}
-                          onClick={() => setPendingDelete(row)}
-                          title={
-                            canDelete(row)
-                              ? "Delete payment voucher and linked subitem"
-                              : "You can only edit payment vouchers for clients assigned to you"
-                          }
-                          className="inline-flex h-10 w-full items-center justify-center text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-30"
-                        >
-                          <Trash2 size={16} />
-                        </button>
+                        {group.id === "quickbooks_bills_only" ? (
+                          <button
+                            type="button"
+                            disabled={!canDelete(row) || deletingId === row.id}
+                            onClick={() => setPendingDelete(row)}
+                            title={canDelete(row) ? "Remove this row only; the QuickBooks Bill remains unchanged." : "Only admins, directors, and developers can delete QuickBooks-Bills-only rows."}
+                            className="inline-flex h-10 w-full items-center justify-center gap-1 bg-red-50 px-2 text-xs font-semibold text-red-600 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-30"
+                          >
+                            <Trash2 size={14} /> Delete
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            disabled={!canDelete(row) || deletingId === row.id}
+                            onClick={() => setPendingDelete(row)}
+                            title={
+                              canDelete(row)
+                                ? "Delete payment voucher and linked subitem"
+                                : "You can only edit payment vouchers for clients assigned to you"
+                            }
+                            className="inline-flex h-10 w-full items-center justify-center text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-30"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        )}
                       </td>
                     </tr>
                   );
@@ -2462,13 +2475,14 @@ export function AdditionalCostsBoard({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete payment voucher?</AlertDialogTitle>
+            <AlertDialogTitle>{pendingDelete?.voucher_group === "quickbooks_bills_only" ? "Delete QuickBooks Bill row?" : "Delete payment voucher?"}</AlertDialogTitle>
             <AlertDialogDescription>
-              This payment voucher and its linked CRM subitem will both be
-              deleted. This action cannot be undone.
+              {pendingDelete?.voucher_group === "quickbooks_bills_only"
+                ? `This removes only this row from the Payment Voucher board. The QuickBooks Bill${pendingDelete.quickbooks_invoice_number ? ` (${pendingDelete.quickbooks_invoice_number})` : ""} will not be deleted or changed in QuickBooks. Manage it directly in QuickBooks if needed. This action cannot be undone.`
+                : <>This payment voucher and its linked CRM subitem will both be deleted. This action cannot be undone.
               {pendingDelete && !/lalamove|easyparcel/i.test(pendingDelete.courier)
                 ? ` The QuickBooks Bill${pendingDelete.quickbooks_invoice_number ? ` (${pendingDelete.quickbooks_invoice_number})` : ""} is not deleted automatically; handle it directly in QuickBooks.`
-                : ""}
+                : ""}</>}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
