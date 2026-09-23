@@ -14,6 +14,7 @@ import {
   Users,
   UserRoundCog,
   ContactRound,
+  Factory,
   ReceiptText,
   MailSearch,
 } from "lucide-react";
@@ -29,6 +30,7 @@ export type SidePanel =
   | "roundrobin"
   | "team"
   | "customerprofiles"
+  | "supplierprofiles"
   | "useradmin"
   | "shipper"
   | "additionalcosts"
@@ -79,6 +81,11 @@ const navItems: {
     id: "customerprofiles",
     icon: <ContactRound size={17.5} />,
     label: "Customer Profiles",
+  },
+  {
+    id: "supplierprofiles",
+    icon: <Factory size={16.5} />,
+    label: "Supplier Profiles",
   },
   { id: "useradmin", icon: <UserRoundCog size={17.5} />, label: "User Admin" },
   {

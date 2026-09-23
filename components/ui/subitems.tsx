@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import type {
   ActivityEntry,
   Profile,
@@ -452,6 +452,43 @@ export function SubitemsTable({
   onOpenSubitemDetail,
   onPaymentRowsChanged,
 }: SubitemProps) {
+  const [blacklistedSupplierNames, setBlacklistedSupplierNames] = useState<
+    Set<string>
+  >(new Set());
+  const [supplierNames, setSupplierNames] = useState<string[]>([]);
+  useEffect(() => {
+    const load = async () => {
+      const response = await fetch("/api/supplier-profiles");
+      const result = await response.json();
+      if (response.ok) {
+        setSupplierNames(
+          (result.suppliers ?? [])
+            .map((supplier: { name?: string }) => String(supplier.name ?? ""))
+            .filter(Boolean),
+        );
+        setBlacklistedSupplierNames(
+          new Set(
+            (result.suppliers ?? [])
+              .filter(
+                (supplier: { is_blacklisted?: boolean }) =>
+                  supplier.is_blacklisted,
+              )
+              .map((supplier: { name?: string }) =>
+                String(supplier.name ?? "")
+                  .trim()
+                  .replace(/\s+/g, " ")
+                  .toLowerCase(),
+              )
+              .filter(Boolean),
+          ),
+        );
+      }
+    };
+    void load();
+    window.addEventListener("crm:supplier-profiles-updated", load);
+    return () =>
+      window.removeEventListener("crm:supplier-profiles-updated", load);
+  }, []);
   const [permissionNotice, setPermissionNotice] = useState<{
     left: number;
     top: number;
@@ -516,7 +553,7 @@ export function SubitemsTable({
   const hasReachedAwardedPhase = (subitem: Subitem) =>
     Boolean(
       subitem.statusOptionId &&
-        awardedOrLaterStatusIds.has(subitem.statusOptionId),
+      awardedOrLaterStatusIds.has(subitem.statusOptionId),
     );
   const paidPaymentOptionId = useMemo(
     () =>
@@ -1725,148 +1762,157 @@ export function SubitemsTable({
     }
   }
 
-  const renderNameCell = (sub: Subitem) => (
-    <div
-      draggable={
-        Boolean(onSubitemDragStart) &&
-        canEditSubitem(sub.id) &&
-        !isAdditionalCostSubitem(sub)
-      }
-      onDragStart={(event) => {
-        if ((event.target as HTMLElement).closest("[data-inline-editor]")) {
-          event.preventDefault();
-          return;
+  const renderNameCell = (sub: Subitem) => {
+    const supplierBlacklisted = blacklistedSupplierNames.has(
+      String(sub.supplier ?? "")
+        .trim()
+        .replace(/\s+/g, " ")
+        .toLowerCase(),
+    );
+
+    return (
+      <div
+        draggable={
+          Boolean(onSubitemDragStart) &&
+          canEditSubitem(sub.id) &&
+          !isAdditionalCostSubitem(sub)
         }
-        if (!canEditSubitem(sub.id) || isAdditionalCostSubitem(sub)) {
-          event.preventDefault();
-          return;
-        }
-        onSubitemDragStart?.(sub.id, event);
-      }}
-      onDragEnd={onSubitemDragEnd}
-      onClick={(event) => {
-        // The name cell opens its inline editor on click. Do not let that
-        // same click bubble into the row-level "open subitem" action.
-        if (
-          (event.target as HTMLElement).closest(
-            "input, button, textarea, select, [data-editable-cell]",
+        onDragStart={(event) => {
+          if ((event.target as HTMLElement).closest("[data-inline-editor]")) {
+            event.preventDefault();
+            return;
+          }
+          if (!canEditSubitem(sub.id) || isAdditionalCostSubitem(sub)) {
+            event.preventDefault();
+            return;
+          }
+          onSubitemDragStart?.(sub.id, event);
+        }}
+        onDragEnd={onSubitemDragEnd}
+        onClick={(event) => {
+          // The name cell opens its inline editor on click. Do not let that
+          // same click bubble into the row-level "open subitem" action.
+          if (
+            (event.target as HTMLElement).closest(
+              "input, button, textarea, select, [data-editable-cell]",
+            )
           )
-        )
-          return;
-        onOpenSubitemDetail?.(sub.id);
-      }}
-      className={`flex h-[30px] items-center gap-1 ${canEditSubitem(sub.id) ? "cursor-grab active:cursor-grabbing" : ""}`}
-    >
-      <span aria-hidden="true" className="w-2 shrink-0" />
-      <EditableCell
-        value={sub.name}
-        onChange={(v) => onUpdateSubitem(sub.id, { name: v })}
-        placeholder="Subitem name"
-        className="!justify-start"
-        readOnly={isAdditionalCostSubitem(sub)}
-      />
+            return;
+          onOpenSubitemDetail?.(sub.id);
+        }}
+        className={`flex h-[30px] items-center gap-1 ${supplierBlacklisted ? "bg-red-700 text-white" : ""} ${canEditSubitem(sub.id) ? "cursor-grab active:cursor-grabbing" : ""}`}
+      >
+        <span aria-hidden="true" className="w-2 shrink-0" />
+        <EditableCell
+          value={sub.name}
+          onChange={(v) => onUpdateSubitem(sub.id, { name: v })}
+          placeholder="Subitem name"
+          className={`!justify-start ${supplierBlacklisted ? "!w-full !bg-red-700 !text-white !hover:bg-red-800" : ""}`}
+          readOnly={isAdditionalCostSubitem(sub)}
+        />
 
-      {!isAdditionalCostSubitem(sub) && (
-        <div className="ml-auto flex items-center gap-1 shrink-0">
-          <button
-            type="button"
-            data-view-action
-            onClick={() => toggleClientTimelines(sub)}
-            className={`flex items-center justify-center rounded-sm border p-1 transition active:scale-95 ${
-              tableMode === "payment" && activeSubitemView(sub) === "timeline"
-                ? "border-[#7BCBD5] bg-[#7BCBD5] text-white"
-                : "border-teal-200 bg-transparent text-[#6db6bf] hover:bg-teal-100"
-            }`}
-            title="Timeline"
-          >
-            <Calendar size={15} />
-          </button>
+        {!isAdditionalCostSubitem(sub) && (
+          <div className="ml-auto flex items-center gap-1 shrink-0">
+            <button
+              type="button"
+              data-view-action
+              onClick={() => toggleClientTimelines(sub)}
+              className={`flex items-center justify-center rounded-sm border p-1 transition active:scale-95 ${
+                tableMode === "payment" && activeSubitemView(sub) === "timeline"
+                  ? "border-[#7BCBD5] bg-[#7BCBD5] text-white"
+                  : "border-teal-200 bg-transparent text-[#6db6bf] hover:bg-teal-100"
+              }`}
+              title="Timeline"
+            >
+              <Calendar size={15} />
+            </button>
 
-          <button
-            type="button"
-            data-view-action
-            onClick={togglePaymentView}
-            disabled={!hasPaymentEligibleSubitems}
-            className={`flex items-center justify-center rounded-sm border p-1 transition active:scale-95 ${
-              tableMode === "payment"
-                ? "border-[#f291b6] bg-[#f291b6] text-white"
-                : "border-pink-200 bg-transparent text-[#e87da6] hover:bg-pink-100"
-            }`}
-            title={
-              hasPaymentEligibleSubitems
-                ? "Payments"
-                : "No awarded subitems for payment columns"
-            }
-          >
-            <CreditCard size={15} />
-          </button>
+            <button
+              type="button"
+              data-view-action
+              onClick={togglePaymentView}
+              disabled={!hasPaymentEligibleSubitems}
+              className={`flex items-center justify-center rounded-sm border p-1 transition active:scale-95 ${
+                tableMode === "payment"
+                  ? "border-[#f291b6] bg-[#f291b6] text-white"
+                  : "border-pink-200 bg-transparent text-[#e87da6] hover:bg-pink-100"
+              }`}
+              title={
+                hasPaymentEligibleSubitems
+                  ? "Payments"
+                  : "No awarded subitems for payment columns"
+              }
+            >
+              <CreditCard size={15} />
+            </button>
 
-          <button
-            type="button"
-            data-view-action
-            onClick={() => toggleSubitemView(sub, "sample")}
-            className={`flex items-center justify-center rounded-sm border p-1 transition active:scale-95 ${
-              activeSubitemView(sub) === "sample"
-                ? "border-[#d5a5ec] bg-[#d5a5ec] text-white"
-                : "border-purple-200 bg-transparent text-[#ac7ec2] hover:bg-purple-100"
-            }`}
-            title="Samples"
-          >
-            <Package size={15} />
-          </button>
+            <button
+              type="button"
+              data-view-action
+              onClick={() => toggleSubitemView(sub, "sample")}
+              className={`flex items-center justify-center rounded-sm border p-1 transition active:scale-95 ${
+                activeSubitemView(sub) === "sample"
+                  ? "border-[#d5a5ec] bg-[#d5a5ec] text-white"
+                  : "border-purple-200 bg-transparent text-[#ac7ec2] hover:bg-purple-100"
+              }`}
+              title="Samples"
+            >
+              <Package size={15} />
+            </button>
 
-          <button
-            type="button"
-            data-view-action
-            onClick={() => setActivitySubitem(sub)}
-            className="flex items-center justify-center rounded-sm border border-cyan-200 p-1 text-cyan-500 transition hover:bg-cyan-50"
-            title="Activity log"
-          >
-            <Activity size={15} />
-          </button>
+            <button
+              type="button"
+              data-view-action
+              onClick={() => setActivitySubitem(sub)}
+              className="flex items-center justify-center rounded-sm border border-cyan-200 p-1 text-cyan-500 transition hover:bg-cyan-50"
+              title="Activity log"
+            >
+              <Activity size={15} />
+            </button>
 
-          {canAccessPush
-            ? (() => {
-                const wasPushed = pushedSubitemIds.has(sub.id);
-                return (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      void openPushPreview(sub.id);
-                    }}
-                    disabled={
-                      pushingSubitemId === sub.id ||
-                      preparingPushSubitemId === sub.id ||
-                      !canEditSubitem(sub.id)
-                    }
-                    className={`rounded px-2 py-1 text-[11px] font-medium transition disabled:cursor-not-allowed disabled:opacity-60 ${
-                      wasPushed
-                        ? "border-slate-200 bg-slate-100 text-slate-400 shadow-none"
-                        : "border border-teal-600 bg-teal-600 text-white shadow-sm hover:bg-teal-700"
-                    }`}
-                    title={
-                      !canEditSubitem(sub.id)
-                        ? subitemEditBlockMessage(sub.id)
+            {canAccessPush
+              ? (() => {
+                  const wasPushed = pushedSubitemIds.has(sub.id);
+                  return (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void openPushPreview(sub.id);
+                      }}
+                      disabled={
+                        pushingSubitemId === sub.id ||
+                        preparingPushSubitemId === sub.id ||
+                        !canEditSubitem(sub.id)
+                      }
+                      className={`rounded px-2 py-1 text-[11px] font-medium transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                        wasPushed
+                          ? "border-slate-200 bg-slate-100 text-slate-400 shadow-none"
+                          : "border border-teal-600 bg-teal-600 text-white shadow-sm hover:bg-teal-700"
+                      }`}
+                      title={
+                        !canEditSubitem(sub.id)
+                          ? subitemEditBlockMessage(sub.id)
+                          : wasPushed
+                            ? "Already pushed. Edit shipment details from the Shipper view."
+                            : "Push to shipper view"
+                      }
+                    >
+                      {pushingSubitemId === sub.id ||
+                      preparingPushSubitemId === sub.id
+                        ? "Preparing..."
                         : wasPushed
-                          ? "Already pushed. Edit shipment details from the Shipper view."
-                          : "Push to shipper view"
-                    }
-                  >
-                    {pushingSubitemId === sub.id ||
-                    preparingPushSubitemId === sub.id
-                      ? "Preparing..."
-                      : wasPushed
-                        ? "Pushed"
-                        : "Push"}
-                  </button>
-                );
-              })()
-            : null}
-        </div>
-      )}
-    </div>
-  );
+                          ? "Pushed"
+                          : "Push"}
+                    </button>
+                  );
+                })()
+              : null}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   const renderSubitemCell = (sub: Subitem, key: string) => {
     const additionalCostLinked = isAdditionalCostSubitem(sub);
@@ -1923,7 +1969,12 @@ export function SubitemsTable({
           <div className="overflow-hidden whitespace-nowrap text-ellipsis !text-center border-r border-[#D0D4E4] p-0 h-[33.1px] flex-shrink-0 transition transform active:scale-95 duration-150">
             <StatusBadge
               value={sub.localOverseas ?? ""}
-              onChange={(v, option) => onUpdateSubitem(sub.id, { localOverseas: v, localOverseasOptionId: option?.id ?? null })}
+              onChange={(v, option) =>
+                onUpdateSubitem(sub.id, {
+                  localOverseas: v,
+                  localOverseasOptionId: option?.id ?? null,
+                })
+              }
               options={localOverseasOptions}
               onAddOption={onAddLocalOverseas}
               onDeleteOption={onDeleteLocalOverseas}
@@ -1946,7 +1997,12 @@ export function SubitemsTable({
           <div className="overflow-hidden whitespace-nowrap text-ellipsis !text-center border-r border-[#D0D4E4] p-0 h-[33.1px] flex-shrink-0 transition transform active:scale-95 duration-150">
             <StatusBadge
               value={sub.status ?? ""}
-              onChange={(v, option) => onUpdateSubitem(sub.id, { status: v, statusOptionId: option?.id ?? null })}
+              onChange={(v, option) =>
+                onUpdateSubitem(sub.id, {
+                  status: v,
+                  statusOptionId: option?.id ?? null,
+                })
+              }
               options={subitemStatusOptions}
               onAddOption={onAddSubitemStatus}
               onDeleteOption={onDeleteSubitemStatus}
@@ -2003,7 +2059,12 @@ export function SubitemsTable({
           <div className="overflow-hidden whitespace-nowrap text-ellipsis !text-center border-r border-[#D0D4E4] p-0 h-[33.1px] flex-shrink-0 transition transform active:scale-95 duration-150">
             <StatusBadge
               value={sub.shipper ?? ""}
-              onChange={(v, option) => onUpdateSubitem(sub.id, { shipper: v, shipperOptionId: option?.id ?? null })}
+              onChange={(v, option) =>
+                onUpdateSubitem(sub.id, {
+                  shipper: v,
+                  shipperOptionId: option?.id ?? null,
+                })
+              }
               options={shipperOptions}
               onAddOption={onAddShipper}
               onDeleteOption={onDeleteShipper}
@@ -2022,13 +2083,36 @@ export function SubitemsTable({
           </div>
         );
       case "supplier":
+        const supplierBlacklisted = blacklistedSupplierNames.has(
+          String(sub.supplier ?? "")
+            .trim()
+            .replace(/\s+/g, " ")
+            .toLowerCase(),
+        );
         return (
-          <EditableCell
-            value={sub.supplier}
-            onChange={(v) => onUpdateSubitem(sub.id, { supplier: v })}
-            multiline
-            resizableMultiline
-          />
+          <div
+            className={
+              supplierBlacklisted
+                ? "h-full min-h-[33px] w-full bg-red-700"
+                : "h-full w-full"
+            }
+          >
+            <EditableCell
+              value={sub.supplier}
+              onChange={(v) => onUpdateSubitem(sub.id, { supplier: v })}
+              multiline
+              resizableMultiline
+              recommendations={supplierNames}
+              // Do not force height or important width here: this same class is
+              // applied to the expanded textarea, whose dimensions must remain
+              // under the user's resize control.
+              className={
+                supplierBlacklisted
+                  ? "w-full !bg-red-700 !text-white !hover:bg-red-800"
+                  : ""
+              }
+            />
+          </div>
         );
       case "cost":
         return (
@@ -2044,7 +2128,12 @@ export function SubitemsTable({
           <div className="overflow-hidden whitespace-nowrap text-ellipsis !text-center border-r border-[#D0D4E4] p-0 h-[33.1px] flex-shrink-0 transition transform active:scale-95 duration-150">
             <StatusBadge
               value={sub.currency ?? ""}
-              onChange={(v, option) => onUpdateSubitem(sub.id, { currency: v, currencyOptionId: option?.id ?? null })}
+              onChange={(v, option) =>
+                onUpdateSubitem(sub.id, {
+                  currency: v,
+                  currencyOptionId: option?.id ?? null,
+                })
+              }
               options={currencyOptions}
               onAddOption={onAddCurrency}
               onDeleteOption={onDeleteCurrency}
@@ -2239,8 +2328,8 @@ export function SubitemsTable({
       paymentStatusOptions,
     );
     const paymentStatus =
-      (Boolean(resolvedOption.id) &&
-        sub.paymentStatusOptionId === resolvedOption.id)
+      Boolean(resolvedOption.id) &&
+      sub.paymentStatusOptionId === resolvedOption.id
         ? resolvedOption.value
         : calculatedPaymentStatus;
     const paymentStatusLabelOptions = paymentStatusOptions.filter(
@@ -2263,7 +2352,12 @@ export function SubitemsTable({
           <div className="overflow-hidden whitespace-nowrap text-ellipsis !text-center border-r border-[#D0D4E4] p-0 h-[33.1px] flex-shrink-0 transition transform active:scale-95 duration-150">
             <StatusBadge
               value={sub.payment ?? ""}
-              onChange={(v, option) => onUpdateSubitem(sub.id, { payment: v, paymentOptionId: option?.id ?? null })}
+              onChange={(v, option) =>
+                onUpdateSubitem(sub.id, {
+                  payment: v,
+                  paymentOptionId: option?.id ?? null,
+                })
+              }
               options={paymentOptions}
               onAddOption={onAddPayment}
               onDeleteOption={onDeletePayment}
@@ -2287,7 +2381,12 @@ export function SubitemsTable({
           <div className="overflow-hidden whitespace-nowrap text-ellipsis !text-center border-r border-[#D0D4E4] p-0 h-[33.1px] flex-shrink-0 transition transform active:scale-95 duration-150">
             <StatusBadge
               value={sub.status ?? ""}
-              onChange={(v, option) => onUpdateSubitem(sub.id, { status: v, statusOptionId: option?.id ?? null })}
+              onChange={(v, option) =>
+                onUpdateSubitem(sub.id, {
+                  status: v,
+                  statusOptionId: option?.id ?? null,
+                })
+              }
               options={subitemStatusOptions}
               onAddOption={onAddSubitemStatus}
               onDeleteOption={onDeleteSubitemStatus}
@@ -2322,7 +2421,10 @@ export function SubitemsTable({
                   sub.paymentStatusOptionId === resolvedOption.id &&
                   canResolvePayment
                 ) {
-                  onUpdateSubitem(sub.id, { paymentStatus: "", paymentStatusOptionId: null });
+                  onUpdateSubitem(sub.id, {
+                    paymentStatus: "",
+                    paymentStatusOptionId: null,
+                  });
                 } else if (option?.id === resolvedOption.id) {
                   toast.error(
                     "Only admins, directors, and developers can resolve a payment.",
@@ -2365,7 +2467,12 @@ export function SubitemsTable({
           <div className="overflow-hidden whitespace-nowrap text-ellipsis !text-center border-r border-[#D0D4E4] p-0 h-[33.1px] flex-shrink-0 transition transform active:scale-95 duration-150">
             <StatusBadge
               value={sub.shipper ?? ""}
-              onChange={(v, option) => onUpdateSubitem(sub.id, { shipper: v, shipperOptionId: option?.id ?? null })}
+              onChange={(v, option) =>
+                onUpdateSubitem(sub.id, {
+                  shipper: v,
+                  shipperOptionId: option?.id ?? null,
+                })
+              }
               options={shipperOptions}
               onAddOption={onAddShipper}
               onDeleteOption={onDeleteShipper}
@@ -2400,13 +2507,35 @@ export function SubitemsTable({
           />
         );
       case "supplier":
+        const supplierBlacklisted = blacklistedSupplierNames.has(
+          String(sub.supplier ?? "")
+            .trim()
+            .replace(/\s+/g, " ")
+            .toLowerCase(),
+        );
         return (
-          <EditableCell
-            value={sub.supplier}
-            onChange={(v) => onUpdateSubitem(sub.id, { supplier: v })}
-            multiline
-            resizableMultiline
-          />
+          <div
+            className={
+              supplierBlacklisted
+                ? "h-full min-h-[33px] w-full bg-red-700"
+                : "h-full w-full"
+            }
+          >
+            <EditableCell
+              value={sub.supplier}
+              onChange={(v) => onUpdateSubitem(sub.id, { supplier: v })}
+              multiline
+              resizableMultiline
+              recommendations={supplierNames}
+              // See the standard subitem supplier cell above. The red state
+              // must not override the resizable textarea's width or height.
+              className={
+                supplierBlacklisted
+                  ? "w-full !bg-red-700 !text-white !hover:bg-red-800"
+                  : ""
+              }
+            />
+          </div>
         );
       case "description":
         return (
@@ -2423,7 +2552,12 @@ export function SubitemsTable({
           <div className="overflow-hidden whitespace-nowrap text-ellipsis !text-center border-r border-[#D0D4E4] p-0 h-[33.1px] flex-shrink-0 transition transform active:scale-95 duration-150">
             <StatusBadge
               value={sub.currency ?? ""}
-              onChange={(v, option) => onUpdateSubitem(sub.id, { currency: v, currencyOptionId: option?.id ?? null })}
+              onChange={(v, option) =>
+                onUpdateSubitem(sub.id, {
+                  currency: v,
+                  currencyOptionId: option?.id ?? null,
+                })
+              }
               options={currencyOptions}
               onAddOption={onAddCurrency}
               onDeleteOption={onDeleteCurrency}
@@ -2489,7 +2623,12 @@ export function SubitemsTable({
           <div className="overflow-hidden whitespace-nowrap text-ellipsis !text-center border-r border-[#D0D4E4] p-0 h-[33.1px] flex-shrink-0 transition transform active:scale-95 duration-150">
             <StatusBadge
               value={sub.modeOfPayment ?? ""}
-              onChange={(v, option) => onUpdateSubitem(sub.id, { modeOfPayment: v, modeOfPaymentOptionId: option?.id ?? null })}
+              onChange={(v, option) =>
+                onUpdateSubitem(sub.id, {
+                  modeOfPayment: v,
+                  modeOfPaymentOptionId: option?.id ?? null,
+                })
+              }
               options={modeOfPaymentOptions}
               onAddOption={onAddModeOfPayment}
               onDeleteOption={onDeleteModeOfPayment}
@@ -3487,17 +3626,16 @@ export function SubitemsTable({
                       checked={selectedSubitemIds.includes(sub.id)}
                       onClick={(e) => {
                         e.stopPropagation();
-                        if (!clientIsSelected)
-                          onToggleSubitemSelection(sub.id);
+                        if (!clientIsSelected) onToggleSubitemSelection(sub.id);
                       }}
                       onChange={() => {}}
                       disabled={clientIsSelected}
                       title={
                         clientIsSelected
-                            ? "Clients and subitems cannot be selected together"
-                            : isAdditionalCostSubitem(sub)
-                              ? "Select Payment Voucher subitem (bulk actions are unavailable)"
-                              : "Select subitem"
+                          ? "Clients and subitems cannot be selected together"
+                          : isAdditionalCostSubitem(sub)
+                            ? "Select Payment Voucher subitem (bulk actions are unavailable)"
+                            : "Select subitem"
                       }
                       className={`h-3 w-3 rounded border border-slate-400 bg-white accent-[#7BCBD5] ${clientIsSelected ? "cursor-not-allowed opacity-40" : "cursor-pointer"}`}
                     />
@@ -3508,7 +3646,7 @@ export function SubitemsTable({
                       key={col.key}
                       className={`align-middle border-r border-[#D0D4E4] p-0 ${
                         ["name", "description", "supplier"].includes(col.key)
-                        ? "overflow-visible relative z-20 focus-within:z-[80]"
+                          ? "overflow-visible relative z-20 focus-within:z-[80]"
                           : "overflow-hidden"
                       } ${
                         (tableMode === "payment"
@@ -3580,235 +3718,226 @@ export function SubitemsTable({
                   </td>
                 </tr>
 
-                {tableMode === "payment" &&
-                  hasReachedAwardedPhase(sub) && (
-                    <tr className="bg-slate-50/70">
-                      <td
-                        colSpan={totalColSpan}
-                        className="border-b border-r border-[#D0D4E4] bg-[#fafcff] px-9 py-3"
-                      >
-                        <div className="max-w-[980px] overflow-hidden rounded-md border border-[#D0D4E4] bg-white text-xs text-[#334155] shadow-sm">
-                          <div className="grid grid-cols-[52px_minmax(155px,1fr)_minmax(170px,1fr)_150px_minmax(185px,1fr)_36px] border-b border-[#D0D4E4] bg-[#f4f7fb] text-[12.6px] font-semibold text-gray-500">
-                            <span className="px-3 py-2">#</span>
-                            <span className="border-l border-[#D0D4E4] px-3 py-2">
-                              Sub-amount
-                            </span>
-                            <span className="border-l border-[#D0D4E4] px-3 py-2">
-                              Order number
-                            </span>
-                            <span className="border-l border-[#D0D4E4] px-3 py-2">
-                              Payment done?
-                            </span>
-                            <span className="border-l border-[#D0D4E4] px-3 py-2">
-                              Mode of payment
-                            </span>
-                            <span className="border-l border-slate-200" />
-                          </div>
-                          {(sub.paymentRows ?? []).map(
-                            (paymentRow: PaymentRow, paymentIndex) => (
-                              <div
-                                key={paymentRow.id}
-                                className="grid grid-cols-[52px_minmax(155px,1fr)_minmax(170px,1fr)_150px_minmax(185px,1fr)_36px] border-b border-[#e2e8f0] last:border-b-0"
-                              >
-                                <div className="flex items-center justify-center px-3 py-2 font-medium text-slate-500">
-                                  {paymentIndex + 1}
-                                </div>
-                                <div className="border-l border-[#e2e8f0]">
-                                  <EditableCell
-                                    readOnly={!canEditSubitem(sub.id)}
-                                    value={paymentRow.amount}
-                                    type="number"
-                                    onChange={(value) =>
-                                      void updateSubitemPaymentRow(
-                                        sub.id,
-                                        paymentRow.id,
-                                        { amount: value },
-                                      ).then((updated) =>
-                                        onPaymentRowsChanged?.(
-                                          sub.id,
-                                          sub.paymentRows.map((row) =>
-                                            row.id === updated.id
-                                              ? updated
-                                              : row,
-                                          ),
-                                        ),
-                                      )
-                                    }
-                                    className="!justify-start px-3 py-2"
-                                  />
-                                </div>
-                                <div className="border-l border-[#e2e8f0]">
-                                  <EditableCell
-                                    readOnly={!canEditSubitem(sub.id)}
-                                    value={paymentRow.orderNumber}
-                                    onChange={(value) =>
-                                      void updateSubitemPaymentRow(
-                                        sub.id,
-                                        paymentRow.id,
-                                        { orderNumber: value },
-                                      ).then((updated) =>
-                                        onPaymentRowsChanged?.(
-                                          sub.id,
-                                          sub.paymentRows.map((row) =>
-                                            row.id === updated.id
-                                              ? updated
-                                              : row,
-                                          ),
-                                        ),
-                                      )
-                                    }
-                                    className="!justify-start px-3 py-2"
-                                  />
-                                </div>
-                                <div className="border-l border-[#e2e8f0] overflow-hidden">
-                                  <StatusBadge
-                                    value={
-                                      paymentRow.paymentReceivedLabel ??
-                                      (paymentRow.paymentReceived === null
-                                        ? ""
-                                        : paymentRow.paymentReceived
-                                          ? "Yes"
-                                          : "No")
-                                    }
-                                    onChange={(value) =>
-                                      void updateSubitemPaymentRow(
-                                        sub.id,
-                                        paymentRow.id,
-                                        { paymentReceivedLabel: value },
-                                      ).then((updated) =>
-                                        onPaymentRowsChanged?.(
-                                          sub.id,
-                                          sub.paymentRows.map((row) =>
-                                            row.id === updated.id
-                                              ? updated
-                                              : row,
-                                          ),
-                                        ),
-                                      )
-                                    }
-                                    options={paymentReceivedOptions}
-                                    onAddOption={onAddPaymentReceived}
-                                    onDeleteOption={onDeletePaymentReceived}
-                                    onUpdateOptionColor={(name, color) =>
-                                      onUpdateOptionColor?.(
-                                        "payment_received",
-                                        name,
-                                        color,
-                                      )
-                                    }
-                                    onRenameOption={(oldName, newName) =>
-                                      onRenameOption?.(
-                                        "payment_received",
-                                        oldName,
-                                        newName,
-                                      )
-                                    }
-                                    onReorderOptions={(values) =>
-                                      onReorderOptions?.(
-                                        "payment_received",
-                                        values,
-                                      )
-                                    }
-                                    manageLabel="payment received"
-                                    small
-                                    readOnly={!canEditSubitem(sub.id)}
-                                  />
-                                </div>
-                                <div className="border-l border-[#e2e8f0] overflow-hidden">
-                                  <StatusBadge
-                                    value={paymentRow.modeOfPayment}
-                                    onChange={(value) =>
-                                      void updateSubitemPaymentRow(
-                                        sub.id,
-                                        paymentRow.id,
-                                        { modeOfPayment: value },
-                                      ).then((updated) =>
-                                        onPaymentRowsChanged?.(
-                                          sub.id,
-                                          sub.paymentRows.map((row) =>
-                                            row.id === updated.id
-                                              ? updated
-                                              : row,
-                                          ),
-                                        ),
-                                      )
-                                    }
-                                    options={modeOfPaymentOptions}
-                                    onAddOption={onAddModeOfPayment}
-                                    onDeleteOption={onDeleteModeOfPayment}
-                                    onUpdateOptionColor={(name, color) =>
-                                      onUpdateOptionColor?.(
-                                        "mode_of_payment",
-                                        name,
-                                        color,
-                                      )
-                                    }
-                                    onRenameOption={(oldName, newName) =>
-                                      onRenameOption?.(
-                                        "mode_of_payment",
-                                        oldName,
-                                        newName,
-                                      )
-                                    }
-                                    onReorderOptions={(values) =>
-                                      onReorderOptions?.(
-                                        "mode_of_payment",
-                                        values,
-                                      )
-                                    }
-                                    manageLabel="mode of payment"
-                                    sectionCount={3}
-                                    small
-                                    readOnly={!canEditSubitem(sub.id)}
-                                  />
-                                </div>
-                                <button
-                                  type="button"
-                                  disabled={!canEditSubitem(sub.id)}
-                                  onClick={() => {
-                                    if (
-                                      window.confirm("Remove this payment row?")
-                                    )
-                                      void deleteSubitemPaymentRow(
-                                        sub.id,
-                                        paymentRow.id,
-                                      ).then(() =>
-                                        onPaymentRowsChanged?.(
-                                          sub.id,
-                                          sub.paymentRows.filter(
-                                            (row) => row.id !== paymentRow.id,
-                                          ),
-                                        ),
-                                      );
-                                  }}
-                                  className="border-l border-[#e2e8f0] text-slate-300 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-40"
-                                  title="Remove payment row"
-                                >
-                                  <Trash2 size={15} className="mx-auto" />
-                                </button>
-                              </div>
-                            ),
-                          )}
-                          <button
-                            type="button"
-                            disabled={!canEditSubitem(sub.id)}
-                            onClick={() =>
-                              void createSubitemPaymentRow(sub.id).then(
-                                (created) =>
-                                  onPaymentRowsChanged?.(sub.id, [
-                                    ...sub.paymentRows,
-                                    created,
-                                  ]),
-                              )
-                            }
-                            className="flex w-full items-center gap-1.5 px-3 py-2 text-left text-xs font-medium text-[#318d98] hover:bg-[#eefbfc] disabled:cursor-not-allowed disabled:opacity-50"
-                          >
-                            <Plus size={15} /> Add payment
-                          </button>
+                {tableMode === "payment" && hasReachedAwardedPhase(sub) && (
+                  <tr className="bg-slate-50/70">
+                    <td
+                      colSpan={totalColSpan}
+                      className="border-b border-r border-[#D0D4E4] bg-[#fafcff] px-9 py-3"
+                    >
+                      <div className="max-w-[980px] overflow-hidden rounded-md border border-[#D0D4E4] bg-white text-xs text-[#334155] shadow-sm">
+                        <div className="grid grid-cols-[52px_minmax(155px,1fr)_minmax(170px,1fr)_150px_minmax(185px,1fr)_36px] border-b border-[#D0D4E4] bg-[#f4f7fb] text-[12.6px] font-semibold text-gray-500">
+                          <span className="px-3 py-2">#</span>
+                          <span className="border-l border-[#D0D4E4] px-3 py-2">
+                            Sub-amount
+                          </span>
+                          <span className="border-l border-[#D0D4E4] px-3 py-2">
+                            Order number
+                          </span>
+                          <span className="border-l border-[#D0D4E4] px-3 py-2">
+                            Payment done?
+                          </span>
+                          <span className="border-l border-[#D0D4E4] px-3 py-2">
+                            Mode of payment
+                          </span>
+                          <span className="border-l border-slate-200" />
                         </div>
-                      </td>
-                    </tr>
-                  )}
+                        {(sub.paymentRows ?? []).map(
+                          (paymentRow: PaymentRow, paymentIndex) => (
+                            <div
+                              key={paymentRow.id}
+                              className="grid grid-cols-[52px_minmax(155px,1fr)_minmax(170px,1fr)_150px_minmax(185px,1fr)_36px] border-b border-[#e2e8f0] last:border-b-0"
+                            >
+                              <div className="flex items-center justify-center px-3 py-2 font-medium text-slate-500">
+                                {paymentIndex + 1}
+                              </div>
+                              <div className="border-l border-[#e2e8f0]">
+                                <EditableCell
+                                  readOnly={!canEditSubitem(sub.id)}
+                                  value={paymentRow.amount}
+                                  type="number"
+                                  onChange={(value) =>
+                                    void updateSubitemPaymentRow(
+                                      sub.id,
+                                      paymentRow.id,
+                                      { amount: value },
+                                    ).then((updated) =>
+                                      onPaymentRowsChanged?.(
+                                        sub.id,
+                                        sub.paymentRows.map((row) =>
+                                          row.id === updated.id ? updated : row,
+                                        ),
+                                      ),
+                                    )
+                                  }
+                                  className="!justify-start px-3 py-2"
+                                />
+                              </div>
+                              <div className="border-l border-[#e2e8f0]">
+                                <EditableCell
+                                  readOnly={!canEditSubitem(sub.id)}
+                                  value={paymentRow.orderNumber}
+                                  onChange={(value) =>
+                                    void updateSubitemPaymentRow(
+                                      sub.id,
+                                      paymentRow.id,
+                                      { orderNumber: value },
+                                    ).then((updated) =>
+                                      onPaymentRowsChanged?.(
+                                        sub.id,
+                                        sub.paymentRows.map((row) =>
+                                          row.id === updated.id ? updated : row,
+                                        ),
+                                      ),
+                                    )
+                                  }
+                                  className="!justify-start px-3 py-2"
+                                />
+                              </div>
+                              <div className="border-l border-[#e2e8f0] overflow-hidden">
+                                <StatusBadge
+                                  value={
+                                    paymentRow.paymentReceivedLabel ??
+                                    (paymentRow.paymentReceived === null
+                                      ? ""
+                                      : paymentRow.paymentReceived
+                                        ? "Yes"
+                                        : "No")
+                                  }
+                                  onChange={(value) =>
+                                    void updateSubitemPaymentRow(
+                                      sub.id,
+                                      paymentRow.id,
+                                      { paymentReceivedLabel: value },
+                                    ).then((updated) =>
+                                      onPaymentRowsChanged?.(
+                                        sub.id,
+                                        sub.paymentRows.map((row) =>
+                                          row.id === updated.id ? updated : row,
+                                        ),
+                                      ),
+                                    )
+                                  }
+                                  options={paymentReceivedOptions}
+                                  onAddOption={onAddPaymentReceived}
+                                  onDeleteOption={onDeletePaymentReceived}
+                                  onUpdateOptionColor={(name, color) =>
+                                    onUpdateOptionColor?.(
+                                      "payment_received",
+                                      name,
+                                      color,
+                                    )
+                                  }
+                                  onRenameOption={(oldName, newName) =>
+                                    onRenameOption?.(
+                                      "payment_received",
+                                      oldName,
+                                      newName,
+                                    )
+                                  }
+                                  onReorderOptions={(values) =>
+                                    onReorderOptions?.(
+                                      "payment_received",
+                                      values,
+                                    )
+                                  }
+                                  manageLabel="payment received"
+                                  small
+                                  readOnly={!canEditSubitem(sub.id)}
+                                />
+                              </div>
+                              <div className="border-l border-[#e2e8f0] overflow-hidden">
+                                <StatusBadge
+                                  value={paymentRow.modeOfPayment}
+                                  onChange={(value) =>
+                                    void updateSubitemPaymentRow(
+                                      sub.id,
+                                      paymentRow.id,
+                                      { modeOfPayment: value },
+                                    ).then((updated) =>
+                                      onPaymentRowsChanged?.(
+                                        sub.id,
+                                        sub.paymentRows.map((row) =>
+                                          row.id === updated.id ? updated : row,
+                                        ),
+                                      ),
+                                    )
+                                  }
+                                  options={modeOfPaymentOptions}
+                                  onAddOption={onAddModeOfPayment}
+                                  onDeleteOption={onDeleteModeOfPayment}
+                                  onUpdateOptionColor={(name, color) =>
+                                    onUpdateOptionColor?.(
+                                      "mode_of_payment",
+                                      name,
+                                      color,
+                                    )
+                                  }
+                                  onRenameOption={(oldName, newName) =>
+                                    onRenameOption?.(
+                                      "mode_of_payment",
+                                      oldName,
+                                      newName,
+                                    )
+                                  }
+                                  onReorderOptions={(values) =>
+                                    onReorderOptions?.(
+                                      "mode_of_payment",
+                                      values,
+                                    )
+                                  }
+                                  manageLabel="mode of payment"
+                                  sectionCount={3}
+                                  small
+                                  readOnly={!canEditSubitem(sub.id)}
+                                />
+                              </div>
+                              <button
+                                type="button"
+                                disabled={!canEditSubitem(sub.id)}
+                                onClick={() => {
+                                  if (
+                                    window.confirm("Remove this payment row?")
+                                  )
+                                    void deleteSubitemPaymentRow(
+                                      sub.id,
+                                      paymentRow.id,
+                                    ).then(() =>
+                                      onPaymentRowsChanged?.(
+                                        sub.id,
+                                        sub.paymentRows.filter(
+                                          (row) => row.id !== paymentRow.id,
+                                        ),
+                                      ),
+                                    );
+                                }}
+                                className="border-l border-[#e2e8f0] text-slate-300 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-40"
+                                title="Remove payment row"
+                              >
+                                <Trash2 size={15} className="mx-auto" />
+                              </button>
+                            </div>
+                          ),
+                        )}
+                        <button
+                          type="button"
+                          disabled={!canEditSubitem(sub.id)}
+                          onClick={() =>
+                            void createSubitemPaymentRow(sub.id).then(
+                              (created) =>
+                                onPaymentRowsChanged?.(sub.id, [
+                                  ...sub.paymentRows,
+                                  created,
+                                ]),
+                            )
+                          }
+                          className="flex w-full items-center gap-1.5 px-3 py-2 text-left text-xs font-medium text-[#318d98] hover:bg-[#eefbfc] disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          <Plus size={15} /> Add payment
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                )}
 
                 {tableMode === "payment" &&
                   activeSubitemView(sub) === "timeline" &&

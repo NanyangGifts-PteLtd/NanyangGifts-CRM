@@ -24,6 +24,7 @@ import { fetchAllSubitemAssignees } from "@/components/CRMBoard";
 import { TeamPanel } from "@/components/TeamPanel";
 import { UserAdminPanel } from "@/components/UserAdminPanel";
 import { CustomerProfilesPanel } from "@/components/CustomerProfilesPanel";
+import { SupplierProfilesPanel } from "@/components/SupplierProfilesPanel";
 import { AdditionalCostsBoard } from "@/components/AdditionalCostsBoard";
 import { EmailReviewPanel } from "@/components/EmailReviewPanel";
 import { WorkingCalendarPanel } from "@/components/WorkingCalendarPanel";
@@ -536,6 +537,9 @@ export default function Page() {
             }}
           />
         );
+
+      case "supplierprofiles":
+        return <SupplierProfilesPanel />;
 
       case "useradmin":
         return currentUserRole === "director" || currentUserRole === "dev" ? (

@@ -946,11 +946,13 @@ export async function createClientRow(
 
 async function resolveSystemOption(groupCode: string, systemKey: string) {
   const prefix = `${groupCode}_`;
-  const candidates = [...new Set([
-    systemKey,
-    systemKey.startsWith(prefix) ? systemKey.slice(prefix.length) : systemKey,
-    systemKey.startsWith(prefix) ? systemKey : `${prefix}${systemKey}`,
-  ])];
+  const candidates = [
+    ...new Set([
+      systemKey,
+      systemKey.startsWith(prefix) ? systemKey.slice(prefix.length) : systemKey,
+      systemKey.startsWith(prefix) ? systemKey : `${prefix}${systemKey}`,
+    ]),
+  ];
   const { data, error } = await supabase
     .from("option_values")
     .select("id, value, system_key, option_groups!inner(code)")
@@ -958,7 +960,8 @@ async function resolveSystemOption(groupCode: string, systemKey: string) {
     .in("system_key", candidates);
   if (error) throw error;
 
-  const option = (data ?? []).find((item) => item.system_key === systemKey) ?? data?.[0];
+  const option =
+    (data ?? []).find((item) => item.system_key === systemKey) ?? data?.[0];
 
   if (!option)
     throw new Error(
@@ -993,7 +996,10 @@ async function resolveOptionById(groupCode: string, optionId: string) {
     .eq("option_groups.code", groupCode)
     .maybeSingle();
   if (error) throw error;
-  if (!data) throw new Error(`The selected ${groupCode.replaceAll("_", " ")} label is no longer available.`);
+  if (!data)
+    throw new Error(
+      `The selected ${groupCode.replaceAll("_", " ")} label is no longer available.`,
+    );
   return { id: data.id, value: data.value };
 }
 
@@ -1039,25 +1045,53 @@ export async function updateClientRow(
   delete mapped.groupId;
 
   const clientLabelFields = [
-    ["replyStatus", "reply_status", "reply_status_option_id", "reply_status", "replyStatusOptionId"],
+    [
+      "replyStatus",
+      "reply_status",
+      "reply_status_option_id",
+      "reply_status",
+      "replyStatusOptionId",
+    ],
     ["status", "status", "status_option_id", "client_status", "statusOptionId"],
     ["channel", "channel", "channel_option_id", "channel", "channelOptionId"],
-    ["importance", "importance", "importance_option_id", "importance", "importanceOptionId"],
-    ["progress", "progress", "progress_option_id", "progress", "progressOptionId"],
+    [
+      "importance",
+      "importance",
+      "importance_option_id",
+      "importance",
+      "importanceOptionId",
+    ],
+    [
+      "progress",
+      "progress",
+      "progress_option_id",
+      "progress",
+      "progressOptionId",
+    ],
   ] as const;
   const clientOptionIds: Record<string, string | null> = {};
-  for (const [modelKey, , idColumn, groupCode, modelIdKey] of clientLabelFields) {
+  for (const [
+    modelKey,
+    ,
+    idColumn,
+    groupCode,
+    modelIdKey,
+  ] of clientLabelFields) {
     const explicitId = nextUpdates[modelIdKey];
     const value = nextUpdates[modelKey];
     if (explicitId === undefined && value === undefined) continue;
-    const option = explicitId !== undefined
-      ? await resolveOptionById(groupCode, String(explicitId ?? ""))
-      : null;
+    const option =
+      explicitId !== undefined
+        ? await resolveOptionById(groupCode, String(explicitId ?? ""))
+        : null;
     if (option) {
       (nextUpdates as Record<string, unknown>)[modelKey] = option.value;
       clientOptionIds[idColumn] = option.id;
     } else {
-      clientOptionIds[idColumn] = await resolveOptionId(groupCode, String(value ?? ""));
+      clientOptionIds[idColumn] = await resolveOptionId(
+        groupCode,
+        String(value ?? ""),
+      );
     }
   }
   if (
@@ -1813,23 +1847,47 @@ export async function updateSubitemRow(
     ["shipper", "shipper_option_id", "shipper", "shipperOptionId"],
     ["currency", "currency_option_id", "currency", "currencyOptionId"],
     ["payment", "payment_option_id", "payment", "paymentOptionId"],
-    ["paymentStatus", "payment_status_option_id", "payment_status", "paymentStatusOptionId"],
-    ["modeOfPayment", "mode_of_payment_option_id", "mode_of_payment", "modeOfPaymentOptionId"],
-    ["localOverseas", "local_overseas_option_id", "local_overseas", "localOverseasOptionId"],
+    [
+      "paymentStatus",
+      "payment_status_option_id",
+      "payment_status",
+      "paymentStatusOptionId",
+    ],
+    [
+      "modeOfPayment",
+      "mode_of_payment_option_id",
+      "mode_of_payment",
+      "modeOfPaymentOptionId",
+    ],
+    [
+      "localOverseas",
+      "local_overseas_option_id",
+      "local_overseas",
+      "localOverseasOptionId",
+    ],
   ] as const;
   const subitemOptionIds: Record<string, string | null> = {};
-  for (const [modelKey, idColumn, groupCode, modelIdKey] of subitemLabelFields) {
+  for (const [
+    modelKey,
+    idColumn,
+    groupCode,
+    modelIdKey,
+  ] of subitemLabelFields) {
     const explicitId = nextUpdates[modelIdKey];
     const value = nextUpdates[modelKey];
     if (explicitId === undefined && value === undefined) continue;
-    const option = explicitId !== undefined
-      ? await resolveOptionById(groupCode, String(explicitId ?? ""))
-      : null;
+    const option =
+      explicitId !== undefined
+        ? await resolveOptionById(groupCode, String(explicitId ?? ""))
+        : null;
     if (option) {
       (nextUpdates as Record<string, unknown>)[modelKey] = option.value;
       subitemOptionIds[idColumn] = option.id;
     } else {
-      subitemOptionIds[idColumn] = await resolveOptionId(groupCode, String(value ?? ""));
+      subitemOptionIds[idColumn] = await resolveOptionId(
+        groupCode,
+        String(value ?? ""),
+      );
     }
   }
 
@@ -1984,6 +2042,124 @@ export async function updateSubitemRow(
     .eq("id", subitemId);
 
   if (error) throw error;
+
+  // Supplier profiles are linked by their stable ID. The displayed supplier
+  // text remains on the subitem for board compatibility, while renames and
+  // profile lists can reliably follow this link.
+  if (nextUpdates.supplier !== undefined) {
+    const supplierName = String(nextUpdates.supplier ?? "").trim();
+    if (!supplierName) {
+      const { error: unlinkError } = await supabase
+        .from("subitems")
+        .update({ supplier_profile_id: null })
+        .eq("id", subitemId);
+      if (unlinkError) throw unlinkError;
+    } else {
+      const normalizedName = supplierName.replace(/\s+/g, " ").toLowerCase();
+      let { data: supplier, error: supplierError } = await supabase
+        .from("supplier_profiles")
+        .select("id")
+        .eq("normalized_name", normalizedName)
+        .maybeSingle();
+      if (supplierError) throw supplierError;
+      if (!supplier) {
+        const created = await supabase
+          .from("supplier_profiles")
+          .insert({ name: supplierName })
+          .select("id")
+          .maybeSingle();
+        if (created.error && created.error.code !== "23505")
+          throw created.error;
+        supplier = created.data;
+        if (!supplier) {
+          const retry = await supabase
+            .from("supplier_profiles")
+            .select("id")
+            .eq("normalized_name", normalizedName)
+            .maybeSingle();
+          if (retry.error || !retry.data)
+            throw (
+              retry.error ?? new Error("Could not create supplier profile.")
+            );
+          supplier = retry.data;
+        }
+      }
+      const { error: linkError } = await supabase
+        .from("subitems")
+        .update({ supplier_profile_id: supplier.id })
+        .eq("id", subitemId);
+      if (linkError) throw linkError;
+
+      // Re-adding or editing a Board subitem makes the corresponding entry
+      // visible again in its Supplier Profile's managed product list.
+      const productName = String(
+        nextUpdates.name ?? existing.name ?? "",
+      ).trim();
+      if (productName) {
+        const normalizedProductName = productName
+          .replace(/\s+/g, " ")
+          .toLowerCase();
+        const { data: product, error: productLookupError } = await supabase
+          .from("supplier_profile_products")
+          .select("id")
+          .eq("supplier_profile_id", supplier.id)
+          .eq("normalized_name", normalizedProductName)
+          .maybeSingle();
+        if (productLookupError) throw productLookupError;
+        const { error: productError } = product
+          ? await supabase
+              .from("supplier_profile_products")
+              .update({
+                name: productName,
+                is_hidden: false,
+                updated_at: new Date().toISOString(),
+              })
+              .eq("id", product.id)
+          : await supabase
+              .from("supplier_profile_products")
+              .insert({ supplier_profile_id: supplier.id, name: productName });
+        if (productError) throw productError;
+      }
+    }
+  }
+
+  // A renamed Board subitem also belongs in the profile catalogue, even when
+  // its Supplier field itself was not edited in the same save.
+  if (
+    nextUpdates.supplier === undefined &&
+    nextUpdates.name !== undefined &&
+    existing.supplier_profile_id
+  ) {
+    const productName = String(nextUpdates.name ?? "").trim();
+    if (productName) {
+      const normalizedProductName = productName
+        .replace(/\s+/g, " ")
+        .toLowerCase();
+      const { data: product, error: productLookupError } = await supabase
+        .from("supplier_profile_products")
+        .select("id")
+        .eq("supplier_profile_id", existing.supplier_profile_id)
+        .eq("normalized_name", normalizedProductName)
+        .maybeSingle();
+      if (productLookupError) throw productLookupError;
+      const { error: productError } = product
+        ? await supabase
+            .from("supplier_profile_products")
+            .update({
+              name: productName,
+              is_hidden: false,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", product.id)
+        : await supabase
+            .from("supplier_profile_products")
+            .insert({
+              supplier_profile_id: existing.supplier_profile_id,
+              name: productName,
+            });
+      if (productError) throw productError;
+    }
+  }
 
   if (nextUpdates.timelineRows !== undefined) {
     await logTimelineRowDiffs({
@@ -2232,7 +2408,9 @@ export async function restoreSubitemRow(subitemId: string) {
     });
     const result = await response.json();
     if (!response.ok)
-      throw new Error(result.error ?? "The linked Payment Voucher could not be restored.");
+      throw new Error(
+        result.error ?? "The linked Payment Voucher could not be restored.",
+      );
     return;
   }
   const { error } = await supabase

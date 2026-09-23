@@ -5731,6 +5731,8 @@ export function CRMBoard({
         await enqueueBoardWrite("subitem", subitemId, () =>
           updateSubitemRow(subitemId, optimisticUpdates),
         );
+        if (optimisticUpdates.supplier !== undefined)
+          window.dispatchEvent(new Event("crm:supplier-profiles-updated"));
       } catch (error: any) {
         void reloadClients();
         const message =
