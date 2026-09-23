@@ -57,6 +57,10 @@ export default function Page() {
   const [labelOptionsVersion, setLabelOptionsVersion] = useState(0);
   const [groupVersion, setGroupVersion] = useState(0);
   const [roundRobinVersion, setRoundRobinVersion] = useState(0);
+  const [customerProfileTarget, setCustomerProfileTarget] = useState<{
+    type: "client" | "company";
+    id: string;
+  } | null>(null);
   const reconciliationTimer = useRef<number | null>(null);
   const recordsRefreshSequence = useRef(0);
 
@@ -438,6 +442,10 @@ export default function Page() {
             searchTarget={searchTarget}
             labelOptionsVersion={labelOptionsVersion}
             groupVersion={groupVersion}
+            onOpenCustomerProfile={(type, id) => {
+              setCustomerProfileTarget({ type, id });
+              setActivePanel("customerprofiles");
+            }}
           />
         );
 
@@ -510,6 +518,8 @@ export default function Page() {
           <CustomerProfilesPanel
             currentUserRole={currentUserRole}
             boardClients={clients}
+            initialProfile={customerProfileTarget}
+            onInitialProfileHandled={() => setCustomerProfileTarget(null)}
             onOpenLead={(clientId) => {
               const client = clients.find((item) => item.id === clientId);
               if (!client) return;

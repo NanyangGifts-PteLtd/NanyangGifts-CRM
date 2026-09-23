@@ -35,7 +35,7 @@ type Attachment = {
   signed?: boolean;
 };
 type OcfFile = Pick<Attachment, "id" | "name" | "url" | "createdAt" | "signed">;
-type Tab = "overview" | "files" | "activity" | "updates" | "related";
+type Tab = "overview" | "files" | "activity" | "updates" | "related" | "profiles";
 type ClientUpdate = {
   id: string;
   client_id: string;
@@ -48,14 +48,18 @@ type ClientUpdate = {
 type RelatedProfileData = {
   clients: Array<{
     id: string;
+    name: string;
     phone_number: string;
     phone_numbers?: Array<{ phone_number: string }>;
   }>;
   companies: Array<{ id: string; name: string }>;
   links: Array<{
+    id: string;
     client_id: string;
     client_profile_id: string | null;
     company_profile_id: string | null;
+    is_primary_client?: boolean;
+    is_primary_company?: boolean;
   }>;
 };
 
@@ -121,6 +125,7 @@ export function ClientDetailView({
   groupNamesById,
   initialTab,
   isBlacklisted = false,
+  onOpenProfile,
 }: {
   client: Client;
   clients: Client[];
@@ -148,6 +153,7 @@ export function ClientDetailView({
   groupNamesById: Record<string, string>;
   initialTab?: Tab;
   isBlacklisted?: boolean;
+  onOpenProfile?: (type: "client" | "company", profileId: string) => void;
 }) {
   const [tab, setTab] = useState<Tab>(initialTab ?? "overview");
   const canManageSubitemLock = ["director", "dev"].includes(
@@ -168,6 +174,12 @@ export function ClientDetailView({
     null,
   );
   const [relatedLoading, setRelatedLoading] = useState(false);
+  const [relatedRefresh, setRelatedRefresh] = useState(0);
+  const [linkedContact, setLinkedContact] = useState({ name: "", phone: "" });
+  const [linkingContact, setLinkingContact] = useState(false);
+  const [linkContactError, setLinkContactError] = useState<string | null>(null);
+  const [pendingUnlinkProfileId, setPendingUnlinkProfileId] = useState<string | null>(null);
+  const [unlinkingProfile, setUnlinkingProfile] = useState(false);
   const [ocfFiles, setOcfFiles] = useState<OcfFile[]>([]);
   const index = clients.findIndex((item) => item.id === client.id);
   const people = useMemo(
@@ -325,7 +337,7 @@ export function ClientDetailView({
     if (tab === "updates") void loadUpdates();
   }, [tab, client.id]);
   useEffect(() => {
-    if (tab !== "related") return;
+    if (tab !== "related" && tab !== "profiles") return;
     let active = true;
     setRelatedData(null);
     setRelatedLoading(true);
@@ -345,12 +357,12 @@ export function ClientDetailView({
     return () => {
       active = false;
     };
-  }, [client.id, tab]);
+  }, [client.id, tab, relatedRefresh]);
   const relatedByClient = useMemo(() => {
     if (!relatedData) return [];
     const currentLink = relatedData.links.find(
-      (link) => link.client_id === client.id,
-    );
+      (link) => link.client_id === client.id && link.is_primary_client,
+    ) ?? relatedData.links.find((link) => link.client_id === client.id);
     const phone = normalizeRelatedPhone(client.phone ?? "");
     const profileId =
       currentLink?.client_profile_id ??
@@ -375,8 +387,8 @@ export function ClientDetailView({
   const relatedByCompany = useMemo(() => {
     if (!relatedData) return [];
     const currentLink = relatedData.links.find(
-      (link) => link.client_id === client.id,
-    );
+      (link) => link.client_id === client.id && link.is_primary_company,
+    ) ?? relatedData.links.find((link) => link.client_id === client.id);
     const company = normalizeRelatedCompany(client.company ?? "");
     const profileId =
       currentLink?.company_profile_id ??
@@ -397,6 +409,93 @@ export function ClientDetailView({
           )),
     );
   }, [client.company, client.id, clients, relatedData]);
+  const linkedClientProfiles = useMemo(() => {
+    if (!relatedData) return [];
+    const seen = new Set<string>();
+    const linked = relatedData.links
+      .filter((link) => link.client_id === client.id && link.client_profile_id)
+      .flatMap((link) => {
+        const profile = relatedData.clients.find((item) => item.id === link.client_profile_id);
+        if (!profile || seen.has(profile.id)) return [];
+        seen.add(profile.id);
+        return [{ profile, primary: Boolean(link.is_primary_client) }];
+      });
+    if (linked.some((item) => item.primary)) return linked;
+    const phone = normalizeRelatedPhone(client.phone ?? "");
+    const inferred = relatedData.clients.find((profile) =>
+      [profile.phone_number, ...(profile.phone_numbers ?? []).map((item) => item.phone_number)]
+        .some((value) => normalizeRelatedPhone(value) === phone),
+    );
+    return inferred && !seen.has(inferred.id)
+      ? [{ profile: inferred, primary: true }, ...linked]
+      : linked;
+  }, [client.id, relatedData]);
+  const linkedCompanyProfiles = useMemo(() => {
+    if (!relatedData) return [];
+    const seen = new Set<string>();
+    const linked = relatedData.links
+      .filter((link) => link.client_id === client.id && link.company_profile_id)
+      .flatMap((link) => {
+        const profile = relatedData.companies.find((item) => item.id === link.company_profile_id);
+        if (!profile || seen.has(profile.id)) return [];
+        seen.add(profile.id);
+        return [{ profile, primary: Boolean(link.is_primary_company) }];
+      });
+    if (linked.some((item) => item.primary)) return linked;
+    const company = normalizeRelatedCompany(client.company ?? "");
+    const inferred = relatedData.companies.find((profile) => normalizeRelatedCompany(profile.name) === company);
+    return inferred && !seen.has(inferred.id)
+      ? [{ profile: inferred, primary: true }, ...linked]
+      : linked;
+  }, [client.id, relatedData]);
+  const addLinkedContact = async () => {
+    setLinkContactError(null);
+    const requestedPhone = normalizeRelatedPhone(linkedContact.phone);
+    const alreadyLinked = linkedClientProfiles.some(({ profile }) =>
+      [profile.phone_number, ...(profile.phone_numbers ?? []).map((item) => item.phone_number)]
+        .some((phone) => normalizeRelatedPhone(phone) === requestedPhone),
+    );
+    if (requestedPhone && alreadyLinked) {
+      setLinkContactError("This client profile is already linked to this lead.");
+      return;
+    }
+    setLinkingContact(true);
+    try {
+      const response = await fetch("/api/customer-profiles/lead-client-link", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clientId: client.id, ...linkedContact }),
+      });
+      const result = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(result.error || "Unable to link the client profile.");
+      setLinkedContact({ name: "", phone: "" });
+      setRelatedRefresh((value) => value + 1);
+    } catch (error) {
+      setLinkContactError(error instanceof Error ? error.message : "Unable to link the client profile.");
+    } finally {
+      setLinkingContact(false);
+    }
+  };
+  const removeLinkedContact = async () => {
+    if (!pendingUnlinkProfileId) return;
+    setLinkContactError(null);
+    setUnlinkingProfile(true);
+    try {
+      const response = await fetch("/api/customer-profiles/lead-client-link", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clientId: client.id, profileId: pendingUnlinkProfileId }),
+      });
+      const result = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(result.error || "Unable to remove the linked client profile.");
+      setPendingUnlinkProfileId(null);
+      setRelatedRefresh((value) => value + 1);
+    } catch (error) {
+      setLinkContactError(error instanceof Error ? error.message : "Unable to remove the linked client profile.");
+    } finally {
+      setUnlinkingProfile(false);
+    }
+  };
   const selectMention = (profile: Profile) => {
     const name = profile.full_name || profile.email || "User";
     setUpdateDraft((value) =>
@@ -550,6 +649,7 @@ export function ClientDetailView({
               ["files", "Files"],
               ["activity", "Activity Log"],
               ["related", "Related Leads"],
+              ["profiles", "Linked Profiles"],
             ] as const
           ).map(([key, label]) => (
             <button
@@ -953,6 +1053,73 @@ export function ClientDetailView({
             </div>
           </main>
         )}
+        {tab === "profiles" && (
+          <main className="min-h-0 flex-1 overflow-auto bg-slate-50 p-6">
+            <div className="mx-auto grid max-w-6xl gap-5 lg:grid-cols-2">
+              <ProfileLinkSection
+                title="Linked client profiles"
+                description="The original client remains the primary contact. Add other contacts for this lead below."
+                icon={<UserRound size={19} />}
+                loading={relatedLoading}
+              >
+                {linkedClientProfiles.map(({ profile, primary }) => (
+                  <div key={profile.id} className="flex items-center border-b border-slate-100 last:border-b-0">
+                    <button
+                      type="button"
+                      onClick={() => onOpenProfile?.("client", profile.id)}
+                      className="flex min-w-0 flex-1 items-center gap-3 px-5 py-4 text-left transition hover:bg-sky-50/60 focus:bg-sky-50/60 focus:outline-none"
+                    >
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-sky-50 text-xs font-semibold text-sky-700">
+                        {profile.name.trim().slice(0, 2).toUpperCase() || "?"}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-semibold text-slate-800">{profile.name || "Unnamed client"}</span>
+                        <span className="mt-0.5 block truncate text-xs text-slate-500">{profile.phone_number}</span>
+                      </span>
+                      {primary && <span className="rounded-full bg-sky-100 px-2 py-1 text-[11px] font-semibold text-sky-700">Primary</span>}
+                      <ChevronRight size={17} className="shrink-0 text-slate-300" />
+                    </button>
+                    {!primary && canEdit && <button type="button" onClick={() => setPendingUnlinkProfileId(profile.id)} className="mr-4 rounded-md p-2 text-slate-400 hover:bg-red-50 hover:text-red-600" title="Remove linked contact" aria-label={`Remove ${profile.name} from this lead`}><Trash2 size={16} /></button>}
+                  </div>
+                ))}
+                {!relatedLoading && !linkedClientProfiles.length && <p className="px-5 py-8 text-center text-sm text-slate-400">No client profiles are linked yet.</p>}
+                {canEdit && (
+                  <form className="border-t border-slate-200 p-5" onSubmit={(event) => { event.preventDefault(); void addLinkedContact(); }}>
+                    <h3 className="text-sm font-semibold text-slate-700">Add or link another contact</h3>
+                    <p className="mt-1 text-xs text-slate-500">An existing number links its profile; a new number creates a new client profile.</p>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                      <input value={linkedContact.name} onChange={(event) => setLinkedContact((value) => ({ ...value, name: event.target.value }))} placeholder="Contact name" className="h-9 rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-sky-500" />
+                      <input value={linkedContact.phone} onChange={(event) => setLinkedContact((value) => ({ ...value, phone: event.target.value }))} placeholder="Phone number" className="h-9 rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-sky-500" />
+                    </div>
+                    {linkContactError && <p className="mt-2 text-xs text-red-600">{linkContactError}</p>}
+                    <button type="submit" disabled={linkingContact} className="mt-3 rounded-md bg-sky-600 px-3 py-2 text-sm font-semibold text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50">{linkingContact ? "Linking..." : "Add / link contact"}</button>
+                  </form>
+                )}
+                {pendingUnlinkProfileId && (
+                  <div className="border-t border-amber-200 bg-amber-50 px-5 py-4">
+                    <p className="text-sm font-medium text-amber-900">Remove this linked contact from the lead?</p>
+                    <p className="mt-1 text-xs text-amber-800">The customer profile itself will not be deleted.</p>
+                    <div className="mt-3 flex gap-2">
+                      <button type="button" onClick={() => void removeLinkedContact()} disabled={unlinkingProfile} className="rounded-md bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50">{unlinkingProfile ? "Removing..." : "Remove contact"}</button>
+                      <button type="button" onClick={() => setPendingUnlinkProfileId(null)} disabled={unlinkingProfile} className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Cancel</button>
+                    </div>
+                  </div>
+                )}
+              </ProfileLinkSection>
+              <ProfileLinkSection title="Linked company profiles" description="Profiles associated with this lead's company." icon={<Building2 size={19} />} loading={relatedLoading}>
+                {linkedCompanyProfiles.map(({ profile, primary }) => (
+                  <button key={profile.id} type="button" onClick={() => onOpenProfile?.("company", profile.id)} className="flex w-full items-center gap-3 px-5 py-4 text-left transition hover:bg-sky-50/60 focus:bg-sky-50/60 focus:outline-none">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-violet-50 text-violet-700"><Building2 size={17} /></span>
+                    <span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold text-slate-800">{profile.name}</span></span>
+                    {primary && <span className="rounded-full bg-violet-100 px-2 py-1 text-[11px] font-semibold text-violet-700">Primary</span>}
+                    <ChevronRight size={17} className="shrink-0 text-slate-300" />
+                  </button>
+                ))}
+                {!relatedLoading && !linkedCompanyProfiles.length && <p className="px-5 py-8 text-center text-sm text-slate-400">No company profile is linked yet.</p>}
+              </ProfileLinkSection>
+            </div>
+          </main>
+        )}
         {tab === "activity" && (
           <main className="min-h-0 flex-1 overflow-auto bg-slate-50 p-6">
             <div className="mx-auto max-w-4xl space-y-3">
@@ -1042,6 +1209,30 @@ export function ClientDetailView({
         </button>
       )}
     </div>
+  );
+}
+
+function ProfileLinkSection({
+  title,
+  description,
+  icon,
+  loading,
+  children,
+}: {
+  title: string;
+  description: string;
+  icon: React.ReactNode;
+  loading: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <header className="flex items-start gap-3 border-b border-slate-200 px-5 py-4">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-sky-50 text-sky-600">{icon}</span>
+        <div><h2 className="font-semibold text-slate-800">{title}</h2><p className="mt-0.5 text-xs text-slate-500">{description}</p></div>
+      </header>
+      {loading ? <p className="px-5 py-10 text-center text-sm text-slate-400">Loading linked profiles...</p> : children}
+    </section>
   );
 }
 

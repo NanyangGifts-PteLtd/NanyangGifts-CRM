@@ -83,7 +83,7 @@ export async function GET() {
   const [clientsResult, companiesResult, linksResult] = await Promise.all([
     supabaseAdmin.from("customer_client_profiles").select(CLIENT_SELECT).order("name"),
     supabaseAdmin.from("customer_company_profiles").select(COMPANY_SELECT).order("name"),
-    supabaseAdmin.from("customer_profile_lead_links").select("client_id, client_profile_id, company_profile_id"),
+    supabaseAdmin.from("customer_profile_lead_links").select("id, client_id, client_profile_id, company_profile_id, is_primary_client, is_primary_company"),
   ]);
   if (clientsResult.error) return NextResponse.json({ error: clientsResult.error.message }, { status: 500 });
   if (companiesResult.error) return NextResponse.json({ error: companiesResult.error.message }, { status: 500 });

@@ -314,6 +314,7 @@ interface CRMBoardProps {
   searchTarget?: SearchResult | null;
   openClientId?: string | null;
   onOpenClientHandled?: () => void;
+  onOpenCustomerProfile?: (type: "client" | "company", profileId: string) => void;
   labelOptionsVersion?: number;
   groupVersion?: number;
 }
@@ -409,6 +410,7 @@ export function CRMBoard({
   groupVersion = 0,
   openClientId,
   onOpenClientHandled,
+  onOpenCustomerProfile,
 }: CRMBoardProps) {
   const [filterStatus, setFilterStatus] = useState<string | "All">("All");
   const [showFilter, setShowFilter] = useState(false);
@@ -6795,6 +6797,7 @@ export function CRMBoard({
                 setDetailClientId(client.id);
                 setDetailClientInitialTab(null);
               }}
+              onOpenProfile={onOpenCustomerProfile}
               onUpdate={(updates) => updateClient(detailClient.id, updates)}
               onChangeAssignees={(ids) =>
                 handleClientAssigneesChange(detailClient.id, ids)

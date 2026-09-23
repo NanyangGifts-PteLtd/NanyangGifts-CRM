@@ -31,7 +31,8 @@ async function auth() {
 
 async function currentLink(clientId: string, field: Field, oldValue: string) {
   const column = field === "phone" ? "client_profile_id" : "company_profile_id";
-  const { data: link } = await supabaseAdmin.from("customer_profile_lead_links").select(column).eq("client_id", clientId).maybeSingle();
+  const primaryColumn = field === "phone" ? "is_primary_client" : "is_primary_company";
+  const { data: link } = await supabaseAdmin.from("customer_profile_lead_links").select(column).eq("client_id", clientId).eq(primaryColumn, true).maybeSingle();
   const linkedId = link?.[column as keyof typeof link] as string | null | undefined;
   if (linkedId) return linkedId;
   if (!oldValue.trim()) return null;
@@ -55,7 +56,18 @@ async function exactMatch(field: Field, value: string) {
 
 async function link(clientId: string, field: Field, profileId: string, userId: string) {
   const column = field === "phone" ? "client_profile_id" : "company_profile_id";
-  const { error } = await supabaseAdmin.from("customer_profile_lead_links").upsert({ client_id: clientId, [column]: profileId, updated_by: userId, updated_at: new Date().toISOString() }, { onConflict: "client_id" });
+  const primaryColumn = field === "phone" ? "is_primary_client" : "is_primary_company";
+  const timestamp = new Date().toISOString();
+  const { data: primary, error: findError } = await supabaseAdmin
+    .from("customer_profile_lead_links")
+    .select("id")
+    .eq("client_id", clientId)
+    .eq(primaryColumn, true)
+    .maybeSingle();
+  if (findError) throw findError;
+  const { error } = primary
+    ? await supabaseAdmin.from("customer_profile_lead_links").update({ [column]: profileId, updated_by: userId, updated_at: timestamp }).eq("id", primary.id)
+    : await supabaseAdmin.from("customer_profile_lead_links").insert({ client_id: clientId, [column]: profileId, [primaryColumn]: true, updated_by: userId, updated_at: timestamp });
   if (error) throw error;
 }
 

@@ -67,9 +67,12 @@ type CompanyProfile = {
   remarks: string | null;
 };
 type ProfileLeadLink = {
+  id?: string;
   client_id: string;
   client_profile_id: string | null;
   company_profile_id: string | null;
+  is_primary_client?: boolean;
+  is_primary_company?: boolean;
 };
 let profileLeadLinksSnapshot: ProfileLeadLink[] = [];
 let clientProfileIdByPhoneSnapshot = new Map<string, string>();
@@ -1030,10 +1033,14 @@ export function CustomerProfilesPanel({
   currentUserRole,
   boardClients,
   onOpenLead,
+  initialProfile,
+  onInitialProfileHandled,
 }: {
   currentUserRole?: string | null;
   boardClients: Client[];
   onOpenLead: (clientId: string) => void;
+  initialProfile?: { type: "client" | "company"; id: string } | null;
+  onInitialProfileHandled?: () => void;
 }) {
   const [clients, setClients] = useState<ClientProfile[]>([]);
   const [companies, setCompanies] = useState<CompanyProfile[]>([]);
@@ -1131,6 +1138,23 @@ export function CustomerProfilesPanel({
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (!initialProfile) return;
+    if (initialProfile.type === "client") {
+      const profile = clients.find((item) => item.id === initialProfile.id);
+      if (profile) {
+        setSelectedProfile({ type: "client", profile });
+        onInitialProfileHandled?.();
+      }
+      return;
+    }
+    const profile = companies.find((item) => item.id === initialProfile.id);
+    if (profile) {
+      setSelectedProfile({ type: "company", profile });
+      onInitialProfileHandled?.();
+    }
+  }, [clients, companies, initialProfile, onInitialProfileHandled]);
 
   const addClient = async (event: React.FormEvent) => {
     event.preventDefault();
