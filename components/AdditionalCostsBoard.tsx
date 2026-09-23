@@ -1361,12 +1361,13 @@ export function AdditionalCostsBoard({
                           min="0.01"
                           step="0.01"
                           defaultValue={row.cost ?? ""}
-                          disabled={!canDelete(row)}
+                          disabled={!canDelete(row) || group.id === "quickbooks_bills_only"}
                           onBlur={(event) =>
                             event.target.value !== String(row.cost ?? "") &&
                             void update(row.id, { cost: event.target.value })
                           }
-                          className="h-10 w-full bg-transparent px-3 text-right outline-none focus:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-60"
+                          title={group.id === "quickbooks_bills_only" ? "Calculated from the QuickBooks Bill expense-line total." : undefined}
+                          className="h-10 w-full bg-transparent px-3 text-right outline-none focus:bg-sky-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 disabled:opacity-100"
                         />
                       </td>
                       <td data-voucher-col="reason" className="min-h-10 h-full border-b border-r border-slate-200 p-0">

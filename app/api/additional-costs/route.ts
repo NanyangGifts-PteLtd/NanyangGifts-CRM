@@ -381,6 +381,14 @@ export async function PATCH(request: NextRequest) {
       .eq("id", body.id)
       .maybeSingle();
     if (existingError || !existing) throw new Error("Additional cost not found.");
+    if (
+      existing.voucher_group === "quickbooks_bills_only" &&
+      Object.prototype.hasOwnProperty.call(body.values, "cost")
+    ) {
+      throw new Error(
+        "Cost for a QuickBooks-Bills-only row is calculated from the Bill expense lines and cannot be edited directly.",
+      );
+    }
     const { data: client, error: clientError } = await supabaseAdmin
       .from("clients")
       .select("custom_fields")
