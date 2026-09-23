@@ -2232,8 +2232,8 @@ export function SubitemsTable({
       paymentStatusOptions,
     );
     const paymentStatus =
-      sub.paymentStatusOptionId === resolvedOption.id ||
-      (!resolvedOption.id && sub.paymentStatus === resolvedOption.value)
+      (Boolean(resolvedOption.id) &&
+        sub.paymentStatusOptionId === resolvedOption.id)
         ? resolvedOption.value
         : calculatedPaymentStatus;
     const paymentStatusLabelOptions = paymentStatusOptions.filter(

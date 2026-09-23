@@ -21,6 +21,13 @@ type AwardedSubitem = Pick<
 >;
 type FinalArtwork = { name: string; url: string; mimeType?: string };
 
+const OCF_ELIGIBLE_STATUS_KEYS = [
+  "subitem_status_awarded",
+  "subitem_status_verify_later",
+  "subitem_status_verified",
+  "subitem_status_variation_cost_difference",
+] as const;
+
 type UploadRow = {
   subitemId: string;
   subitemName: string;
@@ -129,11 +136,15 @@ export function GenerateOcfModal({
   const [formError, setFormError] = useState<string | null>(null);
 
   const clientId = client?.id ?? null;
-  const awardedStatusId = useMemo(
+  const awardedOrLaterStatusIds = useMemo(
     () =>
-      subitemStatusOptions.find(
-        (option) => option.systemKey === "subitem_status_awarded",
-      )?.id ?? null,
+      new Set(
+        OCF_ELIGIBLE_STATUS_KEYS.map(
+          (key) =>
+            subitemStatusOptions.find((option) => option.systemKey === key)
+              ?.id,
+        ).filter((id): id is string => Boolean(id)),
+      ),
     [subitemStatusOptions],
   );
 
@@ -142,7 +153,8 @@ export function GenerateOcfModal({
 
     const awarded = (client.subitems ?? []).filter(
       (subitem) =>
-        Boolean(awardedStatusId) && subitem.statusOptionId === awardedStatusId,
+        typeof subitem.statusOptionId === "string" &&
+        awardedOrLaterStatusIds.has(subitem.statusOptionId),
     );
 
     const mappedAwarded = awarded.map((s) => ({
@@ -191,7 +203,7 @@ export function GenerateOcfModal({
     setFormError(null);
     setCreating(false);
     setLoadingItems(false);
-  }, [open, client, awardedStatusId]);
+  }, [open, client, awardedOrLaterStatusIds]);
 
   const hasAwarded = awardedSubitems.length > 0;
 

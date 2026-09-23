@@ -109,7 +109,7 @@ export async function POST(request: NextRequest) {
       "activity_log",
       "deletion_owner_id",
     ]);
-    const newLeadLabel = await getSystemLabel("client_status", "new_lead");
+    const newLeadLabel = await getSystemLabel("client_status", "client_status_new_lead");
     const { data: duplicate, error: duplicateError } = await supabaseAdmin
       .from("clients")
       .insert({

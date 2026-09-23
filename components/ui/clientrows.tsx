@@ -692,9 +692,8 @@ export function ClientRow({
   const awardedSubitems = client.subitems.filter(contributesToAwardedTotals);
   const paidAwardedSubitems = awardedSubitems.filter(
     (subitem) =>
-      subitem.paymentStatusOptionId === resolvedPaymentOption.id ||
-      (!resolvedPaymentOption.id &&
-        subitem.paymentStatus === resolvedPaymentOption.value) ||
+      (Boolean(resolvedPaymentOption.id) &&
+        subitem.paymentStatusOptionId === resolvedPaymentOption.id) ||
       (() => {
         const qty = quickBooksNumber(subitem.qty);
         const cost = quickBooksNumber(subitem.cost);

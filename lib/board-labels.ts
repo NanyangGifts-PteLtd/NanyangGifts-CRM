@@ -47,16 +47,17 @@ export function canonicalPaymentStatusOptions(
     code === "payment_status"
       ? "payment_status_mismatch"
       : "overall_payment_status_mismatch";
-  const canonicalMismatch =
-    options.find((option) => option.systemKey === mismatchSystemKey) ??
-    options.find((option) => option.value === "MISMATCH");
+  const canonicalMismatch = options.find(
+    (option) => option.systemKey === mismatchSystemKey,
+  );
   const legacySystemKeys = legacySystemKeysFor(code);
 
   return options.filter(
     (option) =>
       !legacySystemKeys.has(option.systemKey ?? "") &&
       !LEGACY_MISMATCH_VALUES.has(option.value) &&
-      (option.value !== "MISMATCH" || option.id === canonicalMismatch?.id),
+      (option.systemKey !== mismatchSystemKey ||
+        option.id === canonicalMismatch?.id),
   );
 }
 
@@ -67,8 +68,6 @@ export function findSystemOption(
 ): OptionEntry {
   return (
     options.find((option) => option.systemKey === systemKey) ??
-    (systemKey.endsWith("_mismatch")
-      ? options.find((option) => option.value === "MISMATCH")
-      : undefined) ?? { value: fallback, color: "#d1d5db" }
+    { value: fallback, color: "#d1d5db" }
   );
 }

@@ -7877,7 +7877,11 @@ export function CRMBoard({
                   options: clientStatuses,
                   onChange: setFilterStatus,
                   countFor: (value) =>
-                    clients.filter((client) => client.status === value).length,
+                    clients.filter(
+                      (client) =>
+                        client.statusOptionId ===
+                        optionIdForValue(clientStatusEntries, value),
+                    ).length,
                   colors: statusColors,
                 })}
                 {renderFilterColumn({
@@ -7903,7 +7907,9 @@ export function CRMBoard({
                   countFor: (value) =>
                     clients.filter((client) =>
                       client.subitems.some(
-                        (subitem) => subitem.status === value,
+                        (subitem) =>
+                          subitem.statusOptionId ===
+                          optionIdForValue(subitemStatusEntries, value),
                       ),
                     ).length,
                   colors: subitemStatusColors,
@@ -7916,7 +7922,9 @@ export function CRMBoard({
                   countFor: (value) =>
                     clients.filter((client) =>
                       client.subitems.some(
-                        (subitem) => subitem.payment === value,
+                        (subitem) =>
+                          subitem.paymentOptionId ===
+                          optionIdForValue(paymentEntries, value),
                       ),
                     ).length,
                   colors: paymentColors,
@@ -7929,7 +7937,9 @@ export function CRMBoard({
                   countFor: (value) =>
                     clients.filter((client) =>
                       client.subitems.some(
-                        (subitem) => subitem.paymentStatus === value,
+                        (subitem) =>
+                          subitem.paymentStatusOptionId ===
+                          optionIdForValue(paymentStatusEntries, value),
                       ),
                     ).length,
                   colors: paymentStatusColors,
@@ -7977,8 +7987,11 @@ export function CRMBoard({
                   options: importanceOptions,
                   onChange: setFilterImportance,
                   countFor: (value) =>
-                    clients.filter((client) => client.importance === value)
-                      .length,
+                    clients.filter(
+                      (client) =>
+                        client.importanceOptionId ===
+                        optionIdForValue(importanceEntries, value),
+                    ).length,
                   colors: importanceColors,
                 })}
                 {renderFilterColumn({
@@ -7987,8 +8000,11 @@ export function CRMBoard({
                   options: replyStatuses,
                   onChange: setFilterReplyStatus,
                   countFor: (value) =>
-                    clients.filter((client) => client.replyStatus === value)
-                      .length,
+                    clients.filter(
+                      (client) =>
+                        client.replyStatusOptionId ===
+                        optionIdForValue(replyStatusEntries, value),
+                    ).length,
                   colors: replyStatusColors,
                 })}
                 {renderFilterColumn({
@@ -7997,7 +8013,11 @@ export function CRMBoard({
                   options: channelOptions,
                   onChange: setFilterChannel,
                   countFor: (value) =>
-                    clients.filter((client) => client.channel === value).length,
+                    clients.filter(
+                      (client) =>
+                        client.channelOptionId ===
+                        optionIdForValue(channelEntries, value),
+                    ).length,
                   colors: channelColors,
                 })}
               </div>

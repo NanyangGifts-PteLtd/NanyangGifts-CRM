@@ -550,12 +550,12 @@ export function AdditionalCostsBoard({
     }
     setRows((current) =>
       current.map((row) =>
-        code === "additional_cost_status" && row.status === value
-          ? { ...row, status: "" }
-          : code === "additional_cost_reason" && row.reason === value
-            ? { ...row, reason: "" }
-            : code === "additional_cost_courier" && row.courier === value
-              ? { ...row, courier: "" }
+        code === "additional_cost_status" && row.status_option_id === optionId
+          ? { ...row, status: "", status_option_id: null }
+          : code === "additional_cost_reason" && row.reason_option_id === optionId
+            ? { ...row, reason: "", reason_option_id: null }
+            : code === "additional_cost_courier" && row.courier_option_id === optionId
+              ? { ...row, courier: "", courier_option_id: null }
               : row,
       ),
     );

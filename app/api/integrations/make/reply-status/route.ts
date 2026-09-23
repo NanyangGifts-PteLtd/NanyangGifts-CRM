@@ -195,7 +195,7 @@ export async function POST(request: NextRequest) {
     const clientId = client.id;
 
     const oldStatus = client.reply_status ?? "";
-    const repliedLabel = await getSystemLabel("reply_status", "replied");
+    const repliedLabel = await getSystemLabel("reply_status", "reply_status_replied");
 
     const alreadyReplied = client.reply_status_option_id === repliedLabel.id;
     if (!alreadyReplied || oldStatus !== repliedLabel.value) {

@@ -15,6 +15,13 @@ type CreateOcfBody = {
     }>;
 };
 
+const OCF_ELIGIBLE_STATUS_KEYS = [
+    "subitem_status_awarded",
+    "subitem_status_verify_later",
+    "subitem_status_verified",
+    "subitem_status_variation_cost_difference",
+] as const;
+
 export async function POST(req: NextRequest) {
     try {
         const supabase = await createClient();
@@ -75,12 +82,19 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "Client not found" }, { status: 404 });
         }
 
-        const awardedLabel = await getSystemLabel("subitem_status", "awarded");
+        const awardedOrLaterLabels = await Promise.all(
+            OCF_ELIGIBLE_STATUS_KEYS.map((key) =>
+                getSystemLabel("subitem_status", key),
+            ),
+        );
         const { data: awardedSubitems, error: subitemsError } = await supabase
             .from("subitems")
             .select("id, client_id, name, qty, description, status, timeline_rows")
             .eq("client_id", clientId)
-            .eq("status_option_id", awardedLabel.id)
+            .in(
+                "status_option_id",
+                awardedOrLaterLabels.map((label) => label.id),
+            )
             .order("position");
 
         if (subitemsError) {

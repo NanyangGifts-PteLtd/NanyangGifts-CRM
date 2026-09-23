@@ -213,8 +213,8 @@ export async function ingestLead(lead: NormalizedInboundLead): Promise<InboundRe
           ? "email"
           : "forms";
       const [waitingLabel, newLeadLabel, channelLabel] = await Promise.all([
-        getSystemLabel("reply_status", "waiting"),
-        getSystemLabel("client_status", "new_lead"),
+        getSystemLabel("reply_status", "reply_status_waiting"),
+        getSystemLabel("client_status", "client_status_new_lead"),
         getSystemLabel("channel", channelSystemKey),
       ]);
       const { data: groups, error: groupError } = await supabaseAdmin.from("crm_groups").select("id, name").ilike("name", "New Lead").order("sort_order").limit(1);

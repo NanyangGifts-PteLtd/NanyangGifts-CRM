@@ -63,7 +63,7 @@ export async function GET(request: NextRequest) {
     }
 
     const now = new Date();
-    const waitingLabel = await getSystemLabel("reply_status", "waiting");
+    const waitingLabel = await getSystemLabel("reply_status", "reply_status_waiting");
     const { data: clients, error } = await supabase
         .from("clients")
         .select("id, name, reply_status, reply_status_option_id, waiting_started_at, client_assignees(user_id)")
