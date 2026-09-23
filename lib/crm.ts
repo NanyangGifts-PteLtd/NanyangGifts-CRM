@@ -945,19 +945,26 @@ export async function createClientRow(
 }
 
 async function resolveSystemOption(groupCode: string, systemKey: string) {
+  const prefix = `${groupCode}_`;
+  const candidates = [...new Set([
+    systemKey,
+    systemKey.startsWith(prefix) ? systemKey.slice(prefix.length) : systemKey,
+    systemKey.startsWith(prefix) ? systemKey : `${prefix}${systemKey}`,
+  ])];
   const { data, error } = await supabase
     .from("option_values")
-    .select("id, value, option_groups!inner(code)")
+    .select("id, value, system_key, option_groups!inner(code)")
     .eq("option_groups.code", groupCode)
-    .eq("system_key", systemKey)
-    .maybeSingle();
+    .in("system_key", candidates);
   if (error) throw error;
 
-  if (!data)
+  const option = (data ?? []).find((item) => item.system_key === systemKey) ?? data?.[0];
+
+  if (!option)
     throw new Error(
       `Required system label ${groupCode}.${systemKey} is not configured.`,
     );
-  return { id: data.id, value: data.value };
+  return { id: option.id, value: option.value };
 }
 
 async function resolveOptionId(groupCode: string, value: string) {
