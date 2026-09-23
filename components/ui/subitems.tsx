@@ -1987,6 +1987,7 @@ export function SubitemsTable({
             value={sub.description}
             onChange={(v) => onUpdateSubitem(sub.id, { description: v })}
             multiline
+            resizableMultiline
           />
         );
       case "remarks":
@@ -2025,6 +2026,8 @@ export function SubitemsTable({
           <EditableCell
             value={sub.supplier}
             onChange={(v) => onUpdateSubitem(sub.id, { supplier: v })}
+            multiline
+            resizableMultiline
           />
         );
       case "cost":
@@ -2401,6 +2404,8 @@ export function SubitemsTable({
           <EditableCell
             value={sub.supplier}
             onChange={(v) => onUpdateSubitem(sub.id, { supplier: v })}
+            multiline
+            resizableMultiline
           />
         );
       case "description":
@@ -2410,6 +2415,7 @@ export function SubitemsTable({
             value={sub.description}
             onChange={(v) => onUpdateSubitem(sub.id, { description: v })}
             multiline
+            resizableMultiline
           />
         );
       case "currency":
@@ -3450,7 +3456,7 @@ export function SubitemsTable({
                       );
                     }
                   }}
-                  className={`relative group border-b border-r border-[#D0D4E4] hover:bg-blue-50/30 ${subitemDropMarker?.subitemId === sub.id ? (subitemDropMarker.edge === "top" ? "shadow-[inset_0_3px_0_#0f8da8]" : "shadow-[inset_0_-3px_0_#0f8da8]") : ""}`}
+                  className={`relative group border-b border-r border-[#D0D4E4] hover:bg-blue-50/30 focus-within:z-[70] ${subitemDropMarker?.subitemId === sub.id ? (subitemDropMarker.edge === "top" ? "shadow-[inset_0_3px_0_#0f8da8]" : "shadow-[inset_0_-3px_0_#0f8da8]") : ""}`}
                 >
                   <td
                     className="group relative h-[33.1px] overflow-visible align-middle border-r border-l-[6px] border-[#D0D4E4] px-2 py-1 text-center"
@@ -3501,8 +3507,8 @@ export function SubitemsTable({
                     <td
                       key={col.key}
                       className={`align-middle border-r border-[#D0D4E4] p-0 ${
-                        col.key === "name"
-                          ? "overflow-visible relative z-20"
+                        ["name", "description", "supplier"].includes(col.key)
+                        ? "overflow-visible relative z-20 focus-within:z-[80]"
                           : "overflow-hidden"
                       } ${
                         (tableMode === "payment"

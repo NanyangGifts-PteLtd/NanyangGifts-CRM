@@ -2909,7 +2909,7 @@ export function ClientRow({
           }
         }}
         style={{ width: boardWidth, minWidth: boardWidth }}
-        className="relative box-border border-b flex text-[15px] items-center flex-shrink-0 border-r border-[#D0D4E4] group transition-colors"
+        className="relative box-border border-b flex text-[15px] items-center flex-shrink-0 border-r border-[#D0D4E4] group transition-colors focus-within:z-[70]"
       >
         <div
           aria-hidden="true"
@@ -3800,7 +3800,7 @@ export function ClientRow({
 
         <div
           data-client-column="requirements"
-          className="flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis"
+          className="relative z-[60] flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-visible whitespace-nowrap text-ellipsis focus-within:z-[80]"
           style={{
             height: 30,
             minWidth: colWidth.requirements,
@@ -3812,6 +3812,8 @@ export function ClientRow({
             className="!justify-start px-1"
             value={client.requirements}
             onChange={(v) => onUpdate({ requirements: v })}
+            multiline
+            resizableMultiline
             placeholder=""
           />
         </div>
