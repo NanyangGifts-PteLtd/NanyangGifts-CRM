@@ -53,6 +53,7 @@ export type RoundRobinQueueRow = {
 
 export type RoundRobinQueueResponse = {
   queue: RoundRobinQueueRow[];
+  pointer: number;
   canEdit: boolean;
   members: Array<{
     id: string;
@@ -108,6 +109,7 @@ export async function getSalesRoundRobinQueue() {
     throw new Error(result.error ?? "Could not load round robin.");
   return {
     queue: (result.queue ?? []) as RoundRobinQueueRow[],
+    pointer: Number(result.pointer ?? 0),
     canEdit: result.canEdit === true,
     members: result.members ?? [],
   } satisfies RoundRobinQueueResponse;

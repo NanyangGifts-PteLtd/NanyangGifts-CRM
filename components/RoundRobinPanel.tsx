@@ -5,7 +5,6 @@ import { ChevronDown, ChevronUp, GripVertical } from "lucide-react";
 import { toast } from "sonner";
 import type { Profile } from "@/app/types";
 import {
-  getSalesRoundRobinPointer,
   getSalesRoundRobinQueue,
   saveSalesRoundRobinLayout,
   setSalesRoundRobinPointer,
@@ -107,14 +106,11 @@ export function RoundRobinAdminPanel({
   const load = useCallback(async (showLoading = true) => {
     if (showLoading) setLoading(true);
     try {
-      const [queueResponse, position] = await Promise.all([
-        getSalesRoundRobinQueue(),
-        getSalesRoundRobinPointer(),
-      ]);
+      const queueResponse = await getSalesRoundRobinQueue();
       setRows(queueResponse.queue);
       setServerCanEdit(queueResponse.canEdit);
       setServerMembers(queueResponse.members);
-      setPointer(position);
+      setPointer(queueResponse.pointer);
     } finally {
       if (showLoading) setLoading(false);
     }
