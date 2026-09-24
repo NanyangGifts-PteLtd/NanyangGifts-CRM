@@ -25,6 +25,17 @@ import {
 
 export type OptionEntry = { id?: string; systemKey?: string | null; value: string; color: string };
 
+const getCnShipperTrackingSite = (shipper: string) => {
+  const normalized = shipper.trim().toLowerCase();
+  if (normalized.includes("tiger")) {
+    return { name: "Tiger", url: "https://szjmwl.net/wl/order/query.jsp" };
+  }
+  if (normalized.includes("小李")) {
+    return { name: "小李", url: "https://cx.jygj56.com/" };
+  }
+  return null;
+};
+
 export function parseDateUTC(value: string | null | undefined): Date | null {
   if (!value) return null;
   const date = new Date(`${value}T00:00:00Z`);
@@ -132,6 +143,7 @@ export function TimelineSection({
   title = "Project Timeline 1",
   cnTracking = "",
   sgTracking = "",
+  shipper = "",
   onTrackingChange,
   onRemoveTimeline,
   timelineProgressOptions,
@@ -147,6 +159,7 @@ export function TimelineSection({
   title?: string;
   cnTracking?: string;
   sgTracking?: string;
+  shipper?: string;
   onTrackingChange?: (values: {
     cnTracking: string;
     sgTracking: string;
@@ -174,6 +187,7 @@ export function TimelineSection({
   );
   const [draftCnTracking, setDraftCnTracking] = useState(cnTracking);
   const [draftSgTracking, setDraftSgTracking] = useState(sgTracking);
+  const cnShipperTrackingSite = getCnShipperTrackingSite(shipper);
   const progressBySystemKey = useMemo(
     () => new Map(timelineProgressOptions.map((option) => [option.systemKey, option])),
     [timelineProgressOptions],
@@ -500,13 +514,25 @@ export function TimelineSection({
         </label>
         <button
           type="button"
-          onClick={() =>
-            toast.info(
-              "CN shipper tracking-site links will be connected in a future update.",
-            )
-          }
+          onClick={() => {
+            if (!cnShipperTrackingSite) {
+              toast.info(
+                `No CN shipper tracking site is available for ${shipper.trim() || "this subitem's shipper"}.`,
+              );
+              return;
+            }
+            window.open(
+              cnShipperTrackingSite.url,
+              "_blank",
+              "noopener,noreferrer",
+            );
+          }}
           className="flex h-7 items-center gap-1 rounded border border-white/60 bg-white/15 px-2 text-[11px] font-semibold text-white hover:bg-white/25"
-          title="Placeholder for the CN shipper tracking website"
+          title={
+            cnShipperTrackingSite
+              ? `Open ${cnShipperTrackingSite.name} tracking site`
+              : "No tracking site is configured for this shipper"
+          }
         >
           CN Shipper Tracking site <ExternalLink size={13} />
         </button>

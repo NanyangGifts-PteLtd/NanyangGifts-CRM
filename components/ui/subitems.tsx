@@ -3964,6 +3964,7 @@ export function SubitemsTable({
                             rows={timeline.rows}
                             cnTracking={timeline.cnTracking}
                             sgTracking={timeline.sgTracking}
+                            shipper={sub.shipper ?? ""}
                             onTrackingChange={(tracking) =>
                               onUpdateSubitem(sub.id, {
                                 timelineGroups: (sub.timelineGroups?.length
