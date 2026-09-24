@@ -257,13 +257,13 @@ export function EmailReviewPanel({ currentUserRole }: Props) {
                         {emailMeta(row)}
                       </div>
                       {roleCanReview && actionable && (
-                        <div className="flex gap-2">
+                        <div className="flex flex-wrap gap-4">
                           <button
                             disabled={workingId === row.id}
                             onClick={() =>
                               setPendingAction({ row, action: "mark-reviewed" })
                             }
-                            className="inline-flex items-center gap-1 rounded border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                            className="order-2 inline-flex items-center gap-1 rounded border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
                           >
                             <Check size={15} /> Keep non-enquiry
                           </button>
@@ -272,9 +272,19 @@ export function EmailReviewPanel({ currentUserRole }: Props) {
                             onClick={() =>
                               setPendingAction({ row, action: "promote" })
                             }
-                            className="inline-flex items-center gap-1 rounded bg-[#16a5c4] px-3 py-2 text-sm font-semibold text-white hover:bg-[#118ca7] disabled:opacity-50"
+                            className="order-3 ml-8 inline-flex items-center gap-1 rounded bg-[#16a5c4] px-3 py-2 text-sm font-semibold text-white hover:bg-[#118ca7] disabled:opacity-50"
                           >
-                            <Send size={15} /> Promote to enquiry
+                            <Send size={15} /> Promote to New Lead
+                          </button>
+                          <button
+                            type="button"
+                            disabled={workingId === row.id}
+                            onClick={() =>
+                              toast.info("Blacklist sender is not available yet.")
+                            }
+                            className="order-1 inline-flex items-center gap-1 rounded border border-red-300 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-100 disabled:opacity-50"
+                          >
+                            <ShieldAlert size={15} /> Blacklist sender
                           </button>
                         </div>
                       )}
@@ -409,23 +419,33 @@ export function EmailReviewPanel({ currentUserRole }: Props) {
                   </p>
                 </div>
                 {roleCanReview && actionable ? (
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-4">
                     <button
                       disabled={workingId === row.id}
                       onClick={() => void act(row.id, "mark-reviewed")}
-                      className="inline-flex items-center gap-1 rounded border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                      className="order-2 inline-flex items-center gap-1 rounded border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
                     >
                       <Check size={15} /> Keep non-enquiry
                     </button>
                     <button
                       disabled={workingId === row.id}
                       onClick={() => void act(row.id, "promote")}
-                      className="inline-flex items-center gap-1 rounded bg-[#16a5c4] px-3 py-2 text-sm font-semibold text-white hover:bg-[#118ca7] disabled:opacity-50"
+                      className="order-3 ml-8 inline-flex items-center gap-1 rounded bg-[#16a5c4] px-3 py-2 text-sm font-semibold text-white hover:bg-[#118ca7] disabled:opacity-50"
                     >
                       <Send size={15} />{" "}
                       {workingId === row.id
                         ? "Promoting…"
-                        : "Promote to enquiry"}
+                        : "Promote to New Lead"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={workingId === row.id}
+                      onClick={() =>
+                        toast.info("Blacklist sender is not available yet.")
+                      }
+                      className="order-1 inline-flex items-center gap-1 rounded border border-red-300 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-100 disabled:opacity-50"
+                    >
+                      <ShieldAlert size={15} /> Blacklist sender
                     </button>
                   </div>
                 ) : null}
