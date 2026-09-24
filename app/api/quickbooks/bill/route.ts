@@ -85,7 +85,10 @@ export async function POST(request: NextRequest) {
     const bill = result?.Bill;
     if (!bill?.Id) throw new Error("QuickBooks Bill could not be found.");
     const total = Number(bill.Line?.filter((line: any) => line.DetailType === "AccountBasedExpenseLineDetail").reduce((sum: number, line: any) => sum + Number(line.Amount ?? 0), 0) ?? 0);
-    const { data: row, error } = await supabaseAdmin.from("additional_costs").update({ has_quickbooks_bill: true, quickbooks_bill_id: String(bill.Id), quickbooks_bill_sync_error: null, quickbooks_invoice_number: String(bill.DocNumber ?? ""), quickbooks_supplier_id: String(bill.VendorRef?.value ?? ""), quickbooks_supplier_name: String(bill.VendorRef?.name ?? ""), cost: total, updated_at: new Date().toISOString() }).eq("id", voucher.id).select("*").single();
+    const hasGstOverride = (bill.TxnTaxDetail?.TaxLine ?? []).some(
+      (line: { TaxLineDetail?: { OverrideDeltaAmount?: unknown } }) => line.TaxLineDetail?.OverrideDeltaAmount != null,
+    );
+    const { data: row, error } = await supabaseAdmin.from("additional_costs").update({ has_quickbooks_bill: true, quickbooks_bill_id: String(bill.Id), quickbooks_bill_sync_error: null, quickbooks_invoice_number: String(bill.DocNumber ?? ""), quickbooks_supplier_id: String(bill.VendorRef?.value ?? ""), quickbooks_supplier_name: String(bill.VendorRef?.name ?? ""), quickbooks_overall_gst_override: hasGstOverride ? Number(bill.TxnTaxDetail?.TotalTax ?? 0) : null, cost: total, updated_at: new Date().toISOString() }).eq("id", voucher.id).select("*").single();
     if (error) throw error;
     await supabaseAdmin.from("subitems").update({ cost: String(total) }).eq("custom_fields->>additionalCostId", voucher.id).is("deleted_at", null);
     return NextResponse.json({ row });
@@ -126,7 +129,11 @@ export async function GET(request: NextRequest) {
         dueDate: String(bill.DueDate ?? ""),
         billNumber: String(bill.DocNumber ?? ""),
         memo: String(bill.PrivateNote ?? ""),
-        overallGstAmount: bill.TxnTaxDetail?.TotalTax == null ? "" : String(bill.TxnTaxDetail.TotalTax),
+        // The edit form needs the Bill's actual current GST total from
+        // QuickBooks, whether it was calculated there or manually overridden.
+        overallGstAmount: bill.TxnTaxDetail?.TotalTax == null
+          ? ""
+          : String(bill.TxnTaxDetail.TotalTax),
         lines: (bill.Line ?? []).filter((line: any) => line.DetailType === "AccountBasedExpenseLineDetail").map((line: any) => ({
           categoryId: String(line.AccountBasedExpenseLineDetail?.AccountRef?.value ?? ""),
           categoryName: String(line.AccountBasedExpenseLineDetail?.AccountRef?.name ?? line.AccountBasedExpenseLineDetail?.AccountRef?.value ?? ""),
@@ -230,6 +237,7 @@ export async function PATCH(request: NextRequest) {
     const { data: row, error } = await supabaseAdmin.from("additional_costs").update({
       cost: total, quickbooks_invoice_number: String(updated?.Bill?.DocNumber ?? billNumber), quickbooks_supplier_id: supplierId,
       quickbooks_supplier_name: String(draft.supplierName ?? updated?.Bill?.VendorRef?.name ?? ""), quickbooks_attachment_files: uploaded,
+      quickbooks_overall_gst_override: overall,
       quickbooks_bill_sync_error: null,
       updated_at: new Date().toISOString(),
     }).eq("id", voucher.id).select("*").single();
@@ -251,6 +259,7 @@ export async function DELETE(request: NextRequest) {
       quickbooks_invoice_number: "",
       quickbooks_supplier_id: "",
       quickbooks_supplier_name: "",
+      quickbooks_overall_gst_override: null,
       quickbooks_attachment_files: [],
       quickbooks_bill_sync_error: null,
       updated_at: new Date().toISOString(),

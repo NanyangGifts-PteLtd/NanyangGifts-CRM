@@ -33,11 +33,17 @@ export async function GET(request: NextRequest) {
       const cost = (bill.Line ?? [])
         .filter((line: any) => line.DetailType === "AccountBasedExpenseLineDetail")
         .reduce((total: number, line: any) => total + (Number(line.Amount) || 0), 0);
+      const hasGstOverride = (bill.TxnTaxDetail?.TaxLine ?? []).some(
+        (line: { TaxLineDetail?: { OverrideDeltaAmount?: unknown } }) => line.TaxLineDetail?.OverrideDeltaAmount != null,
+      );
       const { error: updateError } = await supabaseAdmin.from("additional_costs").update({
         cost,
         quickbooks_invoice_number: String(bill.DocNumber ?? ""),
         quickbooks_supplier_id: String(bill.VendorRef?.value ?? ""),
         quickbooks_supplier_name: String(bill.VendorRef?.name ?? ""),
+        quickbooks_overall_gst_override: hasGstOverride
+          ? Number(bill.TxnTaxDetail?.TotalTax ?? 0)
+          : null,
         quickbooks_bill_sync_error: null,
         updated_at: new Date().toISOString(),
       }).eq("id", voucher.id);

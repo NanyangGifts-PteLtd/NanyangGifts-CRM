@@ -187,7 +187,7 @@ export async function POST(request: NextRequest) {
     if (effectiveOverallGstAmount !== null && effectiveOverallGstAmount > 0 && !taxableLineIndexes.length)
       throw new Error("An Overall GST amount requires at least one taxable expense line.");
 
-    const billLines = lines.map((line, index) => {
+    const billLines = lines.map((line) => {
       const taxCode = taxCodeById.get(line.taxCodeId);
       if (!taxCode) throw new Error("Choose a valid GST code for every expense line.");
       return {
@@ -302,6 +302,7 @@ export async function POST(request: NextRequest) {
           quickbooks_invoice_number: String(quickBooksBill.DocNumber ?? invoiceNumber),
           quickbooks_supplier_id: supplierId,
           quickbooks_supplier_name: String(bill.supplierName ?? quickBooksBill.VendorRef?.name ?? ""),
+          quickbooks_overall_gst_override: effectiveOverallGstAmount,
           quickbooks_bill_id: String(quickBooksBill.Id),
           quickbooks_attachment_files: uploadedAttachments,
         })
@@ -337,6 +338,7 @@ export async function POST(request: NextRequest) {
       quickbooks_invoice_number: String(quickBooksBill.DocNumber ?? invoiceNumber),
       quickbooks_supplier_id: supplierId,
       quickbooks_supplier_name: String(bill.supplierName ?? quickBooksBill.VendorRef?.name ?? ""),
+      quickbooks_overall_gst_override: effectiveOverallGstAmount,
       quickbooks_bill_id: String(quickBooksBill.Id),
       quickbooks_attachment_files: uploadedAttachments,
     }).select("*").single();

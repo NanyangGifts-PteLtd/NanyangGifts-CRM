@@ -371,6 +371,7 @@ export async function PATCH(request: NextRequest) {
       "quickbooks_invoice_number",
       "quickbooks_supplier_id",
       "quickbooks_supplier_name",
+      "quickbooks_overall_gst_override",
       "quickbooks_attachment_files",
     ];
     if (Object.keys(body.values).some((field) => lockedQuickBooksFields.includes(field)))
@@ -444,6 +445,7 @@ export async function PATCH(request: NextRequest) {
         values.quickbooks_invoice_number = "";
         values.quickbooks_supplier_id = "";
         values.quickbooks_supplier_name = "";
+        values.quickbooks_overall_gst_override = null;
         values.quickbooks_attachment_files = [];
       }
     }
@@ -451,10 +453,11 @@ export async function PATCH(request: NextRequest) {
       ? Boolean(existing.has_quickbooks_bill)
       : Boolean(values.has_quickbooks_bill);
     if (!hasQuickBooksBill) {
-      if (values.quickbooks_invoice_number !== undefined || values.quickbooks_supplier_id !== undefined || values.quickbooks_supplier_name !== undefined || values.quickbooks_attachment_files !== undefined) {
+      if (values.quickbooks_invoice_number !== undefined || values.quickbooks_supplier_id !== undefined || values.quickbooks_supplier_name !== undefined || values.quickbooks_overall_gst_override !== undefined || values.quickbooks_attachment_files !== undefined) {
         values.quickbooks_invoice_number = "";
         values.quickbooks_supplier_id = "";
         values.quickbooks_supplier_name = "";
+        values.quickbooks_overall_gst_override = null;
         values.quickbooks_attachment_files = [];
       }
     }

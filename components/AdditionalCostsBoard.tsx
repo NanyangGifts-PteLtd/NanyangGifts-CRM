@@ -58,6 +58,7 @@ type AdditionalCost = {
   quickbooks_invoice_number?: string;
   quickbooks_supplier_id?: string;
   quickbooks_supplier_name?: string;
+  quickbooks_overall_gst_override?: number | null;
   quickbooks_bill_id?: string | null;
   quickbooks_bill_sync_error?: string | null;
   quickbooks_attachment_files?: Array<{ name?: string; id?: string; contentType?: string; url?: string; storagePath?: string }>;
@@ -102,6 +103,7 @@ const otherVoucherColumns: Column[] = [
   { key: "has_quickbooks_bill", label: "Has QuickBooks Bill?", width: 165 },
   { key: "quickbooks_invoice_number", label: "Invoice No. (Bill No.)", width: 185 },
   { key: "quickbooks_supplier_name", label: "Supplier", width: 220 },
+  { key: "quickbooks_overall_gst_override", label: "Bill GST Value", width: 165 },
   { key: "quickbooks_attachment_files", label: "Attached Files", width: 240 },
   { key: "bill_action", label: "Bill Action", width: 125 },
   { key: "created", label: "Date Created", width: 140 },
@@ -113,6 +115,7 @@ const quickBooksBillsOnlyColumns: Column[] = [
   { key: "has_quickbooks_bill", label: "Has QuickBooks Bill?", width: 165 },
   { key: "quickbooks_supplier_name", label: "Supplier", width: 220 },
   { key: "quickbooks_invoice_number", label: "Invoice No. (Bill No.)", width: 185 },
+  { key: "quickbooks_overall_gst_override", label: "Bill GST Value", width: 165 },
   { key: "quickbooks_attachment_files", label: "Attached Files", width: 240 },
   { key: "bill_action", label: "Bill Action", width: 125 },
   { key: "created", label: "Date Created", width: 140 },
@@ -809,7 +812,9 @@ export function AdditionalCostsBoard({
       dueDate: new Date().toISOString().slice(0, 10),
       billNumber: prefillFromBrokenLink ? row.quickbooks_invoice_number ?? "" : "",
       memo: client ? clientLabel(client) : "",
-      overallGstAmount: "",
+      overallGstAmount: row.quickbooks_overall_gst_override == null
+        ? ""
+        : String(row.quickbooks_overall_gst_override),
       attachments: [],
       lines: [{ categoryId: "", categoryName: "", description: "", amount: prefillFromBrokenLink && row.cost != null ? String(row.cost) : "", taxCodeId: "" }],
     });
@@ -1465,6 +1470,9 @@ export function AdditionalCostsBoard({
                         <td data-voucher-col="quickbooks_supplier_name" className="border-b border-r border-slate-200 bg-slate-100 px-3 py-2 text-sm text-slate-400">
                           <span className="block truncate">{row.quickbooks_supplier_name || "—"}</span>
                         </td>
+                        <td data-voucher-col="quickbooks_overall_gst_override" className="border-b border-r border-slate-200 bg-slate-100 px-3 py-2 text-right text-sm text-slate-400" title="Managed from the QuickBooks Bill">
+                          {row.quickbooks_overall_gst_override ?? ""}
+                        </td>
                         <td data-voucher-col="quickbooks_attachment_files" className="border-b border-r border-slate-200 bg-slate-100 px-3 py-2 text-xs text-slate-400">
                           {row.quickbooks_attachment_files?.length ? (
                             <div className="flex flex-wrap gap-1" title={row.quickbooks_attachment_files.map((file) => file.name ?? "Unnamed file").join(", ")}>
@@ -1474,7 +1482,7 @@ export function AdditionalCostsBoard({
                                 </a>
                               ) : <span key={`${file.id ?? file.name ?? "file"}-${index}`} className="max-w-24 truncate">{file.name || "Unnamed file"}</span>)}
                             </div>
-                          ) : <span>—</span>}
+                          ) : null}
                         </td>
                         <td data-voucher-col="bill_action" className="border-b border-r border-slate-200 px-2 py-1">
                           {row.has_quickbooks_bill ? (
@@ -2526,6 +2534,7 @@ export function AdditionalCostsBoard({
                     quickbooks_invoice_number: "",
                     quickbooks_supplier_id: "",
                     quickbooks_supplier_name: "",
+                    quickbooks_overall_gst_override: null,
                     quickbooks_attachment_files: [],
                   });
                 }
