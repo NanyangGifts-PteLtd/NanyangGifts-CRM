@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-type Supplier = { id: string; name: string; contact?: string; is_blacklisted: boolean; is_starred?: boolean };
+type Supplier = { id: string; name: string; contact?: string; is_blacklisted: boolean; is_starred?: boolean; tags?: Tag[] };
 type Tag = { id: string; name: string; color: string; sort_order?: number };
 type Lead = { id: string; name: string; display_id?: string | null };
 type Product = {
@@ -102,6 +102,22 @@ export function SupplierProfilesPanel() {
       toast.error(
         error instanceof Error ? error.message : "Could not add supplier.",
       );
+    } finally {
+      setPending(null);
+    }
+  };
+  const toggleListStar = async (supplier: Supplier) => {
+    const previous = supplier.is_starred ?? false;
+    setSuppliers((current) => current.map((item) => item.id === supplier.id
+      ? { ...item, is_starred: !previous, is_blacklisted: !previous ? false : item.is_blacklisted }
+      : item));
+    setPending(`star:${supplier.id}`);
+    try {
+      const json = await request("PATCH", { id: supplier.id, isStarred: !previous });
+      setSuppliers((current) => current.map((item) => item.id === supplier.id ? { ...item, ...json.supplier } : item));
+    } catch (error) {
+      setSuppliers((current) => current.map((item) => item.id === supplier.id ? { ...item, is_starred: previous } : item));
+      toast.error(error instanceof Error ? error.message : "Could not update supplier star.");
     } finally {
       setPending(null);
     }
@@ -355,19 +371,14 @@ export function SupplierProfilesPanel() {
             placeholder="Search supplier profiles..."
             className="mb-4 h-10 w-full max-w-lg rounded border px-3 text-sm"
           />
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="overflow-hidden rounded-xl border bg-white shadow-sm">
             {filtered.length ? (
               filtered.map((supplier) => (
-                <button
+                <div
                   key={supplier.id}
-                  onClick={() =>
-                    void open(supplier.id).catch((error) =>
-                      toast.error(error.message),
-                    )
-                  }
-                  disabled={pending === `open:${supplier.id}`}
-                  className={`rounded-xl border p-4 text-left shadow-sm ${supplier.is_blacklisted ? "border-red-400 bg-red-50" : "bg-white"}`}
+                  className={`flex min-h-16 items-center gap-3 border-b p-3 last:border-b-0 ${supplier.is_blacklisted ? "bg-red-100" : supplier.is_starred ? "bg-amber-50" : "bg-white"}`}
                 >
+                  <div className="hidden">
                   {pending === `open:${supplier.id}` ? <LoaderCircle className="mb-2 animate-spin text-amber-600" size={20} /> : <Building2 className="mb-2 text-amber-600" size={20} />}
                   <p className="truncate font-semibold">{supplier.name}</p>
                   {pending === `open:${supplier.id}` && <p className="mt-1 text-xs text-slate-500">Opening profile…</p>}
@@ -376,7 +387,16 @@ export function SupplierProfilesPanel() {
                       Blacklisted
                     </p>
                   )}
-                </button>
+                  </div>
+                  <button type="button" aria-label={`${supplier.is_starred ? "Remove star from" : "Star"} ${supplier.name}`} onClick={() => void toggleListStar(supplier)} disabled={pending === `star:${supplier.id}`} className={`rounded p-2 ${supplier.is_starred ? "text-amber-500" : "text-slate-300 hover:bg-amber-50 hover:text-amber-500"}`}>
+                    {pending === `star:${supplier.id}` ? <LoaderCircle className="animate-spin" size={19} /> : <Star size={19} fill={supplier.is_starred ? "currentColor" : "none"} />}
+                  </button>
+                  <button type="button" onClick={() => void open(supplier.id).catch((error) => toast.error(error.message))} disabled={pending === `open:${supplier.id}`} className="grid min-w-0 flex-1 grid-cols-[minmax(180px,1fr)_minmax(220px,1.2fr)_minmax(360px,2fr)] items-center gap-5 text-left">
+                    <div className="min-w-0"><p className="truncate font-semibold">{supplier.name}</p>{supplier.is_blacklisted && <p className="mt-0.5 text-xs font-semibold text-red-700">Blacklisted</p>}</div>
+                    <p className="truncate text-sm text-slate-600">{supplier.contact || "No contact details"}</p>
+                    <div className="flex min-w-0 flex-wrap gap-1.5">{supplier.tags?.length ? supplier.tags.slice(0, 5).map((tag) => <span key={tag.id} style={{ backgroundColor: tag.color }} className="rounded-sm px-2 py-1 text-xs font-medium text-white">{tag.name}</span>) : <span className="text-sm text-slate-400">No tags</span>}{(supplier.tags?.length ?? 0) > 5 && <span className="self-center text-xs text-slate-500">+{supplier.tags!.length - 5}</span>}</div>
+                  </button>
+                </div>
               ))
             ) : (
               <p className="text-sm text-slate-400">

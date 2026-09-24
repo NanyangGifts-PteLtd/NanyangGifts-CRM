@@ -33,11 +33,28 @@ export async function GET(request: NextRequest) {
   if (!id) {
     const { data, error } = await supabaseAdmin
       .from("supplier_profiles")
-      .select("id, name, is_blacklisted, is_starred, blacklisted_at, created_at")
+      .select("id, name, contact, is_blacklisted, is_starred, blacklisted_at, created_at")
       .order("name");
-    return error
-      ? NextResponse.json({ error: error.message }, { status: 500 })
-      : NextResponse.json({ suppliers: data ?? [] });
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    const supplierIds = (data ?? []).map((supplier) => supplier.id);
+    const { data: tagLinks, error: tagsError } = supplierIds.length
+      ? await supabaseAdmin
+          .from("supplier_profile_tags")
+          .select("supplier_profile_id, tag:supplier_tag_options(id, name, color, sort_order)")
+          .in("supplier_profile_id", supplierIds)
+      : { data: [], error: null };
+    if (tagsError) return NextResponse.json({ error: tagsError.message }, { status: 500 });
+    const tagsBySupplier = new Map<string, Array<{ id: string; name: string; color: string; sort_order?: number }>>();
+    for (const link of tagLinks ?? []) {
+      const tag = Array.isArray(link.tag) ? link.tag[0] : link.tag;
+      if (tag) tagsBySupplier.set(link.supplier_profile_id, [...(tagsBySupplier.get(link.supplier_profile_id) ?? []), tag]);
+    }
+    return NextResponse.json({
+      suppliers: (data ?? []).map((supplier) => ({
+        ...supplier,
+        tags: (tagsBySupplier.get(supplier.id) ?? []).sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)),
+      })),
+    });
   }
 
   // Lead details are only needed after a user opens one product's dialog.
@@ -313,11 +330,21 @@ export async function PATCH(request: NextRequest) {
     changes.blacklisted_at =
       body.isBlacklisted === true ? new Date().toISOString() : null;
     changes.blacklisted_by = body.isBlacklisted === true ? user.id : null;
+    if (body.isBlacklisted === true) {
+      changes.is_starred = false;
+      changes.starred_at = null;
+      changes.starred_by = null;
+    }
   }
   if (body.isStarred !== undefined) {
     changes.is_starred = body.isStarred === true;
     changes.starred_at = body.isStarred === true ? new Date().toISOString() : null;
     changes.starred_by = body.isStarred === true ? user.id : null;
+    if (body.isStarred === true) {
+      changes.is_blacklisted = false;
+      changes.blacklisted_at = null;
+      changes.blacklisted_by = null;
+    }
   }
   const { data, error } = await supabaseAdmin
     .from("supplier_profiles")
