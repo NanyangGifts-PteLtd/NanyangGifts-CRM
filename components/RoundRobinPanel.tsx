@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronUp, GripVertical } from "lucide-react";
 import { toast } from "sonner";
 import type { Profile } from "@/app/types";
@@ -44,9 +44,12 @@ function PointerArrow({ ghost = false }: { ghost?: boolean }) {
 export function RoundRobinAdminPanel({
   profiles,
   currentUserRole,
+  refreshVersion = 0,
 }: {
   profiles: Profile[];
   currentUserRole?: string | null;
+  /** Changes when another session updates the queue through Supabase Realtime. */
+  refreshVersion?: number;
 }) {
   const [rows, setRows] = useState<RoundRobinQueueRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -58,6 +61,14 @@ export function RoundRobinAdminPanel({
   const [over, setOver] = useState<{ list: ListName; id?: string } | null>(
     null,
   );
+  const handledRefreshVersion = useRef(refreshVersion);
+  const layoutSaveTimer = useRef<number | null>(null);
+  const pendingLayout = useRef<Array<{
+    user_id: string;
+    list_name: ListName;
+    position: number;
+  }> | null>(null);
+  const layoutSaveInFlight = useRef(false);
   // The route verifies the authenticated user with the service-role client.
   // Prefer that result because the browser's profiles read may be restricted
   // by RLS even for an authorised Dev account.
@@ -93,8 +104,8 @@ export function RoundRobinAdminPanel({
     [roundRobinProfiles, rows],
   );
 
-  const load = async () => {
-    setLoading(true);
+  const load = useCallback(async (showLoading = true) => {
+    if (showLoading) setLoading(true);
     try {
       const [queueResponse, position] = await Promise.all([
         getSalesRoundRobinQueue(),
@@ -105,23 +116,31 @@ export function RoundRobinAdminPanel({
       setServerMembers(queueResponse.members);
       setPointer(position);
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
-  };
+  }, []);
   useEffect(() => {
     void load();
-  }, []);
-  const saveRows = (next: RoundRobinQueueRow[]) => {
-    if (!editable) return;
-    const ordered = next.map((row, position) => ({ ...row, position }));
-    setRows(ordered);
-    void saveSalesRoundRobinLayout(
-      ordered.map((row) => ({
-        user_id: row.user_id,
-        list_name: (row.list_name ?? "out") as ListName,
-        position: row.position,
-      })),
-    ).catch((error) => {
+  }, [load]);
+
+  // Saving a layout updates several pool rows, each of which produces a
+  // Realtime event. Wait for the burst to settle before reconciling, otherwise
+  // an older server snapshot can visibly snap a rapid sequence of moves back.
+  useEffect(() => {
+    if (handledRefreshVersion.current === refreshVersion) return;
+    handledRefreshVersion.current = refreshVersion;
+    const timer = window.setTimeout(() => void load(false), 900);
+    return () => window.clearTimeout(timer);
+  }, [load, refreshVersion]);
+
+  const flushLayoutSave = useCallback(async () => {
+    if (layoutSaveInFlight.current || !pendingLayout.current) return;
+    const layout = pendingLayout.current;
+    pendingLayout.current = null;
+    layoutSaveInFlight.current = true;
+    try {
+      await saveSalesRoundRobinLayout(layout);
+    } catch (error) {
       toast.error("Round robin could not be saved", {
         description:
           error instanceof Error
@@ -129,7 +148,36 @@ export function RoundRobinAdminPanel({
             : "The previous layout has been restored.",
       });
       void load();
-    });
+    } finally {
+      layoutSaveInFlight.current = false;
+      // If a move occurred while the request was in flight, persist only the
+      // newest complete layout after it. This prevents stale requests winning.
+      if (pendingLayout.current) void flushLayoutSave();
+    }
+  }, [load]);
+
+  useEffect(() => () => {
+    if (layoutSaveTimer.current !== null) {
+      window.clearTimeout(layoutSaveTimer.current);
+    }
+  }, []);
+
+  const saveRows = (next: RoundRobinQueueRow[]) => {
+    if (!editable) return;
+    const ordered = next.map((row, position) => ({ ...row, position }));
+    setRows(ordered);
+    pendingLayout.current = ordered.map((row) => ({
+      user_id: row.user_id,
+      list_name: (row.list_name ?? "out") as ListName,
+      position: row.position,
+    }));
+    if (layoutSaveTimer.current !== null) {
+      window.clearTimeout(layoutSaveTimer.current);
+    }
+    layoutSaveTimer.current = window.setTimeout(() => {
+      layoutSaveTimer.current = null;
+      void flushLayoutSave();
+    }, 300);
   };
   const setPointerPosition = (position: number) => {
     if (!editable) return;

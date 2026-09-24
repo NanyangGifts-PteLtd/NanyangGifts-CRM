@@ -262,7 +262,16 @@ export async function ingestLead(lead: NormalizedInboundLead): Promise<InboundRe
     const { data: assignment, error: assignmentReadError } = await supabaseAdmin.from("client_assignees").select("client_id").eq("client_id", clientId).eq("user_id", assignedUserId).maybeSingle();
     if (assignmentReadError) throw new InboundLeadError(assignmentReadError.message);
     if (!assignment) {
-      const { error } = await supabaseAdmin.from("client_assignees").insert({ client_id: clientId, user_id: assignedUserId, assigned_by: null });
+      // Inbound leads are always initially assigned as sales/People.  This is
+      // deliberately explicit: client_assignees now distinguishes People from
+      // PM assignments, and omitting the type leaves an inbound lead only
+      // partially created when the database rejects the row.
+      const { error } = await supabaseAdmin.from("client_assignees").insert({
+        client_id: clientId,
+        user_id: assignedUserId,
+        assignment_type: "people",
+        assigned_by: null,
+      });
       if (error) throw new InboundLeadError(error.message);
     }
 
