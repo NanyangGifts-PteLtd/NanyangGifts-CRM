@@ -4,16 +4,19 @@ import { useCallback, useEffect, useState } from "react";
 import {
   ArrowLeft,
   Building2,
+  GripVertical,
   LoaderCircle,
   Plus,
   Send,
+  Star,
   Trash2,
   Users,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
 
-type Supplier = { id: string; name: string; is_blacklisted: boolean };
+type Supplier = { id: string; name: string; contact?: string; is_blacklisted: boolean; is_starred?: boolean };
+type Tag = { id: string; name: string; color: string; sort_order?: number };
 type Lead = { id: string; name: string; display_id?: string | null };
 type Product = {
   id: string;
@@ -27,7 +30,7 @@ type Remark = {
   created_at: string;
   author?: { full_name?: string | null; email?: string | null } | null;
 };
-type Detail = { supplier: Supplier; products: Product[]; remarks: Remark[] };
+type Detail = { supplier: Supplier; products: Product[]; remarks: Remark[]; tags: Tag[]; tagOptions: Tag[] };
 type Deletion = {
   kind: "supplier" | "remark" | "product";
   id: string;
@@ -57,6 +60,11 @@ export function SupplierProfilesPanel() {
   const [deleting, setDeleting] = useState<Deletion | null>(null);
   const [blacklistConfirm, setBlacklistConfirm] = useState(false);
   const [pending, setPending] = useState<string | null>(null);
+  const [tagSearch, setTagSearch] = useState("");
+  const [newTag, setNewTag] = useState("");
+  const [tagSelectorOpen, setTagSelectorOpen] = useState(false);
+  const [tagEditMode, setTagEditMode] = useState(false);
+  const [draggedTagId, setDraggedTagId] = useState<string | null>(null);
 
   const load = useCallback(
     async () => setSuppliers((await request("GET")).suppliers ?? []),
@@ -144,7 +152,7 @@ export function SupplierProfilesPanel() {
   };
   const saveSupplier = async (changes: Record<string, unknown>) => {
     if (!detail) return;
-    const action = changes.isBlacklisted === undefined ? "save-name" : "blacklist";
+    const action = changes.isBlacklisted !== undefined ? "blacklist" : changes.isStarred !== undefined ? "star" : "save-supplier";
     setPending(action);
     try {
       const json = await request("PATCH", {
@@ -162,6 +170,93 @@ export function SupplierProfilesPanel() {
         error instanceof Error ? error.message : "Could not save supplier.",
       );
       return false;
+    } finally {
+      setPending(null);
+    }
+  };
+  const toggleTag = async (tagId: string) => {
+    if (!detail) return;
+    const selected = detail.tags.some((tag) => tag.id === tagId);
+    const option = detail.tagOptions.find((tag) => tag.id === tagId);
+    if (!selected && !option) return;
+    const previous = detail.tags;
+    setDetail({
+      ...detail,
+      tags: selected
+        ? detail.tags.filter((tag) => tag.id !== tagId)
+        : [...detail.tags, option!].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)),
+    });
+    try {
+      await request("PATCH", {
+        action: "toggle-supplier-tag",
+        supplierId: detail.supplier.id,
+        tagId,
+        selected: !selected,
+      });
+    } catch (error) {
+      setDetail((current) => current ? { ...current, tags: previous } : current);
+      toast.error(error instanceof Error ? error.message : "Could not update tags.");
+    }
+  };
+  const addTagOption = async (event: React.FormEvent) => {
+    event.preventDefault(); if (!newTag.trim()) return; setPending("add-tag");
+    try {
+      const json = await request("POST", { action: "tag-option", name: newTag });
+      setNewTag("");
+      if (!detail) return;
+      setDetail((current) => current ? {
+        ...current,
+        tagOptions: [...current.tagOptions, json.tagOption],
+        tags: [...current.tags, json.tagOption].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)),
+      } : current);
+      await request("PATCH", {
+        action: "toggle-supplier-tag",
+        supplierId: detail.supplier.id,
+        tagId: json.tagOption.id,
+        selected: true,
+      });
+    }
+    catch (error) { toast.error(error instanceof Error ? error.message : "Could not add tag."); }
+    finally { setPending(null); }
+  };
+  const saveTagOption = async (id: string, changes: Record<string, unknown>) => {
+    setPending(`tag:${id}`);
+    try {
+      await request("PATCH", { action: "tag-option", id, ...changes });
+      await reload();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not update tag.");
+    } finally {
+      setPending(null);
+    }
+  };
+  const deleteTagOption = async (tag: Tag) => {
+    if (!window.confirm(`Delete the tag “${tag.name}”? It will be removed from every supplier profile.`)) return;
+    setPending(`delete-tag:${tag.id}`);
+    try {
+      await request("DELETE", { action: "tag-option", id: tag.id });
+      await reload();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not delete tag.");
+    } finally {
+      setPending(null);
+    }
+  };
+  const reorderTags = async (fromId: string, toId: string) => {
+    if (!detail || fromId === toId) return;
+    const ordered = [...detail.tagOptions];
+    const from = ordered.findIndex((tag) => tag.id === fromId);
+    const to = ordered.findIndex((tag) => tag.id === toId);
+    if (from < 0 || to < 0) return;
+    const [moved] = ordered.splice(from, 1);
+    ordered.splice(to, 0, moved);
+    setDetail({ ...detail, tagOptions: ordered });
+    setPending("reorder-tags");
+    try {
+      await request("PATCH", { action: "reorder-tag-options", tagIds: ordered.map((tag) => tag.id) });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not reorder tags.");
+      await reload();
     } finally {
       setPending(null);
     }
@@ -325,6 +420,9 @@ export function SupplierProfilesPanel() {
           >
             {pending === "blacklist" ? "Saving…" : detail.supplier.is_blacklisted ? "Un-blacklist" : "Blacklist"}
           </button>
+          <button onClick={() => void saveSupplier({ isStarred: !detail.supplier.is_starred })} disabled={pending === "star"} className={`inline-flex items-center gap-1 rounded border px-3 py-2 text-sm ${detail.supplier.is_starred ? "border-amber-300 bg-amber-50 text-amber-700" : "border-slate-200 text-slate-600"}`}>
+            <Star size={15} fill={detail.supplier.is_starred ? "currentColor" : "none"} /> {detail.supplier.is_starred ? "Starred" : "Star"}
+          </button>
           <button
             onClick={() =>
               setDeleting({
@@ -339,7 +437,67 @@ export function SupplierProfilesPanel() {
             Delete profile
           </button>
         </header>
-        <div className="mt-5 grid items-start gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(420px,.8fr)]">
+        <section className="mt-5 rounded-xl border bg-white p-5 shadow-sm">
+          <h2 className="font-semibold">Supplier Contact</h2>
+          <textarea value={detail.supplier.contact ?? ""} onChange={(event) => setDetail({ ...detail, supplier: { ...detail.supplier, contact: event.target.value } })} onBlur={() => void saveSupplier({ contact: detail.supplier.contact ?? "" })} placeholder="Contact person, phone, email, or other supplier contact details" className="mt-3 min-h-24 w-full resize-y rounded border p-3 text-sm" />
+        </section>
+        <section className="mt-5 rounded-xl border bg-white p-5 shadow-sm">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="font-semibold">Tags</h2>
+              <p className="text-xs text-slate-500">Higher-level supplier product categories.</p>
+            </div>
+            <button type="button" onClick={() => { setTagSelectorOpen((open) => !open); setTagEditMode(false); }} className="rounded border border-amber-300 px-3 py-2 text-sm text-amber-700">
+              {tagSelectorOpen ? "Close" : "Update tags"}
+            </button>
+          </div>
+          <div className="mt-4 flex flex-wrap gap-2.5">
+            {detail.tags.length ? detail.tags.map((tag) => (
+              <span key={tag.id} style={{ backgroundColor: tag.color }} className="rounded-sm px-4 py-2 text-sm font-semibold text-white shadow-sm">{tag.name}</span>
+            )) : <span className="text-sm text-slate-400">No tags selected.</span>}
+          </div>
+          {tagSelectorOpen && (
+            <div className="mt-5 rounded border bg-slate-50 p-4">
+              {!tagEditMode ? (
+                <>
+                  <input value={tagSearch} onChange={(event) => setTagSearch(event.target.value)} placeholder="Search tags..." className="h-11 w-full rounded border px-3 text-base" />
+                  <div className="mt-4 flex max-h-72 flex-wrap gap-2.5 overflow-y-auto p-1.5 pr-3">
+                    {detail.tagOptions.filter((tag) => tag.name.toLowerCase().includes(tagSearch.toLowerCase())).map((tag) => {
+                      const selected = detail.tags.some((item) => item.id === tag.id);
+                      return <button key={tag.id} type="button" onClick={() => void toggleTag(tag.id)} style={{ backgroundColor: tag.color }} className={`rounded-sm px-4 py-2 text-sm font-semibold text-white shadow-sm transition ${selected ? "ring-2 ring-slate-800 ring-offset-2" : "hover:ring-2 hover:ring-slate-300 hover:ring-offset-1"}`}>{tag.name}</button>;
+                    })}
+                  </div>
+                  <div className="mt-5 border-t pt-4">
+                    <button type="button" onClick={() => setTagEditMode(true)} className="rounded border border-amber-300 bg-white px-4 py-2 text-sm font-semibold text-amber-700">Edit tags</button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                    <p className="text-sm text-slate-600">Drag tags to change their order. Changes apply to every supplier profile.</p>
+                    <button type="button" onClick={() => setTagEditMode(false)} className="text-sm font-medium text-amber-700">Done</button>
+                  </div>
+                  <input value={tagSearch} onChange={(event) => setTagSearch(event.target.value)} placeholder="Find a tag to edit..." className="mb-3 h-9 w-full rounded border px-3 text-sm" />
+                  <div className="grid max-h-80 grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-2 overflow-y-auto pr-2">
+                    {detail.tagOptions.filter((tag) => tag.name.toLowerCase().includes(tagSearch.toLowerCase())).map((tag) => (
+                      <div key={tag.id} draggable={!tagSearch.trim()} onDragStart={() => { if (!tagSearch.trim()) setDraggedTagId(tag.id); }} onDragOver={(event) => { if (!tagSearch.trim()) event.preventDefault(); }} onDrop={() => { if (!tagSearch.trim() && draggedTagId) void reorderTags(draggedTagId, tag.id); setDraggedTagId(null); }} className="flex items-center gap-1.5 rounded border bg-white p-1.5">
+                        <GripVertical size={16} className={`shrink-0 ${tagSearch.trim() ? "cursor-not-allowed text-slate-200" : "cursor-grab text-slate-400"}`} />
+                        <input type="color" value={tag.color} onChange={(event) => void saveTagOption(tag.id, { color: event.target.value })} className="h-7 w-8 shrink-0 cursor-pointer rounded border p-0.5" aria-label={`Colour for ${tag.name}`} />
+                        <input defaultValue={tag.name} onBlur={(event) => { const name = event.target.value.trim(); if (name && name !== tag.name) void saveTagOption(tag.id, { name }); }} className="h-7 min-w-0 flex-1 rounded border px-1.5 text-xs" />
+                        <button type="button" onClick={() => void deleteTagOption(tag)} disabled={pending === `delete-tag:${tag.id}`} className="rounded p-2 text-red-600 hover:bg-red-50" aria-label={`Delete ${tag.name}`}><Trash2 size={16} /></button>
+                      </div>
+                    ))}
+                  </div>
+                  <form onSubmit={addTagOption} className="mt-4 flex gap-2 border-t pt-4">
+                    <input value={newTag} onChange={(event) => setNewTag(event.target.value)} placeholder="New tag name" className="h-10 min-w-0 flex-1 rounded border px-3 text-sm" />
+                    <button disabled={pending === "add-tag"} className="inline-flex items-center gap-1 rounded bg-amber-600 px-4 text-sm font-semibold text-white disabled:opacity-60"><Plus size={16} />{pending === "add-tag" ? "Adding…" : "Add tag"}</button>
+                  </form>
+                </>
+              )}
+            </div>
+          )}
+        </section>
+        <div className="mt-5 grid items-start gap-5 xl:grid-cols-2">
           <section className="rounded-xl border bg-white p-5 shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>

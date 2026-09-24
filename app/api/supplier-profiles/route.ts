@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
   if (!id) {
     const { data, error } = await supabaseAdmin
       .from("supplier_profiles")
-      .select("id, name, is_blacklisted, blacklisted_at, created_at")
+      .select("id, name, is_blacklisted, is_starred, blacklisted_at, created_at")
       .order("name");
     return error
       ? NextResponse.json({ error: error.message }, { status: 500 })
@@ -65,11 +65,11 @@ export async function GET(request: NextRequest) {
       : NextResponse.json({ leads: leads ?? [] });
   }
 
-  const [supplierResult, subitemsResult, productsResult, remarksResult] =
+  const [supplierResult, subitemsResult, productsResult, remarksResult, tagsResult, optionsResult] =
     await Promise.all([
       supabaseAdmin
         .from("supplier_profiles")
-        .select("id, name, is_blacklisted, blacklisted_at, created_at")
+        .select("id, name, contact, is_blacklisted, is_starred, blacklisted_at, created_at")
         .eq("id", id)
         .maybeSingle(),
       supabaseAdmin
@@ -88,19 +88,28 @@ export async function GET(request: NextRequest) {
         .select("id, content, created_at, author:profiles(full_name, email)")
         .eq("supplier_profile_id", id)
         .order("created_at", { ascending: false }),
+      supabaseAdmin
+        .from("supplier_profile_tags")
+        .select("tag:supplier_tag_options(id, name, color, sort_order)")
+        .eq("supplier_profile_id", id),
+      supabaseAdmin
+        .from("supplier_tag_options")
+        .select("id, name, color, sort_order")
+        .order("sort_order")
+        .order("name"),
     ]);
   if (supplierResult.error || !supplierResult.data)
     return NextResponse.json(
       { error: supplierResult.error?.message ?? "Supplier not found." },
       { status: 404 },
     );
-  if (subitemsResult.error || productsResult.error || remarksResult.error)
+  if (subitemsResult.error || productsResult.error || remarksResult.error || tagsResult.error || optionsResult.error)
     return NextResponse.json(
       {
         error:
           subitemsResult.error?.message ??
           productsResult.error?.message ??
-          remarksResult.error?.message,
+          remarksResult.error?.message ?? tagsResult.error?.message ?? optionsResult.error?.message,
       },
       { status: 500 },
     );
@@ -133,6 +142,10 @@ export async function GET(request: NextRequest) {
     supplier: supplierResult.data,
     products,
     remarks: remarksResult.data ?? [],
+    tags: (tagsResult.data ?? [])
+      .flatMap((row: any) => Array.isArray(row.tag) ? row.tag : row.tag ? [row.tag] : [])
+      .sort((a: { sort_order?: number }, b: { sort_order?: number }) => (a.sort_order ?? 0) - (b.sort_order ?? 0)),
+    tagOptions: optionsResult.data ?? [],
   });
 }
 
@@ -195,6 +208,21 @@ export async function POST(request: NextRequest) {
       ? NextResponse.json({ error: error.message }, { status: 500 })
       : NextResponse.json({ product: data });
   }
+  if (body.action === "tag-option") {
+    const name = String(body.name ?? "").trim();
+    if (!name) return NextResponse.json({ error: "Tag name is required." }, { status: 400 });
+    const { data: lastTag } = await supabaseAdmin
+      .from("supplier_tag_options")
+      .select("sort_order")
+      .order("sort_order", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const { data, error } = await supabaseAdmin.from("supplier_tag_options")
+      .insert({ name, created_by: user.id, sort_order: (lastTag?.sort_order ?? -1) + 1 }).select("id, name, color, sort_order").single();
+    return error
+      ? NextResponse.json({ error: error.code === "23505" ? "This tag already exists." : error.message }, { status: error.code === "23505" ? 409 : 500 })
+      : NextResponse.json({ tagOption: data }, { status: 201 });
+  }
   const name = String(body.name ?? "").trim();
   if (!name)
     return NextResponse.json(
@@ -224,6 +252,51 @@ export async function PATCH(request: NextRequest) {
   if (!user)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const body = (await request.json()) as Record<string, unknown>;
+  if (body.action === "toggle-supplier-tag") {
+    const supplierId = String(body.supplierId ?? "");
+    const tagId = String(body.tagId ?? "");
+    if (!supplierId || !tagId)
+      return NextResponse.json({ error: "Supplier and tag are required." }, { status: 400 });
+    const selected = body.selected === true;
+    const { error } = selected
+      ? await supabaseAdmin.from("supplier_profile_tags").upsert(
+          { supplier_profile_id: supplierId, tag_id: tagId, created_by: user.id },
+          { onConflict: "supplier_profile_id,tag_id", ignoreDuplicates: true },
+        )
+      : await supabaseAdmin
+          .from("supplier_profile_tags")
+          .delete()
+          .eq("supplier_profile_id", supplierId)
+          .eq("tag_id", tagId);
+    return error
+      ? NextResponse.json({ error: error.message }, { status: 500 })
+      : NextResponse.json({ selected });
+  }
+  if (body.action === "tag-option") {
+    const tagId = String(body.id ?? "");
+    if (!tagId) return NextResponse.json({ error: "Tag is required." }, { status: 400 });
+    const changes: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    if (body.name !== undefined) changes.name = String(body.name ?? "").trim();
+    if (body.color !== undefined) changes.color = String(body.color ?? "").trim();
+    const { data, error } = await supabaseAdmin.from("supplier_tag_options")
+      .update(changes).eq("id", tagId).select("id, name, color, sort_order").single();
+    return error
+      ? NextResponse.json({ error: error.code === "23505" ? "This tag already exists." : error.message }, { status: error.code === "23505" ? 409 : 500 })
+      : NextResponse.json({ tagOption: data });
+  }
+  if (body.action === "reorder-tag-options") {
+    const tagIds = Array.isArray(body.tagIds)
+      ? body.tagIds.filter((value): value is string => typeof value === "string")
+      : [];
+    if (!tagIds.length) return NextResponse.json({ error: "Tags are required." }, { status: 400 });
+    const results = await Promise.all(tagIds.map((tagId, sortOrder) =>
+      supabaseAdmin.from("supplier_tag_options").update({ sort_order: sortOrder, updated_at: new Date().toISOString() }).eq("id", tagId),
+    ));
+    const failed = results.find((result) => result.error);
+    return failed?.error
+      ? NextResponse.json({ error: failed.error.message }, { status: 500 })
+      : NextResponse.json({ reordered: true });
+  }
   const id = String(body.id ?? "");
   if (!id)
     return NextResponse.json(
@@ -234,17 +307,23 @@ export async function PATCH(request: NextRequest) {
     updated_at: new Date().toISOString(),
   };
   if (body.name !== undefined) changes.name = String(body.name).trim();
+  if (body.contact !== undefined) changes.contact = String(body.contact ?? "");
   if (body.isBlacklisted !== undefined) {
     changes.is_blacklisted = body.isBlacklisted === true;
     changes.blacklisted_at =
       body.isBlacklisted === true ? new Date().toISOString() : null;
     changes.blacklisted_by = body.isBlacklisted === true ? user.id : null;
   }
+  if (body.isStarred !== undefined) {
+    changes.is_starred = body.isStarred === true;
+    changes.starred_at = body.isStarred === true ? new Date().toISOString() : null;
+    changes.starred_by = body.isStarred === true ? user.id : null;
+  }
   const { data, error } = await supabaseAdmin
     .from("supplier_profiles")
     .update(changes)
     .eq("id", id)
-    .select("id, name, is_blacklisted, blacklisted_at, created_at")
+    .select("id, name, contact, is_blacklisted, is_starred, blacklisted_at, created_at")
     .single();
   if (error)
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -253,6 +332,15 @@ export async function PATCH(request: NextRequest) {
       .from("subitems")
       .update({ supplier: data.name })
       .eq("supplier_profile_id", id);
+  if (Array.isArray(body.tagIds)) {
+    const tagIds = [...new Set(body.tagIds.filter((value): value is string => typeof value === "string" && Boolean(value)))];
+    const { error: clearError } = await supabaseAdmin.from("supplier_profile_tags").delete().eq("supplier_profile_id", id);
+    if (clearError) return NextResponse.json({ error: clearError.message }, { status: 500 });
+    if (tagIds.length) {
+      const { error: tagError } = await supabaseAdmin.from("supplier_profile_tags").insert(tagIds.map((tagId) => ({ supplier_profile_id: id, tag_id: tagId, created_by: user.id })));
+      if (tagError) return NextResponse.json({ error: tagError.message }, { status: 500 });
+    }
+  }
   return NextResponse.json({ supplier: data });
 }
 
@@ -333,6 +421,10 @@ export async function DELETE(request: NextRequest) {
     return error
       ? NextResponse.json({ error: error.message }, { status: 500 })
       : NextResponse.json({ deleted: true, activeCount });
+  }
+  if (action === "tag-option") {
+    const { error } = await supabaseAdmin.from("supplier_tag_options").delete().eq("id", String(body.id ?? ""));
+    return error ? NextResponse.json({ error: error.message }, { status: 500 }) : NextResponse.json({ deleted: true });
   }
   return NextResponse.json(
     { error: "Unknown delete action." },
