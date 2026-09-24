@@ -17,6 +17,11 @@ import { capitaliseFirstCharacter } from "./text-format";
 
 const supabase = createClient();
 
+// Supplier cells occasionally hold a contact/link rather than a supplier
+// identity. Those values must stay as Board text only, never as profiles.
+const supplierValueContainsUrl = (value: string) =>
+  /(?:https?:\/\/|ftp:\/\/|www\.|Wechat:|mailto:)[^\s]+/i.test(value);
+
 const CLIENT_LOG_IGNORE_FIELDS = new Set<keyof Client>([
   "expanded",
   "activityLog",
@@ -2043,12 +2048,12 @@ export async function updateSubitemRow(
 
   if (error) throw error;
 
-  // Supplier profiles are linked by their stable ID. The displayed supplier
-  // text remains on the subitem for board compatibility, while renames and
-  // profile lists can reliably follow this link.
+  // Supplier profiles are linked by their stable ID. URL-containing values
+  // represent contact methods rather than a supplier identity, so they are
+  // deliberately kept as unlinked Board text.
   if (nextUpdates.supplier !== undefined) {
     const supplierName = String(nextUpdates.supplier ?? "").trim();
-    if (!supplierName) {
+    if (!supplierName || supplierValueContainsUrl(supplierName)) {
       const { error: unlinkError } = await supabase
         .from("subitems")
         .update({ supplier_profile_id: null })
