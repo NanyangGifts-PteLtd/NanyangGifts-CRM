@@ -2063,69 +2063,57 @@ export async function updateSubitemRow(
       if (unlinkError) throw unlinkError;
     } else {
       const normalizedName = supplierName.replace(/\s+/g, " ").toLowerCase();
-      let { data: supplier, error: supplierError } = await supabase
+      const { data: supplier, error: supplierError } = await supabase
         .from("supplier_profiles")
         .select("id")
         .eq("normalized_name", normalizedName)
         .maybeSingle();
       if (supplierError) throw supplierError;
       if (!supplier) {
-        const created = await supabase
-          .from("supplier_profiles")
-          .insert({ name: supplierName })
-          .select("id")
-          .maybeSingle();
-        if (created.error && created.error.code !== "23505")
-          throw created.error;
-        supplier = created.data;
-        if (!supplier) {
-          const retry = await supabase
-            .from("supplier_profiles")
-            .select("id")
-            .eq("normalized_name", normalizedName)
-            .maybeSingle();
-          if (retry.error || !retry.data)
-            throw (
-              retry.error ?? new Error("Could not create supplier profile.")
-            );
-          supplier = retry.data;
-        }
-      }
-      const { error: linkError } = await supabase
-        .from("subitems")
-        .update({ supplier_profile_id: supplier.id })
-        .eq("id", subitemId);
-      if (linkError) throw linkError;
+        // Board input is allowed to remain free text, but only profiles that
+        // were deliberately created in Supplier Profiles can be linked.
+        const { error: unlinkError } = await supabase
+          .from("subitems")
+          .update({ supplier_profile_id: null })
+          .eq("id", subitemId);
+        if (unlinkError) throw unlinkError;
+      } else {
+        const { error: linkError } = await supabase
+          .from("subitems")
+          .update({ supplier_profile_id: supplier.id })
+          .eq("id", subitemId);
+        if (linkError) throw linkError;
 
-      // Re-adding or editing a Board subitem makes the corresponding entry
-      // visible again in its Supplier Profile's managed product list.
-      const productName = String(
-        nextUpdates.name ?? existing.name ?? "",
-      ).trim();
-      if (productName) {
-        const normalizedProductName = productName
-          .replace(/\s+/g, " ")
-          .toLowerCase();
-        const { data: product, error: productLookupError } = await supabase
-          .from("supplier_profile_products")
-          .select("id")
-          .eq("supplier_profile_id", supplier.id)
-          .eq("normalized_name", normalizedProductName)
-          .maybeSingle();
-        if (productLookupError) throw productLookupError;
-        const { error: productError } = product
-          ? await supabase
-              .from("supplier_profile_products")
-              .update({
-                name: productName,
-                is_hidden: false,
-                updated_at: new Date().toISOString(),
-              })
-              .eq("id", product.id)
-          : await supabase
-              .from("supplier_profile_products")
-              .insert({ supplier_profile_id: supplier.id, name: productName });
-        if (productError) throw productError;
+        // Re-adding or editing a Board subitem makes the corresponding entry
+        // visible again in its Supplier Profile's managed product list.
+        const productName = String(
+          nextUpdates.name ?? existing.name ?? "",
+        ).trim();
+        if (productName) {
+          const normalizedProductName = productName
+            .replace(/\s+/g, " ")
+            .toLowerCase();
+          const { data: product, error: productLookupError } = await supabase
+            .from("supplier_profile_products")
+            .select("id")
+            .eq("supplier_profile_id", supplier.id)
+            .eq("normalized_name", normalizedProductName)
+            .maybeSingle();
+          if (productLookupError) throw productLookupError;
+          const { error: productError } = product
+            ? await supabase
+                .from("supplier_profile_products")
+                .update({
+                  name: productName,
+                  is_hidden: false,
+                  updated_at: new Date().toISOString(),
+                })
+                .eq("id", product.id)
+            : await supabase
+                .from("supplier_profile_products")
+                .insert({ supplier_profile_id: supplier.id, name: productName });
+          if (productError) throw productError;
+        }
       }
     }
   }
