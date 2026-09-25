@@ -42,7 +42,7 @@ function KPICard({ title, value, subtitle, icon, color }: {
 
 export function ReportsPanel({ clients }: ReportsPanelProps) {
   const [labelOptions, setLabelOptions] = useState<Array<{
-    id: string; systemKey: string | null; value: string; color: string;
+    id: string; groupCode: string; systemKey: string | null; value: string; color: string;
   }>>([]);
   useEffect(() => {
     const supabase = createSupabaseClient();
@@ -51,15 +51,16 @@ export function ReportsPanel({ clients }: ReportsPanelProps) {
       const { data: groups } = await supabase
         .from('option_groups')
         .select('id, code')
-        .in('code', ['client_status', 'payment_status']);
+        .in('code', ['client_status', 'payment_status', 'channel', 'importance']);
       const groupIds = (groups ?? []).map((group) => group.id);
       if (!groupIds.length) return;
       const { data } = await supabase
         .from('option_values')
-        .select('id, system_key, value, color')
+        .select('id, group_id, system_key, value, color')
         .in('group_id', groupIds);
       if (active) setLabelOptions((data ?? []).map((option) => ({
         id: option.id,
+        groupCode: (groups ?? []).find((group) => group.id === option.group_id)?.code ?? '',
         systemKey: option.system_key,
         value: option.value,
         color: option.color,
@@ -87,31 +88,32 @@ export function ReportsPanel({ clients }: ReportsPanelProps) {
 
     const totalItems = clients.reduce((sum, c) => sum + c.subitems.length, 0);
 
-    const statusBreakdown = Object.entries(STATUS_COLORS).map(([status, color]) => ({
-      name: status,
-      value: clients.filter(c => c.status === status).length,
-      color,
-    })).filter(d => d.value > 0);
+    const groupOptions = (groupCode: string) => labelOptions.filter((option) => option.groupCode === groupCode);
+    const statusBreakdown = groupOptions('client_status').map((option) => ({
+      name: option.value,
+      value: clients.filter((client) => client.statusOptionId === option.id).length,
+      color: option.color,
+    })).filter((item) => item.value > 0);
 
-    const pipelineByStatus = Object.entries(STATUS_COLORS).map(([status]) => {
-      const statusClients = clients.filter(c => c.status === status);
+    const pipelineByStatus = groupOptions('client_status').map((option) => {
+      const statusClients = clients.filter((client) => client.statusOptionId === option.id);
       const revenue = statusClients.reduce((sum, c) => {
         const val = parseFloat(c.totalPrice.replace(/,/g, '')) || 0;
         return sum + val;
       }, 0);
-      return { name: status.replace(' ', '\n'), revenue, count: statusClients.length };
+      return { name: option.value.replace(' ', '\n'), revenue, count: statusClients.length };
     }).filter(d => d.count > 0);
 
-    const channelBreakdown = ['Forms', 'Email', 'Referral', 'E-comm', 'Whatsapp', 'Call', 'Direct'].map(ch => ({
-      name: ch,
-      count: clients.filter(c => c.channel === ch).length,
-    })).filter(d => d.count > 0);
+    const channelBreakdown = groupOptions('channel').map((option) => ({
+      name: option.value,
+      count: clients.filter((client) => client.channelOptionId === option.id).length,
+    })).filter((item) => item.count > 0);
 
-    const importanceBreakdown = [
-      { name: 'High', count: clients.filter(c => c.importance === 'High').length, color: '#E2445C' },
-      { name: 'Medium', count: clients.filter(c => c.importance === 'Medium').length, color: '#FFCB00' },
-      { name: 'Low', count: clients.filter(c => c.importance === 'Low').length, color: '#00C875' },
-    ].filter(d => d.count > 0);
+    const importanceBreakdown = groupOptions('importance').map((option) => ({
+      name: option.value,
+      count: clients.filter((client) => client.importanceOptionId === option.id).length,
+      color: option.color,
+    })).filter((item) => item.count > 0);
 
     const paidOptionId = optionId('payment_status_paid');
     const toPayOptionId = optionId('payment_status_to_pay');

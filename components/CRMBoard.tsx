@@ -97,6 +97,7 @@ import {
   calculateSubitemFinancials,
   parseSubitemNumber,
 } from "@/lib/subitem-calculations";
+import { currencySystemKey, sgdToCurrencyMultiplier } from "@/lib/currency-labels";
 import { ClientDetailView } from "./ClientDetailView";
 import { SubitemDetailView } from "./SubitemDetailView";
 import {
@@ -3983,7 +3984,7 @@ export function CRMBoard({
       if (key === "people")
         return (subitemAssignees[subitem.id] ?? []).map(profileName);
       if (key === "markup" || key === "percentMarkup")
-        return calculateSubitemFinancials(subitem)[key];
+        return calculateSubitemFinancials(subitem, currencyEntries)[key];
       if (key === "idealMarkup" || key === "priceToSet")
         return subitem.customFields?.[key] ?? "";
       if (key.startsWith("custom:"))
@@ -4071,7 +4072,7 @@ export function CRMBoard({
             key === "people"
               ? (subitemAssignees[subitem.id] ?? []).map(profileName)
               : key === "markup" || key === "percentMarkup"
-                ? calculateSubitemFinancials(subitem)[key]
+                ? calculateSubitemFinancials(subitem, currencyEntries)[key]
                 : key.startsWith("custom:")
                   ? subitem.customFields?.[key.slice(7)]
                   : (subitem as unknown as Record<string, unknown>)[key];
@@ -4119,7 +4120,7 @@ export function CRMBoard({
       const clientFinancialTotals = () =>
         client.subitems.reduce(
           (totals, subitem) => {
-            const financials = calculateSubitemFinancials(subitem);
+            const financials = calculateSubitemFinancials(subitem, currencyEntries);
             return {
               totalPrice: totals.totalPrice + (Number(financials.price) || 0),
               totalMarkup: totals.totalMarkup + (Number(financials.markup) || 0),
@@ -4151,7 +4152,7 @@ export function CRMBoard({
                 key === "people"
                   ? (subitemAssignees[subitem.id] ?? []).map(profileName)
                   : key === "markup" || key === "percentMarkup"
-                    ? [calculateSubitemFinancials(subitem)[key]]
+                    ? [calculateSubitemFinancials(subitem, currencyEntries)[key]]
                     : key === "idealMarkup" || key === "priceToSet"
                       ? [subitem.customFields?.[key]]
                   : key.startsWith("custom:")
@@ -4322,7 +4323,7 @@ export function CRMBoard({
     if (column === "dateCreated") return client.createdAt ?? "";
     if (column === "totalMarkup")
       return client.subitems.reduce(
-        (total, subitem) => total + calculateSubitemFinancials(subitem).markup,
+        (total, subitem) => total + calculateSubitemFinancials(subitem, currencyEntries).markup,
         0,
       );
     if (column.startsWith("custom:"))
@@ -4384,7 +4385,7 @@ export function CRMBoard({
     subitem: Subitem,
     column: string,
   ): string | number => {
-    const financials = calculateSubitemFinancials(subitem);
+    const financials = calculateSubitemFinancials(subitem, currencyEntries);
     if (column === "people")
       return (subitemAssignees[subitem.id] ?? [])
         .map(
@@ -4418,8 +4419,9 @@ export function CRMBoard({
       return Number(subitem.cost || 0) * Number(subitem.qty || 0);
     if (column === "totalC") {
       if (!subitem.currency) return "";
-      const rate =
-        subitem.currency === "MYR" ? 3 : subitem.currency === "RMB" ? 5 : 1;
+      const rate = sgdToCurrencyMultiplier(
+        currencySystemKey(subitem.currencyOptionId, currencyEntries),
+      );
       return (
         Number(subitem.cost || 0) * Number(subitem.qty || 0) +
         Number(subitem.manpower || 0) * rate +
@@ -4555,7 +4557,7 @@ export function CRMBoard({
     () =>
       selectedSubitems.reduce(
         (totals, subitem) => {
-          const financials = calculateSubitemFinancials(subitem);
+          const financials = calculateSubitemFinancials(subitem, currencyEntries);
           const unitCost =
             subitem.currency?.trim() && financials.quantity > 0
               ? financials.tc / financials.quantity
@@ -4772,7 +4774,7 @@ export function CRMBoard({
           (totals, client) => {
             const clientTotals = client.subitems.reduce(
               (subitemTotals, subitem) => {
-                const financials = calculateSubitemFinancials(subitem);
+                const financials = calculateSubitemFinancials(subitem, currencyEntries);
                 const unitCost =
                   subitem.currency?.trim() && financials.quantity > 0
                     ? financials.tc / financials.quantity

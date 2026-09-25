@@ -198,7 +198,7 @@ export async function POST(request: NextRequest) {
     const repliedLabel = await getSystemLabel("reply_status", "reply_status_replied");
 
     const alreadyReplied = client.reply_status_option_id === repliedLabel.id;
-    if (!alreadyReplied || oldStatus !== repliedLabel.value) {
+    if (!alreadyReplied) {
       const { error: updateError } = await supabaseAdmin
         .from("clients")
         .update({

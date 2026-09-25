@@ -1,10 +1,5 @@
 import type { Subitem } from "@/app/types";
-
-const CURRENCY_RATES: Record<string, number> = {
-    RMB: 0.2,
-    SGD: 1,
-    MYR: 0.333,
-};
+import { currencySystemKey, currencyToSgdRate, type CurrencyOption } from "@/lib/currency-labels";
 
 function parseNumericValue(value: string | number | undefined | null) {
     if (typeof value === "number") return Number.isFinite(value) ? value : 0;
@@ -13,7 +8,7 @@ function parseNumericValue(value: string | number | undefined | null) {
     return Number.isFinite(parsed) ? parsed : 0;
 }
 
-export function calculateSubitemFinancials(subitem: Subitem) {
+export function calculateSubitemFinancials(subitem: Subitem, currencyOptions: CurrencyOption[] = []) {
     const quantity = parseNumericValue(subitem.qty);
     const cost = parseNumericValue(subitem.cost);
     const manpower = parseNumericValue(subitem.manpower);
@@ -21,7 +16,7 @@ export function calculateSubitemFinancials(subitem: Subitem) {
     const overseasShipping = parseNumericValue(subitem.os);
     const unitPrice = parseNumericValue(subitem.up);
     // A missing currency must never silently be treated as RMB.
-    const currencyRate = CURRENCY_RATES[subitem.currency ?? ""] ?? 0;
+    const currencyRate = currencyToSgdRate(currencySystemKey(subitem.currencyOptionId, currencyOptions));
     const cSgd = cost * currencyRate;
     const tcSgd = cSgd * quantity;
     const tc = tcSgd + manpower + localShipping + overseasShipping;

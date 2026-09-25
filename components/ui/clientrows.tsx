@@ -44,6 +44,7 @@ import {
 import { Tooltip } from "radix-ui";
 import type { CustomColumn } from "@/lib/custom-columns";
 import { calculateSubitemFinancials } from "@/lib/subitem-calculations";
+import { currencySystemKey, sgdToCurrencyMultiplier } from "@/lib/currency-labels";
 import { useGenerateEstimate } from "@/components/hooks/use-generate-estimate-button";
 import { ClientActionsMenu } from "@/components/ClientActionsMenu";
 import { FileDropTarget } from "./file-drop-target";
@@ -701,8 +702,9 @@ export function ClientRow({
       (() => {
         const qty = quickBooksNumber(subitem.qty);
         const cost = quickBooksNumber(subitem.cost);
-        const multiplier =
-          subitem.currency === "RMB" ? 5 : subitem.currency === "MYR" ? 3 : 1;
+        const multiplier = sgdToCurrencyMultiplier(
+          currencySystemKey(subitem.currencyOptionId, currencyOptions),
+        );
         const totalCost =
           qty * cost +
           quickBooksNumber(subitem.manpower) * multiplier +
@@ -1058,7 +1060,7 @@ export function ClientRow({
       const totalPrice = client.subitems
         .filter(contributesToAwardedTotals)
         .reduce(
-          (total, subitem) => total + calculateSubitemFinancials(subitem).price,
+          (total, subitem) => total + calculateSubitemFinancials(subitem, currencyOptions).price,
           0,
         );
       const priceDifference = Math.abs(totalPrice - invoiceSubtotal);
@@ -1780,7 +1782,7 @@ export function ClientRow({
     .filter(contributesToAwardedTotals)
     .reduce(
       (totals, subitem) => {
-        const { price, markup } = calculateSubitemFinancials(subitem);
+        const { price, markup } = calculateSubitemFinancials(subitem, currencyOptions);
 
         return {
           totalPrice: totals.totalPrice + price,

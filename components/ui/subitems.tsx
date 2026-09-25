@@ -43,6 +43,7 @@ import {
 } from "./timeline";
 import { CustomColumn } from "@/lib/custom-columns";
 import { calculateSubitemFinancials } from "@/lib/subitem-calculations";
+import { currencySystemKey, sgdToCurrencyMultiplier } from "@/lib/currency-labels";
 import { toast } from "sonner";
 import { SubitemActionsMenu } from "@/components/SubitemActionsMenu";
 import {
@@ -1969,7 +1970,7 @@ export function SubitemsTable({
       price,
       markup,
       percentMarkup,
-    } = calculateSubitemFinancials(sub);
+    } = calculateSubitemFinancials(sub, currencyOptions);
     const hasCurrency = Boolean(sub.currency?.trim());
     const uc = qty > 0 ? tc / qty : null;
     const idealMarkup = parseNumber(sub.customFields?.idealMarkup);
@@ -2347,8 +2348,9 @@ export function SubitemsTable({
     const qty = parseNumber(sub.qty);
     const cost = parseNumber(sub.cost);
     const totalUc = cost * qty;
-    const currencyMultiplier =
-      sub.currency === "RMB" ? 5 : sub.currency === "MYR" ? 3 : 1;
+    const currencyMultiplier = sgdToCurrencyMultiplier(
+      currencySystemKey(sub.currencyOptionId, currencyOptions),
+    );
     const manpowerInCurrency = parseNumber(sub.manpower) * currencyMultiplier;
     const lsInCurrency = parseNumber(sub.ls) * currencyMultiplier;
     const totalC = totalUc + manpowerInCurrency + lsInCurrency;
