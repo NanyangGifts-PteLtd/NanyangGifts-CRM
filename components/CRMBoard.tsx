@@ -482,6 +482,32 @@ export function CRMBoard({
 
     window.setTimeout(tryHighlight, searchTarget.subitemId ? 100 : 0);
   }, [searchTarget]);
+  useEffect(() => {
+    const navigateToSubitem = (event: Event) => {
+      const detail = (event as CustomEvent<{ clientId?: string; subitemId?: string }>).detail;
+      if (!detail?.clientId || !detail.subitemId) return;
+      setExpandedIds((current) =>
+        current.includes(detail.clientId!)
+          ? current
+          : [...current, detail.clientId!],
+      );
+      let attempts = 0;
+      const focus = () => {
+        const row = document.querySelector<HTMLElement>(`[data-subitem-id="${detail.subitemId}"]`);
+        if (!row && attempts++ < 25) {
+          window.setTimeout(focus, 120);
+          return;
+        }
+        if (!row) return;
+        row.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
+        row.classList.add("search-result-highlight");
+        window.setTimeout(() => row.classList.remove("search-result-highlight"), 1800);
+      };
+      window.setTimeout(focus, 80);
+    };
+    window.addEventListener("crm:navigate-subitem", navigateToSubitem);
+    return () => window.removeEventListener("crm:navigate-subitem", navigateToSubitem);
+  }, [setExpandedIds]);
   const [focusedFilterColumn, setFocusedFilterColumn] = useState<string | null>(
     null,
   );

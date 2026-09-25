@@ -43,9 +43,13 @@ import {
 } from "./timeline";
 import { CustomColumn } from "@/lib/custom-columns";
 import { calculateSubitemFinancials } from "@/lib/subitem-calculations";
-import { currencySystemKey, sgdToCurrencyMultiplier } from "@/lib/currency-labels";
+import {
+  currencySystemKey,
+  sgdToCurrencyMultiplier,
+} from "@/lib/currency-labels";
 import { toast } from "sonner";
 import { SubitemActionsMenu } from "@/components/SubitemActionsMenu";
+import { PriceCalculatorDialog } from "@/components/PriceCalculatorDialog";
 import {
   DEFAULT_PAYMENT_STATUS_OPTIONS,
   findSystemOption,
@@ -121,6 +125,12 @@ export const SUBITEM_COLS: ColumnDef[] = [
   { key: "percentMarkup", label: "% Markup", width: 85, minWidth: 7 },
   { key: "idealMarkup", label: "Ideal Markup", width: 95, minWidth: 7 },
   { key: "priceToSet", label: "Price to Set", width: 95, minWidth: 7 },
+  {
+    key: "priceCalculator",
+    label: "Price Calculator",
+    width: 120,
+    minWidth: 100,
+  },
   { key: "cnTracking", label: "CN Tracking #", width: 130, minWidth: 7 },
   { key: "sgTracking", label: "SG Tracking #", width: 130, minWidth: 7 },
   { key: "createdAt", label: "Date Created", width: 105, minWidth: 7 },
@@ -457,12 +467,20 @@ export function SubitemsTable({
     Set<string>
   >(new Set());
   const [supplierNames, setSupplierNames] = useState<string[]>([]);
-  const [supplierProfiles, setSupplierProfiles] = useState<Array<{
-    name: string;
-    is_starred?: boolean;
-    productNames?: string[];
-    productSaleCounts?: Record<string, number>;
-  }>>([]);
+  const [priceCalculatorSubitemId, setPriceCalculatorSubitemId] = useState<
+    string | null
+  >(null);
+  const [highlightedUpSubitemId, setHighlightedUpSubitemId] = useState<
+    string | null
+  >(null);
+  const [supplierProfiles, setSupplierProfiles] = useState<
+    Array<{
+      name: string;
+      is_starred?: boolean;
+      productNames?: string[];
+      productSaleCounts?: Record<string, number>;
+    }>
+  >([]);
   useEffect(() => {
     const load = async () => {
       const response = await fetch("/api/supplier-profiles");
@@ -531,7 +549,8 @@ export function SubitemsTable({
       )
       .sort(
         (left, right) =>
-          Number(Boolean(right.is_starred)) - Number(Boolean(left.is_starred)) ||
+          Number(Boolean(right.is_starred)) -
+            Number(Boolean(left.is_starred)) ||
           salesCount(right) - salesCount(left) ||
           left.name.localeCompare(right.name),
       )[0]?.name;
@@ -1088,34 +1107,36 @@ export function SubitemsTable({
     const startWidth = startCol.width;
     let pendingSharedNameWidth: number | null = null;
 
-  const onMouseMove = (e: MouseEvent) => {
-    const delta = e.clientX - startX;
-    const nextWidth = Math.max(startCol.minWidth ?? 50, startWidth + delta);
+    const onMouseMove = (e: MouseEvent) => {
+      const delta = e.clientX - startX;
+      const nextWidth = Math.max(startCol.minWidth ?? 50, startWidth + delta);
 
-    // Only resize the visible table while dragging. Updating both tables on
-    // every mouse move makes the Payment table's resize handle reflow against
-    // itself; the paired view is updated once the drag is complete.
-    if (key === "name") {
-      pendingSharedNameWidth = nextWidth;
-      const newCols = activeCols.map((column) =>
-        column.key === "name" ? { ...column, width: nextWidth } : column,
-      );
-      if (tableMode === "payment") setPaymentCols(newCols);
-      else setSubitemCols(newCols);
-      window.dispatchEvent(
-        new CustomEvent(
-          tableMode === "payment" ? "paymentColsChanged" : "subitemColsChanged",
-          { detail: Object.fromEntries(newCols.map((c) => [c.key, c.width])) },
-        ),
-      );
-      return;
-    }
+      // Only resize the visible table while dragging. Updating both tables on
+      // every mouse move makes the Payment table's resize handle reflow against
+      // itself; the paired view is updated once the drag is complete.
+      if (key === "name") {
+        pendingSharedNameWidth = nextWidth;
+        const newCols = activeCols.map((column) =>
+          column.key === "name" ? { ...column, width: nextWidth } : column,
+        );
+        if (tableMode === "payment") setPaymentCols(newCols);
+        else setSubitemCols(newCols);
+        window.dispatchEvent(
+          new CustomEvent(
+            tableMode === "payment"
+              ? "paymentColsChanged"
+              : "subitemColsChanged",
+            {
+              detail: Object.fromEntries(newCols.map((c) => [c.key, c.width])),
+            },
+          ),
+        );
+        return;
+      }
 
-    if (tableMode === "payment") {
-      const newCols = paymentCols.map((c) =>
-        c.key === key
-            ? { ...c, width: nextWidth }
-            : c,
+      if (tableMode === "payment") {
+        const newCols = paymentCols.map((c) =>
+          c.key === key ? { ...c, width: nextWidth } : c,
         );
         setPaymentCols(newCols);
         try {
@@ -1132,10 +1153,8 @@ export function SubitemsTable({
           }),
         );
       } else {
-      const newCols = subitemCols.map((c) =>
-        c.key === key
-            ? { ...c, width: nextWidth }
-            : c,
+        const newCols = subitemCols.map((c) =>
+          c.key === key ? { ...c, width: nextWidth } : c,
         );
         setSubitemCols(newCols);
         try {
@@ -2194,7 +2213,10 @@ export function SubitemsTable({
               multiline
               resizableMultiline
               recommendations={supplierNames}
-              recommendedSupplier={recommendedSupplierForSubitem(sub.name, sub.supplier)}
+              recommendedSupplier={recommendedSupplierForSubitem(
+                sub.name,
+                sub.supplier,
+              )}
               // Do not force height or important width here: this same class is
               // applied to the expanded textarea, whose dimensions must remain
               // under the user's resize control.
@@ -2325,12 +2347,16 @@ export function SubitemsTable({
         );
       case "up":
         return (
-          <EditableCell
-            value={sub.up}
-            onChange={(v) => onUpdateSubitem(sub.id, { up: v })}
-            type="number"
-            readOnly={costLocked}
-          />
+          <div
+            className={`h-full w-full ${highlightedUpSubitemId === sub.id ? "bg-amber-200 animate-pulse" : ""}`}
+          >
+            <EditableCell
+              value={sub.up}
+              onChange={(v) => onUpdateSubitem(sub.id, { up: v })}
+              type="number"
+              readOnly={costLocked}
+            />
+          </div>
         );
       case "markup":
         return (
@@ -2366,6 +2392,18 @@ export function SubitemsTable({
         return (
           <div className="flex justify-center text-xs text-gray-800">
             {hasCurrency && priceToSet !== null ? formatMoney(priceToSet) : ""}
+          </div>
+        );
+      case "priceCalculator":
+        return (
+          <div className="flex h-full items-center justify-center px-1">
+            <button
+              type="button"
+              onClick={() => setPriceCalculatorSubitemId(sub.id)}
+              className="rounded bg-amber-600 px-2 py-1 text-[11px] font-semibold text-white shadow-sm transition hover:bg-amber-700"
+            >
+              Open Calculator
+            </button>
           </div>
         );
       case "cnTracking":
@@ -2620,7 +2658,10 @@ export function SubitemsTable({
               multiline
               resizableMultiline
               recommendations={supplierNames}
-              recommendedSupplier={recommendedSupplierForSubitem(sub.name, sub.supplier)}
+              recommendedSupplier={recommendedSupplierForSubitem(
+                sub.name,
+                sub.supplier,
+              )}
               // See the standard subitem supplier cell above. The red state
               // must not override the resizable textarea's width or height.
               className={
@@ -2904,6 +2945,10 @@ export function SubitemsTable({
 
   const totalColSpan = 1 + cols.length + subitemCustomCols.length + 1;
   const selectableSubitems = displayedSubitems;
+  const priceCalculatorSubitem = priceCalculatorSubitemId
+    ? (subitems.find((subitem) => subitem.id === priceCalculatorSubitemId) ??
+      null)
+    : null;
 
   return (
     <div
@@ -4283,6 +4328,35 @@ export function SubitemsTable({
           </tbody>
         </table>
       </div>
+      {priceCalculatorSubitem && (
+        <PriceCalculatorDialog
+          subitem={priceCalculatorSubitem}
+          currencyOptions={currencyOptions}
+          readOnly={
+            !canEditSubitem(priceCalculatorSubitem.id) ||
+            isCostLocked(priceCalculatorSubitem)
+          }
+          onAddCurrency={onAddCurrency}
+          onDeleteCurrency={onDeleteCurrency}
+          onUpdateCurrencyOptionColor={(name, color, optionId) =>
+            onUpdateOptionColor?.("currency", name, color, optionId)
+          }
+          onRenameCurrencyOption={(oldName, newName, optionId) =>
+            onRenameOption?.("currency", oldName, newName, optionId)
+          }
+          onReorderCurrencyOptions={(layout) =>
+            onReorderOptions?.("currency", layout)
+          }
+          onUpdate={(changes) => {
+            if (changes.up !== undefined) {
+              setHighlightedUpSubitemId(priceCalculatorSubitem.id);
+              window.setTimeout(() => setHighlightedUpSubitemId(null), 1400);
+            }
+            onUpdateSubitem(priceCalculatorSubitem.id, changes);
+          }}
+          onClose={() => setPriceCalculatorSubitemId(null)}
+        />
+      )}
     </div>
   );
 }
