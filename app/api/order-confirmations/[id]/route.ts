@@ -1,27 +1,29 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { canEditClient } from "@/lib/client-access";
 
 type RouteContext = {
-    params: Promise<{ id: string }>;
+  params: Promise<{ id: string }>;
 };
 
 export async function GET(_request: NextRequest, { params }: RouteContext) {
-    const { id } = await params;
-    const supabase = await createClient();
+  const { id } = await params;
+  const supabase = await createClient();
 
-    try {
-        const {
-            data: { user },
-            error: userError,
-        } = await supabase.auth.getUser();
+  try {
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
 
-        if (userError || !user) {
-            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-        }
+    if (userError || !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
-        const { data: ocf, error: ocfError } = await supabase
-            .from("order_confirmations")
-            .select(`
+    const { data: ocf, error: ocfError } = await supabase
+      .from("order_confirmations")
+      .select(
+        `
         id,
         client_id,
         generated_by,
@@ -40,20 +42,25 @@ export async function GET(_request: NextRequest, { params }: RouteContext) {
         client_signature_path,
         client_submitted_at,
         locked_at
-        `)
-            .eq("id", id)
-            .single();
+        `,
+      )
+      .eq("id", id)
+      .single();
 
-        if (ocfError || !ocf) {
-            return NextResponse.json(
-                { error: ocfError?.message || "Order confirmation not found" },
-                { status: 404 }
-            );
-        }
+    if (ocfError || !ocf) {
+      return NextResponse.json(
+        { error: ocfError?.message || "Order confirmation not found" },
+        { status: 404 },
+      );
+    }
+    if (!(await canEditClient(supabase, ocf.client_id, user.id))) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
 
-        const { data: items, error: itemsError } = await supabase
-            .from("order_confirmation_items")
-            .select(`
+    const { data: items, error: itemsError } = await supabase
+      .from("order_confirmation_items")
+      .select(
+        `
         id,
         order_confirmation_id,
         subitem_id,
@@ -65,114 +72,125 @@ export async function GET(_request: NextRequest, { params }: RouteContext) {
         delivery_contact_number,
         delivery_remarks,
         image_path
-        `)
-            .eq("order_confirmation_id", id);
+        `,
+      )
+      .eq("order_confirmation_id", id);
 
-        if (itemsError) {
-            return NextResponse.json(
-                { error: itemsError.message || "Failed to load order confirmation items" },
-                { status: 500 }
-            );
-        }
-
-        return NextResponse.json({
-            ocf,
-            items: items ?? [],
-        });
-    } catch (error) {
-        return NextResponse.json(
-            {
-                error:
-                    error instanceof Error
-                        ? error.message
-                        : "Failed to fetch order confirmation",
-            },
-            { status: 500 }
-        );
+    if (itemsError) {
+      return NextResponse.json(
+        {
+          error:
+            itemsError.message || "Failed to load order confirmation items",
+        },
+        { status: 500 },
+      );
     }
+
+    return NextResponse.json({
+      ocf,
+      items: items ?? [],
+    });
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to fetch order confirmation",
+      },
+      { status: 500 },
+    );
+  }
 }
 
 export async function PATCH(request: NextRequest, { params }: RouteContext) {
-    const { id } = await params;
-    const supabase = await createClient();
+  const { id } = await params;
+  const supabase = await createClient();
 
-    try {
-        const {
-            data: { user },
-            error: userError,
-        } = await supabase.auth.getUser();
+  try {
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
 
-        if (userError || !user) {
-            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-        }
+    if (userError || !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
-        const body = await request.json();
+    const body = await request.json();
 
-        const {
-            salesperson_name,
-            salesperson_contact_number,
-            salesperson_email,
-            estimated_delivery_notes,
-            important_notes,
-        } = body ?? {};
+    const {
+      salesperson_name,
+      salesperson_contact_number,
+      salesperson_email,
+      estimated_delivery_notes,
+      important_notes,
+    } = body ?? {};
 
-        const { data: existing, error: existingError } = await supabase
-            .from("order_confirmations")
-            .select("id, status, locked_at")
-            .eq("id", id)
-            .single();
+    const { data: existing, error: existingError } = await supabase
+      .from("order_confirmations")
+      .select("id, client_id, status, locked_at")
+      .eq("id", id)
+      .single();
 
-        if (existingError || !existing) {
-            return NextResponse.json(
-                { error: "Order confirmation not found" },
-                { status: 404 }
-            );
-        }
+    if (existingError || !existing) {
+      return NextResponse.json(
+        { error: "Order confirmation not found" },
+        { status: 404 },
+      );
+    }
+    if (!(await canEditClient(supabase, existing.client_id, user.id))) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
 
-        if (
-            existing.locked_at ||
-            existing.status === "locked" ||
-            existing.status === "submitted"
-        ) {
-            return NextResponse.json(
-                { error: "This order confirmation form is locked and can no longer be edited" },
-                { status: 403 }
-            );
-        }
+    if (
+      existing.locked_at ||
+      existing.status === "locked" ||
+      existing.status === "submitted"
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "This order confirmation form is locked and can no longer be edited",
+        },
+        { status: 403 },
+      );
+    }
 
-        const updates: Record<string, unknown> = {};
+    const updates: Record<string, unknown> = {};
 
-        if (typeof salesperson_name === "string") {
-            updates.salesperson_name = salesperson_name;
-        }
+    if (typeof salesperson_name === "string") {
+      updates.salesperson_name = salesperson_name;
+    }
 
-        if (typeof salesperson_contact_number === "string") {
-            updates.salesperson_contact_number = salesperson_contact_number;
-        }
+    if (typeof salesperson_contact_number === "string") {
+      updates.salesperson_contact_number = salesperson_contact_number;
+    }
 
-        if (typeof salesperson_email === "string") {
-            updates.salesperson_email = salesperson_email;
-        }
+    if (typeof salesperson_email === "string") {
+      updates.salesperson_email = salesperson_email;
+    }
 
-        if (typeof important_notes === "string") {
-            updates.important_notes = important_notes;
-        }
+    if (typeof important_notes === "string") {
+      updates.important_notes = important_notes;
+    }
 
-        if (typeof estimated_delivery_notes === "string") {
-            updates.estimated_delivery_notes = estimated_delivery_notes;
-        }
-        if (Object.keys(updates).length === 0) {
-            return NextResponse.json(
-                { error: "No valid fields to update" },
-                { status: 400 }
-            );
-        }
+    if (typeof estimated_delivery_notes === "string") {
+      updates.estimated_delivery_notes = estimated_delivery_notes;
+    }
+    if (Object.keys(updates).length === 0) {
+      return NextResponse.json(
+        { error: "No valid fields to update" },
+        { status: 400 },
+      );
+    }
 
-        const { data: updated, error: updateError } = await supabase
-            .from("order_confirmations")
-            .update(updates)
-            .eq("id", id)
-            .select(`
+    const { data: updated, error: updateError } = await supabase
+      .from("order_confirmations")
+      .update(updates)
+      .eq("id", id)
+      .select(
+        `
         id,
         client_id,
         generated_by,
@@ -191,29 +209,32 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
         client_signature_path,
         client_submitted_at,
         locked_at
-        `)
-            .single();
+        `,
+      )
+      .single();
 
-        if (updateError || !updated) {
-            return NextResponse.json(
-                { error: updateError?.message || "Failed to update order confirmation" },
-                { status: 500 }
-            );
-        }
-
-        return NextResponse.json({
-            success: true,
-            ocf: updated,
-        });
-    } catch (error) {
-        return NextResponse.json(
-            {
-                error:
-                    error instanceof Error
-                        ? error.message
-                        : "Failed to update order confirmation",
-            },
-            { status: 500 }
-        );
+    if (updateError || !updated) {
+      return NextResponse.json(
+        {
+          error: updateError?.message || "Failed to update order confirmation",
+        },
+        { status: 500 },
+      );
     }
+
+    return NextResponse.json({
+      success: true,
+      ocf: updated,
+    });
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to update order confirmation",
+      },
+      { status: 500 },
+    );
+  }
 }

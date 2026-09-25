@@ -1,278 +1,345 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
-import { qboQuery, qboRequest } from '@/lib/quickbooks/api';
-import { getSystemLabel } from '@/lib/system-labels';
+import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
+import { qboQuery, qboRequest } from "@/lib/quickbooks/api";
+import { getSystemLabel } from "@/lib/system-labels";
+import { canEditClient } from "@/lib/client-access";
 
 const ELIGIBLE_STATUS_KEYS = [
-    'subitem_status_quoted',
-    'subitem_status_shortlisted',
-    'subitem_status_awarded',
+  "subitem_status_quoted",
+  "subitem_status_shortlisted",
+  "subitem_status_awarded",
 ] as const;
-const isFreightLine = (name: unknown) => /\bfreight\b/i.test(String(name ?? ""));
+const isFreightLine = (name: unknown) =>
+  /\bfreight\b/i.test(String(name ?? ""));
 
 function esc(value: string) {
-    return value.replace(/'/g, "\\'");
+  return value.replace(/'/g, "\\'");
 }
 
 function numberValue(value: unknown) {
-    const parsed = Number(String(value ?? "").replace(/,/g, "").trim());
-    return Number.isFinite(parsed) ? parsed : 0;
+  const parsed = Number(
+    String(value ?? "")
+      .replace(/,/g, "")
+      .trim(),
+  );
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function estimateMetadataFields(values: { salesperson: string; paymentTerm: string }) {
-    // Verified from the existing Make scenario's QuickBooks response:
-    // DefinitionId 2 is Payment Terms; DefinitionId 3 is the current legacy
-    // salesperson slot. Name is intentionally omitted because QuickBooks uses
-    // the definition ID to resolve a transaction custom field.
-    return [
-        ...(values.paymentTerm.trim()
-            ? [{
-                DefinitionId: '2',
-                Type: 'StringType',
-                StringValue: values.paymentTerm.trim(),
-            }]
-            : []),
-        {
-            DefinitionId: '3',
-            Type: 'StringType',
-            StringValue: values.salesperson,
-        },
-    ];
+function estimateMetadataFields(values: {
+  salesperson: string;
+  paymentTerm: string;
+}) {
+  // Verified from the existing Make scenario's QuickBooks response:
+  // DefinitionId 2 is Payment Terms; DefinitionId 3 is the current legacy
+  // salesperson slot. Name is intentionally omitted because QuickBooks uses
+  // the definition ID to resolve a transaction custom field.
+  return [
+    ...(values.paymentTerm.trim()
+      ? [
+          {
+            DefinitionId: "2",
+            Type: "StringType",
+            StringValue: values.paymentTerm.trim(),
+          },
+        ]
+      : []),
+    {
+      DefinitionId: "3",
+      Type: "StringType",
+      StringValue: values.salesperson,
+    },
+  ];
 }
 
 async function getOrCreateCustomer(client: any) {
-    const name = (client.company ?? '').trim();
-    if (!name) throw new Error('Client name missing');
+  const name = (client.company ?? "").trim();
+  if (!name) throw new Error("Client name missing");
 
-    const existing = await qboQuery(
-        `SELECT * FROM Customer WHERE DisplayName = '${esc(client.company)}'`
-    );
+  const existing = await qboQuery(
+    `SELECT * FROM Customer WHERE DisplayName = '${esc(client.company)}'`,
+  );
 
-    console.log('hi');
+  console.log("hi");
 
-    const found = existing?.QueryResponse?.Customer?.[0];
-    if (found) return found;
+  const found = existing?.QueryResponse?.Customer?.[0];
+  if (found) return found;
 
-    const created = await qboRequest('/customer', {
-        method: 'POST',
-        body: JSON.stringify({
-            DisplayName: client.company || undefined,
-            PrimaryEmailAddr: client.email ? { Address: client.email } : undefined,
-            PrimaryPhone: client.phone ? { FreeFormNumber: client.phone } : undefined,
-            BillAddr: client.billing_address ? { Line1: client.billing_address } : undefined,
-        }),
-    });
+  const created = await qboRequest("/customer", {
+    method: "POST",
+    body: JSON.stringify({
+      DisplayName: client.company || undefined,
+      PrimaryEmailAddr: client.email ? { Address: client.email } : undefined,
+      PrimaryPhone: client.phone ? { FreeFormNumber: client.phone } : undefined,
+      BillAddr: client.billing_address
+        ? { Line1: client.billing_address }
+        : undefined,
+    }),
+  });
 
-    return created.Customer;
+  return created.Customer;
 }
 
 async function getOrCreateItem(subitem: any) {
-    const name = (subitem.name ?? '').trim();
-    if (!name) throw new Error('Subitem name missing');
+  const name = (subitem.name ?? "").trim();
+  if (!name) throw new Error("Subitem name missing");
 
-    const existing = await qboQuery(
-        `SELECT * FROM Item WHERE Name = '${esc(name)}'`
-    );
+  const existing = await qboQuery(
+    `SELECT * FROM Item WHERE Name = '${esc(name)}'`,
+  );
 
-    const found = existing?.QueryResponse?.Item?.[0];
-    if (found) return found;
+  const found = existing?.QueryResponse?.Item?.[0];
+  if (found) return found;
 
-    const created = await qboRequest('/item', {
-        method: 'POST',
-        body: JSON.stringify({
-            Name: name,
-            Type: 'NonInventory',
-            IncomeAccountRef: {
-                value: process.env.QUICKBOOKS_INCOME_ACCOUNT_ID!,
-            },
-            SalesTaxCodeRef: {
-                value: '59',
-            },
-        }),
-    });
+  const created = await qboRequest("/item", {
+    method: "POST",
+    body: JSON.stringify({
+      Name: name,
+      Type: "NonInventory",
+      IncomeAccountRef: {
+        value: process.env.QUICKBOOKS_INCOME_ACCOUNT_ID!,
+      },
+      SalesTaxCodeRef: {
+        value: "59",
+      },
+    }),
+  });
 
-    return created.Item;
+  return created.Item;
 }
 
 export async function POST(req: NextRequest) {
-    try {
-        const {
-            clientId,
-            companyName: suppliedCompanyName,
-            salesperson: suppliedSalesperson,
-            paymentTerm: suppliedPaymentTerm,
-            deliveryBySubitem,
-        } = await req.json() as {
-            clientId?: string;
-            companyName?: string;
-            salesperson?: string;
-            paymentTerm?: string;
-            deliveryBySubitem?: Record<string, "singapore" | "other">;
-        };
-        if (!clientId) {
-            return NextResponse.json({ error: 'Missing clientId' }, { status: 400 });
-        }
+  try {
+    const {
+      clientId,
+      companyName: suppliedCompanyName,
+      salesperson: suppliedSalesperson,
+      paymentTerm: suppliedPaymentTerm,
+      deliveryBySubitem,
+    } = (await req.json()) as {
+      clientId?: string;
+      companyName?: string;
+      salesperson?: string;
+      paymentTerm?: string;
+      deliveryBySubitem?: Record<string, "singapore" | "other">;
+    };
+    if (!clientId) {
+      return NextResponse.json({ error: "Missing clientId" }, { status: 400 });
+    }
 
-        const supabase = await createClient();
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user)
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!(await canEditClient(supabase, clientId, user.id))) {
+      return NextResponse.json(
+        {
+          error:
+            "You must be assigned to this client to create a QuickBooks quote.",
+        },
+        { status: 403 },
+      );
+    }
 
-        const paymentTerm = String(suppliedPaymentTerm ?? '').trim().slice(0, 200);
-        const companyName = String(suppliedCompanyName ?? '').trim().slice(0, 200);
-        const salesperson = String(suppliedSalesperson ?? '').trim().slice(0, 200);
-        if (!companyName) {
-            return NextResponse.json({ error: "Company name is required for the QuickBooks quote." }, { status: 400 });
-        }
-        if (!paymentTerm || paymentTerm === "Others (specify)") {
-            return NextResponse.json({ error: "Payment terms are required for the QuickBooks quote." }, { status: 400 });
-        }
-        if (!salesperson) {
-            return NextResponse.json({ error: "Salesperson is required for the QuickBooks quote." }, { status: 400 });
-        }
-        const { data: profile } = await supabase
-            .from('profiles')
-            .select('full_name, email')
-            .eq('id', user.id)
-            .maybeSingle();
-        const actorName = profile?.full_name?.trim() || profile?.email || user.email || 'CRM user';
+    const paymentTerm = String(suppliedPaymentTerm ?? "")
+      .trim()
+      .slice(0, 200);
+    const companyName = String(suppliedCompanyName ?? "")
+      .trim()
+      .slice(0, 200);
+    const salesperson = String(suppliedSalesperson ?? "")
+      .trim()
+      .slice(0, 200);
+    if (!companyName) {
+      return NextResponse.json(
+        { error: "Company name is required for the QuickBooks quote." },
+        { status: 400 },
+      );
+    }
+    if (!paymentTerm || paymentTerm === "Others (specify)") {
+      return NextResponse.json(
+        { error: "Payment terms are required for the QuickBooks quote." },
+        { status: 400 },
+      );
+    }
+    if (!salesperson) {
+      return NextResponse.json(
+        { error: "Salesperson is required for the QuickBooks quote." },
+        { status: 400 },
+      );
+    }
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("full_name, email")
+      .eq("id", user.id)
+      .maybeSingle();
+    const actorName =
+      profile?.full_name?.trim() || profile?.email || user.email || "CRM user";
 
-        const { data: client, error } = await supabase
-            .from('clients')
-            .select(`
+    const { data: client, error } = await supabase
+      .from("clients")
+      .select(
+        `
         *,
         subitems!subitems_client_id_fkey (*)
-        `)
-            .eq('id', clientId)
-            .single();
+        `,
+      )
+      .eq("id", clientId)
+      .single();
 
-        if (error || !client) {
-            return NextResponse.json({ error: 'Client not found' }, { status: 404 });
-        }
-
-        const eligibleStatusIds = new Set(
-            (await Promise.all(
-                ELIGIBLE_STATUS_KEYS.map((key) => getSystemLabel('subitem_status', key)),
-            )).map((label) => label.id),
-        );
-        const subitems = (client.subitems ?? [])
-            .filter((s: any) => eligibleStatusIds.has(s.status_option_id))
-            .sort((first: any, second: any) => Number(first.position ?? Number.MAX_SAFE_INTEGER) - Number(second.position ?? Number.MAX_SAFE_INTEGER));
-
-        if (!subitems.length) {
-            return NextResponse.json(
-                { error: 'No eligible subitems with Quoted/Shortlisted/Awarded status' },
-                { status: 400 }
-            );
-        }
-        const invalidDeliverySubitem = subitems.find(
-            (subitem: { id: string }) =>
-                !isFreightLine((subitem as { name?: string }).name) &&
-                !["singapore", "other"].includes(
-                    String(deliveryBySubitem?.[subitem.id] ?? ""),
-                ),
-        );
-        if (invalidDeliverySubitem) {
-            return NextResponse.json(
-                { error: "Choose a delivery destination for every quote line." },
-                { status: 400 },
-            );
-        }
-
-        const customer = await getOrCreateCustomer({ ...client, company: companyName });
-
-        const lines = [];
-        for (let i = 0; i < subitems.length; i += 1) {
-            const subitem = subitems[i];
-            const item = await getOrCreateItem(subitem);
-
-            // `price` on the CRM board is the line total (Qty × U.P.), not the unit price.
-            const qty = numberValue(subitem.qty) || 1;
-            const unitPrice = numberValue(subitem.up) || (qty > 0 ? numberValue(subitem.price) / qty : 0);
-            const amount = qty * unitPrice;
-            const taxCodeValue = isFreightLine(subitem.name) ||
-                deliveryBySubitem?.[subitem.id] === 'other'
-                ? '21'
-                : '59';
-
-            lines.push({
-                LineNum: i + 1,
-                Amount: amount,
-                Description: subitem.description || subitem.name || 'Unnamed item',
-                DetailType: 'SalesItemLineDetail',
-                SalesItemLineDetail: {
-                    ItemRef: {
-                        value: item.Id,
-                        name: item.Name,
-                    },
-                    Qty: qty,
-                    UnitPrice: unitPrice,
-                    TaxCodeRef: {
-                        value: taxCodeValue,
-                    }
-                },
-            });
-        }
-
-        const customFields = estimateMetadataFields({
-            salesperson,
-            paymentTerm,
-        });
-        const estimateRes = await qboRequest('/estimate', {
-            method: 'POST',
-            body: JSON.stringify({
-                CustomerRef: {
-                    value: customer.Id,
-                    name: customer.DisplayName,
-                },
-                Line: lines,
-                ...(customFields.length
-                    ? { CustomField: customFields }
-                    : {}),
-            }),
-        });
-
-        const estimate = estimateRes?.Estimate;
-
-        const { data: generation, error: generationError } = await supabase
-            .from('estimate_generations')
-            .insert({
-                client_id: client.id,
-                quickbooks_customer_id: customer.Id,
-                quickbooks_estimate_id: estimate?.Id ?? null,
-                quickbooks_estimate_doc_number: estimate?.DocNumber ?? null,
-            })
-            .select('id')
-            .single();
-        if (generationError) throw generationError;
-
-        const { error: activityError } = await supabase.from('activity_log').insert({
-            client_id: client.id,
-            subitem_id: null,
-            actor_name: actorName,
-            action: 'estimate_created',
-            field_name: null,
-            old_value: null,
-            new_value: null,
-            subitem_name: null,
-            link: null,
-            title: 'generated a QuickBooks quote',
-            description: estimate?.DocNumber ? `QuickBooks quote ${estimate.DocNumber}` : 'QuickBooks quote generated',
-            meta: { kind: 'quickbooks', estimateGenerationId: generation.id, quickbooksEstimateId: estimate?.Id ?? null, docNumber: estimate?.DocNumber ?? null, subitemIds: subitems.map((item: { id: string }) => item.id) },
-            created_at: new Date().toISOString(),
-        });
-        if (activityError) throw activityError;
-
-        return NextResponse.json({
-            success: true,
-            estimateGenerationId: generation.id,
-            estimateId: estimate?.Id ?? null,
-            docNumber: estimate?.DocNumber ?? null,
-        });
-    } catch (error: any) {
-        console.error('Generate quote failed:', error);
-        return NextResponse.json(
-            { error: error?.message ?? 'Failed to generate quote' },
-            { status: 500 }
-        );
+    if (error || !client) {
+      return NextResponse.json({ error: "Client not found" }, { status: 404 });
     }
+
+    const eligibleStatusIds = new Set(
+      (
+        await Promise.all(
+          ELIGIBLE_STATUS_KEYS.map((key) =>
+            getSystemLabel("subitem_status", key),
+          ),
+        )
+      ).map((label) => label.id),
+    );
+    const subitems = (client.subitems ?? [])
+      .filter((s: any) => eligibleStatusIds.has(s.status_option_id))
+      .sort(
+        (first: any, second: any) =>
+          Number(first.position ?? Number.MAX_SAFE_INTEGER) -
+          Number(second.position ?? Number.MAX_SAFE_INTEGER),
+      );
+
+    if (!subitems.length) {
+      return NextResponse.json(
+        {
+          error: "No eligible subitems with Quoted/Shortlisted/Awarded status",
+        },
+        { status: 400 },
+      );
+    }
+    const invalidDeliverySubitem = subitems.find(
+      (subitem: { id: string }) =>
+        !isFreightLine((subitem as { name?: string }).name) &&
+        !["singapore", "other"].includes(
+          String(deliveryBySubitem?.[subitem.id] ?? ""),
+        ),
+    );
+    if (invalidDeliverySubitem) {
+      return NextResponse.json(
+        { error: "Choose a delivery destination for every quote line." },
+        { status: 400 },
+      );
+    }
+
+    const customer = await getOrCreateCustomer({
+      ...client,
+      company: companyName,
+    });
+
+    const lines = [];
+    for (let i = 0; i < subitems.length; i += 1) {
+      const subitem = subitems[i];
+      const item = await getOrCreateItem(subitem);
+
+      // `price` on the CRM board is the line total (Qty × U.P.), not the unit price.
+      const qty = numberValue(subitem.qty) || 1;
+      const unitPrice =
+        numberValue(subitem.up) ||
+        (qty > 0 ? numberValue(subitem.price) / qty : 0);
+      const amount = qty * unitPrice;
+      const taxCodeValue =
+        isFreightLine(subitem.name) ||
+        deliveryBySubitem?.[subitem.id] === "other"
+          ? "21"
+          : "59";
+
+      lines.push({
+        LineNum: i + 1,
+        Amount: amount,
+        Description: subitem.description || subitem.name || "Unnamed item",
+        DetailType: "SalesItemLineDetail",
+        SalesItemLineDetail: {
+          ItemRef: {
+            value: item.Id,
+            name: item.Name,
+          },
+          Qty: qty,
+          UnitPrice: unitPrice,
+          TaxCodeRef: {
+            value: taxCodeValue,
+          },
+        },
+      });
+    }
+
+    const customFields = estimateMetadataFields({
+      salesperson,
+      paymentTerm,
+    });
+    const estimateRes = await qboRequest("/estimate", {
+      method: "POST",
+      body: JSON.stringify({
+        CustomerRef: {
+          value: customer.Id,
+          name: customer.DisplayName,
+        },
+        Line: lines,
+        ...(customFields.length ? { CustomField: customFields } : {}),
+      }),
+    });
+
+    const estimate = estimateRes?.Estimate;
+
+    const { data: generation, error: generationError } = await supabase
+      .from("estimate_generations")
+      .insert({
+        client_id: client.id,
+        quickbooks_customer_id: customer.Id,
+        quickbooks_estimate_id: estimate?.Id ?? null,
+        quickbooks_estimate_doc_number: estimate?.DocNumber ?? null,
+      })
+      .select("id")
+      .single();
+    if (generationError) throw generationError;
+
+    const { error: activityError } = await supabase
+      .from("activity_log")
+      .insert({
+        client_id: client.id,
+        subitem_id: null,
+        actor_name: actorName,
+        action: "estimate_created",
+        field_name: null,
+        old_value: null,
+        new_value: null,
+        subitem_name: null,
+        link: null,
+        title: "generated a QuickBooks quote",
+        description: estimate?.DocNumber
+          ? `QuickBooks quote ${estimate.DocNumber}`
+          : "QuickBooks quote generated",
+        meta: {
+          kind: "quickbooks",
+          estimateGenerationId: generation.id,
+          quickbooksEstimateId: estimate?.Id ?? null,
+          docNumber: estimate?.DocNumber ?? null,
+          subitemIds: subitems.map((item: { id: string }) => item.id),
+        },
+        created_at: new Date().toISOString(),
+      });
+    if (activityError) throw activityError;
+
+    return NextResponse.json({
+      success: true,
+      estimateGenerationId: generation.id,
+      estimateId: estimate?.Id ?? null,
+      docNumber: estimate?.DocNumber ?? null,
+    });
+  } catch (error: any) {
+    console.error("Generate quote failed:", error);
+    return NextResponse.json(
+      { error: error?.message ?? "Failed to generate quote" },
+      { status: 500 },
+    );
+  }
 }

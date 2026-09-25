@@ -1,64 +1,88 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSystemLabel } from "@/lib/system-labels";
-import { DEFAULT_IMPORTANT_NOTES, DEFAULT_STRICT_NEED_BY_WARNING } from "@/components/Important-Notes";
+import { canEditClient } from "@/lib/client-access";
+import {
+  DEFAULT_IMPORTANT_NOTES,
+  DEFAULT_STRICT_NEED_BY_WARNING,
+} from "@/components/Important-Notes";
 
 type CreateOcfBody = {
-    clientId: string;
-    companyName: string;
-    clientEmail?: string | null;
-    estimatedDeliveryNotes?: string | null;
-    itemUploads: Array<{
-        subitemId: string;
-        imagePath: string | null;
-        needBy: string | null;
-    }>;
+  clientId: string;
+  companyName: string;
+  clientEmail?: string | null;
+  estimatedDeliveryNotes?: string | null;
+  itemUploads: Array<{
+    subitemId: string;
+    imagePath: string | null;
+    needBy: string | null;
+  }>;
 };
 
 const OCF_ELIGIBLE_STATUS_KEYS = [
-    "subitem_status_awarded",
-    "subitem_status_verify_later",
-    "subitem_status_verified",
-    "subitem_status_variation_cost_difference",
+  "subitem_status_awarded",
+  "subitem_status_verify_later",
+  "subitem_status_verified",
+  "subitem_status_variation_cost_difference",
 ] as const;
 
 export async function POST(req: NextRequest) {
-    try {
-        const supabase = await createClient();
+  try {
+    const supabase = await createClient();
 
-        const {
-            data: { user },
-            error: authError,
-        } = await supabase.auth.getUser();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
 
-        if (authError || !user) {
-            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-        }
+    if (authError || !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
-        const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
-        if (!['sales', 'pm', 'admin', 'director', 'dev'].includes(String(profile?.role ?? "").trim().toLowerCase())) {
-            return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-        }
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .maybeSingle();
+    if (
+      !["sales", "pm", "admin", "director", "dev"].includes(
+        String(profile?.role ?? "")
+          .trim()
+          .toLowerCase(),
+      )
+    ) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
 
-        const body = (await req.json()) as CreateOcfBody;
-        const { clientId, estimatedDeliveryNotes, itemUploads } = body;
-        const companyName = String(body.companyName ?? "").trim();
-        const clientEmail = String(body.clientEmail ?? "").trim();
+    const body = (await req.json()) as CreateOcfBody;
+    const { clientId, estimatedDeliveryNotes, itemUploads } = body;
+    const companyName = String(body.companyName ?? "").trim();
+    const clientEmail = String(body.clientEmail ?? "").trim();
 
-        if (!clientId) {
-            return NextResponse.json({ error: "Missing clientId" }, { status: 400 });
-        }
-        if (!companyName) {
-            return NextResponse.json({ error: "Company Name is required" }, { status: 400 });
-        }
+    if (!clientId) {
+      return NextResponse.json({ error: "Missing clientId" }, { status: 400 });
+    }
+    if (!(await canEditClient(supabase, clientId, user.id))) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+    if (!companyName) {
+      return NextResponse.json(
+        { error: "Company Name is required" },
+        { status: 400 },
+      );
+    }
 
-        if (!Array.isArray(itemUploads)) {
-            return NextResponse.json({ error: "itemUploads must be an array" }, { status: 400 });
-        }
+    if (!Array.isArray(itemUploads)) {
+      return NextResponse.json(
+        { error: "itemUploads must be an array" },
+        { status: 400 },
+      );
+    }
 
-        const { data: client, error: clientError } = await supabase
-            .from("clients")
-            .select(`
+    const { data: client, error: clientError } = await supabase
+      .from("clients")
+      .select(
+        `
         id,
         name,
         company,
@@ -74,189 +98,261 @@ export async function POST(req: NextRequest) {
             contact_number
             )
         )
-    `)
-            .eq("id", clientId)
-            .single();
+    `,
+      )
+      .eq("id", clientId)
+      .single();
 
-        if (clientError || !client) {
-            return NextResponse.json({ error: "Client not found" }, { status: 404 });
-        }
-
-        const awardedOrLaterLabels = await Promise.all(
-            OCF_ELIGIBLE_STATUS_KEYS.map((key) =>
-                getSystemLabel("subitem_status", key),
-            ),
-        );
-        const { data: awardedSubitems, error: subitemsError } = await supabase
-            .from("subitems")
-            .select("id, client_id, name, qty, description, status, timeline_rows")
-            .eq("client_id", clientId)
-            .in(
-                "status_option_id",
-                awardedOrLaterLabels.map((label) => label.id),
-            )
-            .order("position");
-
-        if (subitemsError) {
-            return NextResponse.json({ error: subitemsError.message }, { status: 500 });
-        }
-
-        if (!awardedSubitems || awardedSubitems.length === 0) {
-            return NextResponse.json(
-                { error: "No awarded subitems found for this client" },
-                { status: 400 }
-            );
-        }
-
-        const { data: ocfSettings, error: importantNotesError } = await supabase
-            .from("app_settings")
-            .select("key, value")
-            .in("key", ["ocf_important_notes", "ocf_strict_need_by_warning"]);
-
-        if (importantNotesError) {
-            return NextResponse.json({ error: importantNotesError.message }, { status: 500 });
-        }
-
-        const ocfSettingMap = new Map((ocfSettings ?? []).map((setting) => [setting.key, setting.value]));
-        const importantNotes = ocfSettingMap.get("ocf_important_notes")?.trim() || DEFAULT_IMPORTANT_NOTES;
-        const strictNeedByWarning = ocfSettingMap.get("ocf_strict_need_by_warning")?.trim() || DEFAULT_STRICT_NEED_BY_WARNING;
-
-        const assignees =
-            client.client_assignees?.map((row: any) => row.profiles).filter(Boolean) ?? [];
-
-        const defaultSalesperson =
-            assignees.find((a: any) => a.id === user.id) ?? assignees[0] ?? null;
-
-        const awardedIds = new Set(awardedSubitems.map((s) => s.id));
-        if (itemUploads.length === 0) {
-            return NextResponse.json({ error: "Select at least one awarded subitem for this OCF" }, { status: 400 });
-        }
-        const uploadMap = new Map(itemUploads.map((u) => [u.subitemId, u]));
-
-        for (const upload of itemUploads) {
-            if (!awardedIds.has(upload.subitemId)) {
-                return NextResponse.json(
-                    { error: "itemUploads contains an invalid subitemId" },
-                    { status: 400 }
-                );
-            }
-            if (!upload.imagePath) {
-                return NextResponse.json({ error: "Every included subitem needs an uploaded image" }, { status: 400 });
-            }
-            if (upload.needBy !== "ASAP" && !/^\d{4}-\d{2}-\d{2}$/.test(String(upload.needBy ?? ""))) {
-                return NextResponse.json({ error: "Every included subitem needs a Need by Date or ASAP" }, { status: 400 });
-            }
-        }
-
-        const { data: ocf, error: ocfError } = await supabase
-            .from("order_confirmations")
-            .insert({
-                client_id: client.id,
-                generated_by: user.id,
-                client_name_snapshot: client.name,
-                company_snapshot: companyName,
-                client_email_snapshot: clientEmail || null,
-                salesperson_ids: assignees.map((a: any) => a.id),
-                salesperson_name: defaultSalesperson?.full_name ?? "",
-                salesperson_email: defaultSalesperson?.email ?? "",
-                salesperson_contact_number: defaultSalesperson?.contact_number ?? "",
-                estimated_delivery_notes: estimatedDeliveryNotes ?? null,
-                important_notes: importantNotes,
-                strict_need_by_warning: strictNeedByWarning,
-                strict_need_by_date: false,
-                status: "draft",
-            })
-            .select()
-            .single();
-
-        if (ocfError || !ocf) {
-            return NextResponse.json(
-                { error: ocfError?.message ?? "Failed to create OCF" },
-                { status: 500 }
-            );
-        }
-
-        const itemRows = awardedSubitems.filter((item) => uploadMap.has(item.id)).map((item) => ({
-            order_confirmation_id: ocf.id,
-            subitem_id: item.id,
-            qty: item.qty,
-            item_name: item.name,
-            remarks: item.description,
-            image_path: uploadMap.get(item.id)?.imagePath ?? null,
-            need_by_date: uploadMap.get(item.id)?.needBy ?? null,
-        }));
-
-        const internalUrl = `/app/order-confirmations/${ocf.id}`;
-        const clientUrl = `/ocf/${ocf.client_token}`;
-
-        const { error: itemsError } = await supabase
-            .from("order_confirmation_items")
-            .insert(itemRows);
-
-        if (itemsError) {
-            await supabase.from("order_confirmations").delete().eq("id", ocf.id);
-
-            return NextResponse.json(
-                { error: itemsError.message ?? "Failed to create OCF items" },
-                { status: 500 }
-            );
-        }
-
-        const warnings: string[] = [];
-        const { error: activityLogError } = await supabase
-            .from("activity_log")
-            .insert({
-                client_id: client.id,
-                actor_name: defaultSalesperson?.email ?? user.email ?? "Unknown user",
-                action: "ocf_created",
-                title: "Order Confirmation Form created",
-                description: ` for ${client.name ?? "client"}`,
-                link: internalUrl,
-                meta: {
-                    ocfId: ocf.id,
-                    clientUrl,
-                    generatedBy: user.id,
-                },
-            });
-
-        if (activityLogError) {
-            console.error("Activity log insert failed:", activityLogError);
-            warnings.push(`Activity log could not be updated: ${activityLogError.message}`);
-        }
-
-        const timelineUpdates = await Promise.all(itemUploads.map(async (upload) => {
-            const subitem = awardedSubitems.find((item) => item.id === upload.subitemId);
-            if (!subitem) return null;
-            const rows = Array.isArray(subitem.timeline_rows) ? subitem.timeline_rows : [];
-            const nbdIndex = rows.findIndex((row: any) => String(row?.name ?? "").trim().toLowerCase() === "nbd");
-            const nbdRow = {
-                id: crypto.randomUUID(), name: "NBD", person: "", remarks: "", numOfCartons: "", subProgress: "", timelineStart: "", timelineEnd: "", duration: "", dependency: "",
-            };
-            const nextNbd = {
-                ...(nbdIndex >= 0 ? rows[nbdIndex] : nbdRow),
-                timelineStart: upload.needBy === "ASAP" ? "" : upload.needBy,
-                remarks: upload.needBy === "ASAP" ? "ASAP" : (String((nbdIndex >= 0 ? rows[nbdIndex]?.remarks : "") ?? "").trim().toLowerCase() === "asap" ? "" : (nbdIndex >= 0 ? rows[nbdIndex]?.remarks ?? "" : "")),
-            };
-            const timeline_rows = nbdIndex >= 0 ? rows.map((row: any, index: number) => index === nbdIndex ? nextNbd : row) : [...rows, nextNbd];
-            return supabase.from("subitems").update({ timeline_rows }).eq("id", upload.subitemId);
-        }));
-        const timelineError = timelineUpdates.find((result) => result?.error)?.error;
-        if (timelineError) {
-            console.error("OCF NBD timeline update failed:", timelineError);
-            warnings.push(`NBD timeline could not be updated: ${timelineError.message}`);
-        }
-
-        return NextResponse.json({
-            ok: true,
-            ocfId: ocf.id,
-            internalUrl,
-            clientUrl,
-            warnings,
-        });
-    } catch (error: any) {
-        return NextResponse.json(
-            { error: error?.message ?? "Unexpected server error" },
-            { status: 500 }
-        );
+    if (clientError || !client) {
+      return NextResponse.json({ error: "Client not found" }, { status: 404 });
     }
+
+    const awardedOrLaterLabels = await Promise.all(
+      OCF_ELIGIBLE_STATUS_KEYS.map((key) =>
+        getSystemLabel("subitem_status", key),
+      ),
+    );
+    const { data: awardedSubitems, error: subitemsError } = await supabase
+      .from("subitems")
+      .select("id, client_id, name, qty, description, status, timeline_rows")
+      .eq("client_id", clientId)
+      .in(
+        "status_option_id",
+        awardedOrLaterLabels.map((label) => label.id),
+      )
+      .order("position");
+
+    if (subitemsError) {
+      return NextResponse.json(
+        { error: subitemsError.message },
+        { status: 500 },
+      );
+    }
+
+    if (!awardedSubitems || awardedSubitems.length === 0) {
+      return NextResponse.json(
+        { error: "No awarded subitems found for this client" },
+        { status: 400 },
+      );
+    }
+
+    const { data: ocfSettings, error: importantNotesError } = await supabase
+      .from("app_settings")
+      .select("key, value")
+      .in("key", ["ocf_important_notes", "ocf_strict_need_by_warning"]);
+
+    if (importantNotesError) {
+      return NextResponse.json(
+        { error: importantNotesError.message },
+        { status: 500 },
+      );
+    }
+
+    const ocfSettingMap = new Map(
+      (ocfSettings ?? []).map((setting) => [setting.key, setting.value]),
+    );
+    const importantNotes =
+      ocfSettingMap.get("ocf_important_notes")?.trim() ||
+      DEFAULT_IMPORTANT_NOTES;
+    const strictNeedByWarning =
+      ocfSettingMap.get("ocf_strict_need_by_warning")?.trim() ||
+      DEFAULT_STRICT_NEED_BY_WARNING;
+
+    const assignees =
+      client.client_assignees
+        ?.map((row: any) => row.profiles)
+        .filter(Boolean) ?? [];
+
+    const defaultSalesperson =
+      assignees.find((a: any) => a.id === user.id) ?? assignees[0] ?? null;
+
+    const awardedIds = new Set(awardedSubitems.map((s) => s.id));
+    if (itemUploads.length === 0) {
+      return NextResponse.json(
+        { error: "Select at least one awarded subitem for this OCF" },
+        { status: 400 },
+      );
+    }
+    const uploadMap = new Map(itemUploads.map((u) => [u.subitemId, u]));
+
+    for (const upload of itemUploads) {
+      if (!awardedIds.has(upload.subitemId)) {
+        return NextResponse.json(
+          { error: "itemUploads contains an invalid subitemId" },
+          { status: 400 },
+        );
+      }
+      if (!upload.imagePath) {
+        return NextResponse.json(
+          { error: "Every included subitem needs an uploaded image" },
+          { status: 400 },
+        );
+      }
+      if (
+        upload.needBy !== "ASAP" &&
+        !/^\d{4}-\d{2}-\d{2}$/.test(String(upload.needBy ?? ""))
+      ) {
+        return NextResponse.json(
+          { error: "Every included subitem needs a Need by Date or ASAP" },
+          { status: 400 },
+        );
+      }
+    }
+
+    const { data: ocf, error: ocfError } = await supabase
+      .from("order_confirmations")
+      .insert({
+        client_id: client.id,
+        generated_by: user.id,
+        client_name_snapshot: client.name,
+        company_snapshot: companyName,
+        client_email_snapshot: clientEmail || null,
+        salesperson_ids: assignees.map((a: any) => a.id),
+        salesperson_name: defaultSalesperson?.full_name ?? "",
+        salesperson_email: defaultSalesperson?.email ?? "",
+        salesperson_contact_number: defaultSalesperson?.contact_number ?? "",
+        estimated_delivery_notes: estimatedDeliveryNotes ?? null,
+        important_notes: importantNotes,
+        strict_need_by_warning: strictNeedByWarning,
+        strict_need_by_date: false,
+        status: "draft",
+      })
+      .select()
+      .single();
+
+    if (ocfError || !ocf) {
+      return NextResponse.json(
+        { error: ocfError?.message ?? "Failed to create OCF" },
+        { status: 500 },
+      );
+    }
+
+    const itemRows = awardedSubitems
+      .filter((item) => uploadMap.has(item.id))
+      .map((item) => ({
+        order_confirmation_id: ocf.id,
+        subitem_id: item.id,
+        qty: item.qty,
+        item_name: item.name,
+        remarks: item.description,
+        image_path: uploadMap.get(item.id)?.imagePath ?? null,
+        need_by_date: uploadMap.get(item.id)?.needBy ?? null,
+      }));
+
+    const internalUrl = `/app/order-confirmations/${ocf.id}`;
+    const clientUrl = `/ocf/${ocf.client_token}`;
+
+    const { error: itemsError } = await supabase
+      .from("order_confirmation_items")
+      .insert(itemRows);
+
+    if (itemsError) {
+      await supabase.from("order_confirmations").delete().eq("id", ocf.id);
+
+      return NextResponse.json(
+        { error: itemsError.message ?? "Failed to create OCF items" },
+        { status: 500 },
+      );
+    }
+
+    const warnings: string[] = [];
+    const { error: activityLogError } = await supabase
+      .from("activity_log")
+      .insert({
+        client_id: client.id,
+        actor_name: defaultSalesperson?.email ?? user.email ?? "Unknown user",
+        action: "ocf_created",
+        title: "Order Confirmation Form created",
+        description: ` for ${client.name ?? "client"}`,
+        link: internalUrl,
+        meta: {
+          ocfId: ocf.id,
+          clientUrl,
+          generatedBy: user.id,
+        },
+      });
+
+    if (activityLogError) {
+      console.error("Activity log insert failed:", activityLogError);
+      warnings.push(
+        `Activity log could not be updated: ${activityLogError.message}`,
+      );
+    }
+
+    const timelineUpdates = await Promise.all(
+      itemUploads.map(async (upload) => {
+        const subitem = awardedSubitems.find(
+          (item) => item.id === upload.subitemId,
+        );
+        if (!subitem) return null;
+        const rows = Array.isArray(subitem.timeline_rows)
+          ? subitem.timeline_rows
+          : [];
+        const nbdIndex = rows.findIndex(
+          (row: any) =>
+            String(row?.name ?? "")
+              .trim()
+              .toLowerCase() === "nbd",
+        );
+        const nbdRow = {
+          id: crypto.randomUUID(),
+          name: "NBD",
+          person: "",
+          remarks: "",
+          numOfCartons: "",
+          subProgress: "",
+          timelineStart: "",
+          timelineEnd: "",
+          duration: "",
+          dependency: "",
+        };
+        const nextNbd = {
+          ...(nbdIndex >= 0 ? rows[nbdIndex] : nbdRow),
+          timelineStart: upload.needBy === "ASAP" ? "" : upload.needBy,
+          remarks:
+            upload.needBy === "ASAP"
+              ? "ASAP"
+              : String((nbdIndex >= 0 ? rows[nbdIndex]?.remarks : "") ?? "")
+                    .trim()
+                    .toLowerCase() === "asap"
+                ? ""
+                : nbdIndex >= 0
+                  ? (rows[nbdIndex]?.remarks ?? "")
+                  : "",
+        };
+        const timeline_rows =
+          nbdIndex >= 0
+            ? rows.map((row: any, index: number) =>
+                index === nbdIndex ? nextNbd : row,
+              )
+            : [...rows, nextNbd];
+        return supabase
+          .from("subitems")
+          .update({ timeline_rows })
+          .eq("id", upload.subitemId);
+      }),
+    );
+    const timelineError = timelineUpdates.find(
+      (result) => result?.error,
+    )?.error;
+    if (timelineError) {
+      console.error("OCF NBD timeline update failed:", timelineError);
+      warnings.push(
+        `NBD timeline could not be updated: ${timelineError.message}`,
+      );
+    }
+
+    return NextResponse.json({
+      ok: true,
+      ocfId: ocf.id,
+      internalUrl,
+      clientUrl,
+      warnings,
+    });
+  } catch (error: any) {
+    return NextResponse.json(
+      { error: error?.message ?? "Unexpected server error" },
+      { status: 500 },
+    );
+  }
 }

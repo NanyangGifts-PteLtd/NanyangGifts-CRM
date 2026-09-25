@@ -1,101 +1,146 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { canEditClient } from "@/lib/client-access";
 
 export async function POST(req: Request) {
-    try {
-        const body = await req.json();
+  try {
+    const body = await req.json();
 
-        const ocfId = body?.ocfId;
-        const estimatedDeliveryNotes = body?.estimatedDeliveryNotes ?? "";
-        const clientNameSnapshot = body?.clientNameSnapshot;
-        const companySnapshot = body?.companySnapshot;
-        const sameAddressForAllItems = body?.sameAddressForAllItems;
-        const items = Array.isArray(body?.items) ? body.items : [];
+    const ocfId = body?.ocfId;
+    const estimatedDeliveryNotes = body?.estimatedDeliveryNotes ?? "";
+    const clientNameSnapshot = body?.clientNameSnapshot;
+    const companySnapshot = body?.companySnapshot;
+    const sameAddressForAllItems = body?.sameAddressForAllItems;
+    const items = Array.isArray(body?.items) ? body.items : [];
 
-        if (!ocfId) {
-            return NextResponse.json({ error: "Missing ocfId" }, { status: 400 });
-        }
+    if (!ocfId) {
+      return NextResponse.json({ error: "Missing ocfId" }, { status: 400 });
+    }
 
-        const supabase = await createClient();
+    const supabase = await createClient();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
-        const { data: ocf, error: ocfLookupError } = await supabase
-            .from("order_confirmations")
-            .select("client_id")
-            .eq("id", ocfId)
-            .single();
-        if (ocfLookupError || !ocf) {
-            return NextResponse.json({ error: "Order confirmation not found" }, { status: 404 });
-        }
+    const { data: ocf, error: ocfLookupError } = await supabase
+      .from("order_confirmations")
+      .select("client_id, status, locked_at")
+      .eq("id", ocfId)
+      .single();
+    if (ocfLookupError || !ocf) {
+      return NextResponse.json(
+        { error: "Order confirmation not found" },
+        { status: 404 },
+      );
+    }
+    if (!(await canEditClient(supabase, ocf.client_id, user.id))) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+    if (
+      ocf.locked_at ||
+      ocf.status === "locked" ||
+      ocf.status === "submitted"
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "This order confirmation form is locked and can no longer be edited",
+        },
+        { status: 403 },
+      );
+    }
 
-        const { error: ocfError } = await supabase
-            .from("order_confirmations")
-            .update({
-                estimated_delivery_notes: estimatedDeliveryNotes,
-                ...(typeof clientNameSnapshot === "string" ? { client_name_snapshot: clientNameSnapshot } : {}),
-                ...(typeof companySnapshot === "string" ? { company_snapshot: companySnapshot } : {}),
-                ...(typeof sameAddressForAllItems === "boolean" ? { same_address_for_all_items: sameAddressForAllItems } : {}),
-            })
-            .eq("id", ocfId);
+    const { error: ocfError } = await supabase
+      .from("order_confirmations")
+      .update({
+        estimated_delivery_notes: estimatedDeliveryNotes,
+        ...(typeof clientNameSnapshot === "string"
+          ? { client_name_snapshot: clientNameSnapshot }
+          : {}),
+        ...(typeof companySnapshot === "string"
+          ? { company_snapshot: companySnapshot }
+          : {}),
+        ...(typeof sameAddressForAllItems === "boolean"
+          ? { same_address_for_all_items: sameAddressForAllItems }
+          : {}),
+      })
+      .eq("id", ocfId);
 
-        if (ocfError) {
-            return NextResponse.json({ error: ocfError.message }, { status: 500 });
-        }
+    if (ocfError) {
+      return NextResponse.json({ error: ocfError.message }, { status: 500 });
+    }
 
-        for (const item of items) {
-            const { error: itemError } = await supabase
-                .from("order_confirmation_items")
-                .update({
-                    remarks: item.remarks ?? "",
-                    delivery_name: item.delivery_name ?? null,
-                    delivery_address: item.delivery_address ?? null,
-                    delivery_contact_number: item.delivery_contact_number ?? null,
-                    delivery_remarks: item.delivery_remarks ?? null,
+    for (const item of items) {
+      const { data: updatedItem, error: itemError } = await supabase
+        .from("order_confirmation_items")
+        .update({
+          remarks: item.remarks ?? "",
+          delivery_name: item.delivery_name ?? null,
+          delivery_address: item.delivery_address ?? null,
+          delivery_contact_number: item.delivery_contact_number ?? null,
+          delivery_remarks: item.delivery_remarks ?? null,
+        })
+        .eq("id", item.id)
+        .eq("order_confirmation_id", ocfId)
+        .select("subitem_id, delivery_address, delivery_contact_number")
+        .maybeSingle();
 
-                })
-                .eq("id", item.id)
-                .eq("order_confirmation_id", ocfId);
+      if (itemError) {
+        return NextResponse.json({ error: itemError.message }, { status: 500 });
+      }
+      if (!updatedItem) {
+        return NextResponse.json(
+          { error: "Order confirmation item not found" },
+          { status: 404 },
+        );
+      }
 
-            if (itemError) {
-                return NextResponse.json({ error: itemError.message }, { status: 500 });
-            }
-        }
-for (const item of items) {
-    const { error: shipperUpdateError } = await supabase
+      const { error: shipperUpdateError } = await supabase
         .from("shipper_view_rows")
         .update({
-            delivery_info: [
-                item.delivery_contact_number ? `Contact: ${item.delivery_contact_number}` : null,
-                item.delivery_address ? `Address: ${item.delivery_address}` : null,
-            ].filter(Boolean).join("\n") || null,
+          delivery_info:
+            [
+              updatedItem.delivery_contact_number
+                ? `Contact: ${updatedItem.delivery_contact_number}`
+                : null,
+              updatedItem.delivery_address
+                ? `Address: ${updatedItem.delivery_address}`
+                : null,
+            ]
+              .filter(Boolean)
+              .join("\n") || null,
         })
-        .eq("subitem_id", item.subitem_id);
+        .eq("subitem_id", updatedItem.subitem_id);
 
-    if (shipperUpdateError) {
+      if (shipperUpdateError) {
         console.error("Failed to update shipper view row:", shipperUpdateError);
+      }
     }
-}
 
-        await supabase.from("activity_log").insert({
-            client_id: ocf.client_id,
-            subitem_id: null,
-            actor_name: "CRM user",
-            action: "ocf_updated",
-            field_name: null,
-            old_value: null,
-            new_value: null,
-            title: "Order Confirmation Form updated",
-            description: "Internal OCF details were updated.",
-            link: `/app/order-confirmations/${ocfId}`,
-            meta: { ocfId },
-            created_at: new Date().toISOString(),
-        });
+    await supabase.from("activity_log").insert({
+      client_id: ocf.client_id,
+      subitem_id: null,
+      actor_name: "CRM user",
+      action: "ocf_updated",
+      field_name: null,
+      old_value: null,
+      new_value: null,
+      title: "Order Confirmation Form updated",
+      description: "Internal OCF details were updated.",
+      link: `/app/order-confirmations/${ocfId}`,
+      meta: { ocfId },
+      created_at: new Date().toISOString(),
+    });
 
-        return NextResponse.json({ success: true });
-    } catch (error: any) {
-        return NextResponse.json(
-            { error: error?.message || "Unexpected server error" },
-            { status: 500 }
-        );
-    }
-    
+    return NextResponse.json({ success: true });
+  } catch (error: any) {
+    return NextResponse.json(
+      { error: error?.message || "Unexpected server error" },
+      { status: 500 },
+    );
+  }
 }

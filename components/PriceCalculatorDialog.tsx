@@ -317,8 +317,9 @@ export function PriceCalculatorDialog(props: Props) {
             <span>{pct(f.percentMarkup)}</span>
             <button
               type="button"
+              disabled={readOnly}
               onClick={() => useUp(parseSubitemNumber(record.up))}
-              className="inline-flex items-center justify-center gap-1 rounded bg-amber-600 px-2 py-1.5 font-semibold text-white"
+              className="inline-flex items-center justify-center gap-1 rounded bg-amber-600 px-2 py-1.5 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"
             >
               <Check size={14} /> Use U.P
             </button>
