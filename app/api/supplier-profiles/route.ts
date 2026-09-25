@@ -34,26 +34,59 @@ export async function GET(request: NextRequest) {
     const { data, error } = await supabaseAdmin
       .from("supplier_profiles")
       .select("id, name, contact, is_blacklisted, is_starred, blacklisted_at, created_at")
+      .order("is_starred", { ascending: false })
       .order("name");
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     const supplierIds = (data ?? []).map((supplier) => supplier.id);
-    const { data: tagLinks, error: tagsError } = supplierIds.length
-      ? await supabaseAdmin
-          .from("supplier_profile_tags")
-          .select("supplier_profile_id, tag:supplier_tag_options(id, name, color, sort_order)")
-          .in("supplier_profile_id", supplierIds)
-      : { data: [], error: null };
-    if (tagsError) return NextResponse.json({ error: tagsError.message }, { status: 500 });
+    const [tagLinksResult, productsResult, subitemsResult, tagOptionsResult] = await Promise.all([
+      supplierIds.length
+        ? supabaseAdmin
+            .from("supplier_profile_tags")
+            .select("supplier_profile_id, tag:supplier_tag_options(id, name, color, sort_order)")
+            .in("supplier_profile_id", supplierIds)
+        : Promise.resolve({ data: [], error: null }),
+      supplierIds.length
+        ? supabaseAdmin
+            .from("supplier_profile_products")
+            .select("supplier_profile_id, name")
+            .in("supplier_profile_id", supplierIds)
+            .eq("is_hidden", false)
+        : Promise.resolve({ data: [], error: null }),
+      supplierIds.length
+        ? supabaseAdmin
+            .from("subitems")
+            .select("supplier_profile_id, name")
+            .in("supplier_profile_id", supplierIds)
+            .is("deleted_at", null)
+        : Promise.resolve({ data: [], error: null }),
+      supabaseAdmin
+        .from("supplier_tag_options")
+        .select("id, name, color, sort_order")
+        .order("sort_order")
+        .order("name"),
+    ]);
+    if (tagLinksResult.error || productsResult.error || subitemsResult.error || tagOptionsResult.error)
+      return NextResponse.json({ error: tagLinksResult.error?.message ?? productsResult.error?.message ?? subitemsResult.error?.message ?? tagOptionsResult.error?.message }, { status: 500 });
     const tagsBySupplier = new Map<string, Array<{ id: string; name: string; color: string; sort_order?: number }>>();
-    for (const link of tagLinks ?? []) {
+    for (const link of tagLinksResult.data ?? []) {
       const tag = Array.isArray(link.tag) ? link.tag[0] : link.tag;
       if (tag) tagsBySupplier.set(link.supplier_profile_id, [...(tagsBySupplier.get(link.supplier_profile_id) ?? []), tag]);
+    }
+    const productNamesBySupplier = new Map<string, string[]>();
+    for (const product of [...(productsResult.data ?? []), ...(subitemsResult.data ?? [])]) {
+      const name = String(product.name ?? "").trim();
+      if (!name) continue;
+      const current = productNamesBySupplier.get(product.supplier_profile_id) ?? [];
+      if (!current.some((item) => normalize(item) === normalize(name))) current.push(name);
+      productNamesBySupplier.set(product.supplier_profile_id, current);
     }
     return NextResponse.json({
       suppliers: (data ?? []).map((supplier) => ({
         ...supplier,
         tags: (tagsBySupplier.get(supplier.id) ?? []).sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)),
+        productNames: productNamesBySupplier.get(supplier.id) ?? [],
       })),
+      tagOptions: tagOptionsResult.data ?? [],
     });
   }
 
@@ -246,10 +279,33 @@ export async function POST(request: NextRequest) {
       { error: "Supplier name is required." },
       { status: 400 },
     );
+  const { data: existingSuppliers, error: existingSuppliersError } = await supabaseAdmin
+    .from("supplier_profiles")
+    .select("id, name");
+  if (existingSuppliersError)
+    return NextResponse.json({ error: existingSuppliersError.message }, { status: 500 });
+  if ((existingSuppliers ?? []).some((supplier) => normalize(supplier.name) === normalize(name)))
+    return NextResponse.json(
+      { error: "A supplier profile with this name already exists." },
+      { status: 409 },
+    );
+  const isStarred = body.isStarred === true;
+  const isBlacklisted = !isStarred && body.isBlacklisted === true;
+  const now = new Date().toISOString();
   const { data, error } = await supabaseAdmin
     .from("supplier_profiles")
-    .insert({ name, created_by: user.id })
-    .select("id, name, is_blacklisted, blacklisted_at, created_at")
+    .insert({
+      name,
+      contact: String(body.contact ?? ""),
+      is_starred: isStarred,
+      starred_at: isStarred ? now : null,
+      starred_by: isStarred ? user.id : null,
+      is_blacklisted: isBlacklisted,
+      blacklisted_at: isBlacklisted ? now : null,
+      blacklisted_by: isBlacklisted ? user.id : null,
+      created_by: user.id,
+    })
+    .select("id, name, contact, is_blacklisted, is_starred, blacklisted_at, created_at")
     .single();
   if (error)
     return NextResponse.json(
@@ -261,6 +317,19 @@ export async function POST(request: NextRequest) {
       },
       { status: error.code === "23505" ? 409 : 500 },
     );
+  const tagIds = Array.isArray(body.tagIds)
+    ? [...new Set(body.tagIds.filter((value): value is string => typeof value === "string" && Boolean(value)))]
+    : [];
+  const productNames = Array.isArray(body.productNames)
+    ? body.productNames.filter((value): value is string => typeof value === "string" && Boolean(normalize(value)))
+    : [];
+  const uniqueProductNames = productNames.filter((name, index) => productNames.findIndex((item) => normalize(item) === normalize(name)) === index);
+  const [tagsInsert, productsInsert] = await Promise.all([
+    tagIds.length ? supabaseAdmin.from("supplier_profile_tags").insert(tagIds.map((tagId) => ({ supplier_profile_id: data.id, tag_id: tagId, created_by: user.id }))) : Promise.resolve({ error: null }),
+    uniqueProductNames.length ? supabaseAdmin.from("supplier_profile_products").insert(uniqueProductNames.map((productName) => ({ supplier_profile_id: data.id, name: productName.trim(), created_by: user.id }))) : Promise.resolve({ error: null }),
+  ]);
+  if (tagsInsert.error || productsInsert.error)
+    return NextResponse.json({ error: tagsInsert.error?.message ?? productsInsert.error?.message }, { status: 500 });
   return NextResponse.json({ supplier: data }, { status: 201 });
 }
 
