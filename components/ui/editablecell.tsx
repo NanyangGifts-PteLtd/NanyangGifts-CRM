@@ -14,6 +14,7 @@ export function EditableCell({
   onAutoEditStarted,
   onEditingChange,
   recommendations = [],
+  recommendedSupplier,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -27,6 +28,7 @@ export function EditableCell({
   onAutoEditStarted?: () => void;
   onEditingChange?: (editing: boolean) => void;
   recommendations?: string[];
+  recommendedSupplier?: string;
 }) {
   const [editing, setEditing] = useState(false);
   const [local, setLocal] = useState(value);
@@ -132,18 +134,36 @@ export function EditableCell({
         }}
       />
     );
+    const recommended = recommendedSupplier?.trim();
     const matches = recommendations
       .filter(
         (item) =>
           item.toLowerCase().includes(local.trim().toLowerCase()) &&
-          item.toLowerCase() !== local.trim().toLowerCase(),
+          item.toLowerCase() !== local.trim().toLowerCase() &&
+          item.toLowerCase() !== recommended?.toLowerCase(),
       )
       .slice(0, 4);
     return resizableMultiline ? (
       <div className="relative h-[22px] w-full">
         {textarea}
-        {matches.length > 0 && (
+        {(recommended || matches.length > 0) && (
           <div className="absolute left-0 top-[264px] z-[1001] flex w-[min(620px,calc(100vw-48px))] flex-wrap gap-1 rounded-b border border-slate-200 bg-white p-2 shadow-lg">
+            {recommended && (
+              <button
+                type="button"
+                data-inline-editor-suggestion
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => {
+                  savedRef.current = true;
+                  setLocal(recommended);
+                  onChange(recommended);
+                  setEditing(false);
+                }}
+                className="rounded bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-800 hover:bg-amber-200"
+              >
+                Recommended supplier: {recommended}
+              </button>
+            )}
             {matches.map((item) => (
               <button
                 key={item}

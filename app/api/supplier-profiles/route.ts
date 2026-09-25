@@ -73,6 +73,14 @@ export async function GET(request: NextRequest) {
       if (tag) tagsBySupplier.set(link.supplier_profile_id, [...(tagsBySupplier.get(link.supplier_profile_id) ?? []), tag]);
     }
     const productNamesBySupplier = new Map<string, string[]>();
+    const salesBySupplier = new Map<string, Map<string, number>>();
+    for (const subitem of subitemsResult.data ?? []) {
+      const normalizedName = normalize(subitem.name);
+      if (!normalizedName) continue;
+      const sales = salesBySupplier.get(subitem.supplier_profile_id) ?? new Map<string, number>();
+      sales.set(normalizedName, (sales.get(normalizedName) ?? 0) + 1);
+      salesBySupplier.set(subitem.supplier_profile_id, sales);
+    }
     for (const product of [...(productsResult.data ?? []), ...(subitemsResult.data ?? [])]) {
       const name = String(product.name ?? "").trim();
       if (!name) continue;
@@ -85,6 +93,7 @@ export async function GET(request: NextRequest) {
         ...supplier,
         tags: (tagsBySupplier.get(supplier.id) ?? []).sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)),
         productNames: productNamesBySupplier.get(supplier.id) ?? [],
+        productSaleCounts: Object.fromEntries(salesBySupplier.get(supplier.id) ?? []),
       })),
       tagOptions: tagOptionsResult.data ?? [],
     });

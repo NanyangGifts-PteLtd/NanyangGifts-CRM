@@ -457,19 +457,27 @@ export function SubitemsTable({
     Set<string>
   >(new Set());
   const [supplierNames, setSupplierNames] = useState<string[]>([]);
+  const [supplierProfiles, setSupplierProfiles] = useState<Array<{
+    name: string;
+    is_starred?: boolean;
+    productNames?: string[];
+    productSaleCounts?: Record<string, number>;
+  }>>([]);
   useEffect(() => {
     const load = async () => {
       const response = await fetch("/api/supplier-profiles");
       const result = await response.json();
       if (response.ok) {
+        const profiles = result.suppliers ?? [];
+        setSupplierProfiles(profiles);
         setSupplierNames(
-          (result.suppliers ?? [])
+          profiles
             .map((supplier: { name?: string }) => String(supplier.name ?? ""))
             .filter(Boolean),
         );
         setBlacklistedSupplierNames(
           new Set(
-            (result.suppliers ?? [])
+            profiles
               .filter(
                 (supplier: { is_blacklisted?: boolean }) =>
                   supplier.is_blacklisted,
@@ -490,6 +498,44 @@ export function SubitemsTable({
     return () =>
       window.removeEventListener("crm:supplier-profiles-updated", load);
   }, []);
+  const recommendedSupplierForSubitem = (
+    subitemName: string,
+    currentSupplierName: string,
+  ) => {
+    const normalizedSubitemName = String(subitemName ?? "")
+      .trim()
+      .replace(/\s+/g, " ")
+      .toLowerCase();
+    if (!normalizedSubitemName) return undefined;
+    const normalizedCurrentSupplier = String(currentSupplierName ?? "")
+      .trim()
+      .replace(/\s+/g, " ")
+      .toLowerCase();
+    const salesCount = (supplier: (typeof supplierProfiles)[number]) => {
+      const count = supplier.productSaleCounts?.[normalizedSubitemName] ?? 0;
+      const isCurrentRowForSupplier =
+        normalizedCurrentSupplier &&
+        supplier.name.trim().replace(/\s+/g, " ").toLowerCase() ===
+          normalizedCurrentSupplier;
+      return Math.max(0, count - (isCurrentRowForSupplier ? 1 : 0));
+    };
+    return supplierProfiles
+      .filter((supplier) =>
+        (supplier.productNames ?? []).some(
+          (name) =>
+            String(name ?? "")
+              .trim()
+              .replace(/\s+/g, " ")
+              .toLowerCase() === normalizedSubitemName,
+        ),
+      )
+      .sort(
+        (left, right) =>
+          Number(Boolean(right.is_starred)) - Number(Boolean(left.is_starred)) ||
+          salesCount(right) - salesCount(left) ||
+          left.name.localeCompare(right.name),
+      )[0]?.name;
+  };
   const [permissionNotice, setPermissionNotice] = useState<{
     left: number;
     top: number;
@@ -2148,6 +2194,7 @@ export function SubitemsTable({
               multiline
               resizableMultiline
               recommendations={supplierNames}
+              recommendedSupplier={recommendedSupplierForSubitem(sub.name, sub.supplier)}
               // Do not force height or important width here: this same class is
               // applied to the expanded textarea, whose dimensions must remain
               // under the user's resize control.
@@ -2573,6 +2620,7 @@ export function SubitemsTable({
               multiline
               resizableMultiline
               recommendations={supplierNames}
+              recommendedSupplier={recommendedSupplierForSubitem(sub.name, sub.supplier)}
               // See the standard subitem supplier cell above. The red state
               // must not override the resizable textarea's width or height.
               className={
