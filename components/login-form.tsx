@@ -43,20 +43,28 @@ export function LoginForm({
       if (error) throw error;
       if (data.user?.app_metadata?.suspended === true) {
         await supabase.auth.signOut({ scope: "local" });
-        throw new Error("Your account has been suspended, please check with your superior.");
+        throw new Error(
+          "Your account has been suspended, please check with your superior.",
+        );
       }
-      const { data: profile, error: profileError } = await supabase.from("profiles").select("role").eq("id", data.user!.id).maybeSingle();
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", data.user!.id)
+        .maybeSingle();
       if (profileError) throw profileError;
       if (profile?.role === "shipper") {
         const next = searchParams.get("next");
         if (next?.startsWith("/app/shipper/")) {
           router.push(next);
         } else {
-          setMessage("You have successfully logged in, please access the website through the provided URL.");
+          setMessage(
+            "You have successfully logged in, please access the website through the provided URL.",
+          );
         }
         return;
       }
-      router.push("/app");
+      router.push("/app?panel=crm");
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : "An error occurred");
     } finally {
@@ -106,7 +114,11 @@ export function LoginForm({
                 />
               </div>
               {error && <p className="text-sm text-red-500">{error}</p>}
-              {message && <p className="rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{message}</p>}
+              {message && (
+                <p className="rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+                  {message}
+                </p>
+              )}
               <Button type="submit" className="w-full" disabled={isLoading}>
                 {isLoading ? "Logging in..." : "Login"}
               </Button>

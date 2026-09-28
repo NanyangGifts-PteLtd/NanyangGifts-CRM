@@ -68,8 +68,6 @@ import {
   AlertDialogTitle,
 } from "./alert-dialog";
 
-export const dynamic = "force-dynamic";
-
 const SUBITEM_COLUMN_DESCRIPTIONS: Record<string, string> = {
   tcSgd: "Total unit cost in SGD, excluding manpower, shipping etc",
   manpower: "Manpower & Printing Costs",
@@ -164,11 +162,69 @@ export const PAYMENT_COLS: ColumnDef[] = [
   { key: "qtyWeKeep", label: "Qty we keep", width: 105, minWidth: 7 },
   { key: "qtyFor", label: "Qty For Client", width: 110, minWidth: 7 },
   { key: "totalToPay", label: "Total to Pay", width: 105, minWidth: 7 },
-  { key: "paymentAmount", label: "Payment Amt", width: 100, minWidth: 7 },
+  { key: "paymentAmount", label: "Amount Paid", width: 100, minWidth: 7 },
   { key: "difference", label: "Difference", width: 90, minWidth: 7 },
   { key: "paymentStatus", label: "Payment Status", width: 110, minWidth: 7 },
   { key: "paymentRemarks", label: "Remarks", width: 120, minWidth: 7 },
 ];
+
+function columnDefinitionSignature(columns: ColumnDef[]) {
+  return columns
+    .map((column) => `${column.key}:${column.label}:${column.minWidth}`)
+    .join("|");
+}
+
+function refreshColumnDefinitions(
+  currentColumns: ColumnDef[],
+  definitions: ColumnDef[],
+) {
+  const definitionByKey = new Map(
+    definitions.map((column) => [column.key, column]),
+  );
+  const currentByKey = new Map(
+    currentColumns.map((column) => [column.key, column]),
+  );
+  const orderedKeys = [
+    ...currentColumns.map((column) => column.key),
+    ...definitions
+      .map((column) => column.key)
+      .filter((key) => !currentByKey.has(key)),
+  ].filter(
+    (key, index, keys) =>
+      definitionByKey.has(key) && keys.indexOf(key) === index,
+  );
+  const nextColumns = orderedKeys.map((key) => {
+    const definition = definitionByKey.get(key)!;
+    const current = currentByKey.get(key);
+
+    // Keep each user's column width and order, but always take display
+    // metadata from the source definition. This also makes Fast Refresh
+    // reflect label edits without requiring a browser reload.
+    return {
+      ...definition,
+      width: current?.width ?? definition.width,
+    };
+  });
+
+  const unchanged =
+    nextColumns.length === currentColumns.length &&
+    nextColumns.every((column, index) => {
+      const current = currentColumns[index];
+      return (
+        column.key === current?.key &&
+        column.label === current.label &&
+        column.width === current.width &&
+        column.minWidth === current.minWidth
+      );
+    });
+
+  return unchanged ? currentColumns : nextColumns;
+}
+
+const SUBITEM_COLUMN_DEFINITION_VERSION =
+  columnDefinitionSignature(SUBITEM_COLS);
+const PAYMENT_COLUMN_DEFINITION_VERSION =
+  columnDefinitionSignature(PAYMENT_COLS);
 
 type TableMode = "subitem" | "payment" | "timeline";
 type ShipperPushValues = Record<string, string> & { subitemId: string };
@@ -712,6 +768,19 @@ export function SubitemsTable({
   const [paymentCols, setPaymentCols] = useState<ColumnDef[]>([
     ...PAYMENT_COLS,
   ]);
+
+  React.useLayoutEffect(() => {
+    setSubitemCols((current) =>
+      refreshColumnDefinitions(current, SUBITEM_COLS),
+    );
+  }, [SUBITEM_COLUMN_DEFINITION_VERSION]);
+
+  React.useLayoutEffect(() => {
+    setPaymentCols((current) =>
+      refreshColumnDefinitions(current, PAYMENT_COLS),
+    );
+  }, [PAYMENT_COLUMN_DEFINITION_VERSION]);
+
   const [draggedColumnKey, setDraggedColumnKey] = useState<string | null>(null);
 
   const submitNewSubitem = async () => {

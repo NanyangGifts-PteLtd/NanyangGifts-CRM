@@ -2,11 +2,9 @@ import type { NextConfig } from "next";
 import path from "path";
 
 const nextConfig: NextConfig = {
-  cacheComponents: true,
-    turbopack: {
-    // Points to the exact directory where this config file sits
-    root: path.join(__dirname),
-  },
+  // Keep build tracing inside this repository when a parent directory has an
+  // unrelated package-lock.json.
+  outputFileTracingRoot: path.resolve(process.cwd()),
 };
 
 export default nextConfig;
