@@ -274,20 +274,32 @@ export async function POST(request: NextRequest) {
       row = result.data;
       error = result.error;
     } else {
-      const result = await supabaseAdmin.rpc(
-        "create_quickbooks_bills_only_voucher",
-        {
-          p_cost: total,
-          p_reference_id: await nextReference(),
-          p_quickbooks_bill_id: String(quickBooksBill.Id),
-          p_invoice_number: String(quickBooksBill.DocNumber ?? billNumber),
-          p_supplier_id: supplierId,
-          p_supplier_name: String(
-            quickBooksBill.VendorRef?.name ?? supplierName,
-          ),
-          p_attachment_files: savedAttachments,
-        },
-      );
+      // Do not use the legacy database RPC here. Its security context can be
+      // evaluated as the caller and reject an otherwise authorised director
+      // with an RLS error. This route has already authenticated the user and
+      // checked the role above, so write through the server-only service-role
+      // client instead.
+      const { data: latest, error: latestError } = await supabaseAdmin
+        .from("additional_costs")
+        .select("position")
+        .eq("voucher_group", "quickbooks_bills_only")
+        .is("client_id", null)
+        .order("position", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (latestError) throw latestError;
+      const result = await supabaseAdmin
+        .from("additional_costs")
+        .insert({
+          voucher_group: "quickbooks_bills_only",
+          position: Number(latest?.position ?? -1) + 1,
+          created_by: user.id,
+          created_at: new Date().toISOString(),
+          trip_id: await nextReference(),
+          ...billFields,
+        })
+        .select("*")
+        .single();
       row = result.data;
       error = result.error;
     }
