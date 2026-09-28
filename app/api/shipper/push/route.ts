@@ -150,6 +150,45 @@ function timelineTrackingNumbers(
     .filter(Boolean);
 }
 
+type TimelineGroup = Record<string, unknown> & {
+  id?: string;
+  cnTracking?: string;
+};
+
+function timelineOptions(timelineGroups: unknown) {
+  const groups = Array.isArray(timelineGroups)
+    ? (timelineGroups as TimelineGroup[])
+    : [];
+  return groups.flatMap((group, index) => {
+    const id = String(group.id ?? "").trim();
+    return id
+      ? [{ id, label: `Project Timeline ${index + 1}` }]
+      : [];
+  });
+}
+
+function addFirstTimelineTracking(
+  timelineGroups: unknown,
+  timelineId: unknown,
+  trackingNumber: string,
+) {
+  const groups = Array.isArray(timelineGroups)
+    ? (timelineGroups as TimelineGroup[])
+    : [];
+  const selectedId = String(timelineId ?? "").trim();
+  const selectedIndex = groups.findIndex(
+    (group) => String(group.id ?? "") === selectedId,
+  );
+  if (selectedIndex < 0) {
+    throw new Error(
+      "Select the project timeline that this CN Tracking number belongs to.",
+    );
+  }
+  return groups.map((group, index) =>
+    index === selectedIndex ? { ...group, cnTracking: trackingNumber } : group,
+  );
+}
+
 export async function POST(req: NextRequest) {
   try {
     const supabase = await createClient();
@@ -188,24 +227,47 @@ export async function POST(req: NextRequest) {
     }
 
     if (body.statusOnly) {
-      const { data: pushedRows, error: pushedRowsError } = await supabaseAdmin
-        .from("shipper_view_rows")
-        .select("subitem_id")
-        .in("subitem_id", subitemIds);
+      // A send is written to both the legacy CRM projection and the shipper
+      // workbook. Older records may exist in only one of them, so derive the
+      // Sent state from both sources instead of treating the projection as the
+      // source of truth.
+      const [legacyResult, spreadsheetResult] = await Promise.all([
+        supabaseAdmin
+          .from("shipper_view_rows")
+          .select("subitem_id")
+          .in("subitem_id", subitemIds),
+        supabaseAdmin
+          .from("shipper_spreadsheet_rows")
+          .select("source_subitem_id")
+          .eq("source_type", "crm_push")
+          .in("source_subitem_id", subitemIds),
+      ]);
 
-      if (pushedRowsError) {
+      if (legacyResult.error || spreadsheetResult.error) {
         return NextResponse.json(
-          { error: pushedRowsError.message },
+          {
+            error:
+              legacyResult.error?.message ?? spreadsheetResult.error?.message,
+          },
           { status: 500 },
         );
       }
 
       return NextResponse.json({
-        pushedSubitemIds: (pushedRows ?? [])
-          .map((row) => row.subitem_id)
-          .filter(
-            (subitemId): subitemId is string => typeof subitemId === "string",
+        pushedSubitemIds: [
+          ...new Set(
+            [...(legacyResult.data ?? [])].map((row) => row.subitem_id)
+              .concat(
+                (spreadsheetResult.data ?? []).map(
+                  (row) => row.source_subitem_id,
+                ),
+              )
+              .filter(
+                (subitemId): subitemId is string =>
+                  typeof subitemId === "string",
+              ),
           ),
+        ],
       });
     }
 
@@ -482,6 +544,7 @@ export async function POST(req: NextRequest) {
         cn_tracking_no:
           trackingOptions.length === 1 ? trackingOptions[0] : null,
         tracking_options: trackingOptions,
+        timeline_options: timelineOptions(item.timeline_groups),
         cartons: null,
         item_name: item.name ?? null,
         delivery_info: buildDeliveryInfo(ocfItem) ?? null,
@@ -499,25 +562,91 @@ export async function POST(req: NextRequest) {
       };
     });
 
-    const { data: existingRows, error: existingRowsError } = await supabase
-      .from("shipper_view_rows")
-      .select("*")
-      .in(
-        "subitem_id",
-        subitems.map((item) => item.id),
-      );
-    if (existingRowsError)
+    const previewSubitemIds = subitems.map((item) => item.id);
+    const [legacyRowsResult, spreadsheetRowsResult, activityRowsResult] =
+      await Promise.all([
+        supabaseAdmin
+          .from("shipper_view_rows")
+          .select("subitem_id, shipper_id")
+          .in("subitem_id", previewSubitemIds),
+        supabaseAdmin
+          .from("shipper_spreadsheet_rows")
+          .select(
+            "source_subitem_id, workbook:shipper_workbooks(shipper_id)",
+          )
+          .eq("source_type", "crm_push")
+          .in("source_subitem_id", previewSubitemIds),
+        supabaseAdmin
+          .from("activity_log")
+          .select("subitem_id, meta, created_at")
+          .eq("action", "shipper_pushed")
+          .in("subitem_id", previewSubitemIds)
+          .order("created_at", { ascending: false }),
+      ]);
+    if (
+      legacyRowsResult.error ||
+      spreadsheetRowsResult.error ||
+      activityRowsResult.error
+    )
       return NextResponse.json(
-        { error: existingRowsError.message },
+        {
+          error:
+            legacyRowsResult.error?.message ??
+            spreadsheetRowsResult.error?.message ??
+            activityRowsResult.error?.message,
+        },
         { status: 500 },
       );
-    const existingBySubitemId = new Map(
-      (existingRows ?? []).map((row) => [row.subitem_id, row]),
-    );
 
-    // A spreadsheet push is append-only. Previous legacy shipper rows are
-    // used only to identify that the CRM item was pushed before; they must
-    // never supply values or alter a fresh push preview.
+    const legacyBySubitemId = new Map(
+      (legacyRowsResult.data ?? []).map((row) => [row.subitem_id, row]),
+    );
+    const spreadsheetShipperBySubitemId = new Map<string, string>();
+    for (const row of spreadsheetRowsResult.data ?? []) {
+      const workbook = Array.isArray(row.workbook)
+        ? row.workbook[0]
+        : row.workbook;
+      const shipperId = workbook?.shipper_id;
+      if (
+        typeof row.source_subitem_id === "string" &&
+        typeof shipperId === "string" &&
+        !spreadsheetShipperBySubitemId.has(row.source_subitem_id)
+      ) {
+        spreadsheetShipperBySubitemId.set(row.source_subitem_id, shipperId);
+      }
+    }
+    // Activity is ordered newest first and records the selected shipper at
+    // send time. Prefer it over the mutable legacy projection, then fall back
+    // to the workbook association for older rows that have no activity meta.
+    const activityShipperBySubitemId = new Map<string, string>();
+    for (const row of activityRowsResult.data ?? []) {
+      const meta = row.meta as { shipperId?: unknown } | null;
+      if (
+        typeof row.subitem_id === "string" &&
+        typeof meta?.shipperId === "string" &&
+        !activityShipperBySubitemId.has(row.subitem_id)
+      ) {
+        activityShipperBySubitemId.set(row.subitem_id, meta.shipperId);
+      }
+    }
+    const sentShipperBySubitemId = new Map<string, string | null>();
+    for (const subitemId of previewSubitemIds) {
+      const shipperId =
+        activityShipperBySubitemId.get(subitemId) ??
+        spreadsheetShipperBySubitemId.get(subitemId) ??
+        legacyBySubitemId.get(subitemId)?.shipper_id ??
+        null;
+      if (
+        legacyBySubitemId.has(subitemId) ||
+        spreadsheetShipperBySubitemId.has(subitemId) ||
+        activityShipperBySubitemId.has(subitemId)
+      ) {
+        sentShipperBySubitemId.set(subitemId, shipperId);
+      }
+    }
+
+    // A spreadsheet send is append-only. Historical destinations are used
+    // only to identify a prior send; they never supply form values.
     const previews: Array<Record<string, any>> = defaults;
 
     if (body.preview)
@@ -525,7 +654,10 @@ export async function POST(req: NextRequest) {
         ok: true,
         rows: previews.map((row) => {
           const source = subitems.find((item) => item.id === row.subitem_id);
-          const existing = existingBySubitemId.get(row.subitem_id);
+          const previousShipperId = sentShipperBySubitemId.get(
+            row.subitem_id,
+          );
+          const wasSent = sentShipperBySubitemId.has(row.subitem_id);
           const configuredLabelIsValid =
             !targetShipper ||
             targetLabels.includes(
@@ -534,13 +666,13 @@ export async function POST(req: NextRequest) {
             );
           return {
             ...row,
-            already_pushed: !!existing,
-            previous_shipper_id: existing?.shipper_id ?? null,
-            previous_shipper_name: existing?.shipper_id
-              ? (shipperNameById.get(existing.shipper_id) ?? "Unknown shipper")
+            already_pushed: wasSent,
+            previous_shipper_id: previousShipperId ?? null,
+            previous_shipper_name: previousShipperId
+              ? (shipperNameById.get(previousShipperId) ?? "Unknown shipper")
               : null,
             pushed_to_different_shipper:
-              !!existing?.shipper_id && existing.shipper_id !== row.shipper_id,
+              !!previousShipperId && previousShipperId !== row.shipper_id,
             shipper_name:
               shipperNameById.get(row.shipper_id) ?? "Selected shipper",
             shipper_mismatch:
@@ -558,9 +690,48 @@ export async function POST(req: NextRequest) {
     const suppliedBySubitemId = new Map(
       (body.values ?? []).map((value) => [value.subitemId, value]),
     );
+    for (const preview of previews) {
+      const source = subitems.find((item) => item.id === preview.subitem_id);
+      const supplied = suppliedBySubitemId.get(preview.subitem_id);
+      const selectedTrackingNumber = String(
+        supplied?.cn_tracking_no ?? preview.cn_tracking_no ?? "",
+      ).trim();
+      if (!selectedTrackingNumber) continue;
+      const trackingOptions = timelineTrackingNumbers(
+        source?.timeline_groups,
+        source?.cn_tracking,
+      );
+      if (trackingOptions.includes(selectedTrackingNumber)) continue;
+      if (trackingOptions.length > 0) {
+        throw new Error(
+          "Choose a CN Tracking number from one of this subitem's project timelines.",
+        );
+      }
+      if (!source) throw new Error("The source subitem could not be found.");
+      const nextTimelineGroups = addFirstTimelineTracking(
+        source.timeline_groups,
+        supplied?.timeline_id,
+        selectedTrackingNumber,
+      );
+      const nextCnTracking = nextTimelineGroups
+        .map((group) => String(group.cnTracking ?? "").trim())
+        .filter(Boolean)
+        .join(", ");
+      const { error: timelineError } = await supabase
+        .from("subitems")
+        .update({
+          timeline_groups: nextTimelineGroups,
+          cn_tracking: nextCnTracking,
+        })
+        .eq("id", source.id);
+      if (timelineError) throw timelineError;
+      source.timeline_groups = nextTimelineGroups;
+      source.cn_tracking = nextCnTracking;
+    }
     const rowsToUpsert: Array<Record<string, any>> = previews.map((preview) => {
       const shipperRow = { ...preview };
       delete shipperRow.tracking_options;
+      delete shipperRow.timeline_options;
       const supplied = suppliedBySubitemId.get(preview.subitem_id);
       const edits = Object.fromEntries(
         PREVIEW_FIELDS.map((field) => [
@@ -576,16 +747,17 @@ export async function POST(req: NextRequest) {
       });
       if (missing.length)
         throw new Error(
-          `Complete all mandatory fields before pushing: ${missing.join(", ")}`,
+          `Complete all mandatory fields before sending: ${missing.join(", ")}`,
         );
       const source = subitems.find((item) => item.id === preview.subitem_id);
       const trackingOptions = timelineTrackingNumbers(
         source?.timeline_groups,
         source?.cn_tracking,
       );
-      if (
-        !trackingOptions.includes(String(edits.cn_tracking_no ?? "").trim())
-      ) {
+      const selectedTrackingNumber = String(
+        edits.cn_tracking_no ?? "",
+      ).trim();
+      if (!trackingOptions.includes(selectedTrackingNumber)) {
         throw new Error(
           "Choose a CN Tracking number from one of this subitem's project timelines.",
         );
@@ -671,7 +843,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json(
           {
             error:
-              "Shipper row was pushed, but no target shipper was found for the spreadsheet.",
+              "Shipper row was sent, but no target shipper was found for the spreadsheet.",
           },
           { status: 500 },
         );
@@ -728,7 +900,7 @@ export async function POST(req: NextRequest) {
       )
       .map((row) => {
         const source = subitems.find((item) => item.id === row.subitem_id);
-        const previous = existingBySubitemId.get(row.subitem_id);
+        const previous = sentShipperBySubitemId.has(row.subitem_id);
         const shipperName = shipperNameById.get(row.shipper_id) ?? "shipper";
         return {
           client_id: row.client_id,
@@ -740,7 +912,7 @@ export async function POST(req: NextRequest) {
           new_value: null,
           subitem_name: source?.name ?? null,
           link: null,
-          title: `${previous ? "re-pushed" : "pushed"} this subitem to ${shipperName}`,
+          title: `${previous ? "re-sent" : "sent"} this subitem to ${shipperName}`,
           description: null,
           meta: {
             shipperId: row.shipper_id,
@@ -760,7 +932,7 @@ export async function POST(req: NextRequest) {
       if (activityError)
         return NextResponse.json(
           {
-            error: `Shipper rows were pushed, but activity logging failed: ${activityError.message}`,
+            error: `Shipper rows were sent, but activity logging failed: ${activityError.message}`,
           },
           { status: 500 },
         );

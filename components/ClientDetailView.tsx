@@ -273,7 +273,9 @@ export function ClientDetailView({
     entry.title ||
     (entry.fieldName
       ? `changed ${entry.fieldName} from ${displayValue(entry.fieldName, entry.oldValue)} to ${displayValue(entry.fieldName, entry.newValue)}`
-      : entry.action.replaceAll("_", " "));
+      : entry.action === "shipper_pushed"
+        ? "sent this subitem to a shipper"
+        : entry.action.replaceAll("_", " "));
   const clientActivities = (client.activityLog ?? [])
     .filter(
       (entry) =>

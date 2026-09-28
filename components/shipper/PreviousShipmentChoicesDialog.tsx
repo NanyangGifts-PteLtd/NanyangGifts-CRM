@@ -33,9 +33,9 @@ export function PreviousShipmentChoicesDialog({
         <header className="border-b px-5 py-4">
           <h2 className="font-semibold">Previous shipment choices</h2>
           <div className="mt-3 rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
-            <strong>Previously pushed subitems</strong>
+            <strong>Previously sent subitems</strong>
             <br />
-            Every subitem listed below has already been pushed. Select a
+            Every subitem listed below has already been sent. Select a
             specific past shipment to amend, or create a separate new shipment.
           </div>
         </header>

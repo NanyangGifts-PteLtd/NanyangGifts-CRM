@@ -222,7 +222,7 @@ export function ShipperStagingTable({
         }),
       });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Combined push failed");
+      if (!response.ok) throw new Error(data.error || "Combined send failed");
       await Promise.all(
         selectedRows.map((row) => request({ action: "delete", id: row.id })),
       );
@@ -320,7 +320,7 @@ export function ShipperStagingTable({
           onClick={() => void multiPush()}
           className="rounded bg-teal-600 px-3 py-2 text-xs text-white disabled:opacity-40"
         >
-          Multi-push ({selectedRows.length})
+          Multi-send ({selectedRows.length})
         </button>
       </div>
       <div className="overflow-auto border border-amber-200 bg-white">
@@ -328,7 +328,7 @@ export function ShipperStagingTable({
           <thead>
             <tr>
               <th />
-              <th>Push</th>
+              <th>Send</th>
               {fields.map(([, label]) => (
                 <th key={label} className="border bg-[#4588ed] p-2 text-white">
                   {label}
@@ -360,7 +360,7 @@ export function ShipperStagingTable({
                     onClick={() => void loadPicker(row.id)}
                     className="rounded bg-sky-600 px-2 py-1 text-white"
                   >
-                    Push
+                    Send
                   </button>
                 </td>
                 {fields.map(([key]) => (
@@ -410,7 +410,7 @@ export function ShipperStagingTable({
                 onClick={() => void standalone()}
                 className="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900"
               >
-                Push without linked subitem
+                Send without linked subitem
               </button>
               <input
                 value={search}

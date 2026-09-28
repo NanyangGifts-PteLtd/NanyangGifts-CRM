@@ -850,6 +850,10 @@ export function SubitemsTable({
   const [pushPreviewTrackingOptions, setPushPreviewTrackingOptions] = useState<
     string[]
   >([]);
+  const [pushPreviewTimelineOptions, setPushPreviewTimelineOptions] = useState<
+    Array<{ id: string; label: string }>
+  >([]);
+  const [pushPreviewTimelineId, setPushPreviewTimelineId] = useState("");
   const [pushPreviewHistory, setPushPreviewHistory] = useState<{
     alreadyPushed: boolean;
     differentShipper: boolean;
@@ -1692,7 +1696,7 @@ export function SubitemsTable({
         }
 
         if (!response.ok) {
-          throw new Error(result?.error || "Failed to push to shipper view.");
+          throw new Error(result?.error || "Failed to send to shipper view.");
         }
         pushResult = result;
       }
@@ -1709,14 +1713,14 @@ export function SubitemsTable({
             `${push.workbookName ?? "Shipper workbook"}: row${(push.rowNumbers?.length ?? 0) === 1 ? "" : "s"} ${(push.rowNumbers ?? []).join(", ")}`,
         )
         .join(" · ");
-      toast.success("Pushed to shipper workbook", {
+      toast.success("Sent to shipper workbook", {
         description:
           destinations ||
           "The shipping record was added to the shipper workbook.",
         action: {
           label: "Details",
           onClick: () =>
-            toast("Push details", {
+            toast("Send details", {
               description:
                 destinations ||
                 "The CRM record was added as a new workbook row.",
@@ -1724,12 +1728,12 @@ export function SubitemsTable({
         },
       });
     } catch (error: any) {
-      const reason = error?.message || "Failed to push to shipper view.";
-      toast.error("Push to shipper view failed", {
+      const reason = error?.message || "Failed to send to shipper view.";
+      toast.error("Send to shipper view failed", {
         description: reason,
         action: {
           label: "Details",
-          onClick: () => toast("Why the push failed", { description: reason }),
+          onClick: () => toast("Why the send failed", { description: reason }),
         },
       });
     } finally {
@@ -1752,7 +1756,7 @@ export function SubitemsTable({
       });
       const result = await response.json();
       if (!response.ok)
-        throw new Error(result?.error || "Could not prepare the shipper push.");
+        throw new Error(result?.error || "Could not prepare the shipment send.");
       const row = result?.rows?.[0];
       if (!row)
         throw new Error("No shipper data was available for this subitem.");
@@ -1761,9 +1765,19 @@ export function SubitemsTable({
             .map((value: unknown) => String(value).trim())
             .filter(Boolean)
         : [];
-      if (!trackingOptions.length) {
+      const timelineOptions = Array.isArray(row.timeline_options)
+        ? row.timeline_options
+            .map((option: unknown) => ({
+              id: String((option as { id?: unknown })?.id ?? "").trim(),
+              label: String(
+                (option as { label?: unknown })?.label ?? "Project Timeline",
+              ).trim(),
+            }))
+            .filter((option: { id: string }) => Boolean(option.id))
+        : [];
+      if (!trackingOptions.length && !timelineOptions.length) {
         throw new Error(
-          "Add a CN Tracking number to one of this subitem's Project Timelines before pushing.",
+          "Add a Project Timeline before sending this subitem.",
         );
       }
       const singaporeNow = new Date(Date.now() + 8 * 60 * 60 * 1000);
@@ -1782,6 +1796,12 @@ export function SubitemsTable({
         ),
       } as ShipperPushValues);
       setPushPreviewTrackingOptions(trackingOptions);
+      setPushPreviewTimelineOptions(timelineOptions);
+      setPushPreviewTimelineId(
+        trackingOptions.length === 0 && timelineOptions.length === 1
+          ? timelineOptions[0].id
+          : "",
+      );
       setPushPreviewShipperName(String(row.shipper_name || "Selected shipper"));
       setPushPreviewHistory({
         alreadyPushed: Boolean(row.already_pushed),
@@ -1823,7 +1843,8 @@ export function SubitemsTable({
     !!pushPreview &&
     SHIPPER_PUSH_FIELDS.filter((field) => field.required).every((field) =>
       pushPreview[field.key]?.trim(),
-    );
+    ) &&
+    (pushPreviewTrackingOptions.length > 0 || Boolean(pushPreviewTimelineId));
   const pushField = (key: string, label: string) => {
     if (!pushPreview) return null;
     const field = SHIPPER_PUSH_FIELDS.find((item) => item.key === key);
@@ -1831,7 +1852,7 @@ export function SubitemsTable({
     const invalid = !!field?.required && !value.trim();
     const className = `mt-1 w-full rounded-md border px-3 py-2 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-cyan-200 ${invalid ? "border-red-300 bg-red-50" : "border-slate-300"}`;
     const control =
-      key === "cn_tracking_no" ? (
+      key === "cn_tracking_no" && pushPreviewTrackingOptions.length > 0 ? (
         <select
           value={value}
           onChange={(event) => updatePushPreview(key, event.target.value)}
@@ -1844,6 +1865,29 @@ export function SubitemsTable({
             </option>
           ))}
         </select>
+      ) : key === "cn_tracking_no" ? (
+        <>
+          <input
+            value={value}
+            onChange={(event) => updatePushPreview(key, event.target.value)}
+            placeholder="Enter the first CN Tracking number"
+            className={className}
+          />
+          <select
+            value={pushPreviewTimelineId}
+            onChange={(event) => setPushPreviewTimelineId(event.target.value)}
+            className={`mt-2 w-full rounded-md border px-3 py-2 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-cyan-200 ${
+              pushPreviewTimelineId ? "border-slate-300" : "border-red-300 bg-red-50"
+            }`}
+          >
+            <option value="">Select the Project Timeline</option>
+            {pushPreviewTimelineOptions.map((timeline) => (
+              <option key={timeline.id} value={timeline.id}>
+                {timeline.label}
+              </option>
+            ))}
+          </select>
+        </>
       ) : key === "sea_or_air" ? (
         <select
           value={value}
@@ -1904,12 +1948,19 @@ export function SubitemsTable({
         body: JSON.stringify({
           subitemIds: [pushPreview.subitemId],
           overwrite: true,
-          values: [pushPreview],
+          values: [
+            {
+              ...pushPreview,
+              ...(pushPreviewTrackingOptions.length === 0
+                ? { timeline_id: pushPreviewTimelineId }
+                : {}),
+            },
+          ],
         }),
       });
       const result = await response.json();
       if (!response.ok)
-        throw new Error(result?.error || "Failed to push to shipper view.");
+        throw new Error(result?.error || "Failed to send to shipper view.");
       window.localStorage.setItem(
         "shipper-spreadsheet-refresh",
         `${Date.now()}-${Math.random()}`,
@@ -1920,6 +1971,8 @@ export function SubitemsTable({
       setPushPreview(null);
       setPushPreviewShipperName("");
       setPushPreviewTrackingOptions([]);
+      setPushPreviewTimelineOptions([]);
+      setPushPreviewTimelineId("");
       setPushPreviewHistory(null);
       const destinations = (result?.spreadsheetPushes ?? [])
         .map(
@@ -1927,13 +1980,13 @@ export function SubitemsTable({
             `${push.workbookName ?? "Shipper workbook"}: row${(push.rowNumbers?.length ?? 0) === 1 ? "" : "s"} ${(push.rowNumbers ?? []).join(", ")}`,
         )
         .join(" · ");
-      toast.success("Pushed to shipper workbook", {
+      toast.success("Sent to shipper workbook", {
         description:
           destinations ||
           "The reviewed shipping record was added as a new workbook row.",
       });
     } catch (error: any) {
-      toast.error("Push to shipper view failed", {
+      toast.error("Send to shipper view failed", {
         description: error?.message || "Please check the values and try again.",
       });
     } finally {
@@ -2073,16 +2126,16 @@ export function SubitemsTable({
                         !canEditSubitem(sub.id)
                           ? subitemEditBlockMessage(sub.id)
                           : wasPushed
-                            ? "Already pushed. Edit shipment details from the Shipper view."
-                            : "Push to shipper view"
+                            ? "Already sent. Edit shipment details from the Shipper view."
+                            : "Send to shipper view"
                       }
                     >
                       {pushingSubitemId === sub.id ||
                       preparingPushSubitemId === sub.id
                         ? "Preparing..."
                         : wasPushed
-                          ? "Pushed"
-                          : "Push"}
+                          ? "Sent"
+                          : "Send"}
                     </button>
                   );
                 })()
@@ -3039,9 +3092,9 @@ export function SubitemsTable({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Push this subitem again?</AlertDialogTitle>
+            <AlertDialogTitle>Send this subitem again?</AlertDialogTitle>
             <AlertDialogDescription>
-              This subitem has been pushed before. It was previously sent to its
+              This subitem has been sent before. It was previously sent to its
               shipper workbook; confirming will add a new row.
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -3055,7 +3108,7 @@ export function SubitemsTable({
                 await handlePushToShipperView(subitemId, true);
               }}
             >
-              Push again
+              Send again
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -3108,21 +3161,17 @@ export function SubitemsTable({
           className="fixed inset-0 z-[150] flex items-center justify-center bg-slate-950/40 p-4"
           role="dialog"
           aria-modal="true"
-          aria-labelledby="shipper-push-title"
+          aria-labelledby="shipper-send-title"
         >
           <div className="flex max-h-[calc(100vh-2rem)] w-full max-w-4xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
             <div className="flex items-start justify-between border-b border-slate-200 px-5 py-4">
               <div>
                 <h2
-                  id="shipper-push-title"
-                  className="text-base font-semibold text-slate-900"
+                  id="shipper-send-title"
+                  className="text-xl font-semibold text-slate-900"
                 >
-                  Pushing to {pushPreviewShipperName || "selected shipper"}
+                  Sending to {pushPreviewShipperName || "selected shipper"}
                 </h2>
-                <p className="mt-1 text-sm text-slate-500">
-                  Confirm the shipping details. Fields marked{" "}
-                  <span className="text-red-500">*</span> are required.
-                </p>
               </div>
               <button
                 type="button"
@@ -3130,6 +3179,8 @@ export function SubitemsTable({
                   setPushPreview(null);
                   setPushPreviewShipperName("");
                   setPushPreviewTrackingOptions([]);
+                  setPushPreviewTimelineOptions([]);
+                  setPushPreviewTimelineId("");
                   setPushPreviewHistory(null);
                 }}
                 disabled={pushingSubitemId === pushPreview.subitemId}
@@ -3144,28 +3195,10 @@ export function SubitemsTable({
                 className={`mx-5 mt-4 rounded-lg border p-4 ${pushPreviewHistory.differentShipper ? "border-orange-300 bg-orange-50" : "border-amber-300 bg-amber-50"}`}
               >
                 <p
-                  className={`font-semibold ${pushPreviewHistory.differentShipper ? "text-orange-900" : "text-amber-900"}`}
+                  className={`text-sm ${pushPreviewHistory.differentShipper ? "text-orange-800" : "text-amber-700"}`}
                 >
-                  {pushPreviewHistory.differentShipper
-                    ? "This subitem was previously pushed to a different shipper"
-                    : "This subitem has already been pushed"}
-                </p>
-                <p
-                  className={`mt-1 text-sm ${pushPreviewHistory.differentShipper ? "text-orange-800" : "text-amber-700"}`}
-                >
-                  {pushPreviewHistory.differentShipper ? (
-                    <>
-                      It was previously pushed to{" "}
-                      <strong>{pushPreviewHistory.previousShipperName}</strong>.
-                      It was previously sent to{" "}
-                      <strong>{pushPreviewHistory.previousShipperName}</strong>.
-                    </>
-                  ) : (
-                    <>
-                      It was previously sent to{" "}
-                      <strong>{pushPreviewHistory.previousShipperName}</strong>.
-                    </>
-                  )}
+                  Previously sent to{" "}
+                  <strong>{pushPreviewHistory.previousShipperName}</strong>.
                 </p>
               </div>
             )}
@@ -3200,11 +3233,7 @@ export function SubitemsTable({
                 </div>
               </div>
             </div>
-            <div className="flex items-center justify-between border-t border-slate-200 px-5 py-4">
-              <p className="text-xs text-slate-500">
-                Choose the CN Tracking number from the project timeline being
-                shipped.
-              </p>
+            <div className="flex items-center justify-end border-t border-slate-200 px-5 py-4">
               <div className="flex gap-2">
                 <button
                   type="button"
@@ -3212,6 +3241,8 @@ export function SubitemsTable({
                     setPushPreview(null);
                     setPushPreviewShipperName("");
                     setPushPreviewTrackingOptions([]);
+                    setPushPreviewTimelineOptions([]);
+                    setPushPreviewTimelineId("");
                     setPushPreviewHistory(null);
                   }}
                   disabled={pushingSubitemId === pushPreview.subitemId}
@@ -3229,8 +3260,8 @@ export function SubitemsTable({
                   className="rounded-md bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {pushingSubitemId === pushPreview.subitemId
-                    ? "Pushing..."
-                    : "Confirm & push"}
+                    ? "Sending..."
+                    : "Confirm & send"}
                 </button>
               </div>
             </div>
@@ -3299,6 +3330,13 @@ export function SubitemsTable({
                                   {entry.actorName}
                                 </span>{" "}
                                 created this subitem
+                              </>
+                            ) : entry.action === "shipper_pushed" ? (
+                              <>
+                                <span className="font-medium">
+                                  {entry.actorName}
+                                </span>{" "}
+                                sent this subitem to a shipper
                               </>
                             ) : entry.fieldName === "parentClient" ? (
                               <>

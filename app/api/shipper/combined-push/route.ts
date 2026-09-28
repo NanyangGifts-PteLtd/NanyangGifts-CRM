@@ -15,6 +15,26 @@ function timelineTrackingNumbers(timelineGroups: unknown, fallback: string | nul
     return String(fallback ?? "").split(",").map((value) => value.trim()).filter(Boolean);
 }
 
+type TimelineGroup = Record<string, unknown> & { id?: string; cnTracking?: string };
+
+function addFirstTimelineTracking(
+    timelineGroups: unknown,
+    timelineId: unknown,
+    trackingNumber: string,
+) {
+    const groups = Array.isArray(timelineGroups)
+        ? timelineGroups as TimelineGroup[]
+        : [];
+    const selectedId = String(timelineId ?? "").trim();
+    const selectedIndex = groups.findIndex((group) => String(group.id ?? "") === selectedId);
+    if (selectedIndex < 0) {
+        throw new Error("Select the project timeline that this CN Tracking number belongs to.");
+    }
+    return groups.map((group, index) =>
+        index === selectedIndex ? { ...group, cnTracking: trackingNumber } : group,
+    );
+}
+
 export async function POST(request: NextRequest) {
     try {
         const supabase = await createClient();
@@ -46,6 +66,33 @@ export async function POST(request: NextRequest) {
         const shared = body.shared ?? {};
         const requiredShared = ["info_provided_date", "delivery_info", "sea_or_air"];
         if (requiredShared.some((key) => !shared[key]?.trim())) return NextResponse.json({ error: "Complete the shared shipment date, address, and Sea/Air fields." }, { status: 400 });
+
+        for (const source of subitems!) {
+            const value = values.get(source.id);
+            const trackingNumber = value?.cn_tracking_no?.trim() ?? "";
+            if (!trackingNumber) continue;
+            const trackingOptions = timelineTrackingNumbers(source.timeline_groups, source.cn_tracking);
+            if (trackingOptions.includes(trackingNumber)) continue;
+            if (trackingOptions.length > 0) {
+                throw new Error(`Choose a CN Tracking number from one of ${source.name || "this subitem"}'s project timelines.`);
+            }
+            const timelineGroups = addFirstTimelineTracking(
+                source.timeline_groups,
+                value?.timeline_id,
+                trackingNumber,
+            );
+            const cnTracking = timelineGroups
+                .map((group) => String(group.cnTracking ?? "").trim())
+                .filter(Boolean)
+                .join(", ");
+            const { error: timelineError } = await supabaseAdmin
+                .from("subitems")
+                .update({ timeline_groups: timelineGroups, cn_tracking: cnTracking })
+                .eq("id", source.id);
+            if (timelineError) throw timelineError;
+            source.timeline_groups = timelineGroups;
+            source.cn_tracking = cnTracking;
+        }
 
         // The workbook is now the only destination for a combined push. Do
         // not inspect or amend historical shipment records: every confirmed
@@ -96,7 +143,7 @@ export async function POST(request: NextRequest) {
         }));
         const { error: legacyError } = await supabaseAdmin.from("shipper_view_rows").upsert(legacyProjection, { onConflict: "subitem_id" });
         if (legacyError) throw legacyError;
-        await supabaseAdmin.from("activity_log").insert(rowsForWorkbook.map((row) => ({ client_id: subitems!.find((item) => item.id === row.sourceSubitemId)?.client_id ?? null, subitem_id: row.sourceSubitemId, actor_name: workbookActor, action: "shipper_pushed", subitem_name: row.values.item_name, title: "pushed as part of a grouped spreadsheet shipment", meta: { shipperId: targetShipperId, shipperName: workbookShipperName, spreadsheetShipmentGroupId: shipmentGroupId, combined: true }, created_at: new Date().toISOString() })));
+        await supabaseAdmin.from("activity_log").insert(rowsForWorkbook.map((row) => ({ client_id: subitems!.find((item) => item.id === row.sourceSubitemId)?.client_id ?? null, subitem_id: row.sourceSubitemId, actor_name: workbookActor, action: "shipper_pushed", subitem_name: row.values.item_name, title: "sent as part of a grouped spreadsheet shipment", meta: { shipperId: targetShipperId, shipperName: workbookShipperName, spreadsheetShipmentGroupId: shipmentGroupId, combined: true }, created_at: new Date().toISOString() })));
         return NextResponse.json({ ok: true, spreadsheetRowsCreated: createdRows.length, spreadsheetPushes: [{ shipperId: targetShipperId, workbookName: `${workbookShipperName} workbook`, rowNumbers: createdRows.map((row) => positions.get(row.id)).filter((row): row is number => typeof row === "number") }] }, { status: 201 });
 
         const items = ids.map((id) => {
@@ -204,7 +251,7 @@ export async function POST(request: NextRequest) {
                 },
             })),
         });
-        await supabaseAdmin.from("activity_log").insert(items.map((item) => ({ client_id: item.clientId, subitem_id: item.subitemId, actor_name: actor, action: "shipper_pushed", subitem_name: item.displayName, title: amendments[item.subitemId!] ? "amended a previous shipment push" : "pushed as part of a combined shipment", meta: { shipmentId: amendments[item.subitemId!] ?? created?.shipment.id ?? null, combined: true, existingMode: amendments[item.subitemId!] ? "amend" : "separate" }, created_at: new Date().toISOString() })));
+        await supabaseAdmin.from("activity_log").insert(items.map((item) => ({ client_id: item.clientId, subitem_id: item.subitemId, actor_name: actor, action: "shipper_pushed", subitem_name: item.displayName, title: amendments[item.subitemId!] ? "amended a previous shipment send" : "sent as part of a combined shipment", meta: { shipmentId: amendments[item.subitemId!] ?? created?.shipment.id ?? null, combined: true, existingMode: amendments[item.subitemId!] ? "amend" : "separate" }, created_at: new Date().toISOString() })));
         return NextResponse.json({ shipment: created?.shipment ?? null, items: created?.items ?? [], spreadsheetRowsCreated: spreadsheetRows.length, amendedSubitemIds: Object.keys(amendments) }, { status: 201 });
     } catch (error: any) { return NextResponse.json({ error: error?.message ?? "Could not create the combined shipment." }, { status: 400 }); }
 }

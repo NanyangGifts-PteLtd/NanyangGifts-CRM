@@ -192,6 +192,7 @@ type CombinedPushPreview = {
       name: string;
       alreadyPushed: boolean;
       trackingOptions?: string[];
+      timelineOptions?: Array<{ id: string; label: string }>;
     }
   >;
   shipperName: string;
@@ -4800,7 +4801,7 @@ export function CRMBoard({
         result = JSON.parse(responseText);
       } catch {
         throw new Error(
-          "The server returned an unexpected response. Ensure the latest deployment is running, then try the grouped push again.",
+          "The server returned an unexpected response. Ensure the latest deployment is running, then try the grouped send again.",
         );
       }
       if (!response.ok)
@@ -4810,6 +4811,18 @@ export function CRMBoard({
           orderedSelectedIds.indexOf(String(left.subitem_id)) -
           orderedSelectedIds.indexOf(String(right.subitem_id)),
       );
+      const withoutTimeline = rows.find(
+        (row: Record<string, unknown>) =>
+          (!Array.isArray(row.tracking_options) ||
+            row.tracking_options.length === 0) &&
+          (!Array.isArray(row.timeline_options) ||
+            row.timeline_options.length === 0),
+      );
+      if (withoutTimeline) {
+        throw new Error(
+          `Add a Project Timeline before sending ${String(withoutTimeline.item_name || "this subitem")}.`,
+        );
+      }
       const shipperIds = new Set(
         rows.map((row: any) => row.shipper_id).filter(Boolean),
       );
@@ -4833,6 +4846,17 @@ export function CRMBoard({
           cn_tracking_no: String(row.cn_tracking_no || ""),
           trackingOptions: Array.isArray(row.tracking_options)
             ? row.tracking_options.map((value: unknown) => String(value))
+            : [],
+          timelineOptions: Array.isArray(row.timeline_options)
+            ? row.timeline_options
+                .map((option: unknown) => ({
+                  id: String((option as { id?: unknown })?.id ?? "").trim(),
+                  label: String(
+                    (option as { label?: unknown })?.label ??
+                      "Project Timeline",
+                  ).trim(),
+                }))
+                .filter((option: { id: string }) => Boolean(option.id))
             : [],
           qty: String(row.qty ?? ""),
           up: String(row.up ?? ""),
@@ -4906,7 +4930,7 @@ export function CRMBoard({
         result = JSON.parse(responseText);
       } catch {
         throw new Error(
-          "The server returned an unexpected response. Ensure the latest deployment is running, then try the grouped push again.",
+          "The server returned an unexpected response. Ensure the latest deployment is running, then try the grouped send again.",
         );
       }
       if (!response.ok)
@@ -4934,7 +4958,7 @@ export function CRMBoard({
             `${push.workbookName ?? "Shipper workbook"}: row${(push.rowNumbers?.length ?? 0) === 1 ? "" : "s"} ${(push.rowNumbers ?? []).join(", ")}`,
         )
         .join(" · ");
-      toast.success("Grouped spreadsheet push completed", {
+      toast.success("Grouped spreadsheet send completed", {
         description:
           destinations ||
           `${combinedPushPreview.rows.length} rows were added to the shipper workbook.`,
@@ -7485,20 +7509,20 @@ export function CRMBoard({
             }
             title={
               !canAccessShipperPush
-                ? "Pushing is available to PM, Director, and Dev roles"
+                ? "Sending is available to PM, Director, and Dev roles"
                 : !canEditSelectedSubitems
                   ? "You can only edit items that are assigned to you"
                   : selectedPaymentVoucherSubitems
                     ? "Bulk actions are unavailable for Payment Voucher subitems"
-                    : "Push selected subitems as one shipment"
+                    : "Send selected subitems as one shipment"
             }
             className="shrink-0 flex items-center gap-1.5 rounded bg-teal-600 px-3 py-2 text-sm text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {loadingCombinedPush
               ? "Preparing..."
               : selectedSubitemIds.length > 1
-                ? "Multi-push"
-                : "Push"}
+                ? "Multi-send"
+                : "Send"}
           </button>
           <button
             type="button"
@@ -7709,9 +7733,9 @@ export function CRMBoard({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Push completed</AlertDialogTitle>
+            <AlertDialogTitle>Send completed</AlertDialogTitle>
             <AlertDialogDescription>
-              The grouped push was added to{" "}
+              The grouped send was added to{" "}
               <strong>{workbookPushSuccess?.workbookName}</strong> at row
               {(workbookPushSuccess?.rowNumbers.length ?? 0) === 1
                 ? ""

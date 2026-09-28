@@ -1872,6 +1872,10 @@ export function ClientRow({
       return <>deleted a subitem</>;
     }
 
+    if (entry.action === "shipper_pushed") {
+      return <>sent this subitem to a shipper</>;
+    }
+
     if (entry.action === "subitem_field_changed") {
       const fieldName = entry.fieldName ?? "";
 
