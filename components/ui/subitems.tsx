@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   ActivityEntry,
   Profile,
@@ -402,7 +402,10 @@ type SubitemProps = {
     targetClientId: string,
   ) => void | Promise<void>;
   onOpenSubitemDetail?: (subitemId: string) => void;
-  onPaymentRowsChanged?: (subitemId: string, rows: PaymentRow[]) => void;
+  onPaymentRowsChanged?: (
+    subitemId: string,
+    rows: PaymentRow[] | ((current: PaymentRow[]) => PaymentRow[]),
+  ) => void;
 };
 
 function parseNumber(v: string | number | undefined | null) {
@@ -529,6 +532,7 @@ export function SubitemsTable({
   const [highlightedUpSubitemId, setHighlightedUpSubitemId] = useState<
     string | null
   >(null);
+  const paymentRowSaveQueuesRef = useRef(new Map<string, Promise<void>>());
   const [supplierProfiles, setSupplierProfiles] = useState<
     Array<{
       name: string;
@@ -537,6 +541,52 @@ export function SubitemsTable({
       productSaleCounts?: Record<string, number>;
     }>
   >([]);
+
+  const savePaymentRow = useCallback(
+    (
+      subitemId: string,
+      paymentRowId: string,
+      updates: Partial<Omit<PaymentRow, "id" | "position">>,
+    ) => {
+      let previousRow: PaymentRow | undefined;
+      const optimisticRow = { ...updates };
+
+      onPaymentRowsChanged?.(subitemId, (current) =>
+        current.map((row) => {
+          if (row.id !== paymentRowId) return row;
+          previousRow = row;
+          return { ...row, ...optimisticRow };
+        }),
+      );
+
+      const save = async () => {
+        await updateSubitemPaymentRow(subitemId, paymentRowId, updates);
+      };
+      const previousSave = paymentRowSaveQueuesRef.current.get(paymentRowId);
+      const queuedSave = (previousSave ?? Promise.resolve())
+        .catch(() => undefined)
+        .then(save);
+      paymentRowSaveQueuesRef.current.set(paymentRowId, queuedSave);
+
+      void queuedSave.catch((error) => {
+        // Do not overwrite a newer edit made while this request was in flight.
+        onPaymentRowsChanged?.(subitemId, (current) =>
+          current.map((row) => {
+            if (row.id !== paymentRowId || !previousRow) return row;
+            const unchangedSinceThisSave = Object.entries(optimisticRow).every(
+              ([key, value]) => row[key as keyof PaymentRow] === value,
+            );
+            return unchangedSinceThisSave ? { ...row, ...previousRow } : row;
+          }),
+        );
+        toast.error("Could not save the subpayment update", {
+          description:
+            error instanceof Error ? error.message : "Please try again.",
+        });
+      });
+    },
+    [onPaymentRowsChanged],
+  );
   useEffect(() => {
     const load = async () => {
       const response = await fetch("/api/supplier-profiles");
@@ -4002,17 +4052,10 @@ export function SubitemsTable({
                                   value={paymentRow.amount}
                                   type="number"
                                   onChange={(value) =>
-                                    void updateSubitemPaymentRow(
+                                    savePaymentRow(
                                       sub.id,
                                       paymentRow.id,
                                       { amount: value },
-                                    ).then((updated) =>
-                                      onPaymentRowsChanged?.(
-                                        sub.id,
-                                        sub.paymentRows.map((row) =>
-                                          row.id === updated.id ? updated : row,
-                                        ),
-                                      ),
                                     )
                                   }
                                   className="!justify-start px-3 py-2"
@@ -4023,17 +4066,10 @@ export function SubitemsTable({
                                   readOnly={!canEditSubitem(sub.id)}
                                   value={paymentRow.orderNumber}
                                   onChange={(value) =>
-                                    void updateSubitemPaymentRow(
+                                    savePaymentRow(
                                       sub.id,
                                       paymentRow.id,
                                       { orderNumber: value },
-                                    ).then((updated) =>
-                                      onPaymentRowsChanged?.(
-                                        sub.id,
-                                        sub.paymentRows.map((row) =>
-                                          row.id === updated.id ? updated : row,
-                                        ),
-                                      ),
                                     )
                                   }
                                   className="!justify-start px-3 py-2"
@@ -4050,17 +4086,10 @@ export function SubitemsTable({
                                         : "No")
                                   }
                                   onChange={(value) =>
-                                    void updateSubitemPaymentRow(
+                                    savePaymentRow(
                                       sub.id,
                                       paymentRow.id,
                                       { paymentReceivedLabel: value },
-                                    ).then((updated) =>
-                                      onPaymentRowsChanged?.(
-                                        sub.id,
-                                        sub.paymentRows.map((row) =>
-                                          row.id === updated.id ? updated : row,
-                                        ),
-                                      ),
                                     )
                                   }
                                   options={paymentReceivedOptions}
@@ -4095,17 +4124,10 @@ export function SubitemsTable({
                                 <StatusBadge
                                   value={paymentRow.modeOfPayment}
                                   onChange={(value) =>
-                                    void updateSubitemPaymentRow(
+                                    savePaymentRow(
                                       sub.id,
                                       paymentRow.id,
                                       { modeOfPayment: value },
-                                    ).then((updated) =>
-                                      onPaymentRowsChanged?.(
-                                        sub.id,
-                                        sub.paymentRows.map((row) =>
-                                          row.id === updated.id ? updated : row,
-                                        ),
-                                      ),
                                     )
                                   }
                                   options={modeOfPaymentOptions}

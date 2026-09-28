@@ -17,6 +17,12 @@ export function EditableCell({
   recommendedSupplier,
 }: {
   value: string;
+  /**
+   * Persisted board values must be applied to their parent state immediately.
+   * Save the server change afterwards (and roll back only that field on
+   * failure). Waiting for a request before updating `value` causes the cell
+   * to visibly snap back to its old value after blur.
+   */
   onChange: (v: string) => void;
   type?: string;
   placeholder?: string;

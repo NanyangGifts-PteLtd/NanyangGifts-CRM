@@ -10369,7 +10369,15 @@ export function CRMBoard({
                                     ...owner,
                                     subitems: owner.subitems.map((subitem) =>
                                       subitem.id === subitemId
-                                        ? { ...subitem, paymentRows }
+                                        ? {
+                                            ...subitem,
+                                            paymentRows:
+                                              typeof paymentRows === "function"
+                                                ? paymentRows(
+                                                    subitem.paymentRows,
+                                                  )
+                                                : paymentRows,
+                                          }
                                         : subitem,
                                     ),
                                   },

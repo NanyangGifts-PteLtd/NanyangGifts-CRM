@@ -8,6 +8,7 @@ import {
   ClientStatus,
   ReplyStatus,
   ActivityEntry,
+  PaymentRow,
   Profile,
 } from "../../app/types";
 import { useEffect, useMemo, useState } from "react";
@@ -462,7 +463,7 @@ export type ClientRowProps = {
   onOpenSubitemDetail?: (subitemId: string) => void;
   onPaymentRowsChanged?: (
     subitemId: string,
-    rows: import("../../app/types").PaymentRow[],
+    rows: PaymentRow[] | ((current: PaymentRow[]) => PaymentRow[]),
   ) => void;
   trackingMode?: boolean;
   autoEditName?: boolean;
