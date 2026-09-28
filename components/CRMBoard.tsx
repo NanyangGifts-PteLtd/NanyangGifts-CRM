@@ -846,7 +846,7 @@ export function CRMBoard({
     (clientId: string) => {
       if (!currentUserId) return false;
       if (
-        ["admin", "director"].includes(
+        ["admin", "director", "dev"].includes(
           String(currentUserRole ?? "")
             .trim()
             .toLowerCase(),
@@ -9082,7 +9082,21 @@ export function CRMBoard({
                   previous.filter((id) => !selected.includes(id)),
                 );
                 await Promise.all(
-                  selected.map((subitemId) => deleteSubitem("", subitemId)),
+                  selected.map((subitemId) => {
+                    const owner = clients.find((client) =>
+                      client.subitems.some(
+                        (subitem) => subitem.id === subitemId,
+                      ),
+                    );
+
+                    // Keep the subitem's real parent client for the second,
+                    // defensive permission check inside deleteSubitem. Passing
+                    // an empty ID here incorrectly rejected users assigned via
+                    // the client's People or PM fields.
+                    return owner
+                      ? deleteSubitem(owner.id, subitemId)
+                      : Promise.resolve();
+                  }),
                 );
               }}
             >

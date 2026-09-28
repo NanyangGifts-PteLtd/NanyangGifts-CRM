@@ -101,6 +101,7 @@ export async function POST(request: NextRequest) {
 
     const clientCopy = duplicateValues(sourceClientResult.data, [
       "id",
+      "display_id",
       "created_at",
       "updated_at",
       "created_by",
@@ -151,6 +152,7 @@ export async function POST(request: NextRequest) {
     for (const sourceSubitem of includeSubitems ? sourceSubitemsResult.data ?? [] : []) {
       const subitemCopy = duplicateValues(sourceSubitem, [
         "id",
+        "display_id",
         "client_id",
         "created_at",
         "updated_at",
@@ -165,12 +167,25 @@ export async function POST(request: NextRequest) {
             id: crypto.randomUUID(),
           }))
         : [];
+      const timelineGroups = Array.isArray(subitemCopy.timeline_groups)
+        ? subitemCopy.timeline_groups.map((group: Record<string, unknown>) => ({
+            ...group,
+            id: crypto.randomUUID(),
+            rows: Array.isArray(group.rows)
+              ? group.rows.map((row: Record<string, unknown>) => ({
+                  ...row,
+                  id: crypto.randomUUID(),
+                }))
+              : group.rows,
+          }))
+        : subitemCopy.timeline_groups;
       const { data: duplicateSubitem, error: subitemInsertError } = await supabaseAdmin
         .from("subitems")
         .insert({
           ...subitemCopy,
           client_id: duplicate.id,
           timeline_rows: timelineRows,
+          timeline_groups: timelineGroups,
           custom_fields: withoutFileCustomFields(sourceSubitem.custom_fields),
         })
         .select("id")

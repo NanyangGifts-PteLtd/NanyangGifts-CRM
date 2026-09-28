@@ -1578,6 +1578,7 @@ export async function duplicateSubitemRow(subitemId: string) {
 
   const copy = { ...existing };
   delete copy.id;
+  delete copy.display_id;
   delete copy.created_at;
   delete copy.waiting_started_at;
   if (
@@ -1607,6 +1608,18 @@ export async function duplicateSubitemRow(subitemId: string) {
         id: crypto.randomUUID(),
       }))
     : [];
+  const duplicateTimelineGroups = Array.isArray(copy.timeline_groups)
+    ? copy.timeline_groups.map((group: Record<string, unknown>) => ({
+        ...group,
+        id: crypto.randomUUID(),
+        rows: Array.isArray(group.rows)
+          ? group.rows.map((row: TimelineRow) => ({
+              ...row,
+              id: crypto.randomUUID(),
+            }))
+          : group.rows,
+      }))
+    : copy.timeline_groups;
 
   const { data: lastSubitem, error: lastSubitemError } = await supabase
     .from("subitems")
@@ -1624,6 +1637,7 @@ export async function duplicateSubitemRow(subitemId: string) {
       name: `${existing.name ?? "New Item"} (Copy)`,
       position: Number(lastSubitem?.position ?? -1) + 1,
       timeline_rows: duplicateTimelineRows,
+      timeline_groups: duplicateTimelineGroups,
     })
     .select("*")
     .single();

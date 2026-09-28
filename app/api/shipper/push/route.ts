@@ -161,9 +161,7 @@ function timelineOptions(timelineGroups: unknown) {
     : [];
   return groups.flatMap((group, index) => {
     const id = String(group.id ?? "").trim();
-    return id
-      ? [{ id, label: `Project Timeline ${index + 1}` }]
-      : [];
+    return id ? [{ id, label: `Project Timeline ${index + 1}` }] : [];
   });
 }
 
@@ -256,7 +254,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         pushedSubitemIds: [
           ...new Set(
-            [...(legacyResult.data ?? [])].map((row) => row.subitem_id)
+            [...(legacyResult.data ?? [])]
+              .map((row) => row.subitem_id)
               .concat(
                 (spreadsheetResult.data ?? []).map(
                   (row) => row.source_subitem_id,
@@ -340,47 +339,34 @@ export async function POST(req: NextRequest) {
         (rawSubitems ?? []).map((item) => item.client_id).filter(Boolean),
       ),
     ] as string[];
-    const [
-      { data: assignedSubitems },
-      { data: assignedClients },
-      { data: permissionClients },
-    ] = await Promise.all([
-      supabaseAdmin
-        .from("subitem_assignees")
-        .select("subitem_id")
-        .eq("user_id", user.id)
-        .in("subitem_id", subitemIds),
-      clientIds.length
-        ? supabaseAdmin
-            .from("client_assignees")
-            .select("client_id")
-            .eq("user_id", user.id)
-            .in("client_id", clientIds)
-        : Promise.resolve({ data: [] }),
-      clientIds.length
-        ? supabaseAdmin
-            .from("clients")
-            .select("id, custom_fields")
-            .in("id", clientIds)
-        : Promise.resolve({ data: [] }),
-    ]);
+    const [{ data: assignedSubitems }, { data: assignedClients }] =
+      await Promise.all([
+        supabaseAdmin
+          .from("subitem_assignees")
+          .select("subitem_id")
+          .eq("user_id", user.id)
+          .in("subitem_id", subitemIds),
+        clientIds.length
+          ? supabaseAdmin
+              .from("client_assignees")
+              .select("client_id, assignment_type")
+              .eq("user_id", user.id)
+              .in("client_id", clientIds)
+              .in("assignment_type", ["people", "pm"])
+          : Promise.resolve({ data: [] }),
+      ]);
     const assignedSubitemIds = new Set(
       (assignedSubitems ?? []).map((row) => row.subitem_id),
     );
     const assignedClientIds = new Set(
-      (assignedClients ?? []).map((row) => row.client_id),
+      (assignedClients ?? [])
+        .filter((row) => row.assignment_type === "people")
+        .map((row) => row.client_id),
     );
     const pmClientIds = new Set(
-      (permissionClients ?? [])
-        .filter((client) => {
-          try {
-            const ids = JSON.parse(client.custom_fields?.pmAssigneeIds ?? "[]");
-            return Array.isArray(ids) && ids.includes(user.id);
-          } catch {
-            return false;
-          }
-        })
-        .map((client) => client.id),
+      (assignedClients ?? [])
+        .filter((row) => row.assignment_type === "pm")
+        .map((row) => row.client_id),
     );
     const isDirector = (profile.role ?? "").trim().toLowerCase() === "director";
     const forbiddenSubitems = isDirector
@@ -571,9 +557,7 @@ export async function POST(req: NextRequest) {
           .in("subitem_id", previewSubitemIds),
         supabaseAdmin
           .from("shipper_spreadsheet_rows")
-          .select(
-            "source_subitem_id, workbook:shipper_workbooks(shipper_id)",
-          )
+          .select("source_subitem_id, workbook:shipper_workbooks(shipper_id)")
           .eq("source_type", "crm_push")
           .in("source_subitem_id", previewSubitemIds),
         supabaseAdmin
@@ -654,9 +638,7 @@ export async function POST(req: NextRequest) {
         ok: true,
         rows: previews.map((row) => {
           const source = subitems.find((item) => item.id === row.subitem_id);
-          const previousShipperId = sentShipperBySubitemId.get(
-            row.subitem_id,
-          );
+          const previousShipperId = sentShipperBySubitemId.get(row.subitem_id);
           const wasSent = sentShipperBySubitemId.has(row.subitem_id);
           const configuredLabelIsValid =
             !targetShipper ||
@@ -754,9 +736,7 @@ export async function POST(req: NextRequest) {
         source?.timeline_groups,
         source?.cn_tracking,
       );
-      const selectedTrackingNumber = String(
-        edits.cn_tracking_no ?? "",
-      ).trim();
+      const selectedTrackingNumber = String(edits.cn_tracking_no ?? "").trim();
       if (!trackingOptions.includes(selectedTrackingNumber)) {
         throw new Error(
           "Choose a CN Tracking number from one of this subitem's project timelines.",
