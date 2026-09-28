@@ -71,7 +71,9 @@ export async function POST(request: NextRequest) {
   const sectionCount =
     code === "client_status"
       ? 5
-      : code === "payment" || code === "subitem_status"
+      : code === "payment" ||
+          code === "subitem_status" ||
+          code === "shipper"
         ? 4
         : code === "channel"
           ? 4
