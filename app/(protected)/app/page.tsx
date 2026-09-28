@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import type {
   Client,
   ClientAssigneeMap,
@@ -67,7 +67,6 @@ function canViewPanel(panel: SidePanel, role: string | null) {
 }
 
 export default function Page() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const [clients, setClients] = useState<Client[]>([]);
   const [search, setSearch] = useState("");
@@ -95,6 +94,16 @@ export default function Page() {
   const [roundRobinVersion, setRoundRobinVersion] = useState(0);
   const reconciliationTimer = useRef<number | null>(null);
   const recordsRefreshSequence = useRef(0);
+
+  const pushAppUrl = useCallback((params: URLSearchParams) => {
+    const query = params.toString();
+    window.history.pushState(null, "", query ? `/app?${query}` : "/app");
+  }, []);
+
+  const replaceAppUrl = useCallback((params: URLSearchParams) => {
+    const query = params.toString();
+    window.history.replaceState(null, "", query ? `/app?${query}` : "/app");
+  }, []);
 
   const customerProfileTarget = useMemo<{
     type: "client" | "company";
@@ -129,7 +138,7 @@ export default function Page() {
       if (!canViewPanel(panel, currentUserRole)) return;
 
       setActivePanel(panel);
-      const nextParams = new URLSearchParams(searchParams.toString());
+      const nextParams = new URLSearchParams(window.location.search);
       [
         "client",
         "subitem",
@@ -139,10 +148,10 @@ export default function Page() {
         "supplier",
       ].forEach((key) => nextParams.delete(key));
       nextParams.set("panel", panel);
-      if (nextParams.toString() === searchParams.toString()) return;
-      router.push(`/app?${nextParams.toString()}`, { scroll: false });
+      if (nextParams.toString() === window.location.search.slice(1)) return;
+      pushAppUrl(nextParams);
     },
-    [currentUserRole, router, searchParams],
+    [currentUserRole, pushAppUrl],
   );
 
   useEffect(() => {
@@ -162,35 +171,33 @@ export default function Page() {
 
     setActivePanel("crm");
     if (requestedPanel) {
-      const nextParams = new URLSearchParams(searchParams.toString());
+      const nextParams = new URLSearchParams(window.location.search);
       nextParams.set("panel", "crm");
-      router.replace(`/app?${nextParams.toString()}`, { scroll: false });
+      replaceAppUrl(nextParams);
     }
-  }, [currentUserRole, roleLoaded, router, searchParams]);
+  }, [currentUserRole, replaceAppUrl, roleLoaded, searchParams]);
 
   const openCustomerProfile = useCallback(
     (type: "client" | "company", id: string) => {
       setActivePanel("customerprofiles");
-      const nextParams = new URLSearchParams(searchParams.toString());
+      const nextParams = new URLSearchParams(window.location.search);
       nextParams.set("panel", "customerprofiles");
       nextParams.delete("client");
       nextParams.delete("subitem");
       nextParams.delete("supplier");
+      nextParams.delete("view");
       nextParams.set("profileType", type);
       nextParams.set("profile", id);
-      nextParams.delete("supplier");
-      nextParams.delete("client");
-      nextParams.delete("subitem");
-      nextParams.delete("view");
-      router.push(`/app?${nextParams.toString()}`, { scroll: false });
+      pushAppUrl(nextParams);
     },
-    [router, searchParams],
+    [pushAppUrl],
   );
 
   const updateCustomerProfileLink = useCallback(
     (target: { type: "client" | "company"; id: string } | null) => {
-      const currentType = searchParams.get("profileType");
-      const currentId = searchParams.get("profile");
+      const currentParams = new URLSearchParams(window.location.search);
+      const currentType = currentParams.get("profileType");
+      const currentId = currentParams.get("profile");
       if (
         (target === null && !currentType && !currentId) ||
         (target?.type === currentType && target.id === currentId)
@@ -198,7 +205,7 @@ export default function Page() {
         return;
       }
 
-      const nextParams = new URLSearchParams(searchParams.toString());
+      const nextParams = new URLSearchParams(window.location.search);
       nextParams.set("panel", "customerprofiles");
       if (target) {
         nextParams.set("profileType", target.type);
@@ -207,17 +214,19 @@ export default function Page() {
         nextParams.delete("profileType");
         nextParams.delete("profile");
       }
-      router.push(`/app?${nextParams.toString()}`, { scroll: false });
+      pushAppUrl(nextParams);
     },
-    [router, searchParams],
+    [pushAppUrl],
   );
 
   const updateSupplierProfileLink = useCallback(
     (supplierId: string | null) => {
-      const currentSupplierId = searchParams.get("supplier");
+      const currentSupplierId = new URLSearchParams(window.location.search).get(
+        "supplier",
+      );
       if (supplierId === currentSupplierId) return;
 
-      const nextParams = new URLSearchParams(searchParams.toString());
+      const nextParams = new URLSearchParams(window.location.search);
       nextParams.set("panel", "supplierprofiles");
       nextParams.delete("client");
       nextParams.delete("subitem");
@@ -226,15 +235,15 @@ export default function Page() {
       nextParams.delete("profile");
       if (supplierId) nextParams.set("supplier", supplierId);
       else nextParams.delete("supplier");
-      router.push(`/app?${nextParams.toString()}`, { scroll: false });
+      pushAppUrl(nextParams);
     },
-    [router, searchParams],
+    [pushAppUrl],
   );
 
   const openCrmRecord = useCallback(
     (clientId: string, subitemId?: string) => {
       setActivePanel("crm");
-      const nextParams = new URLSearchParams(searchParams.toString());
+      const nextParams = new URLSearchParams(window.location.search);
       nextParams.set("panel", "crm");
       nextParams.set("client", clientId);
       if (subitemId) nextParams.set("subitem", subitemId);
@@ -243,16 +252,17 @@ export default function Page() {
       nextParams.delete("profileType");
       nextParams.delete("profile");
       nextParams.delete("supplier");
-      router.push(`/app?${nextParams.toString()}`, { scroll: false });
+      pushAppUrl(nextParams);
     },
-    [router, searchParams],
+    [pushAppUrl],
   );
 
   const updateCrmDetailLink = useCallback(
     (target: { clientId: string; subitemId?: string } | null) => {
-      const currentView = searchParams.get("view");
-      const currentClientId = searchParams.get("client");
-      const currentSubitemId = searchParams.get("subitem");
+      const currentParams = new URLSearchParams(window.location.search);
+      const currentView = currentParams.get("view");
+      const currentClientId = currentParams.get("client");
+      const currentSubitemId = currentParams.get("subitem");
       const nextView = target?.subitemId ? "subitem" : target ? "client" : null;
       if (
         currentView === nextView &&
@@ -262,7 +272,7 @@ export default function Page() {
         return;
       }
 
-      const nextParams = new URLSearchParams(searchParams.toString());
+      const nextParams = new URLSearchParams(window.location.search);
       nextParams.set("panel", "crm");
       nextParams.delete("profileType");
       nextParams.delete("profile");
@@ -277,9 +287,9 @@ export default function Page() {
         nextParams.delete("subitem");
         nextParams.delete("view");
       }
-      router.push(`/app?${nextParams.toString()}`, { scroll: false });
+      pushAppUrl(nextParams);
     },
-    [router, searchParams],
+    [pushAppUrl],
   );
 
   const selectSearchResult = useCallback(
@@ -465,11 +475,11 @@ export default function Page() {
 
     const client = clients.find((item) => item.id === clientId);
     if (!client) {
-      const nextParams = new URLSearchParams(searchParams.toString());
+      const nextParams = new URLSearchParams(window.location.search);
       nextParams.delete("client");
       nextParams.delete("subitem");
       nextParams.delete("view");
-      router.replace(`/app?${nextParams.toString()}`, { scroll: false });
+      replaceAppUrl(nextParams);
       return;
     }
 
@@ -477,10 +487,10 @@ export default function Page() {
       ? client.subitems.find((item) => item.id === subitemId)
       : undefined;
     if (subitemId && !subitem) {
-      const nextParams = new URLSearchParams(searchParams.toString());
+      const nextParams = new URLSearchParams(window.location.search);
       nextParams.delete("subitem");
       nextParams.delete("view");
-      router.replace(`/app?${nextParams.toString()}`, { scroll: false });
+      replaceAppUrl(nextParams);
     }
 
     setExpandedClientIds((current) =>
@@ -502,7 +512,7 @@ export default function Page() {
             query: "",
           },
     );
-  }, [clients, clientsLoaded, router, searchParams]);
+  }, [clients, clientsLoaded, replaceAppUrl, searchParams]);
 
   useEffect(() => {
     if (activePanel !== "crm" && searchTarget) {
