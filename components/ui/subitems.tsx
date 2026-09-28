@@ -2360,6 +2360,7 @@ export function SubitemsTable({
               onReorderOptions={(values) =>
                 onReorderOptions?.("shipper", values)
               }
+              sectionCount={4}
               small
             />
           </div>
@@ -2789,6 +2790,7 @@ export function SubitemsTable({
               onReorderOptions={(values) =>
                 onReorderOptions?.("shipper", values)
               }
+              sectionCount={4}
               small
             />
           </div>
