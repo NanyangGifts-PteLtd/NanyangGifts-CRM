@@ -9,7 +9,20 @@ export async function GET() {
     await authorizeQuickBooksBillRead();
     return NextResponse.json({ terms: await listQuickBooksTerms() });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Could not load QuickBooks terms.";
-    return NextResponse.json({ error: message }, { status: message === "Unauthorized" ? 401 : 500 });
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Could not load QuickBooks terms.";
+    return NextResponse.json(
+      { error: message },
+      {
+        status:
+          message === "Unauthorized"
+            ? 401
+            : message === "Forbidden"
+              ? 403
+              : 500,
+      },
+    );
   }
 }

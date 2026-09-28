@@ -1,5 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
+import { supabaseAdmin } from "@/lib/supabase/admin";
 import { qboQuery } from "@/lib/quickbooks/api";
+
+const INTERNAL_ROLES = new Set(["sales", "pm", "admin", "director", "dev"]);
 
 export async function authorizeQuickBooksBillRead() {
   const supabase = await createClient();
@@ -7,6 +10,14 @@ export async function authorizeQuickBooksBillRead() {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Unauthorized");
+  const { data: profile, error } = await supabaseAdmin
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .maybeSingle();
+  if (error || !INTERNAL_ROLES.has(String(profile?.role ?? "").toLowerCase())) {
+    throw new Error("Forbidden");
+  }
 }
 
 function activeRows(result: any, key: string) {
@@ -21,7 +32,11 @@ async function allActiveRows(query: string, key: string) {
   const pageSize = 500;
   const rows: any[] = [];
   const seen = new Set<string>();
-  for (let startPosition = 1; startPosition <= 50_000; startPosition += pageSize) {
+  for (
+    let startPosition = 1;
+    startPosition <= 50_000;
+    startPosition += pageSize
+  ) {
     const result = await qboQuery(
       `${query} STARTPOSITION ${startPosition} MAXRESULTS ${pageSize}`,
     );
@@ -34,17 +49,27 @@ async function allActiveRows(query: string, key: string) {
       }
     }
     const totalCount = Number(result?.QueryResponse?.totalCount ?? 0);
-    if (!page.length || page.length < pageSize || (totalCount && rows.length >= totalCount)) break;
+    if (
+      !page.length ||
+      page.length < pageSize ||
+      (totalCount && rows.length >= totalCount)
+    )
+      break;
   }
   return rows;
 }
 
 export async function listQuickBooksVendors() {
-  const vendors = await allActiveRows("SELECT * FROM Vendor WHERE Active = true", "Vendor");
+  const vendors = await allActiveRows(
+    "SELECT * FROM Vendor WHERE Active = true",
+    "Vendor",
+  );
   return vendors
     .map((vendor: any) => ({
       id: String(vendor.Id),
-      name: String(vendor.DisplayName ?? vendor.CompanyName ?? "Unnamed supplier"),
+      name: String(
+        vendor.DisplayName ?? vendor.CompanyName ?? "Unnamed supplier",
+      ),
       companyName: String(vendor.CompanyName ?? ""),
       email: String(vendor.PrimaryEmailAddr?.Address ?? ""),
       phone: String(vendor.PrimaryPhone?.FreeFormNumber ?? ""),
@@ -56,11 +81,16 @@ export async function listQuickBooksVendors() {
 }
 
 export async function listQuickBooksExpenseAccounts() {
-  const accounts = await allActiveRows("SELECT * FROM Account WHERE Active = true", "Account");
+  const accounts = await allActiveRows(
+    "SELECT * FROM Account WHERE Active = true",
+    "Account",
+  );
   return accounts
     .map((account: any) => ({
       id: String(account.Id),
-      name: String(account.FullyQualifiedName ?? account.Name ?? "Unnamed account"),
+      name: String(
+        account.FullyQualifiedName ?? account.Name ?? "Unnamed account",
+      ),
       accountType: String(account.AccountType ?? ""),
       accountSubType: String(account.AccountSubType ?? ""),
     }))
@@ -70,7 +100,10 @@ export async function listQuickBooksExpenseAccounts() {
 }
 
 export async function listQuickBooksTerms() {
-  const terms = await allActiveRows("SELECT * FROM Term WHERE Active = true", "Term");
+  const terms = await allActiveRows(
+    "SELECT * FROM Term WHERE Active = true",
+    "Term",
+  );
   return terms
     .map((term: any) => ({
       id: String(term.Id),
@@ -84,8 +117,14 @@ export async function listQuickBooksTerms() {
 }
 
 export async function listQuickBooksTaxCodes() {
-  const taxCodes = await allActiveRows("SELECT * FROM TaxCode WHERE Active = true", "TaxCode");
-  const taxRates = await allActiveRows("SELECT * FROM TaxRate WHERE Active = true", "TaxRate");
+  const taxCodes = await allActiveRows(
+    "SELECT * FROM TaxCode WHERE Active = true",
+    "TaxCode",
+  );
+  const taxRates = await allActiveRows(
+    "SELECT * FROM TaxRate WHERE Active = true",
+    "TaxRate",
+  );
   const rateById = new Map(
     taxRates.map((taxRate: any) => [
       String(taxRate.Id ?? ""),

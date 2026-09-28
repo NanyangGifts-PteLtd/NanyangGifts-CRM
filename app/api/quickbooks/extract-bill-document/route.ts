@@ -24,7 +24,12 @@ type AzureField = {
 };
 
 const valueOf = (field?: AzureField) =>
-  field?.valueCurrency?.amount ?? field?.valueDate ?? field?.valueNumber ?? field?.valueString ?? field?.content ?? "";
+  field?.valueCurrency?.amount ??
+  field?.valueDate ??
+  field?.valueNumber ??
+  field?.valueString ??
+  field?.content ??
+  "";
 const confidenceOf = (field?: AzureField) => field?.confidence ?? 0;
 
 function normalise(document: any) {
@@ -46,18 +51,25 @@ function normalise(document: any) {
       dueDate: confidenceOf(fields.DueDate),
       total: confidenceOf(fields.InvoiceTotal),
     },
-    lines: itemFields.map(({ valueObject }) => {
-      const item = valueObject ?? {};
-      return {
-        description: String(valueOf(item.Description) ?? valueOf(item.ProductCode) ?? ""),
-        amount: Number(valueOf(item.Amount) ?? 0) || null,
-        tax: String(valueOf(item.Tax) ?? ""),
-        confidence: Math.min(
-          confidenceOf(item.Description) || 1,
-          confidenceOf(item.Amount) || 1,
-        ),
-      };
-    }).filter((line: { description: string; amount: number | null }) => line.description || line.amount !== null),
+    lines: itemFields
+      .map(({ valueObject }) => {
+        const item = valueObject ?? {};
+        return {
+          description: String(
+            valueOf(item.Description) ?? valueOf(item.ProductCode) ?? "",
+          ),
+          amount: Number(valueOf(item.Amount) ?? 0) || null,
+          tax: String(valueOf(item.Tax) ?? ""),
+          confidence: Math.min(
+            confidenceOf(item.Description) || 1,
+            confidenceOf(item.Amount) || 1,
+          ),
+        };
+      })
+      .filter(
+        (line: { description: string; amount: number | null }) =>
+          line.description || line.amount !== null,
+      ),
   };
 }
 
@@ -67,31 +79,52 @@ const wait = (milliseconds: number) =>
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
     if (!user) throw new Error("Unauthorized");
-    const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
-    if (!INTERNAL_ROLES.has(String(profile?.role ?? "").toLowerCase())) throw new Error("Forbidden");
-    const endpoint = process.env.AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT?.replace(/\/$/, "");
+    const { data: profile } = await supabaseAdmin
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .maybeSingle();
+    if (!INTERNAL_ROLES.has(String(profile?.role ?? "").toLowerCase()))
+      throw new Error("Forbidden");
+    const endpoint = process.env.AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT?.replace(
+      /\/$/,
+      "",
+    );
     const key = process.env.AZURE_DOCUMENT_INTELLIGENCE_KEY;
-    if (!endpoint || !key) throw new Error("Azure Document Intelligence is not configured.");
+    if (!endpoint || !key)
+      throw new Error("Azure Document Intelligence is not configured.");
     const formData = await request.formData();
     const clientId = String(formData.get("clientId") ?? "").trim() || null;
     const file = formData.get("file");
-    if (!(file instanceof File)) throw new Error("Choose a receipt or invoice file.");
-    if (!ACCEPTED_TYPES.has(file.type)) throw new Error("Use a PDF, JPEG, PNG, TIFF, BMP, or HEIF receipt.");
-    if (!file.size || file.size > MAX_FILE_BYTES) throw new Error("The Azure free tier accepts files up to 4 MB.");
+    if (!(file instanceof File))
+      throw new Error("Choose a receipt or invoice file.");
+    if (!ACCEPTED_TYPES.has(file.type))
+      throw new Error("Use a PDF, JPEG, PNG, TIFF, BMP, or HEIF receipt.");
+    if (!file.size || file.size > MAX_FILE_BYTES)
+      throw new Error("The Azure free tier accepts files up to 4 MB.");
 
     const start = await fetch(
       `${endpoint}/documentintelligence/documentModels/prebuilt-invoice:analyze?api-version=2024-11-30`,
       {
         method: "POST",
-        headers: { "Ocp-Apim-Subscription-Key": key, "Content-Type": file.type },
+        headers: {
+          "Ocp-Apim-Subscription-Key": key,
+          "Content-Type": file.type,
+        },
         body: await file.arrayBuffer(),
       },
     );
-    if (!start.ok) throw new Error(`Azure extraction could not start: ${await start.text()}`);
+    if (!start.ok)
+      throw new Error(
+        `Azure extraction could not start: ${await start.text()}`,
+      );
     const operationUrl = start.headers.get("operation-location");
-    if (!operationUrl) throw new Error("Azure did not return an extraction operation URL.");
+    if (!operationUrl)
+      throw new Error("Azure did not return an extraction operation URL.");
 
     let result: any;
     for (let attempt = 0; attempt < 20; attempt += 1) {
@@ -99,12 +132,19 @@ export async function POST(request: NextRequest) {
       const poll = await fetch(operationUrl, {
         headers: { "Ocp-Apim-Subscription-Key": key },
       });
-      if (!poll.ok) throw new Error(`Azure extraction could not be read: ${await poll.text()}`);
+      if (!poll.ok)
+        throw new Error(
+          `Azure extraction could not be read: ${await poll.text()}`,
+        );
       result = await poll.json();
       if (result.status === "succeeded") break;
-      if (result.status === "failed") throw new Error("Azure could not extract information from this document.");
+      if (result.status === "failed")
+        throw new Error(
+          "Azure could not extract information from this document.",
+        );
     }
-    if (result?.status !== "succeeded") throw new Error("Document extraction timed out. Please try again.");
+    if (result?.status !== "succeeded")
+      throw new Error("Document extraction timed out. Please try again.");
     const document = result.analyzeResult?.documents?.[0];
     const extraction = normalise(document);
     const { data: audit } = await supabaseAdmin
@@ -122,7 +162,18 @@ export async function POST(request: NextRequest) {
       .single();
     return NextResponse.json({ extraction, extractionId: audit?.id ?? null });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Document extraction failed.";
-    return NextResponse.json({ error: message }, { status: message === "Unauthorized" ? 401 : message === "Forbidden" ? 403 : 400 });
+    const message =
+      error instanceof Error ? error.message : "Document extraction failed.";
+    return NextResponse.json(
+      { error: message },
+      {
+        status:
+          message === "Unauthorized"
+            ? 401
+            : message === "Forbidden"
+              ? 403
+              : 400,
+      },
+    );
   }
 }
