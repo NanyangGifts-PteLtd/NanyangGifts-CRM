@@ -97,7 +97,10 @@ import {
   calculateSubitemFinancials,
   parseSubitemNumber,
 } from "@/lib/subitem-calculations";
-import { currencySystemKey, sgdToCurrencyMultiplier } from "@/lib/currency-labels";
+import {
+  currencySystemKey,
+  sgdToCurrencyMultiplier,
+} from "@/lib/currency-labels";
 import { ClientDetailView } from "./ClientDetailView";
 import { SubitemDetailView } from "./SubitemDetailView";
 import {
@@ -316,7 +319,14 @@ interface CRMBoardProps {
   searchTarget?: SearchResult | null;
   openClientId?: string | null;
   onOpenClientHandled?: () => void;
-  onOpenCustomerProfile?: (type: "client" | "company", profileId: string) => void;
+  detailViewTarget?: { clientId: string; subitemId?: string } | null;
+  onDetailViewTargetChange?: (
+    target: { clientId: string; subitemId?: string } | null,
+  ) => void;
+  onOpenCustomerProfile?: (
+    type: "client" | "company",
+    profileId: string,
+  ) => void;
   labelOptionsVersion?: number;
   groupVersion?: number;
 }
@@ -350,16 +360,30 @@ const AddClientInput = React.memo(function AddClientInput({
 
   return (
     <div className="group/add-client relative min-h-[34px] border border-[#D0D4E4] border-t-0 bg-white px-2 py-1 hover:bg-[#f5fbff] focus-within:bg-[#f5fbff]">
-      <div aria-hidden="true" className="pointer-events-none absolute inset-y-0 left-0 z-[60] w-[5px]" style={{ backgroundColor: `${accentColor}80` }} />
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-y-0 left-0 z-[60] w-[5px]"
+        style={{ backgroundColor: `${accentColor}80` }}
+      />
       <div className="relative max-w-sm" style={{ marginLeft }}>
-        <Plus size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500" />
+        <Plus
+          size={13}
+          className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500"
+        />
         <input
           value={draft}
           disabled={disabled}
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={(event) => {
-            if (event.key === "Enter") { event.preventDefault(); void submit(); }
-            if (event.key === "Escape") { event.preventDefault(); setDraft(""); event.currentTarget.blur(); }
+            if (event.key === "Enter") {
+              event.preventDefault();
+              void submit();
+            }
+            if (event.key === "Escape") {
+              event.preventDefault();
+              setDraft("");
+              event.currentTarget.blur();
+            }
           }}
           onBlur={() => void submit()}
           placeholder={isSubmitting ? "Adding client…" : "Add client"}
@@ -412,6 +436,8 @@ export function CRMBoard({
   groupVersion = 0,
   openClientId,
   onOpenClientHandled,
+  detailViewTarget,
+  onDetailViewTargetChange,
   onOpenCustomerProfile,
 }: CRMBoardProps) {
   const [filterStatus, setFilterStatus] = useState<string | "All">("All");
@@ -484,7 +510,9 @@ export function CRMBoard({
   }, [searchTarget]);
   useEffect(() => {
     const navigateToSubitem = (event: Event) => {
-      const detail = (event as CustomEvent<{ clientId?: string; subitemId?: string }>).detail;
+      const detail = (
+        event as CustomEvent<{ clientId?: string; subitemId?: string }>
+      ).detail;
       if (!detail?.clientId || !detail.subitemId) return;
       setExpandedIds((current) =>
         current.includes(detail.clientId!)
@@ -493,20 +521,30 @@ export function CRMBoard({
       );
       let attempts = 0;
       const focus = () => {
-        const row = document.querySelector<HTMLElement>(`[data-subitem-id="${detail.subitemId}"]`);
+        const row = document.querySelector<HTMLElement>(
+          `[data-subitem-id="${detail.subitemId}"]`,
+        );
         if (!row && attempts++ < 25) {
           window.setTimeout(focus, 120);
           return;
         }
         if (!row) return;
-        row.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
+        row.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+          inline: "nearest",
+        });
         row.classList.add("search-result-highlight");
-        window.setTimeout(() => row.classList.remove("search-result-highlight"), 1800);
+        window.setTimeout(
+          () => row.classList.remove("search-result-highlight"),
+          1800,
+        );
       };
       window.setTimeout(focus, 80);
     };
     window.addEventListener("crm:navigate-subitem", navigateToSubitem);
-    return () => window.removeEventListener("crm:navigate-subitem", navigateToSubitem);
+    return () =>
+      window.removeEventListener("crm:navigate-subitem", navigateToSubitem);
   }, [setExpandedIds]);
   const [focusedFilterColumn, setFocusedFilterColumn] = useState<string | null>(
     null,
@@ -533,7 +571,9 @@ export function CRMBoard({
   const [collapsedGroups, setCollapsedGroups] = useState<
     Record<string, boolean>
   >({});
-  const [autoEditClientNameId, setAutoEditClientNameId] = useState<string | null>(null);
+  const [autoEditClientNameId, setAutoEditClientNameId] = useState<
+    string | null
+  >(null);
   const [pendingGroupContentIds, setPendingGroupContentIds] = useState<
     Set<string>
   >(new Set());
@@ -650,6 +690,10 @@ export function CRMBoard({
     clientId: string;
     subitemId: string;
   } | null>(null);
+  const controlledDetailTargetKey = useRef<string | null | undefined>(
+    undefined,
+  );
+  const pendingDetailTargetKey = useRef<string | null | undefined>(undefined);
   const onOpenClientHandledRef = useRef(onOpenClientHandled);
   onOpenClientHandledRef.current = onOpenClientHandled;
 
@@ -660,6 +704,87 @@ export function CRMBoard({
     setDetailClientId(openClientId);
     onOpenClientHandledRef.current?.();
   }, [clients, openClientId]);
+
+  useEffect(() => {
+    const targetKey = detailViewTarget
+      ? `${detailViewTarget.clientId}:${detailViewTarget.subitemId ?? "client"}`
+      : null;
+    if (controlledDetailTargetKey.current === targetKey) return;
+
+    if (detailViewTarget) {
+      const client = clients.find(
+        (item) => item.id === detailViewTarget.clientId,
+      );
+      if (!client) return;
+      if (
+        detailViewTarget.subitemId &&
+        !client.subitems.some((item) => item.id === detailViewTarget.subitemId)
+      ) {
+        return;
+      }
+    }
+
+    controlledDetailTargetKey.current = targetKey;
+    const currentKey = detailSubitem
+      ? `${detailSubitem.clientId}:${detailSubitem.subitemId}`
+      : detailClientId
+        ? `${detailClientId}:client`
+        : null;
+    if (currentKey === targetKey) return;
+
+    pendingDetailTargetKey.current = targetKey;
+    if (!detailViewTarget) {
+      setDetailSubitem(null);
+      setDetailClientId(null);
+      setDetailClientInitialTab(null);
+      return;
+    }
+
+    if (detailViewTarget.subitemId) {
+      setDetailClientId(null);
+      setDetailClientInitialTab(null);
+      setDetailSubitem({
+        clientId: detailViewTarget.clientId,
+        subitemId: detailViewTarget.subitemId,
+      });
+      return;
+    }
+
+    setDetailSubitem(null);
+    setDetailClientId(detailViewTarget.clientId);
+    setDetailClientInitialTab(null);
+  }, [clients, detailClientId, detailSubitem, detailViewTarget]);
+
+  useEffect(() => {
+    const currentTarget: { clientId: string; subitemId?: string } | null =
+      detailSubitem
+        ? detailSubitem
+        : detailClientId
+          ? { clientId: detailClientId }
+          : null;
+    const currentKey = currentTarget
+      ? `${currentTarget.clientId}:${currentTarget.subitemId ?? "client"}`
+      : null;
+
+    if (pendingDetailTargetKey.current !== undefined) {
+      if (pendingDetailTargetKey.current === currentKey) {
+        pendingDetailTargetKey.current = undefined;
+      }
+      return;
+    }
+
+    const requestedKey = detailViewTarget
+      ? `${detailViewTarget.clientId}:${detailViewTarget.subitemId ?? "client"}`
+      : null;
+    if (currentKey !== requestedKey) {
+      onDetailViewTargetChange?.(currentTarget);
+    }
+  }, [
+    detailClientId,
+    detailSubitem,
+    detailViewTarget,
+    onDetailViewTargetChange,
+  ]);
 
   const refreshBlacklist = useCallback(async () => {
     const response = await fetch("/api/customer-profiles");
@@ -689,7 +814,8 @@ export function CRMBoard({
     const linkedClientIds = (result.links ?? [])
       .filter(
         (link: { client_id?: string; client_profile_id?: string | null }) =>
-          Boolean(link.client_id) && profileIds.has(String(link.client_profile_id ?? "")),
+          Boolean(link.client_id) &&
+          profileIds.has(String(link.client_profile_id ?? "")),
       )
       .map((link: { client_id: string }) => link.client_id);
     setBlacklistedPhones(new Set(numbers));
@@ -700,7 +826,10 @@ export function CRMBoard({
     void refreshBlacklist().catch((error) =>
       console.error("Failed to load client blacklist", error),
     );
-    const refresh = () => void refreshBlacklist().catch((error) => console.error("Failed to refresh client blacklist", error));
+    const refresh = () =>
+      void refreshBlacklist().catch((error) =>
+        console.error("Failed to refresh client blacklist", error),
+      );
     window.addEventListener("crm:blacklist-updated", refresh);
     return () => {
       window.removeEventListener("crm:blacklist-updated", refresh);
@@ -842,16 +971,20 @@ export function CRMBoard({
   const replyStatuses = replyStatusEntries.map((e) => e.value);
   const clientStatuses = clientStatusEntries.map((e) => e.value);
   const clientStatusBySystemKey = useMemo(
-    () => new Map(clientStatusEntries.map((option) => [option.systemKey, option])),
+    () =>
+      new Map(clientStatusEntries.map((option) => [option.systemKey, option])),
     [clientStatusEntries],
   );
-  const unqualifiedClientStatus =
-    clientStatusBySystemKey.get("client_status_unqualified");
-  const closedClientStatus = clientStatusBySystemKey.get("client_status_closed");
+  const unqualifiedClientStatus = clientStatusBySystemKey.get(
+    "client_status_unqualified",
+  );
+  const closedClientStatus = clientStatusBySystemKey.get(
+    "client_status_closed",
+  );
   const isUnqualifiedClient = (client: Pick<Client, "statusOptionId">) =>
     Boolean(
       unqualifiedClientStatus?.id &&
-        client.statusOptionId === unqualifiedClientStatus.id,
+      client.statusOptionId === unqualifiedClientStatus.id,
     );
   const isClosedClient = (client: Pick<Client, "statusOptionId">) =>
     Boolean(
@@ -2554,7 +2687,9 @@ export function CRMBoard({
         targetOptionId = data?.id;
       }
       if (!targetOptionId) {
-        toast.error("Label color could not be changed", { description: "The label option was not found." });
+        toast.error("Label color could not be changed", {
+          description: "The label option was not found.",
+        });
         return;
       }
       let previous: OptionEntry[] | null = null;
@@ -2675,7 +2810,12 @@ export function CRMBoard({
   );
 
   const renameOptionValue = useCallback(
-    async (code: string, oldName: string, newName: string, optionId?: string) => {
+    async (
+      code: string,
+      oldName: string,
+      newName: string,
+      optionId?: string,
+    ) => {
       const trimmed = newName.trim();
       if (!trimmed || trimmed === oldName) return;
 
@@ -2842,7 +2982,10 @@ export function CRMBoard({
           }
           for (const row of rows ?? []) {
             const timelineRows = (row.timeline_rows ?? []).map(
-              (timelineRow: { subProgress?: string; subProgressOptionId?: string | null }) =>
+              (timelineRow: {
+                subProgress?: string;
+                subProgressOptionId?: string | null;
+              }) =>
                 timelineRow.subProgressOptionId === option.id
                   ? { ...timelineRow, subProgress: trimmed }
                   : timelineRow,
@@ -3911,7 +4054,8 @@ export function CRMBoard({
         return;
       }
       const matchingStatus = clientStatusEntries.find(
-        (option) => option.value.toLowerCase() === targetGroup.name.toLowerCase(),
+        (option) =>
+          option.value.toLowerCase() === targetGroup.name.toLowerCase(),
       );
       const updates: Partial<Client> = { groupId };
       if (isUnqualifiedGroupName(targetGroup.name) && unqualifiedClientStatus) {
@@ -4146,10 +4290,14 @@ export function CRMBoard({
       const clientFinancialTotals = () =>
         client.subitems.reduce(
           (totals, subitem) => {
-            const financials = calculateSubitemFinancials(subitem, currencyEntries);
+            const financials = calculateSubitemFinancials(
+              subitem,
+              currencyEntries,
+            );
             return {
               totalPrice: totals.totalPrice + (Number(financials.price) || 0),
-              totalMarkup: totals.totalMarkup + (Number(financials.markup) || 0),
+              totalMarkup:
+                totals.totalMarkup + (Number(financials.markup) || 0),
             };
           },
           { totalPrice: 0, totalMarkup: 0 },
@@ -4165,28 +4313,35 @@ export function CRMBoard({
                 ? clientPmAssigneeIds(client).map(profileName)
                 : key === "client"
                   ? [client.name, client.displayId]
-                : key === "dateCreated"
-                  ? [client.createdAt]
-                  : key === "totalPrice"
-                    ? [clientFinancialTotals().totalPrice]
-                    : key === "totalMarkup"
-                      ? [clientFinancialTotals().totalMarkup]
-                : key.startsWith("custom:")
-                  ? [client.customFields?.[key.slice(7)]]
-                  : valuesFor(client as unknown as Record<string, unknown>, key)
+                  : key === "dateCreated"
+                    ? [client.createdAt]
+                    : key === "totalPrice"
+                      ? [clientFinancialTotals().totalPrice]
+                      : key === "totalMarkup"
+                        ? [clientFinancialTotals().totalMarkup]
+                        : key.startsWith("custom:")
+                          ? [client.customFields?.[key.slice(7)]]
+                          : valuesFor(
+                              client as unknown as Record<string, unknown>,
+                              key,
+                            )
             : client.subitems.flatMap((subitem) =>
                 key === "people"
                   ? (subitemAssignees[subitem.id] ?? []).map(profileName)
                   : key === "markup" || key === "percentMarkup"
-                    ? [calculateSubitemFinancials(subitem, currencyEntries)[key]]
+                    ? [
+                        calculateSubitemFinancials(subitem, currencyEntries)[
+                          key
+                        ],
+                      ]
                     : key === "idealMarkup" || key === "priceToSet"
                       ? [subitem.customFields?.[key]]
-                  : key.startsWith("custom:")
-                    ? [subitem.customFields?.[key.slice(7)]]
-                    : valuesFor(
-                        subitem as unknown as Record<string, unknown>,
-                        key,
-                      ),
+                      : key.startsWith("custom:")
+                        ? [subitem.customFields?.[key.slice(7)]]
+                        : valuesFor(
+                            subitem as unknown as Record<string, unknown>,
+                            key,
+                          ),
               );
         return matchesBoardSearchValues(query, clientValues);
       });
@@ -4227,7 +4382,8 @@ export function CRMBoard({
   const displayedClients = clients.filter((client) => {
     const matchesStatus =
       filterStatus === "All" ||
-      client.statusOptionId === optionIdForValue(clientStatusEntries, filterStatus);
+      client.statusOptionId ===
+        optionIdForValue(clientStatusEntries, filterStatus);
 
     const matchesSubitemStatus =
       filterSubitemStatus === "All" ||
@@ -4240,7 +4396,8 @@ export function CRMBoard({
       filterPayment === "All" ||
       client.subitems.some(
         (subitem) =>
-          subitem.paymentOptionId === optionIdForValue(paymentEntries, filterPayment),
+          subitem.paymentOptionId ===
+          optionIdForValue(paymentEntries, filterPayment),
       );
     const matchesPaymentStatus =
       filterPaymentStatus === "All" ||
@@ -4257,13 +4414,16 @@ export function CRMBoard({
       );
     const matchesImportance =
       filterImportance === "All" ||
-      client.importanceOptionId === optionIdForValue(importanceEntries, filterImportance);
+      client.importanceOptionId ===
+        optionIdForValue(importanceEntries, filterImportance);
     const matchesReplyStatus =
       filterReplyStatus === "All" ||
-      client.replyStatusOptionId === optionIdForValue(replyStatusEntries, filterReplyStatus);
+      client.replyStatusOptionId ===
+        optionIdForValue(replyStatusEntries, filterReplyStatus);
     const matchesChannel =
       filterChannel === "All" ||
-      client.channelOptionId === optionIdForValue(channelEntries, filterChannel);
+      client.channelOptionId ===
+        optionIdForValue(channelEntries, filterChannel);
 
     const matchesSubprogress =
       filterSubprogress === "All" ||
@@ -4349,7 +4509,8 @@ export function CRMBoard({
     if (column === "dateCreated") return client.createdAt ?? "";
     if (column === "totalMarkup")
       return client.subitems.reduce(
-        (total, subitem) => total + calculateSubitemFinancials(subitem, currencyEntries).markup,
+        (total, subitem) =>
+          total + calculateSubitemFinancials(subitem, currencyEntries).markup,
         0,
       );
     if (column.startsWith("custom:"))
@@ -4583,7 +4744,10 @@ export function CRMBoard({
     () =>
       selectedSubitems.reduce(
         (totals, subitem) => {
-          const financials = calculateSubitemFinancials(subitem, currencyEntries);
+          const financials = calculateSubitemFinancials(
+            subitem,
+            currencyEntries,
+          );
           const unitCost =
             subitem.currency?.trim() && financials.quantity > 0
               ? financials.tc / financials.quantity
@@ -4800,7 +4964,10 @@ export function CRMBoard({
           (totals, client) => {
             const clientTotals = client.subitems.reduce(
               (subitemTotals, subitem) => {
-                const financials = calculateSubitemFinancials(subitem, currencyEntries);
+                const financials = calculateSubitemFinancials(
+                  subitem,
+                  currencyEntries,
+                );
                 const unitCost =
                   subitem.currency?.trim() && financials.quantity > 0
                     ? financials.tc / financials.quantity
@@ -5157,17 +5324,30 @@ export function CRMBoard({
     Unqualified: "Unqualified Lead",
   };
   const closingQualifiedSubitemStatusIds = useMemo(
-    () => new Set([
-      "subitem_status_awarded",
-      "subitem_status_verify_later",
-      "subitem_status_verified",
-      "subitem_status_variation_cost_difference",
-    ].map((key) => subitemStatusEntries.find((option) => option.systemKey === key)?.id)
-      .filter((id): id is string => Boolean(id))),
+    () =>
+      new Set(
+        [
+          "subitem_status_awarded",
+          "subitem_status_verify_later",
+          "subitem_status_verified",
+          "subitem_status_variation_cost_difference",
+        ]
+          .map(
+            (key) =>
+              subitemStatusEntries.find((option) => option.systemKey === key)
+                ?.id,
+          )
+          .filter((id): id is string => Boolean(id)),
+      ),
     [subitemStatusEntries],
   );
   const hasClosingQualifiedSubitem = (client: Client) =>
-    client.subitems.some((subitem) => Boolean(subitem.statusOptionId && closingQualifiedSubitemStatusIds.has(subitem.statusOptionId)));
+    client.subitems.some((subitem) =>
+      Boolean(
+        subitem.statusOptionId &&
+        closingQualifiedSubitemStatusIds.has(subitem.statusOptionId),
+      ),
+    );
 
   const currentClosedLeadsGroupName = () =>
     `Closed Leads - ${new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric", timeZone: "Asia/Singapore" }).format(new Date())}`;
@@ -5396,7 +5576,8 @@ export function CRMBoard({
         return;
       }
       if (isMovingToUnqualified) {
-        nextUpdates.status = (unqualifiedClientStatus?.value ?? "") as ClientStatus;
+        nextUpdates.status = (unqualifiedClientStatus?.value ??
+          "") as ClientStatus;
         nextUpdates.statusOptionId = unqualifiedClientStatus?.id ?? null;
         movedToGroupName = selectedGroup?.name ?? null;
       } else if (isMovingToClosedLeads) {
@@ -6098,7 +6279,11 @@ export function CRMBoard({
         window.setTimeout(() => {
           document
             .querySelector<HTMLElement>(`[data-client-id="${newClient.id}"]`)
-            ?.scrollIntoView({ block: "center", inline: "nearest", behavior: "smooth" });
+            ?.scrollIntoView({
+              block: "center",
+              inline: "nearest",
+              behavior: "smooth",
+            });
         }, 0);
         notifyChange(
           "Client added",
@@ -6130,21 +6315,24 @@ export function CRMBoard({
     ],
   );
 
-  const submitNewClient = useCallback(async (groupId: string, rawName: string) => {
-    const name = rawName.trim();
-    if (!name || isSubmittingNewClient.current) return false;
+  const submitNewClient = useCallback(
+    async (groupId: string, rawName: string) => {
+      const name = rawName.trim();
+      if (!name || isSubmittingNewClient.current) return false;
 
-    isSubmittingNewClient.current = true;
-    setAddingClientGroupId(groupId);
-    setIsAddingClient(true);
-    try {
-      return await addClient(groupId, name);
-    } finally {
-      isSubmittingNewClient.current = false;
-      setIsAddingClient(false);
-      setAddingClientGroupId(null);
-    }
-  }, [addClient]);
+      isSubmittingNewClient.current = true;
+      setAddingClientGroupId(groupId);
+      setIsAddingClient(true);
+      try {
+        return await addClient(groupId, name);
+      } finally {
+        isSubmittingNewClient.current = false;
+        setIsAddingClient(false);
+        setAddingClientGroupId(null);
+      }
+    },
+    [addClient],
+  );
 
   const createNewClientFromToolbar = useCallback(async () => {
     if (isSubmittingNewClient.current || isAddingClient) return;
@@ -6832,9 +7020,7 @@ export function CRMBoard({
                 (blacklistedPhones.has(
                   normalizeBlacklistPhone(detailClient.phone ?? ""),
                 ) &&
-                  Boolean(
-                    normalizeBlacklistPhone(detailClient.phone ?? ""),
-                  ))
+                  Boolean(normalizeBlacklistPhone(detailClient.phone ?? "")))
               }
               initialTab={detailClientInitialTab ?? undefined}
               onDuplicate={() => requestClientDuplication(detailClient.id)}
@@ -7304,7 +7490,7 @@ export function CRMBoard({
                   ? "You can only edit items that are assigned to you"
                   : selectedPaymentVoucherSubitems
                     ? "Bulk actions are unavailable for Payment Voucher subitems"
-                  : "Push selected subitems as one shipment"
+                    : "Push selected subitems as one shipment"
             }
             className="shrink-0 flex items-center gap-1.5 rounded bg-teal-600 px-3 py-2 text-sm text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
@@ -7326,7 +7512,7 @@ export function CRMBoard({
                 ? "You can only edit items that are assigned to you"
                 : selectedPaymentVoucherSubitems
                   ? "Bulk actions are unavailable for Payment Voucher subitems"
-                : "Duplicate selected subitems"
+                  : "Duplicate selected subitems"
             }
             onClick={() => void duplicateSelectedSubitems()}
             className="flex items-center gap-1.5 rounded px-3 py-2 text-sm text-slate-500 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
@@ -7348,7 +7534,7 @@ export function CRMBoard({
                   ? "You can only edit items that are assigned to you"
                   : selectedPaymentVoucherSubitems
                     ? "Bulk actions are unavailable for Payment Voucher subitems"
-                  : "Move selected subitems"
+                    : "Move selected subitems"
               }
               className="flex items-center gap-1.5 rounded px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
             >
@@ -7406,42 +7592,44 @@ export function CRMBoard({
                       </button>
                       {expandedSubitemMoveGroups.has(group.name) &&
                         group.clients.map((client) => (
-                        <button
-                          key={client.id}
-                          type="button"
-                          disabled={!client.canMoveHere}
-                          title={
-                            client.canMoveHere
-                              ? "Move selected subitems here"
-                              : "You can only move subitems into clients assigned to you"
-                          }
-                          onClick={async () => {
-                            setShowSubitemMoveMenu(false);
-                            await moveSelectedSubitems(
-                              selectedSubitemIds,
-                              client.id,
-                            );
-                            clearSubitemSelection();
-                          }}
-                          className="block w-full rounded px-2 py-2 text-left text-sm text-slate-700 hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-40"
-                        >
-                          {client.name}
-                          {client.displayId ? (
-                            <span className="ml-1 font-mono text-xs text-slate-400">
-                              · {client.displayId}
+                          <button
+                            key={client.id}
+                            type="button"
+                            disabled={!client.canMoveHere}
+                            title={
+                              client.canMoveHere
+                                ? "Move selected subitems here"
+                                : "You can only move subitems into clients assigned to you"
+                            }
+                            onClick={async () => {
+                              setShowSubitemMoveMenu(false);
+                              await moveSelectedSubitems(
+                                selectedSubitemIds,
+                                client.id,
+                              );
+                              clearSubitemSelection();
+                            }}
+                            className="block w-full rounded px-2 py-2 text-left text-sm text-slate-700 hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            {client.name}
+                            {client.displayId ? (
+                              <span className="ml-1 font-mono text-xs text-slate-400">
+                                · {client.displayId}
+                              </span>
+                            ) : null}
+                            <span className="mt-0.5 block truncate text-xs text-slate-500">
+                              Company: {client.company || "—"} · Email:{" "}
+                              {client.email || "—"}
                             </span>
-                          ) : null}
-                          <span className="mt-0.5 block truncate text-xs text-slate-500">
-                            Company: {client.company || "—"} · Email: {client.email || "—"}
-                          </span>
-                          <span className="mt-0.5 block truncate text-xs text-slate-400">
-                            Subitems ({client.subitems.length}): {client.subitems.length
-                              ? client.subitems.slice(0, 3).join(", ") +
-                                (client.subitems.length > 3 ? "…" : "")
-                              : "None"}
-                          </span>
-                        </button>
-                      ))}
+                            <span className="mt-0.5 block truncate text-xs text-slate-400">
+                              Subitems ({client.subitems.length}):{" "}
+                              {client.subitems.length
+                                ? client.subitems.slice(0, 3).join(", ") +
+                                  (client.subitems.length > 3 ? "…" : "")
+                                : "None"}
+                            </span>
+                          </button>
+                        ))}
                     </div>
                   ))}
                   {orderedMoveGroups.length === 0 && (
@@ -7455,14 +7643,16 @@ export function CRMBoard({
           </div>
           <button
             type="button"
-            disabled={!canEditSelectedSubitems || selectedPaymentVoucherSubitems}
+            disabled={
+              !canEditSelectedSubitems || selectedPaymentVoucherSubitems
+            }
             onClick={() => setPendingDeleteSelectedSubitems(selectedSubitemIds)}
             title={
               !canEditSelectedSubitems
                 ? "You can only delete items that are assigned to you"
                 : selectedPaymentVoucherSubitems
                   ? "Bulk actions are unavailable for Payment Voucher subitems"
-                : "Delete selected subitems"
+                  : "Delete selected subitems"
             }
             className="flex items-center gap-1.5 rounded px-3 py-2 text-sm text-red-500 hover:bg-red-50 disabled:cursor-not-allowed disabled:text-slate-300 disabled:hover:bg-transparent"
           >
@@ -7550,9 +7740,13 @@ export function CRMBoard({
           className="flex min-w-[104px] items-center justify-center gap-1.5 rounded-md bg-[#0f8da8] px-3 py-1.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#0b7188] disabled:cursor-not-allowed disabled:opacity-60"
         >
           {isAddingClient ? (
-            <><LoaderCircle size={16} className="animate-spin" /> Creating...</>
+            <>
+              <LoaderCircle size={16} className="animate-spin" /> Creating...
+            </>
           ) : (
-            <><Plus size={16} /> New client</>
+            <>
+              <Plus size={16} /> New client
+            </>
           )}
         </button>
 
@@ -9917,11 +10111,15 @@ export function CRMBoard({
                           (blacklistedPhones.has(
                             normalizeBlacklistPhone(client.phone ?? ""),
                           ) &&
-                            Boolean(normalizeBlacklistPhone(client.phone ?? "")))
+                            Boolean(
+                              normalizeBlacklistPhone(client.phone ?? ""),
+                            ))
                         }
                         isExpanded={expandedIdSet.has(client.id)}
                         autoEditName={autoEditClientNameId === client.id}
-                        onAutoEditNameStarted={() => setAutoEditClientNameId(null)}
+                        onAutoEditNameStarted={() =>
+                          setAutoEditClientNameId(null)
+                        }
                         groupAccentColor={groupAccentColor(group)}
                         onToggleExpand={() =>
                           setExpandedIds((prev) =>
@@ -10112,7 +10310,9 @@ export function CRMBoard({
                               displayId: target.displayId,
                               company: target.company,
                               email: target.email,
-                              subitems: target.subitems.map((item) => item.name),
+                              subitems: target.subitems.map(
+                                (item) => item.name,
+                              ),
                               canMoveHere: canEditClientRecord(target.id),
                             })),
                           }),

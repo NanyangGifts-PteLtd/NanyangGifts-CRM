@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import type {
   Client,
   ClientAssigneeMap,
@@ -35,11 +36,45 @@ import {
   isBoardRecordProtected,
 } from "@/lib/board-write-coordinator";
 
+const PANEL_IDS: SidePanel[] = [
+  "crm",
+  "additionalcosts",
+  "emails",
+  "emailreview",
+  "reports",
+  "ganttchart",
+  "calendar",
+  "roundrobin",
+  "team",
+  "customerprofiles",
+  "supplierprofiles",
+  "useradmin",
+];
+
+function panelFromSearchParam(value: string | null): SidePanel | null {
+  return PANEL_IDS.includes(value as SidePanel) ? (value as SidePanel) : null;
+}
+
+function canViewPanel(panel: SidePanel, role: string | null) {
+  const normalizedRole = String(role ?? "").toLowerCase();
+  if (panel === "calendar") {
+    return ["admin", "director", "dev"].includes(normalizedRole);
+  }
+  if (panel === "useradmin") {
+    return ["director", "dev"].includes(normalizedRole);
+  }
+  return true;
+}
+
 export default function Page() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [clients, setClients] = useState<Client[]>([]);
   const [search, setSearch] = useState("");
   const [user, setUser] = useState<User | null>(null);
   const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
+  const [roleLoaded, setRoleLoaded] = useState(false);
+  const [clientsLoaded, setClientsLoaded] = useState(false);
   const [activePanel, setActivePanel] = useState<SidePanel>("crm");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [expandedClientIds, setExpandedClientIds] = useState<string[]>([]);
@@ -58,17 +93,199 @@ export default function Page() {
   const [labelOptionsVersion, setLabelOptionsVersion] = useState(0);
   const [groupVersion, setGroupVersion] = useState(0);
   const [roundRobinVersion, setRoundRobinVersion] = useState(0);
-  const [customerProfileTarget, setCustomerProfileTarget] = useState<{
-    type: "client" | "company";
-    id: string;
-  } | null>(null);
   const reconciliationTimer = useRef<number | null>(null);
   const recordsRefreshSequence = useRef(0);
+
+  const customerProfileTarget = useMemo<{
+    type: "client" | "company";
+    id: string;
+  } | null>(() => {
+    if (searchParams.get("panel") !== "customerprofiles") return null;
+    const type = searchParams.get("profileType");
+    const id = searchParams.get("profile");
+    if ((type !== "client" && type !== "company") || !id) return null;
+    return { type, id };
+  }, [searchParams]);
+
+  const supplierProfileId = useMemo(() => {
+    if (searchParams.get("panel") !== "supplierprofiles") return null;
+    return searchParams.get("supplier");
+  }, [searchParams]);
+
+  const crmDetailTarget = useMemo(() => {
+    if (searchParams.get("panel") !== "crm") return null;
+    const clientId = searchParams.get("client");
+    const view = searchParams.get("view");
+    if (!clientId || (view !== "client" && view !== "subitem")) return null;
+    const subitemId = searchParams.get("subitem");
+    if (view === "subitem" && !subitemId) return null;
+    return view === "subitem"
+      ? { clientId, subitemId: subitemId! }
+      : { clientId };
+  }, [searchParams]);
+
+  const changePanel = useCallback(
+    (panel: SidePanel) => {
+      if (!canViewPanel(panel, currentUserRole)) return;
+
+      setActivePanel(panel);
+      const nextParams = new URLSearchParams(searchParams.toString());
+      [
+        "client",
+        "subitem",
+        "view",
+        "profileType",
+        "profile",
+        "supplier",
+      ].forEach((key) => nextParams.delete(key));
+      nextParams.set("panel", panel);
+      if (nextParams.toString() === searchParams.toString()) return;
+      router.push(`/app?${nextParams.toString()}`, { scroll: false });
+    },
+    [currentUserRole, router, searchParams],
+  );
+
+  useEffect(() => {
+    const requestedPanel = panelFromSearchParam(searchParams.get("panel"));
+    const nextPanel = requestedPanel ?? "crm";
+
+    // Wait for the role lookup before rejecting a restricted panel URL.
+    if (!roleLoaded) {
+      setActivePanel(nextPanel);
+      return;
+    }
+
+    if (requestedPanel && canViewPanel(requestedPanel, currentUserRole)) {
+      setActivePanel(requestedPanel);
+      return;
+    }
+
+    setActivePanel("crm");
+    if (requestedPanel) {
+      const nextParams = new URLSearchParams(searchParams.toString());
+      nextParams.set("panel", "crm");
+      router.replace(`/app?${nextParams.toString()}`, { scroll: false });
+    }
+  }, [currentUserRole, roleLoaded, router, searchParams]);
+
+  const openCustomerProfile = useCallback(
+    (type: "client" | "company", id: string) => {
+      setActivePanel("customerprofiles");
+      const nextParams = new URLSearchParams(searchParams.toString());
+      nextParams.set("panel", "customerprofiles");
+      nextParams.delete("client");
+      nextParams.delete("subitem");
+      nextParams.delete("supplier");
+      nextParams.set("profileType", type);
+      nextParams.set("profile", id);
+      nextParams.delete("supplier");
+      nextParams.delete("client");
+      nextParams.delete("subitem");
+      nextParams.delete("view");
+      router.push(`/app?${nextParams.toString()}`, { scroll: false });
+    },
+    [router, searchParams],
+  );
+
+  const updateCustomerProfileLink = useCallback(
+    (target: { type: "client" | "company"; id: string } | null) => {
+      const currentType = searchParams.get("profileType");
+      const currentId = searchParams.get("profile");
+      if (
+        (target === null && !currentType && !currentId) ||
+        (target?.type === currentType && target.id === currentId)
+      ) {
+        return;
+      }
+
+      const nextParams = new URLSearchParams(searchParams.toString());
+      nextParams.set("panel", "customerprofiles");
+      if (target) {
+        nextParams.set("profileType", target.type);
+        nextParams.set("profile", target.id);
+      } else {
+        nextParams.delete("profileType");
+        nextParams.delete("profile");
+      }
+      router.push(`/app?${nextParams.toString()}`, { scroll: false });
+    },
+    [router, searchParams],
+  );
+
+  const updateSupplierProfileLink = useCallback(
+    (supplierId: string | null) => {
+      const currentSupplierId = searchParams.get("supplier");
+      if (supplierId === currentSupplierId) return;
+
+      const nextParams = new URLSearchParams(searchParams.toString());
+      nextParams.set("panel", "supplierprofiles");
+      nextParams.delete("client");
+      nextParams.delete("subitem");
+      nextParams.delete("view");
+      nextParams.delete("profileType");
+      nextParams.delete("profile");
+      if (supplierId) nextParams.set("supplier", supplierId);
+      else nextParams.delete("supplier");
+      router.push(`/app?${nextParams.toString()}`, { scroll: false });
+    },
+    [router, searchParams],
+  );
+
+  const openCrmRecord = useCallback(
+    (clientId: string, subitemId?: string) => {
+      setActivePanel("crm");
+      const nextParams = new URLSearchParams(searchParams.toString());
+      nextParams.set("panel", "crm");
+      nextParams.set("client", clientId);
+      if (subitemId) nextParams.set("subitem", subitemId);
+      else nextParams.delete("subitem");
+      nextParams.delete("view");
+      nextParams.delete("profileType");
+      nextParams.delete("profile");
+      nextParams.delete("supplier");
+      router.push(`/app?${nextParams.toString()}`, { scroll: false });
+    },
+    [router, searchParams],
+  );
+
+  const updateCrmDetailLink = useCallback(
+    (target: { clientId: string; subitemId?: string } | null) => {
+      const currentView = searchParams.get("view");
+      const currentClientId = searchParams.get("client");
+      const currentSubitemId = searchParams.get("subitem");
+      const nextView = target?.subitemId ? "subitem" : target ? "client" : null;
+      if (
+        currentView === nextView &&
+        currentClientId === (target?.clientId ?? null) &&
+        currentSubitemId === (target?.subitemId ?? null)
+      ) {
+        return;
+      }
+
+      const nextParams = new URLSearchParams(searchParams.toString());
+      nextParams.set("panel", "crm");
+      nextParams.delete("profileType");
+      nextParams.delete("profile");
+      nextParams.delete("supplier");
+      if (target) {
+        nextParams.set("client", target.clientId);
+        if (target.subitemId) nextParams.set("subitem", target.subitemId);
+        else nextParams.delete("subitem");
+        nextParams.set("view", nextView!);
+      } else {
+        nextParams.delete("client");
+        nextParams.delete("subitem");
+        nextParams.delete("view");
+      }
+      router.push(`/app?${nextParams.toString()}`, { scroll: false });
+    },
+    [router, searchParams],
+  );
 
   const selectSearchResult = useCallback(
     (result: SearchResult) => {
       // currently setting to CRM panel since only CRM panel has search results, change in the future when other panels have search results
-      setActivePanel("crm");
+      openCrmRecord(result.clientId, result.subitemId);
       const client = clients.find((item) => item.id === result.clientId);
       if (
         client &&
@@ -79,12 +296,12 @@ export default function Page() {
       }
       setSearchTarget(result);
     },
-    [clients, expandedClientIds],
+    [clients, expandedClientIds, openCrmRecord],
   );
 
   const openGanttClientTimeline = useCallback(
     (clientId: string, subitemId?: string) => {
-      setActivePanel("crm");
+      openCrmRecord(clientId, subitemId);
       setExpandedClientIds((current) =>
         current.includes(clientId) ? current : [...current, clientId],
       );
@@ -119,22 +336,25 @@ export default function Page() {
         query: "",
       });
     },
-    [],
+    [openCrmRecord],
   );
 
-  const openPaymentVoucherProject = useCallback((clientId: string) => {
-    setActivePanel("crm");
-    setSearchTarget({
-      id: `payment-voucher-project-${clientId}-${Date.now()}`,
-      clientId,
-      kind: "client",
-      label: "Project Name",
-      context: "Opened from Payment Voucher",
-      field: "Project Name",
-      value: "",
-      query: "",
-    });
-  }, []);
+  const openPaymentVoucherProject = useCallback(
+    (clientId: string) => {
+      openCrmRecord(clientId);
+      setSearchTarget({
+        id: `payment-voucher-project-${clientId}-${Date.now()}`,
+        clientId,
+        kind: "client",
+        label: "Project Name",
+        context: "Opened from Payment Voucher",
+        field: "Project Name",
+        value: "",
+        query: "",
+      });
+    },
+    [openCrmRecord],
+  );
 
   const reloadClients = useCallback(async () => {
     const refreshSequence = ++recordsRefreshSequence.current;
@@ -215,6 +435,7 @@ export default function Page() {
         }
         return next;
       });
+      setClientsLoaded(true);
       if (protectionDelay > 0) {
         if (reconciliationTimer.current !== null)
           window.clearTimeout(reconciliationTimer.current);
@@ -236,6 +457,54 @@ export default function Page() {
   }, [reloadClients]);
 
   useEffect(() => {
+    if (searchParams.get("panel") !== "crm" || !clientsLoaded) return;
+
+    const clientId = searchParams.get("client");
+    const subitemId = searchParams.get("subitem");
+    if (!clientId) return;
+
+    const client = clients.find((item) => item.id === clientId);
+    if (!client) {
+      const nextParams = new URLSearchParams(searchParams.toString());
+      nextParams.delete("client");
+      nextParams.delete("subitem");
+      nextParams.delete("view");
+      router.replace(`/app?${nextParams.toString()}`, { scroll: false });
+      return;
+    }
+
+    const subitem = subitemId
+      ? client.subitems.find((item) => item.id === subitemId)
+      : undefined;
+    if (subitemId && !subitem) {
+      const nextParams = new URLSearchParams(searchParams.toString());
+      nextParams.delete("subitem");
+      nextParams.delete("view");
+      router.replace(`/app?${nextParams.toString()}`, { scroll: false });
+    }
+
+    setExpandedClientIds((current) =>
+      current.includes(client.id) ? current : [...current, client.id],
+    );
+    const targetId = `url-crm-${client.id}-${subitem?.id ?? "client"}`;
+    setSearchTarget((current) =>
+      current?.id === targetId
+        ? current
+        : {
+            id: targetId,
+            clientId: client.id,
+            subitemId: subitem?.id,
+            kind: subitem ? "subitem" : "client",
+            label: subitem?.name ?? client.name,
+            context: "Opened from a direct link",
+            field: subitem ? "Subitem" : "Client",
+            value: subitem?.name ?? client.name,
+            query: "",
+          },
+    );
+  }, [clients, clientsLoaded, router, searchParams]);
+
+  useEffect(() => {
     if (activePanel !== "crm" && searchTarget) {
       setSearchTarget(null);
     }
@@ -243,7 +512,7 @@ export default function Page() {
 
   useEffect(() => {
     const openCrmBoardBin = () => {
-      setActivePanel("crm");
+      changePanel("crm");
       window.setTimeout(
         () => window.dispatchEvent(new Event("crm:open-bin")),
         0,
@@ -252,7 +521,7 @@ export default function Page() {
     window.addEventListener("crm:open-bin-request", openCrmBoardBin);
     return () =>
       window.removeEventListener("crm:open-bin-request", openCrmBoardBin);
-  }, []);
+  }, [changePanel]);
 
   useEffect(() => {
     if (!searchTarget) return;
@@ -276,6 +545,7 @@ export default function Page() {
 
       if (!user) {
         setCurrentUserRole(null);
+        setRoleLoaded(true);
         return;
       }
 
@@ -287,10 +557,12 @@ export default function Page() {
       if (error) {
         console.error("Failed to load profile role", error);
         setCurrentUserRole(null);
+        setRoleLoaded(true);
         return;
       }
 
       setCurrentUserRole(profile?.role ?? null);
+      setRoleLoaded(true);
     };
 
     void loadUserAndRole();
@@ -441,12 +713,11 @@ export default function Page() {
             subitemAssignees={subitemAssignees}
             setSubitemAssignees={setSubitemAssignees}
             searchTarget={searchTarget}
+            detailViewTarget={crmDetailTarget}
+            onDetailViewTargetChange={updateCrmDetailLink}
             labelOptionsVersion={labelOptionsVersion}
             groupVersion={groupVersion}
-            onOpenCustomerProfile={(type, id) => {
-              setCustomerProfileTarget({ type, id });
-              setActivePanel("customerprofiles");
-            }}
+            onOpenCustomerProfile={openCustomerProfile}
           />
         );
 
@@ -465,7 +736,9 @@ export default function Page() {
         );
 
       case "calendar":
-        return ["admin", "director", "dev"].includes(String(currentUserRole ?? "").toLowerCase()) ? (
+        return ["admin", "director", "dev"].includes(
+          String(currentUserRole ?? "").toLowerCase(),
+        ) ? (
           <WorkingCalendarPanel currentUserRole={currentUserRole} />
         ) : null;
 
@@ -520,7 +793,7 @@ export default function Page() {
             currentUserRole={currentUserRole}
             boardClients={clients}
             initialProfile={customerProfileTarget}
-            onInitialProfileHandled={() => setCustomerProfileTarget(null)}
+            onProfileChange={updateCustomerProfileLink}
             onOpenLead={(clientId) => {
               const client = clients.find((item) => item.id === clientId);
               if (!client) return;
@@ -539,7 +812,12 @@ export default function Page() {
         );
 
       case "supplierprofiles":
-        return <SupplierProfilesPanel />;
+        return (
+          <SupplierProfilesPanel
+            initialSupplierId={supplierProfileId}
+            onSupplierChange={updateSupplierProfileLink}
+          />
+        );
 
       case "useradmin":
         return currentUserRole === "director" || currentUserRole === "dev" ? (
@@ -564,7 +842,7 @@ export default function Page() {
       />
       <Sidebar
         activePanel={activePanel}
-        onChangePanel={setActivePanel}
+        onChangePanel={changePanel}
         emailUnread={0}
         collapsed={sidebarCollapsed}
         onToggleCollapsed={() => setSidebarCollapsed((v) => !v)}

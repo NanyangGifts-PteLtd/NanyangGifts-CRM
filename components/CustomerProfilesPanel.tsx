@@ -1035,12 +1035,16 @@ export function CustomerProfilesPanel({
   onOpenLead,
   initialProfile,
   onInitialProfileHandled,
+  onProfileChange,
 }: {
   currentUserRole?: string | null;
   boardClients: Client[];
   onOpenLead: (clientId: string) => void;
   initialProfile?: { type: "client" | "company"; id: string } | null;
   onInitialProfileHandled?: () => void;
+  onProfileChange?: (
+    profile: { type: "client" | "company"; id: string } | null,
+  ) => void;
 }) {
   const [clients, setClients] = useState<ClientProfile[]>([]);
   const [companies, setCompanies] = useState<CompanyProfile[]>([]);
@@ -1140,7 +1144,10 @@ export function CustomerProfilesPanel({
   }, [load]);
 
   useEffect(() => {
-    if (!initialProfile) return;
+    if (!initialProfile) {
+      setSelectedProfile(null);
+      return;
+    }
     if (initialProfile.type === "client") {
       const profile = clients.find((item) => item.id === initialProfile.id);
       if (profile) {
@@ -1155,6 +1162,27 @@ export function CustomerProfilesPanel({
       onInitialProfileHandled?.();
     }
   }, [clients, companies, initialProfile, onInitialProfileHandled]);
+
+  useEffect(() => {
+    if (
+      initialProfile &&
+      (!selectedProfile ||
+        selectedProfile.type !== initialProfile.type ||
+        selectedProfile.profile.id !== initialProfile.id)
+    ) {
+      return;
+    }
+    onProfileChange?.(
+      selectedProfile
+        ? { type: selectedProfile.type, id: selectedProfile.profile.id }
+        : null,
+    );
+  }, [initialProfile, onProfileChange, selectedProfile]);
+
+  const closeSelectedProfile = () => {
+    setSelectedProfile(null);
+    onProfileChange?.(null);
+  };
 
   const addClient = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -1264,7 +1292,7 @@ export function CustomerProfilesPanel({
         `${selectedProfile.type === "client" ? "Client" : "Company"} profile deleted`,
       );
       setConfirmingDelete(false);
-      setSelectedProfile(null);
+      closeSelectedProfile();
     } catch (error) {
       toast.error(
         error instanceof Error
@@ -1426,105 +1454,105 @@ export function CustomerProfilesPanel({
         <div className="mx-auto max-w-[1680px]">
           <button
             type="button"
-            onClick={() => setSelectedProfile(null)}
+            onClick={closeSelectedProfile}
             className="mb-4 inline-flex items-center gap-2 rounded-md px-2 py-2 text-sm font-medium text-slate-600 hover:bg-white hover:text-[#16a5c4]"
           >
             <ArrowLeft size={17} /> Back to Customer Profiles
           </button>
           <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.25fr)_minmax(420px,0.75fr)]">
-          <div>
-          <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <header className="flex items-center gap-4 border-b border-slate-200 px-6 py-5">
-              <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-cyan-50 text-[#16a5c4]">
-                <UserRound size={23} />
-              </span>
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-[#16a5c4]">
-                  Client Profile
-                </p>
-                <h1 className="mt-1 text-2xl font-semibold text-slate-900">
-                  {client.name}
-                </h1>
-              </div>
-              {client.is_blacklisted && (
-                <span className="rounded-full border border-red-200 bg-red-50 px-3 py-1 text-xs font-bold uppercase tracking-wide text-red-700">
-                  Blacklisted
-                </span>
-              )}
-              {canDeleteProfiles && (
-                <button
-                  type="button"
-                  onClick={() => setConfirmingDelete(true)}
-                  className="ml-auto inline-flex items-center gap-2 rounded-md border border-red-200 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
-                >
-                  <Trash2 size={16} /> Delete
-                </button>
-              )}
-              {canManageBlacklist && (
-                <button
-                  type="button"
-                  onClick={() => setConfirmingBlacklist(true)}
-                  className={`inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium ${client.is_blacklisted ? "border-emerald-200 text-emerald-700 hover:bg-emerald-50" : "border-red-200 text-red-600 hover:bg-red-50"}`}
-                >
-                  <AlertTriangle size={16} />{" "}
-                  {client.is_blacklisted ? "Un-blacklist" : "Blacklist"}
-                </button>
-              )}
-              <button
-                type="button"
-                disabled={Boolean(saveDisabledReason)}
-                title={saveDisabledReason ?? "Save changes"}
-                onClick={() => void saveProfileEdits()}
-                className="inline-flex items-center gap-2 rounded-md bg-[#16a5c4] px-3 py-2 text-sm font-semibold text-white hover:bg-[#0f8da8] disabled:opacity-50"
-              >
-                {savingProfileEdits ? (
-                  <LoaderCircle size={15} className="animate-spin" />
-                ) : null}
-                {savingProfileEdits ? "Saving..." : "Save changes"}
-              </button>
-            </header>
-            <div className="grid gap-4 bg-slate-50/60 p-6 md:grid-cols-2">
-              {validationError && (
-                <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800 md:col-span-2">
-                  <AlertTriangle size={16} className="shrink-0" />
-                  {validationError}
+            <div>
+              <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                <header className="flex items-center gap-4 border-b border-slate-200 px-6 py-5">
+                  <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-cyan-50 text-[#16a5c4]">
+                    <UserRound size={23} />
+                  </span>
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-[#16a5c4]">
+                      Client Profile
+                    </p>
+                    <h1 className="mt-1 text-2xl font-semibold text-slate-900">
+                      {client.name}
+                    </h1>
+                  </div>
+                  {client.is_blacklisted && (
+                    <span className="rounded-full border border-red-200 bg-red-50 px-3 py-1 text-xs font-bold uppercase tracking-wide text-red-700">
+                      Blacklisted
+                    </span>
+                  )}
+                  {canDeleteProfiles && (
+                    <button
+                      type="button"
+                      onClick={() => setConfirmingDelete(true)}
+                      className="ml-auto inline-flex items-center gap-2 rounded-md border border-red-200 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
+                    >
+                      <Trash2 size={16} /> Delete
+                    </button>
+                  )}
+                  {canManageBlacklist && (
+                    <button
+                      type="button"
+                      onClick={() => setConfirmingBlacklist(true)}
+                      className={`inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium ${client.is_blacklisted ? "border-emerald-200 text-emerald-700 hover:bg-emerald-50" : "border-red-200 text-red-600 hover:bg-red-50"}`}
+                    >
+                      <AlertTriangle size={16} />{" "}
+                      {client.is_blacklisted ? "Un-blacklist" : "Blacklist"}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    disabled={Boolean(saveDisabledReason)}
+                    title={saveDisabledReason ?? "Save changes"}
+                    onClick={() => void saveProfileEdits()}
+                    className="inline-flex items-center gap-2 rounded-md bg-[#16a5c4] px-3 py-2 text-sm font-semibold text-white hover:bg-[#0f8da8] disabled:opacity-50"
+                  >
+                    {savingProfileEdits ? (
+                      <LoaderCircle size={15} className="animate-spin" />
+                    ) : null}
+                    {savingProfileEdits ? "Saving..." : "Save changes"}
+                  </button>
+                </header>
+                <div className="grid gap-4 bg-slate-50/60 p-6 md:grid-cols-2">
+                  {validationError && (
+                    <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800 md:col-span-2">
+                      <AlertTriangle size={16} className="shrink-0" />
+                      {validationError}
+                    </div>
+                  )}
+                  <ProfileEditField label="Name" icon={<UserRound size={15} />}>
+                    <input
+                      value={client.name}
+                      onChange={(event) =>
+                        setSelectedProfile({
+                          type: "client",
+                          profile: { ...client, name: event.target.value },
+                        })
+                      }
+                      className={inputClass}
+                    />
+                  </ProfileEditField>
+                  <ProfileEditField
+                    label="Phone Numbers"
+                    icon={<Phone size={15} />}
+                  >
+                    <ClientPhoneNumbersEditor
+                      client={client}
+                      onChange={(next) =>
+                        setSelectedProfile({ type: "client", profile: next })
+                      }
+                    />
+                  </ProfileEditField>
                 </div>
-              )}
-              <ProfileEditField label="Name" icon={<UserRound size={15} />}>
-                <input
-                  value={client.name}
-                  onChange={(event) =>
-                    setSelectedProfile({
-                      type: "client",
-                      profile: { ...client, name: event.target.value },
-                    })
-                  }
-                  className={inputClass}
-                />
-              </ProfileEditField>
-              <ProfileEditField
-                label="Phone Numbers"
-                icon={<Phone size={15} />}
-              >
-                <ClientPhoneNumbersEditor
-                  client={client}
-                  onChange={(next) =>
-                    setSelectedProfile({ type: "client", profile: next })
-                  }
-                />
-              </ProfileEditField>
+              </section>
+              <ProfileRemarks type="client" profileId={client.id} />
             </div>
-          </section>
-          <ProfileRemarks type="client" profileId={client.id} />
-          </div>
-          <ProfileLeads
-            type="client"
-            matchValue={clientPhoneNumbers(client).map(
-              (phone) => phone.phone_number,
-            )}
-            boardClients={boardClients}
-            onOpenLead={onOpenLead}
-          />
+            <ProfileLeads
+              type="client"
+              matchValue={clientPhoneNumbers(client).map(
+                (phone) => phone.phone_number,
+              )}
+              boardClients={boardClients}
+              onOpenLead={onOpenLead}
+            />
           </div>
         </div>
         {confirmingDelete && (
@@ -1570,149 +1598,152 @@ export function CustomerProfilesPanel({
         <div className="mx-auto max-w-[1680px]">
           <button
             type="button"
-            onClick={() => setSelectedProfile(null)}
+            onClick={closeSelectedProfile}
             className="mb-4 inline-flex items-center gap-2 rounded-md px-2 py-2 text-sm font-medium text-slate-600 hover:bg-white hover:text-violet-600"
           >
             <ArrowLeft size={17} /> Back to Customer Profiles
           </button>
           <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.25fr)_minmax(420px,0.75fr)]">
-          <div>
-          <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <header className="flex items-center gap-4 border-b border-slate-200 px-6 py-5">
-              <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-violet-50 text-violet-600">
-                <Building2 size={23} />
-              </span>
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-violet-600">
-                  Company Profile
-                </p>
-                <h1 className="mt-1 text-2xl font-semibold text-slate-900">
-                  {company.name}
-                </h1>
-              </div>
-              {canDeleteProfiles && (
-                <button
-                  type="button"
-                  onClick={() => setConfirmingDelete(true)}
-                  className="ml-auto inline-flex items-center gap-2 rounded-md border border-red-200 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
-                >
-                  <Trash2 size={16} /> Delete
-                </button>
-              )}
-              <button
-                type="button"
-                disabled={Boolean(saveDisabledReason)}
-                title={saveDisabledReason ?? "Save changes"}
-                onClick={() => void saveProfileEdits()}
-                className="inline-flex items-center gap-2 rounded-md bg-violet-600 px-3 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
-              >
-                {savingProfileEdits ? (
-                  <LoaderCircle size={15} className="animate-spin" />
-                ) : null}
-                {savingProfileEdits ? "Saving..." : "Save changes"}
-              </button>
-            </header>
-            <div className="grid gap-4 bg-slate-50/60 p-6 md:grid-cols-2">
-              {validationError && (
-                <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800 md:col-span-2">
-                  <AlertTriangle size={16} className="shrink-0" />
-                  {validationError}
+            <div>
+              <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                <header className="flex items-center gap-4 border-b border-slate-200 px-6 py-5">
+                  <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-violet-50 text-violet-600">
+                    <Building2 size={23} />
+                  </span>
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-violet-600">
+                      Company Profile
+                    </p>
+                    <h1 className="mt-1 text-2xl font-semibold text-slate-900">
+                      {company.name}
+                    </h1>
+                  </div>
+                  {canDeleteProfiles && (
+                    <button
+                      type="button"
+                      onClick={() => setConfirmingDelete(true)}
+                      className="ml-auto inline-flex items-center gap-2 rounded-md border border-red-200 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
+                    >
+                      <Trash2 size={16} /> Delete
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    disabled={Boolean(saveDisabledReason)}
+                    title={saveDisabledReason ?? "Save changes"}
+                    onClick={() => void saveProfileEdits()}
+                    className="inline-flex items-center gap-2 rounded-md bg-violet-600 px-3 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
+                  >
+                    {savingProfileEdits ? (
+                      <LoaderCircle size={15} className="animate-spin" />
+                    ) : null}
+                    {savingProfileEdits ? "Saving..." : "Save changes"}
+                  </button>
+                </header>
+                <div className="grid gap-4 bg-slate-50/60 p-6 md:grid-cols-2">
+                  {validationError && (
+                    <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800 md:col-span-2">
+                      <AlertTriangle size={16} className="shrink-0" />
+                      {validationError}
+                    </div>
+                  )}
+                  <ProfileEditField label="Name" icon={<Building2 size={15} />}>
+                    <input
+                      value={company.name}
+                      onChange={(event) =>
+                        setSelectedProfile({
+                          type: "company",
+                          profile: { ...company, name: event.target.value },
+                        })
+                      }
+                      className={inputClass}
+                    />
+                  </ProfileEditField>
+                  <ProfileEditField
+                    label="Payment Term"
+                    icon={<CreditCard size={15} />}
+                  >
+                    <PaymentTermField
+                      value={company.payment_term ?? ""}
+                      onChange={(value) =>
+                        setSelectedProfile({
+                          type: "company",
+                          profile: {
+                            ...company,
+                            payment_term: value || null,
+                          },
+                        })
+                      }
+                    />
+                  </ProfileEditField>
+                  <ProfileEditField
+                    label="Industry"
+                    icon={<Factory size={15} />}
+                  >
+                    <IndustryCombobox
+                      value={{
+                        option: company.industry_option,
+                        customText:
+                          company.industry_custom_text ??
+                          (company.industry_option_id
+                            ? ""
+                            : (company.industry ?? "")),
+                      }}
+                      onChange={(next) =>
+                        setSelectedProfile({
+                          type: "company",
+                          profile: {
+                            ...company,
+                            industry:
+                              (next.option?.name ?? next.customText) || null,
+                            industry_option_id: next.option?.id ?? null,
+                            industry_custom_text: next.option
+                              ? null
+                              : next.customText || null,
+                            industry_option: next.option,
+                            industry_source: next.option
+                              ? "manual_ssic"
+                              : next.customText
+                                ? "manual_custom"
+                                : null,
+                          },
+                        })
+                      }
+                    />
+                  </ProfileEditField>
+                  <ProfileEditField
+                    label="Government / Semi / Private"
+                    icon={<Landmark size={15} />}
+                  >
+                    <select
+                      value={company.organization_type ?? ""}
+                      onChange={(event) =>
+                        setSelectedProfile({
+                          type: "company",
+                          profile: {
+                            ...company,
+                            organization_type: event.target.value || null,
+                          },
+                        })
+                      }
+                      className={inputClass}
+                    >
+                      <option value="">Select type</option>
+                      <option>Government</option>
+                      <option>Semi</option>
+                      <option>Private</option>
+                    </select>
+                  </ProfileEditField>
                 </div>
-              )}
-              <ProfileEditField label="Name" icon={<Building2 size={15} />}>
-                <input
-                  value={company.name}
-                  onChange={(event) =>
-                    setSelectedProfile({
-                      type: "company",
-                      profile: { ...company, name: event.target.value },
-                    })
-                  }
-                  className={inputClass}
-                />
-              </ProfileEditField>
-              <ProfileEditField
-                label="Payment Term"
-                icon={<CreditCard size={15} />}
-              >
-                <PaymentTermField
-                  value={company.payment_term ?? ""}
-                  onChange={(value) =>
-                    setSelectedProfile({
-                      type: "company",
-                      profile: {
-                        ...company,
-                        payment_term: value || null,
-                      },
-                    })
-                  }
-                />
-              </ProfileEditField>
-              <ProfileEditField label="Industry" icon={<Factory size={15} />}>
-                <IndustryCombobox
-                  value={{
-                    option: company.industry_option,
-                    customText:
-                      company.industry_custom_text ??
-                      (company.industry_option_id
-                        ? ""
-                        : (company.industry ?? "")),
-                  }}
-                  onChange={(next) =>
-                    setSelectedProfile({
-                      type: "company",
-                      profile: {
-                        ...company,
-                        industry:
-                          (next.option?.name ?? next.customText) || null,
-                        industry_option_id: next.option?.id ?? null,
-                        industry_custom_text: next.option
-                          ? null
-                          : next.customText || null,
-                        industry_option: next.option,
-                        industry_source: next.option
-                          ? "manual_ssic"
-                          : next.customText
-                            ? "manual_custom"
-                            : null,
-                      },
-                    })
-                  }
-                />
-              </ProfileEditField>
-              <ProfileEditField
-                label="Government / Semi / Private"
-                icon={<Landmark size={15} />}
-              >
-                <select
-                  value={company.organization_type ?? ""}
-                  onChange={(event) =>
-                    setSelectedProfile({
-                      type: "company",
-                      profile: {
-                        ...company,
-                        organization_type: event.target.value || null,
-                      },
-                    })
-                  }
-                  className={inputClass}
-                >
-                  <option value="">Select type</option>
-                  <option>Government</option>
-                  <option>Semi</option>
-                  <option>Private</option>
-                </select>
-              </ProfileEditField>
+              </section>
+              <ProfileRemarks type="company" profileId={company.id} />
             </div>
-          </section>
-          <ProfileRemarks type="company" profileId={company.id} />
-          </div>
-          <ProfileLeads
-            type="company"
-            matchValue={company.name}
-            boardClients={boardClients}
-            onOpenLead={onOpenLead}
-          />
+            <ProfileLeads
+              type="company"
+              matchValue={company.name}
+              boardClients={boardClients}
+              onOpenLead={onOpenLead}
+            />
           </div>
         </div>
         {confirmingDelete && (
