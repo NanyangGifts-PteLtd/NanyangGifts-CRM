@@ -2064,7 +2064,7 @@ export function SubitemsTable({
                         preparingPushSubitemId === sub.id ||
                         !canEditSubitem(sub.id)
                       }
-                      className={`rounded px-2 py-1 text-[11px] font-medium transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                      className={`inline-flex w-14 items-center justify-center rounded px-2 py-1 text-[11px] font-medium transition disabled:cursor-not-allowed disabled:opacity-60 ${
                         wasPushed
                           ? "border-slate-200 bg-slate-100 text-slate-400 shadow-none"
                           : "border border-teal-600 bg-teal-600 text-white shadow-sm hover:bg-teal-700"
