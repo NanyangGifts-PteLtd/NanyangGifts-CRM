@@ -136,13 +136,56 @@ function inboundSourceLabel(source: NormalizedInboundLead["source"]) {
   return "WPForms";
 }
 
+function describeInboundError(error: unknown) {
+  if (error instanceof Error) return error.message;
+  if (
+    error &&
+    typeof error === "object" &&
+    "message" in error &&
+    typeof error.message === "string"
+  ) {
+    return error.message;
+  }
+  return "Inbound lead processing failed";
+}
+
 async function reserveIngestion(lead: NormalizedInboundLead): Promise<{ row: IngestionRow; earlyResult?: InboundResult }> {
   const { data: existing, error: readError } = await supabaseAdmin.from("lead_ingestions").select(INGESTION_COLUMNS).eq("source", lead.source).eq("external_id", lead.externalId).maybeSingle();
   if (readError) throw new InboundLeadError(readError.message);
 
   if (existing) {
     const row = existing as IngestionRow;
-    if (row.status === "completed") return { row, earlyResult: { ok: true, duplicate: true, clientId: row.client_id, assignedUserId: row.assigned_user_id, statusCode: 200, message: "This inbound lead was already processed" } };
+    if (
+      row.status === "completed" &&
+      row.client_id &&
+      row.assigned_user_id
+    ) {
+      const { data: assignment, error: assignmentError } = await supabaseAdmin
+        .from("client_assignees")
+        .select("client_id")
+        .eq("client_id", row.client_id)
+        .eq("user_id", row.assigned_user_id)
+        .eq("assignment_type", "people")
+        .maybeSingle();
+      if (assignmentError) throw new InboundLeadError(assignmentError.message);
+
+      // A completed ingestion is only a true duplicate when its resulting
+      // client still has the recorded round-robin owner. Otherwise, resume
+      // the idempotent pipeline below to repair the missing assignment.
+      if (assignment) {
+        return {
+          row,
+          earlyResult: {
+            ok: true,
+            duplicate: true,
+            clientId: row.client_id,
+            assignedUserId: row.assigned_user_id,
+            statusCode: 200,
+            message: "This inbound lead was already processed",
+          },
+        };
+      }
+    }
     const updatedAt = new Date(row.updated_at).getTime();
     if (row.status === "processing" && Number.isFinite(updatedAt) && Date.now() - updatedAt < 120_000) {
       return { row, earlyResult: { ok: true, processing: true, clientId: row.client_id, assignedUserId: row.assigned_user_id, statusCode: 202, message: "This inbound lead is currently being processed" } };
@@ -257,7 +300,26 @@ export async function ingestLead(lead: NormalizedInboundLead): Promise<InboundRe
     const assignedUserId = ingestion.assigned_user_id;
     if (!clientId || !assignedUserId) throw new InboundLeadError("Inbound processing did not retain its client or assignee");
 
-    await ensureCustomerProfilesForLead({ clientId, clientName: lead.customerName || lead.companyName, phone: lead.phone, company: lead.companyName, createdBy: assignedUserId });
+    // Customer-profile linking is supplementary enrichment. It must never
+    // leave an inbound lead half-created without its round-robin assignment.
+    // The link can be repaired separately; the CRM lead itself cannot safely
+    // be treated as failed after its client row was already inserted.
+    try {
+      await ensureCustomerProfilesForLead({
+        clientId,
+        clientName: lead.customerName || lead.companyName,
+        phone: lead.phone,
+        company: lead.companyName,
+        createdBy: assignedUserId,
+      });
+    } catch (profileLinkError) {
+      console.error("Inbound customer-profile linking failed", {
+        source: lead.source,
+        externalId: lead.externalId,
+        clientId,
+        error: describeInboundError(profileLinkError),
+      });
+    }
 
     const { data: assignment, error: assignmentReadError } = await supabaseAdmin.from("client_assignees").select("client_id").eq("client_id", clientId).eq("user_id", assignedUserId).maybeSingle();
     if (assignmentReadError) throw new InboundLeadError(assignmentReadError.message);
@@ -374,7 +436,7 @@ export async function ingestLead(lead: NormalizedInboundLead): Promise<InboundRe
     if (completionError) throw new InboundLeadError(completionError.message);
     return { ok: true, clientId, assignedUserId, subitemsInserted, statusCode: 201, message: `${inboundSourceLabel(lead.source)} lead created successfully` };
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Inbound lead processing failed";
+    const message = describeInboundError(error);
     await supabaseAdmin.from("lead_ingestions").update({ status: "failed", last_error: message.slice(0, 2000), updated_at: new Date().toISOString() }).eq("id", ingestion.id);
     throw error instanceof InboundLeadError ? error : new InboundLeadError(message);
   }
