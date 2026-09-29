@@ -2491,6 +2491,19 @@ export function CRMBoard({
       const trimmed = name.trim();
       if (!trimmed) return;
 
+      if (
+        currentEntries.some(
+          (entry) =>
+            entry.value.trim().toLocaleLowerCase() ===
+            trimmed.toLocaleLowerCase(),
+        )
+      ) {
+        toast.error("Option already exists", {
+          description: `${trimmed} is already available in the ${code.replaceAll("_", " ")} list.`,
+        });
+        return;
+      }
+
       const groupId = await getOptionGroupId(code);
       if (!groupId) {
         toast.error("Option could not be added", {
@@ -2542,12 +2555,13 @@ export function CRMBoard({
       code: string,
       name: string,
       setEntries: React.Dispatch<React.SetStateAction<OptionEntry[]>>,
+      optionId?: string,
     ) => {
       const toastId = toast.loading("Checking label…");
       const response = await fetch("/api/options/delete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "preview", code, name }),
+        body: JSON.stringify({ action: "preview", code, name, optionId }),
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok || !result.optionId) {
@@ -2576,8 +2590,12 @@ export function CRMBoard({
       }
       let removedEntry: OptionEntry | undefined;
       setEntries((previous) => {
-        removedEntry = previous.find((entry) => entry.value === name);
-        return previous.filter((entry) => entry.value !== name);
+        removedEntry = previous.find(
+          (entry) => entry.id === result.optionId || (!entry.id && entry.value === name),
+        );
+        return previous.filter(
+          (entry) => entry.id !== result.optionId && (entry.id || entry.value !== name),
+        );
       });
       toast.loading("Deleting label…", { id: toastId });
       const deleteResponse = await fetch("/api/options/delete", {
@@ -2594,7 +2612,7 @@ export function CRMBoard({
       if (!deleteResponse.ok) {
         if (removedEntry) {
           setEntries((previous) =>
-            previous.some((entry) => entry.value === removedEntry!.value)
+            previous.some((entry) => entry.id === removedEntry!.id)
               ? previous
               : [...previous, removedEntry!],
           );
@@ -2641,7 +2659,7 @@ export function CRMBoard({
     }
 
     pending.setEntries((entries) =>
-      entries.filter((entry) => entry.value !== pending.name),
+      entries.filter((entry) => entry.id !== pending.optionId),
     );
     setPendingOptionDeletion(null);
     await reloadClients();
@@ -3241,8 +3259,13 @@ export function CRMBoard({
   );
 
   const handleDeletePaymentStatus = useCallback(
-    async (name: string) => {
-      await deleteOptionValue("payment_status", name, setPaymentStatusEntries);
+    async (name: string, optionId?: string) => {
+      await deleteOptionValue(
+        "payment_status",
+        name,
+        setPaymentStatusEntries,
+        optionId,
+      );
     },
     [deleteOptionValue],
   );

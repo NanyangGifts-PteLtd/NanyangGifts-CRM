@@ -134,7 +134,12 @@ async function findOption(code: string, optionId: string, legacyName?: string) {
   return { option };
 }
 
-async function usageFor(code: string, name: string, optionId: string) {
+async function usageFor(
+  code: string,
+  name: string,
+  optionId: string,
+  matchedById: boolean,
+) {
   const trackingField = TRACKING_CUSTOM_FIELD_BY_CODE[code];
   if (trackingField) {
     const { data, error } = await supabaseAdmin
@@ -172,14 +177,16 @@ async function usageFor(code: string, name: string, optionId: string) {
 
   const field = LABEL_FIELDS[code];
   if (!field) return { ids: new Set<string>() };
-  const textResult = await supabaseAdmin
-    .from(field.table)
-    .select("id")
-    .eq(field.valueColumn, name);
-  if (textResult.error)
-    return { error: textResult.error.message, ids: new Set<string>() };
-
-  const ids = new Set((textResult.data ?? []).map((row) => row.id));
+  const ids = new Set<string>();
+  if (!matchedById || !field.optionIdColumn) {
+    const textResult = await supabaseAdmin
+      .from(field.table)
+      .select("id")
+      .eq(field.valueColumn, name);
+    if (textResult.error)
+      return { error: textResult.error.message, ids: new Set<string>() };
+    for (const row of textResult.data ?? []) ids.add(row.id);
+  }
   if (field.optionIdColumn) {
     const idResult = await supabaseAdmin
       .from(field.table)
@@ -191,7 +198,12 @@ async function usageFor(code: string, name: string, optionId: string) {
   return { ids };
 }
 
-async function clearUsage(code: string, name: string, optionId: string) {
+async function clearUsage(
+  code: string,
+  name: string,
+  optionId: string,
+  matchedById: boolean,
+) {
   const trackingField = TRACKING_CUSTOM_FIELD_BY_CODE[code];
   if (trackingField) {
     const { data, error } = await supabaseAdmin
@@ -239,11 +251,13 @@ async function clearUsage(code: string, name: string, optionId: string) {
   const values: Record<string, string | null> = { [field.valueColumn]: "" };
   if (field.optionIdColumn) values[field.optionIdColumn] = null;
   if (code === "payment_received") values.payment_received = null;
-  const textResult = await supabaseAdmin
-    .from(field.table)
-    .update(values)
-    .eq(field.valueColumn, name);
-  if (textResult.error) return textResult.error;
+  if (!matchedById || !field.optionIdColumn) {
+    const textResult = await supabaseAdmin
+      .from(field.table)
+      .update(values)
+      .eq(field.valueColumn, name);
+    if (textResult.error) return textResult.error;
+  }
   if (!field.optionIdColumn) return null;
   const idResult = await supabaseAdmin
     .from(field.table)
@@ -284,7 +298,7 @@ export async function POST(request: NextRequest) {
   if ("error" in found)
     return NextResponse.json({ error: found.error }, { status: 404 });
   const name = found.option.value;
-  if (AUTOMATED_OPTION_LABELS[code]?.has(name)) {
+  if (AUTOMATED_OPTION_LABELS[code]?.has(name) && !optionId) {
     return NextResponse.json(
       {
         error: `“${name}” is produced by the ${code.replaceAll("_", " ")} calculation and cannot be deleted.`,
@@ -304,7 +318,7 @@ export async function POST(request: NextRequest) {
       { status: 409 },
     );
   }
-  const usage = await usageFor(code, name, found.option.id);
+  const usage = await usageFor(code, name, found.option.id, Boolean(optionId));
   if (usage.error)
     return NextResponse.json({ error: usage.error }, { status: 500 });
   if (body.action === "preview") {
@@ -316,7 +330,12 @@ export async function POST(request: NextRequest) {
   if (body.action !== "delete")
     return NextResponse.json({ error: "Invalid action." }, { status: 400 });
 
-  const clearError = await clearUsage(code, name, found.option.id);
+  const clearError = await clearUsage(
+    code,
+    name,
+    found.option.id,
+    Boolean(optionId),
+  );
   if (clearError)
     return NextResponse.json({ error: clearError.message }, { status: 500 });
   const { error: deleteError } = await supabaseAdmin

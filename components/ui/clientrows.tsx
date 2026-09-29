@@ -403,7 +403,10 @@ export type ClientRowProps = {
   onAddPayment?: (name: string) => void | Promise<void>;
   onDeletePayment?: (name: string) => void | Promise<void>;
   onAddPaymentStatus?: (name: string) => void | Promise<void>;
-  onDeletePaymentStatus?: (name: string) => void | Promise<void>;
+  onDeletePaymentStatus?: (
+    name: string,
+    optionId?: string,
+  ) => void | Promise<void>;
   onAddPaymentReceived?: (name: string) => void | Promise<void>;
   onDeletePaymentReceived?: (name: string) => void | Promise<void>;
   onAddModeOfPayment?: (name: string) => void | Promise<void>;
