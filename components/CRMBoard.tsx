@@ -385,10 +385,10 @@ const AddClientInput = React.memo(function AddClientInput({
   };
 
   return (
-    <div className="group/add-client relative min-h-[34px] border border-[#D0D4E4] border-t-0 bg-white px-2 py-1 hover:bg-[#f5fbff] focus-within:bg-[#f5fbff]">
+    <div className="group/add-client relative min-h-[34px] rounded-bl-md border border-[#D0D4E4] border-t-0 bg-white px-2 py-1 hover:bg-[#f5fbff] focus-within:bg-[#f5fbff]">
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-y-0 left-0 z-[60] w-[5px]"
+        className="pointer-events-none absolute inset-y-0 left-0 z-[60] w-[5px] rounded-bl-md"
         style={{ backgroundColor: `${accentColor}80` }}
       />
       <div className="relative max-w-sm" style={{ marginLeft }}>
@@ -9994,7 +9994,15 @@ export function CRMBoard({
                     event.preventDefault();
                     setOpenGroupMenu(group.id);
                   }}
-                  className={`group relative mt-4 flex items-start gap-2 bg-white text-sm active:cursor-grabbing ${collapsedGroups[group.id] ? "min-h-[60px] cursor-grab border border-slate-300 border-l-[5px] pb-2 pl-4 pr-3 pt-[5px] shadow-[0_1px_0_rgba(15,23,42,0.03)]" : "min-h-[34px] cursor-grab border-0 pb-[5px] pl-[21px] pr-3 pt-[5px]"} ${groupDragOverId === group.id || dragOverGroupId === group.id ? "ring-2 ring-inset ring-[#0f8da8]/50 bg-sky-50" : ""}`}
+                  className={`group relative mt-4 flex items-start gap-2 bg-white text-sm active:cursor-grabbing ${
+                    collapsedGroups[group.id]
+                      ? "min-h-[60px] cursor-grab rounded-l-md border border-slate-300 border-l-[5px] pb-2 pl-4 pr-3 pt-[5px] shadow-[0_1px_0_rgba(15,23,42,0.03)]"
+                      : "min-h-[34px] cursor-grab border-0 pb-[5px] pl-[21px] pr-3 pt-[5px]"
+                  } ${
+                    groupDragOverId === group.id || dragOverGroupId === group.id
+                      ? "ring-2 ring-inset ring-[#0f8da8]/50 bg-sky-50"
+                      : ""
+                  }`}
                   style={
                     collapsedGroups[group.id]
                       ? { borderLeftColor: groupAccentColor(group) }
@@ -10077,20 +10085,7 @@ export function CRMBoard({
                       }`}
                     >
                       {groupClients.length}{" "}
-                      {groupClients.length === 1 ? "Client" : "Clients"} /{" "}
-                      {trackingView
-                        ? 0
-                        : groupClients.reduce(
-                            (total, client) => total + client.subitems.length,
-                            0,
-                          )}{" "}
-                      {trackingView ||
-                      groupClients.reduce(
-                        (total, client) => total + client.subitems.length,
-                        0,
-                      ) !== 1
-                        ? "Subitems"
-                        : "Subitem"}
+                      {groupClients.length === 1 ? "Client" : "Clients"}
                     </div>
                   </div>
                 </div>
@@ -10171,18 +10166,18 @@ export function CRMBoard({
                       setDragOverGroupId(null);
                       setDragOverGroupEdge(null);
                     }}
-                    className="relative"
+                    className="relative rounded-bl-md"
                     style={{ minWidth: totalMinWidth }}
                   >
                     <div
-                      className="relative flex text-[12.6px] items-center justify-center min-w-0 flex-shrink-0 border border-[#D0D4E4] overflow-visible bg-white"
+                      aria-hidden="true"
+                      className="pointer-events-none absolute inset-y-0 left-0 z-40 w-[5px] rounded-tl-md"
+                      style={{ backgroundColor: groupAccentColor(group) }}
+                    />
+                    <div
+                      className="relative flex min-w-0 flex-shrink-0 items-center justify-center overflow-visible rounded-tl-md border border-[#D0D4E4] bg-white text-[12.6px]"
                       style={{ minWidth: totalMinWidth, width: totalMinWidth }}
                     >
-                      <div
-                        aria-hidden="true"
-                        className="pointer-events-none absolute inset-y-0 -left-px z-50 w-[5px]"
-                        style={{ backgroundColor: groupAccentColor(group) }}
-                      />
                       {activeClientHeaderCols.map((col) => {
                         const fixedKeys = new Set([
                           "selectCheckbox",

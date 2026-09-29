@@ -92,6 +92,12 @@ const LOCKED_COST_INPUTS = new Set([
   "paymentAmount",
 ]);
 
+// Shared horizontal adjustment for the nested subitem accent rails.
+// Use a more-negative value to move both rails left; use a larger value to
+// move them right. This is intentionally kept in pixels for visual tuning.
+const SUBITEM_ACCENT_RAIL_LEFT_OFFSET_PX = -4;
+const SUBITEM_ADD_ROW_HEIGHT_PX = 41;
+
 type ColumnDef = {
   key: string;
   label: string;
@@ -3505,7 +3511,26 @@ export function SubitemsTable({
           </div>
         </div>
       ) : null}
-      <div className="w-full overflow-visible">
+      <div className="relative w-full overflow-visible">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute top-0 z-40 w-[6px] rounded-tl-md"
+          style={{
+            left: SUBITEM_ACCENT_RAIL_LEFT_OFFSET_PX,
+            bottom: SUBITEM_ADD_ROW_HEIGHT_PX,
+            backgroundColor: clientColor,
+          }}
+        />
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute bottom-0 z-50 w-[6px] rounded-bl-md"
+          style={{
+            left: SUBITEM_ACCENT_RAIL_LEFT_OFFSET_PX,
+            height: SUBITEM_ADD_ROW_HEIGHT_PX,
+            backgroundColor: clientColor,
+            opacity: 0.45,
+          }}
+        />
         <table
           className="table-fixed border-collapse border-b border-[#D0D4E4]"
           style={{ width: totalTableWidth, minWidth: totalTableWidth }}
@@ -3524,8 +3549,7 @@ export function SubitemsTable({
           <thead>
             <tr className="border-b border-t border-r border-[#D0D4E4] bg-gray-50">
               <th
-                className="h-[33.1px] w-11 align-middle border-l-[6px] px-2 py-1 text-center"
-                style={{ borderLeftColor: clientColor }}
+                className="h-[33.1px] w-11 align-middle px-2 py-1 text-center"
               >
                 <input
                   type="checkbox"
@@ -3932,8 +3956,7 @@ export function SubitemsTable({
                   className={`relative group border-b border-r border-[#D0D4E4] hover:bg-blue-50/30 focus-within:z-[70] ${subitemDropMarker?.subitemId === sub.id ? (subitemDropMarker.edge === "top" ? "shadow-[inset_0_3px_0_#0f8da8]" : "shadow-[inset_0_-3px_0_#0f8da8]") : ""}`}
                 >
                   <td
-                    className="group relative h-[33.1px] overflow-visible align-middle border-r border-l-[6px] border-[#D0D4E4] px-2 py-1 text-center"
-                    style={{ borderLeftColor: clientColor }}
+                    className="group relative h-[33.1px] overflow-visible align-middle border-r border-[#D0D4E4] px-2 py-1 text-center"
                   >
                     <div
                       aria-hidden="true"
@@ -4456,8 +4479,11 @@ export function SubitemsTable({
 
             <tr className="group/add-subitem bg-white hover:bg-[#f5fbff] focus-within:bg-[#f5fbff]">
               <td
-                className="relative border-r border-l-[6px] border-[#D0D4E4]"
-                style={{ width: 34, borderLeftColor: `${clientColor}80` }}
+                className="relative rounded-bl-md border-r border-[#D0D4E4]"
+                style={{
+                  width: 34,
+                  height: SUBITEM_ADD_ROW_HEIGHT_PX,
+                }}
               />
               <td
                 colSpan={Math.max(totalColSpan - 1, 1)}
