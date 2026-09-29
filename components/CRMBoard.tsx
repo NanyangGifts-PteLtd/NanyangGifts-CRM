@@ -246,6 +246,7 @@ const CLIENT_HEADER_COLS: HeaderCol[] = [
   { key: "totalMarkup", label: "Total Markup", width: 90, minWidth: 7 },
   { key: "progress", label: "Progress", width: 110, minWidth: 7 },
   { key: "dateCreated", label: "Date Created", width: 90, minWidth: 7 },
+  { key: "closedDate", label: "Closed Date", width: 90, minWidth: 7 },
   { key: "addClientCol", label: "", width: 44, minWidth: 44 },
   { key: "empty", label: "", width: 44, minWidth: 44 },
 ];
@@ -4234,6 +4235,7 @@ export function CRMBoard({
         return (clientAssignees[client.id] ?? []).map(profileName);
       if (key === "pm") return clientPmAssigneeIds(client).map(profileName);
       if (key === "dateCreated") return client.createdAt;
+      if (key === "closedDate") return client.customFields?.closedDate ?? "";
       if (key === "totalPrice" || key === "totalMarkup") {
         return client.subitems.reduce((total, subitem) => {
           const financials = calculateSubitemFinancials(subitem, currencyEntries);
@@ -5970,6 +5972,18 @@ export function CRMBoard({
         setClientMoveSearch("");
         setPendingCloseLead({ clientId, updates });
         return;
+      }
+      if (isBecomingClosed && existingClient && !isClosedClient(existingClient)) {
+        nextUpdates = {
+          ...nextUpdates,
+          customFields: {
+            ...existingClient.customFields,
+            ...updates.customFields,
+            closedDate:
+              existingClient.customFields?.closedDate ??
+              new Date().toISOString(),
+          },
+        };
       }
       if (isMovingToUnqualified) {
         nextUpdates.status = (unqualifiedClientStatus?.value ??
@@ -9982,7 +9996,31 @@ export function CRMBoard({
               </p>
             </div>
           ) : (
-            boardVisibleGroups.map(({ group, clients: groupClients }) => (
+            boardVisibleGroups.map(({ group, clients: groupClients }) => {
+              const groupHiddenColumnKeys = new Set(hiddenColumnKeys);
+              if (!isUnqualifiedGroupName(group.name))
+                groupHiddenColumnKeys.add("client:unqualifiedReason");
+              if (!/^closed leads\b/i.test(group.name.trim()))
+                groupHiddenColumnKeys.add("client:closedDate");
+              const groupClientHeaderCols = activeClientHeaderCols.filter(
+                (column) =>
+                  !groupHiddenColumnKeys.has(`client:${column.key}`) ||
+                  ["selectCheckbox", "client", "addClientCol", "empty"].includes(
+                    column.key,
+                  ),
+              );
+              const groupColumnOrderMap = Object.fromEntries(
+                groupClientHeaderCols.map((column, index) => [column.key, index]),
+              );
+              const groupColWidth = Object.fromEntries(
+                groupClientHeaderCols.map((column) => [column.key, column.width]),
+              );
+              const groupTotalMinWidth = groupClientHeaderCols.reduce(
+                (sum, column) => sum + column.width,
+                0,
+              );
+
+              return (
               <React.Fragment key={group.id}>
                 {groupDragOverId === group.id &&
                   groupDragOverEdge === "top" && (
@@ -10149,7 +10187,7 @@ export function CRMBoard({
                     <div
                       className="relative overflow-hidden bg-white"
                       style={{
-                        minWidth: totalMinWidth,
+                        minWidth: groupTotalMinWidth,
                         minHeight: 28 + groupClients.length * 33.1,
                       }}
                       aria-busy="true"
@@ -10158,8 +10196,8 @@ export function CRMBoard({
                       <div
                         className="relative flex h-7 items-center bg-white text-[12.6px]"
                         style={{
-                          minWidth: totalMinWidth,
-                          width: totalMinWidth,
+                          minWidth: groupTotalMinWidth,
+                          width: groupTotalMinWidth,
                         }}
                       >
                         <div
@@ -10167,7 +10205,7 @@ export function CRMBoard({
                           className="pointer-events-none absolute inset-y-0 -left-px z-10 w-[5px]"
                           style={{ backgroundColor: groupAccentColor(group) }}
                         />
-                        {activeClientHeaderCols.map((col) => (
+                        {groupClientHeaderCols.map((col) => (
                           <div
                             key={col.key}
                             className="flex h-7 shrink-0 items-center justify-center border border-[#D0D4E4] border-l-0 px-1 text-center"
@@ -10192,11 +10230,11 @@ export function CRMBoard({
                           aria-hidden="true"
                           className="flex h-[33.1px] border-b border-[#D0D4E4]"
                           style={{
-                            minWidth: totalMinWidth,
-                            width: totalMinWidth,
+                            minWidth: groupTotalMinWidth,
+                            width: groupTotalMinWidth,
                           }}
                         >
-                          {activeClientHeaderCols.map((col) => (
+                          {groupClientHeaderCols.map((col) => (
                             <div
                               key={col.key}
                               className="h-full shrink-0 border-r border-[#D0D4E4]"
@@ -10220,7 +10258,7 @@ export function CRMBoard({
                       setDragOverGroupEdge(null);
                     }}
                     className="relative rounded-bl-md"
-                    style={{ minWidth: totalMinWidth }}
+                    style={{ minWidth: groupTotalMinWidth }}
                   >
                     <div
                       aria-hidden="true"
@@ -10229,9 +10267,12 @@ export function CRMBoard({
                     />
                     <div
                       className="relative flex min-w-0 flex-shrink-0 items-center justify-center overflow-visible rounded-tl-md border border-[#D0D4E4] bg-white text-[12.6px]"
-                      style={{ minWidth: totalMinWidth, width: totalMinWidth }}
+                      style={{
+                        minWidth: groupTotalMinWidth,
+                        width: groupTotalMinWidth,
+                      }}
                     >
-                      {activeClientHeaderCols.map((col) => {
+                      {groupClientHeaderCols.map((col) => {
                         const fixedKeys = new Set([
                           "selectCheckbox",
                           "client",
@@ -10326,6 +10367,7 @@ export function CRMBoard({
                                 ? "true"
                                 : undefined
                             }
+                            data-client-column={col.key}
                             style={{
                               minWidth: col.width,
                               width: col.width,
@@ -10534,7 +10576,7 @@ export function CRMBoard({
                       setDragOverGroupEdge(null);
                     }}
                     className="relative"
-                    style={{ minWidth: totalMinWidth }}
+                    style={{ minWidth: groupTotalMinWidth }}
                   >
                     <div
                       aria-hidden="true"
@@ -10629,9 +10671,9 @@ export function CRMBoard({
                         }
                         subitemAssigneeMap={subitemAssignees}
                         onChangeSubitemAssignees={handleSubitemAssigneesChange}
-                        colWidth={colWidth}
-                        boardWidth={totalMinWidth}
-                        columnOrderMap={activeClientColumnOrderMap}
+                        colWidth={groupColWidth}
+                        boardWidth={groupTotalMinWidth}
+                        columnOrderMap={groupColumnOrderMap}
                         trackingMode={trackingView}
                         onDragStart={(event) =>
                           handleDragStart(client.id, event)
@@ -10725,7 +10767,7 @@ export function CRMBoard({
                         onSortColumn={(category, column, direction) =>
                           setBoardSort({ category, column, direction })
                         }
-                        hiddenColumnKeys={hiddenColumnKeys}
+                        hiddenColumnKeys={groupHiddenColumnKeys}
                         onHideColumn={hideColumn}
                         onSetColumnVisibility={setColumnVisibility}
                         currentUserRole={currentUserRole ?? undefined}
@@ -10800,7 +10842,7 @@ export function CRMBoard({
                       groupName={group.name}
                       accentColor={groupAccentColor(group)}
                       marginLeft={
-                        activeClientHeaderCols.find(
+                        groupClientHeaderCols.find(
                           (column) => column.key === "selectCheckbox",
                         )?.width ?? 34
                       }
@@ -10823,7 +10865,7 @@ export function CRMBoard({
                         className="relative max-w-sm"
                         style={{
                           marginLeft:
-                            activeClientHeaderCols.find(
+                            groupClientHeaderCols.find(
                               (column) => column.key === "selectCheckbox",
                             )?.width ?? 34,
                         }}
@@ -10931,7 +10973,7 @@ export function CRMBoard({
                       }
                     }}
                     className="relative h-1"
-                    style={{ minWidth: totalMinWidth }}
+                    style={{ minWidth: groupTotalMinWidth }}
                   >
                     {groupDragOverId === group.id &&
                       groupDragOverEdge === "bottom" && (
@@ -10970,7 +11012,8 @@ export function CRMBoard({
                   </div>
                 )}
               </React.Fragment>
-            ))
+              );
+            })
           )}
           <div className="flex px-2 py-6">
             <button

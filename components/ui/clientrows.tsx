@@ -1949,11 +1949,11 @@ export function ClientRow({
         .filter((key) => key.startsWith("client:"))
         .map(
           (key) =>
-            `[data-client-column="${key.slice(7)}"]{display:none!important}`,
+            `[data-client-id="${client.id}"] [data-client-column="${key.slice(7)}"]{display:none!important}`,
         )
         .join(
           "",
-        )} ${trackingMode ? '[data-client-row] [data-client-column]:not([data-client-column="selectCheckbox"]):not([data-client-column="client"]):not([data-client-column="people"]):not([data-client-column="channel"]):not([data-client-column^="custom:"]):not(.tracking-client-cell){display:none!important}' : ""}`}</style>
+        )} ${trackingMode ? `[data-client-id="${client.id}"] [data-client-column]:not([data-client-column="selectCheckbox"]):not([data-client-column="client"]):not([data-client-column="people"]):not([data-client-column="channel"]):not([data-client-column^="custom:"]):not(.tracking-client-cell){display:none!important}` : ""}`}</style>
       {permissionNotice && (
         <div
           role="alert"
@@ -3650,6 +3650,26 @@ export function ClientRow({
             onChange={(v) => onUpdate({ unqualifiedReason: v })}
             placeholder=""
           />
+        </div>
+
+        <div
+          data-client-column="closedDate"
+          className="min-w-0 overflow-hidden whitespace-nowrap border-r border-[#D0D4E4] px-1 py-1.5 text-center text-[12px] text-slate-600"
+          style={{
+            height: 30,
+            minWidth: colWidth.closedDate,
+            width: colWidth.closedDate,
+            order: columnOrderMap.closedDate ?? 19.5,
+          }}
+          title={
+            client.customFields?.closedDate
+              ? new Date(client.customFields.closedDate).toLocaleString("en-SG")
+              : undefined
+          }
+        >
+          {client.customFields?.closedDate
+            ? new Date(client.customFields.closedDate).toLocaleDateString("en-SG")
+            : ""}
         </div>
 
         <div
