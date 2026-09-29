@@ -271,6 +271,10 @@ type Clients = {
   expanded: boolean | null;
   color: string | null;
   activity_log?: ActivityLogRow[] | null;
+  ocf_status?: {
+    hasCreated: boolean;
+    hasSigned: boolean;
+  };
   subitems?: Subitems[];
   custom_fields?: Record<string, string>;
   deleted_at?: string | null;
@@ -537,6 +541,7 @@ function mapClients(row: Clients): Client {
     expanded: row.expanded ?? false,
     color: row.color ?? "#7BCBD5",
     activityLog: (row.activity_log ?? []).map(mapActivityEntry),
+    ocfStatus: row.ocf_status,
     subitems: (row.subitems ?? [])
       .filter((subitem) => !subitem.deleted_at)
       .map(mapSubitems)
@@ -810,6 +815,35 @@ export async function fetchClientsWithSubitems() {
   // fetch activity history belonging to soft-deleted clients: activity_log is
   // unbounded and used to be the largest part of every Board refresh.
   const activeClientIds = (clientsData ?? []).map((row) => String(row.id));
+  const { data: ocfData, error: ocfError } = activeClientIds.length
+    ? await supabase
+        .from("order_confirmations")
+        .select("client_id, client_signed_at, status")
+        .in("client_id", activeClientIds)
+    : { data: [], error: null };
+
+  // OCF activity logs are useful history but are not the source of truth for
+  // the board badge. Older OCFs predate that logging, and a form can still be
+  // valid if the best-effort log insert failed.
+  if (ocfError) {
+    console.warn("fetchClientsWithSubitems OCF status error:", ocfError);
+  }
+  const ocfStatusByClientId = new Map<
+    string,
+    { hasCreated: boolean; hasSigned: boolean }
+  >();
+  if (!ocfError) {
+    for (const ocf of ocfData ?? []) {
+      const current = ocfStatusByClientId.get(ocf.client_id) ?? {
+        hasCreated: false,
+        hasSigned: false,
+      };
+      current.hasCreated = true;
+      current.hasSigned ||=
+        Boolean(ocf.client_signed_at) || ocf.status === "submitted";
+      ocfStatusByClientId.set(ocf.client_id, current);
+    }
+  }
   const { data: activityData, error: activityError } = activeClientIds.length
     ? await supabase
         .from("activity_log")
@@ -837,6 +871,14 @@ export async function fetchClientsWithSubitems() {
     mapClients({
       ...(row as Clients),
       activity_log: activityByClientId.get((row as Clients).id) ?? [],
+      ...(ocfError
+        ? {}
+        : {
+            ocf_status: ocfStatusByClientId.get((row as Clients).id) ?? {
+              hasCreated: false,
+              hasSigned: false,
+            },
+          }),
     }),
   );
 }

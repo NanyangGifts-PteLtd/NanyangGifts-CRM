@@ -641,15 +641,17 @@ export function ClientRow({
       .trim()
       .toLowerCase(),
   );
-  const hasSignedOcf = (client.activityLog ?? []).some(
+  const activityHasSignedOcf = (client.activityLog ?? []).some(
     (entry) => entry.action === "ocf_signed",
   );
-  const hasLinkedOcf =
-    hasSignedOcf ||
+  const activityHasLinkedOcf =
+    activityHasSignedOcf ||
     (client.activityLog ?? []).some(
       (entry) =>
         entry.action === "ocf_created" || entry.action === "ocf_updated",
     );
+  const hasSignedOcf = client.ocfStatus?.hasSigned ?? activityHasSignedOcf;
+  const hasLinkedOcf = client.ocfStatus?.hasCreated ?? activityHasLinkedOcf;
   const ocfButtonClassName = hasSignedOcf
     ? "border-emerald-500 bg-emerald-500 text-white hover:bg-emerald-600"
     : hasLinkedOcf

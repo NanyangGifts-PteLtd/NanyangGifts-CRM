@@ -243,6 +243,10 @@ export interface Client {
   groupId: string | null;
   subitems: Subitem[];
   activityLog?: ActivityEntry[];
+  ocfStatus?: {
+    hasCreated: boolean;
+    hasSigned: boolean;
+  };
   assignedProfileIds?: string[];
   customFields?: Record<string, string>;
 }

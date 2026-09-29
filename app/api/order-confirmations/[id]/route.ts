@@ -222,6 +222,22 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
       );
     }
 
+    const { error: activityError } = await supabase
+      .from("activity_log")
+      .insert({
+        client_id: existing.client_id,
+        subitem_id: null,
+        actor_name: user.email ?? "CRM user",
+        action: "ocf_updated",
+        title: "Order Confirmation Form updated",
+        description: "Internal OCF details were updated.",
+        link: `/app/order-confirmations/${id}`,
+        meta: { ocfId: id },
+      });
+    if (activityError) {
+      console.error("Failed to record OCF update activity:", activityError);
+    }
+
     return NextResponse.json({
       success: true,
       ocf: updated,
