@@ -18,6 +18,7 @@ import {
 import {
   Calendar,
   CreditCard,
+  DollarSign,
   Package,
   Plus,
   Trash2,
@@ -676,6 +677,7 @@ export function SubitemsTable({
     window.setTimeout(() => setPermissionNotice(null), 2600);
   };
   const [tableMode, setTableMode] = useState<TableMode | null>(null);
+  const [showSubpaymentTables, setShowSubpaymentTables] = useState(false);
   const [subitemViewById, setSubitemViewById] = useState<
     Record<string, "timeline" | "sample" | null>
   >({});
@@ -775,6 +777,7 @@ export function SubitemsTable({
   React.useEffect(() => {
     if (tableMode === "payment" && !hasPaymentEligibleSubitems) {
       setTableMode(null);
+      setShowSubpaymentTables(false);
       setSubitemViewById((current) =>
         Object.fromEntries(
           Object.entries(current).map(([id, view]) => [
@@ -788,6 +791,7 @@ export function SubitemsTable({
   const togglePaymentView = () => {
     if (tableMode === "payment") {
       setTableMode(null);
+      setShowSubpaymentTables(false);
       setSubitemViewById((current) =>
         Object.fromEntries(
           Object.entries(current).map(([id, view]) => [
@@ -806,6 +810,20 @@ export function SubitemsTable({
       return;
     }
     setTableMode("payment");
+  };
+  const toggleClientSubpayments = (clickedSubitem: Subitem) => {
+    if (
+      !hasPaymentEligibleSubitems ||
+      !hasReachedAwardedPhase(clickedSubitem)
+    ) {
+      toast.warning("This subitem has not been awarded yet", {
+        description:
+          "Subpayments are available once the subitem has reached the Awarded phase.",
+      });
+      return;
+    }
+    setTableMode("payment");
+    setShowSubpaymentTables((current) => !current);
   };
   const [newSubitemName, setNewSubitemName] = useState("");
   const [isAddingSubitem, setIsAddingSubitem] = useState(false);
@@ -2098,20 +2116,6 @@ export function SubitemsTable({
             <button
               type="button"
               data-view-action
-              onClick={() => toggleClientTimelines(sub)}
-              className={`flex items-center justify-center rounded-sm border p-1 transition active:scale-95 ${
-                tableMode === "payment" && activeSubitemView(sub) === "timeline"
-                  ? "border-[#7BCBD5] bg-[#7BCBD5] text-white"
-                  : "border-teal-200 bg-transparent text-[#6db6bf] hover:bg-teal-100"
-              }`}
-              title="Timeline"
-            >
-              <Calendar size={15} />
-            </button>
-
-            <button
-              type="button"
-              data-view-action
               onClick={togglePaymentView}
               disabled={!hasPaymentEligibleSubitems}
               className={`flex items-center justify-center rounded-sm border p-1 transition active:scale-95 ${
@@ -2121,11 +2125,40 @@ export function SubitemsTable({
               }`}
               title={
                 hasPaymentEligibleSubitems
-                  ? "Payments"
+                  ? "Payments (PM View)"
                   : "No awarded subitems for payment columns"
               }
             >
               <CreditCard size={15} />
+            </button>
+
+            <button
+              type="button"
+              data-view-action
+              onClick={() => toggleClientSubpayments(sub)}
+              disabled={!hasPaymentEligibleSubitems}
+              className={`flex items-center justify-center rounded-sm border p-1 transition active:scale-95 ${
+                tableMode === "payment" && showSubpaymentTables
+                  ? "border-[#7a9bc9] bg-[#7a9bc9] text-white"
+                  : "border-blue-200 bg-transparent text-[#6887b5] hover:bg-blue-100"
+              }`}
+              title="Subpayments"
+            >
+              <DollarSign size={15} />
+            </button>
+
+            <button
+              type="button"
+              data-view-action
+              onClick={() => toggleClientTimelines(sub)}
+              className={`flex items-center justify-center rounded-sm border p-1 transition active:scale-95 ${
+                tableMode === "payment" && activeSubitemView(sub) === "timeline"
+                  ? "border-[#7BCBD5] bg-[#7BCBD5] text-white"
+                  : "border-teal-200 bg-transparent text-[#6db6bf] hover:bg-teal-100"
+              }`}
+              title="Timeline"
+            >
+              <Calendar size={15} />
             </button>
 
             <button
@@ -4016,7 +4049,9 @@ export function SubitemsTable({
                   </td>
                 </tr>
 
-                {tableMode === "payment" && hasReachedAwardedPhase(sub) && (
+                {tableMode === "payment" &&
+                  showSubpaymentTables &&
+                  hasReachedAwardedPhase(sub) && (
                   <tr className="bg-slate-50/70">
                     <td
                       colSpan={totalColSpan}
