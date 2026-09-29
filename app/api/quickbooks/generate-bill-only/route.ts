@@ -7,6 +7,7 @@ import {
 import { qboRequest, qboUploadAttachment } from "@/lib/quickbooks/api";
 import { ensureQuickBooksBillNumberAvailable } from "@/lib/quickbooks/bill-duplicate-check";
 import { listQuickBooksTaxCodes } from "@/lib/quickbooks/bill-options";
+import { quickBooksBillGstTotal } from "@/lib/quickbooks/bill-tax";
 
 const ALLOWED_ROLES = new Set(["admin", "director", "dev"]);
 
@@ -217,6 +218,8 @@ export async function POST(request: NextRequest) {
     const quickBooksBill = created?.Bill;
     if (!quickBooksBill?.Id)
       throw new Error("QuickBooks did not return a Bill ID.");
+    const billGstValue =
+      quickBooksBillGstTotal(quickBooksBill) ?? effectiveOverallGstAmount;
     const attachments = formData
       .getAll("attachments")
       .filter((entry): entry is File => entry instanceof File);
@@ -263,7 +266,7 @@ export async function POST(request: NextRequest) {
       quickbooks_supplier_name: String(
         quickBooksBill.VendorRef?.name ?? supplierName,
       ),
-      quickbooks_overall_gst_override: effectiveOverallGstAmount,
+      quickbooks_overall_gst_override: billGstValue,
       quickbooks_attachment_files: savedAttachments,
     };
     let row: unknown;
@@ -315,7 +318,7 @@ export async function POST(request: NextRequest) {
       );
     if (
       !voucherId &&
-      effectiveOverallGstAmount !== null &&
+      billGstValue !== null &&
       row &&
       typeof row === "object" &&
       "id" in row
@@ -325,7 +328,7 @@ export async function POST(request: NextRequest) {
         const updated = await supabaseAdmin
           .from("additional_costs")
           .update({
-            quickbooks_overall_gst_override: effectiveOverallGstAmount,
+            quickbooks_overall_gst_override: billGstValue,
           })
           .eq("id", rowId)
           .select("*")

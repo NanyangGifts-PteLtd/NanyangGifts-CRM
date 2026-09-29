@@ -7,6 +7,7 @@ import {
   qboUploadAttachment,
 } from "@/lib/quickbooks/api";
 import { listQuickBooksTaxCodes } from "@/lib/quickbooks/bill-options";
+import { quickBooksBillGstTotal } from "@/lib/quickbooks/bill-tax";
 import { ensureQuickBooksBillNumberAvailable } from "@/lib/quickbooks/bill-duplicate-check";
 
 const INTERNAL_ROLES = new Set(["sales", "pm", "admin", "director", "dev"]);
@@ -191,10 +192,6 @@ export async function POST(request: NextRequest) {
       ).reduce((sum: number, line: any) => sum + Number(line.Amount ?? 0), 0) ??
         0,
     );
-    const hasGstOverride = (bill.TxnTaxDetail?.TaxLine ?? []).some(
-      (line: { TaxLineDetail?: { OverrideDeltaAmount?: unknown } }) =>
-        line.TaxLineDetail?.OverrideDeltaAmount != null,
-    );
     const { data: row, error } = await supabaseAdmin
       .from("additional_costs")
       .update({
@@ -204,9 +201,7 @@ export async function POST(request: NextRequest) {
         quickbooks_invoice_number: String(bill.DocNumber ?? ""),
         quickbooks_supplier_id: String(bill.VendorRef?.value ?? ""),
         quickbooks_supplier_name: String(bill.VendorRef?.name ?? ""),
-        quickbooks_overall_gst_override: hasGstOverride
-          ? Number(bill.TxnTaxDetail?.TotalTax ?? 0)
-          : null,
+        quickbooks_overall_gst_override: quickBooksBillGstTotal(bill),
         cost: total,
         updated_at: new Date().toISOString(),
       })
@@ -480,6 +475,7 @@ export async function PATCH(request: NextRequest) {
         ),
       }),
     });
+    const billGstValue = quickBooksBillGstTotal(updated?.Bill) ?? overall;
     const attachments = formData
       .getAll("attachments")
       .filter((file): file is File => file instanceof File && file.size > 0);
@@ -514,7 +510,7 @@ export async function PATCH(request: NextRequest) {
           draft.supplierName ?? updated?.Bill?.VendorRef?.name ?? "",
         ),
         quickbooks_attachment_files: uploaded,
-        quickbooks_overall_gst_override: overall,
+        quickbooks_overall_gst_override: billGstValue,
         quickbooks_bill_sync_error: null,
         updated_at: new Date().toISOString(),
       })

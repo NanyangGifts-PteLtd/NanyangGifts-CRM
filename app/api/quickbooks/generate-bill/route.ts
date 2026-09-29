@@ -6,6 +6,7 @@ import {
 } from "@/lib/supabase/admin";
 import { qboRequest, qboUploadAttachment } from "@/lib/quickbooks/api";
 import { listQuickBooksTaxCodes } from "@/lib/quickbooks/bill-options";
+import { quickBooksBillGstTotal } from "@/lib/quickbooks/bill-tax";
 import { ensureQuickBooksBillNumberAvailable } from "@/lib/quickbooks/bill-duplicate-check";
 import { getSystemLabel } from "@/lib/system-labels";
 
@@ -425,6 +426,8 @@ export async function POST(request: NextRequest) {
     const quickBooksBill = billResult?.Bill;
     if (!quickBooksBill?.Id)
       throw new Error("QuickBooks did not return a Bill ID.");
+    const billGstValue =
+      quickBooksBillGstTotal(quickBooksBill) ?? effectiveOverallGstAmount;
     const shippingUpsReason = await getSystemLabel(
       "additional_cost_reason",
       "additional_cost_reason_shipping_ups",
@@ -487,7 +490,7 @@ export async function POST(request: NextRequest) {
           quickbooks_supplier_name: String(
             bill.supplierName ?? quickBooksBill.VendorRef?.name ?? "",
           ),
-          quickbooks_overall_gst_override: effectiveOverallGstAmount,
+          quickbooks_overall_gst_override: billGstValue,
           quickbooks_bill_id: String(quickBooksBill.Id),
           quickbooks_attachment_files: uploadedAttachments,
         })
@@ -552,7 +555,7 @@ export async function POST(request: NextRequest) {
         quickbooks_supplier_name: String(
           bill.supplierName ?? quickBooksBill.VendorRef?.name ?? "",
         ),
-        quickbooks_overall_gst_override: effectiveOverallGstAmount,
+        quickbooks_overall_gst_override: billGstValue,
         quickbooks_bill_id: String(quickBooksBill.Id),
         quickbooks_attachment_files: uploadedAttachments,
       })
