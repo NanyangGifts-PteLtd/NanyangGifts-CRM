@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { supabaseAdmin } from "@/lib/supabase/admin";
+import {
+  assertSupabaseAdminConfiguration,
+  supabaseAdmin,
+} from "@/lib/supabase/admin";
 import { qboRequest, qboUploadAttachment } from "@/lib/quickbooks/api";
 import { listQuickBooksTaxCodes } from "@/lib/quickbooks/bill-options";
 import { ensureQuickBooksBillNumberAvailable } from "@/lib/quickbooks/bill-duplicate-check";
@@ -13,8 +16,10 @@ async function nextPaymentVoucherReference() {
     "next_payment_voucher_reference_id",
   );
   if (error || data === null)
-    throw (
-      error ?? new Error("Could not allocate a Payment Voucher Reference ID.")
+    throw new Error(
+      `Could not allocate a Payment Voucher Reference ID: ${
+        error?.message ?? "the database returned no reference"
+      }`,
     );
   return String(data);
 }
@@ -64,6 +69,7 @@ function money(value: unknown, field: string) {
 
 export async function POST(request: NextRequest) {
   try {
+    assertSupabaseAdminConfiguration();
     const supabase = await createClient();
     const {
       data: { user },
@@ -552,7 +558,10 @@ export async function POST(request: NextRequest) {
       })
       .select("*")
       .single();
-    if (voucherError) throw voucherError;
+    if (voucherError)
+      throw new Error(
+        `Could not save the payment voucher for this QuickBooks Bill: ${voucherError.message}`,
+      );
     try {
       const { data: lastSubitem } = await supabaseAdmin
         .from("subitems")
