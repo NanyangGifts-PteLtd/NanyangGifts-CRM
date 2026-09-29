@@ -22,6 +22,25 @@ function base64ToBuffer(dataUrl: string) {
     return Buffer.from(base64, "base64");
 }
 
+function currentClosedLeadsGroupName(closingDate?: string) {
+    const source = closingDate ? new Date(closingDate) : new Date();
+    const parts = new Intl.DateTimeFormat("en-US", {
+        timeZone: "Asia/Singapore",
+        year: "numeric",
+        month: "numeric",
+        day: "numeric",
+    }).formatToParts(source);
+    const value = (type: Intl.DateTimeFormatPartTypes) =>
+        Number(parts.find((part) => part.type === type)?.value ?? 0);
+    const periodMonth = new Date(value("year"), value("month") - 1, 1);
+    if (value("day") >= 26) periodMonth.setMonth(periodMonth.getMonth() + 1);
+    return `Closed Leads - ${new Intl.DateTimeFormat("en-US", {
+        month: "long",
+        year: "numeric",
+        timeZone: "Asia/Singapore",
+    }).format(periodMonth)}`;
+}
+
 type SubmittedItem = {
     id: string;
     delivery_name?: string | null;
@@ -242,9 +261,98 @@ export async function POST(request: NextRequest) {
             created_at: now,
         });
 
+        // A signed OCF is valid closing evidence. Close the client here rather
+        // than relying on the internal board, because this endpoint is called
+        // directly from the customer's public signing link.
+        const [{ data: client }, { data: closedStatus }, { data: earliestOcf }] = await Promise.all([
+            supabase
+                .from("clients")
+                .select("group_id, status_option_id, custom_fields")
+                .eq("id", ocf.client_id)
+                .maybeSingle(),
+            supabase
+                .from("option_values")
+                .select("id, value")
+                .eq("system_key", "client_status_closed")
+                .maybeSingle(),
+            supabase
+                .from("order_confirmations")
+                .select("client_signed_at")
+                .eq("client_id", ocf.client_id)
+                .not("client_signed_at", "is", null)
+                .order("client_signed_at", { ascending: true })
+                .limit(1)
+                .maybeSingle(),
+        ]);
+        let autoClosed = false;
+        if (client && closedStatus && client.status_option_id !== closedStatus.id) {
+            const groupName = currentClosedLeadsGroupName(
+                earliestOcf?.client_signed_at ?? now,
+            );
+            const { data: existingClosedGroup } = await supabase
+                .from("crm_groups")
+                .select("id")
+                .ilike("name", groupName)
+                .maybeSingle();
+            let closedGroupId = existingClosedGroup?.id ?? null;
+            if (!closedGroupId) {
+                const { data: latestGroup } = await supabase
+                    .from("crm_groups")
+                    .select("sort_order")
+                    .order("sort_order", { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+                const { data: createdGroup } = await supabase
+                    .from("crm_groups")
+                    .insert({
+                        name: groupName,
+                        color: "#7BCBD5",
+                        sort_order: Number(latestGroup?.sort_order ?? -1) + 1,
+                    })
+                    .select("id")
+                    .maybeSingle();
+                closedGroupId = createdGroup?.id ?? null;
+            }
+            const customFields =
+                client.custom_fields && typeof client.custom_fields === "object"
+                    ? client.custom_fields
+                    : {};
+            const { error: closeError } = await supabase
+                .from("clients")
+                .update({
+                    status: closedStatus.value,
+                    status_option_id: closedStatus.id,
+                    group_id: closedGroupId ?? client.group_id,
+                    custom_fields: {
+                        ...customFields,
+                        closedDate:
+                            earliestOcf?.client_signed_at ??
+                            customFields.closedDate ??
+                            now,
+                    },
+                })
+                .eq("id", ocf.client_id);
+            if (!closeError) {
+                autoClosed = true;
+                await supabase.from("activity_log").insert({
+                    client_id: ocf.client_id,
+                    subitem_id: null,
+                    actor_name: "System",
+                    action: "field_changed",
+                    field_name: "status",
+                    old_value: null,
+                    new_value: closedStatus.value,
+                    title: "Client closed automatically",
+                    description: "The client was closed because an OCF was signed.",
+                    created_at: now,
+                });
+            }
+        }
+
         return NextResponse.json({
             success: true,
             ocf: updatedOcf,
+            autoClosed,
         });
     } catch (error) {
         return NextResponse.json(

@@ -1128,12 +1128,20 @@ export function CRMBoard({
     signedQuotation: File | null;
     proofOfPayment: File | null;
   }>({ purchaseOrder: null, signedQuotation: null, proofOfPayment: null });
+  const [closeLeadFileDates, setCloseLeadFileDates] = useState<{
+    purchaseOrder: string;
+    signedQuotation: string;
+    proofOfPayment: string;
+  }>({ purchaseOrder: "", signedQuotation: "", proofOfPayment: "" });
   const [signedOcfCheck, setSignedOcfCheck] = useState<{
     loading: boolean;
     signedAt: string | null;
     error: boolean;
   }>({ loading: false, signedAt: null, error: false });
   const [savingCloseLead, setSavingCloseLead] = useState(false);
+  const closeLeadFileDatesComplete = (
+    ["purchaseOrder", "signedQuotation", "proofOfPayment"] as const
+  ).every((key) => !closeLeadFiles[key] || Boolean(closeLeadFileDates[key]));
 
   const [headerCols, setHeaderCols] = useState<HeaderCol[]>(CLIENT_HEADER_COLS);
   const [clientMergedOrderKeys, setClientMergedOrderKeys] = useState<string[]>(
@@ -1178,7 +1186,7 @@ export function CRMBoard({
       .select("client_signed_at")
       .eq("client_id", pendingCloseLead.clientId)
       .not("client_signed_at", "is", null)
-      .order("client_signed_at", { ascending: false })
+      .order("client_signed_at", { ascending: true })
       .limit(1)
       .maybeSingle()
       .then(({ data, error }) => {
@@ -4155,6 +4163,11 @@ export function CRMBoard({
           signedQuotation: null,
           proofOfPayment: null,
         });
+        setCloseLeadFileDates({
+          purchaseOrder: "",
+          signedQuotation: "",
+          proofOfPayment: "",
+        });
         setSelectedIds(new Set());
         setSelectedSubitemIds([]);
         setShowClientMoveMenu(false);
@@ -5743,11 +5756,27 @@ export function CRMBoard({
       ),
     );
 
-  const currentClosedLeadsGroupName = () =>
-    `Closed Leads - ${new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric", timeZone: "Asia/Singapore" }).format(new Date())}`;
+  const currentClosedLeadsGroupName = (closingDate?: string) => {
+    const source = closingDate ? new Date(closingDate) : new Date();
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: "Asia/Singapore",
+      year: "numeric",
+      month: "numeric",
+      day: "numeric",
+    }).formatToParts(source);
+    const value = (type: Intl.DateTimeFormatPartTypes) =>
+      Number(parts.find((part) => part.type === type)?.value ?? 0);
+    const periodMonth = new Date(value("year"), value("month") - 1, 1);
+    if (value("day") >= 26) periodMonth.setMonth(periodMonth.getMonth() + 1);
+    return `Closed Leads - ${new Intl.DateTimeFormat("en-US", {
+      month: "long",
+      year: "numeric",
+      timeZone: "Asia/Singapore",
+    }).format(periodMonth)}`;
+  };
 
-  const ensureCurrentClosedLeadsGroup = useCallback(async () => {
-    const name = currentClosedLeadsGroupName();
+  const ensureCurrentClosedLeadsGroup = useCallback(async (closingDate?: string) => {
+    const name = currentClosedLeadsGroupName(closingDate);
     const existing = groups.find(
       (group) => group.name.trim().toLowerCase() === name.toLowerCase(),
     );
@@ -5755,6 +5784,8 @@ export function CRMBoard({
 
     const response = await fetch("/api/crm-groups/ensure-current-closed", {
       method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ closingDate }),
     });
     const data = await response.json();
     if (!response.ok)
@@ -5840,6 +5871,7 @@ export function CRMBoard({
       updates: Partial<Client>,
       closeRequirementsApproved = false,
       unqualifiedReasonApproved = false,
+      closingEvidenceDate?: string,
     ) => {
       const existingClient = clients.find((client) => client.id === clientId);
       if (updates.name !== undefined || updates.company !== undefined) {
@@ -5966,6 +5998,11 @@ export function CRMBoard({
           signedQuotation: null,
           proofOfPayment: null,
         });
+        setCloseLeadFileDates({
+          purchaseOrder: "",
+          signedQuotation: "",
+          proofOfPayment: "",
+        });
         setSelectedIds(new Set());
         setSelectedSubitemIds([]);
         setShowClientMoveMenu(false);
@@ -5980,6 +6017,7 @@ export function CRMBoard({
             ...existingClient.customFields,
             ...updates.customFields,
             closedDate:
+              closingEvidenceDate ??
               existingClient.customFields?.closedDate ??
               new Date().toISOString(),
           },
@@ -5995,12 +6033,11 @@ export function CRMBoard({
         nextUpdates.statusOptionId = closedClientStatus?.id ?? null;
         movedToGroupName = selectedGroup?.name ?? null;
       }
-      if (
-        closedClientStatus?.id != null &&
-        updates.statusOptionId === closedClientStatus.id
-      ) {
+      if (isBecomingClosed && existingClient && !isClosedClient(existingClient)) {
         try {
-          const closedLeadsGroup = await ensureCurrentClosedLeadsGroup();
+          const closedLeadsGroup = await ensureCurrentClosedLeadsGroup(
+            closingEvidenceDate,
+          );
           nextUpdates.groupId = closedLeadsGroup.id;
           movedToGroupName = closedLeadsGroup.name;
         } catch (error) {
@@ -6134,13 +6171,27 @@ export function CRMBoard({
   }, [pendingUnqualifiedLead, unqualifiedReasonDraft, updateClient]);
 
   const confirmCloseLead = useCallback(async () => {
-    const hasClosingEvidence = Boolean(
-      closeLeadFiles.purchaseOrder ||
-      closeLeadFiles.signedQuotation ||
-      closeLeadFiles.proofOfPayment ||
-      signedOcfCheck.signedAt,
+    const uploads = [
+      ["purchaseOrder", "Purchase order"],
+      ["signedQuotation", "Signed quotation"],
+      ["proofOfPayment", "Proof of payment"],
+    ] as const;
+    const datedDocumentUploads = uploads.filter(
+      ([key]) => closeLeadFiles[key] instanceof File,
     );
-    if (!pendingCloseLead || !hasClosingEvidence) return;
+    const hasUndatedClosingFile = datedDocumentUploads.some(
+      ([key]) => !closeLeadFileDates[key],
+    );
+    const evidenceDates = [
+      ...(signedOcfCheck.signedAt ? [signedOcfCheck.signedAt] : []),
+      ...datedDocumentUploads.map(([key]) => closeLeadFileDates[key]),
+    ];
+    const closingEvidenceDate = evidenceDates
+      .map((date) => ({ date, timestamp: new Date(date).getTime() }))
+      .filter(({ timestamp }) => Number.isFinite(timestamp))
+      .sort((first, second) => first.timestamp - second.timestamp)[0]?.date;
+    if (!pendingCloseLead || !closingEvidenceDate || hasUndatedClosingFile)
+      return;
     const client = clients.find(
       (item) => item.id === pendingCloseLead.clientId,
     );
@@ -6153,7 +6204,11 @@ export function CRMBoard({
     }
     setSavingCloseLead(true);
     try {
-      const toAttachment = async (file: File, category: string) => {
+      const toAttachment = async (
+        file: File,
+        category: string,
+        documentDate: string,
+      ) => {
         const [stored] = await uploadCrmFiles(
           [file],
           `clients/${pendingCloseLead.clientId}/closed-lead-files`,
@@ -6165,19 +6220,13 @@ export function CRMBoard({
           category,
           actorName: currentUserId ?? "Unknown user",
           createdAt: new Date().toISOString(),
+          documentDate,
         };
       };
-      const uploads: Array<[File | null, string]> = [
-        [closeLeadFiles.purchaseOrder, "Purchase order"],
-        [closeLeadFiles.signedQuotation, "Signed quotation"],
-        [closeLeadFiles.proofOfPayment, "Proof of payment"],
-      ];
       const files = await Promise.all(
-        uploads
-          .filter(
-            (upload): upload is [File, string] => upload[0] instanceof File,
-          )
-          .map(([file, category]) => toAttachment(file, category)),
+        datedDocumentUploads.map(([key, category]) =>
+          toAttachment(closeLeadFiles[key]!, category, closeLeadFileDates[key]),
+        ),
       );
       let existingFiles: Record<string, string>[] = [];
       try {
@@ -6198,12 +6247,19 @@ export function CRMBoard({
           },
         },
         true,
+        false,
+        closingEvidenceDate,
       );
       setPendingCloseLead(null);
       setCloseLeadFiles({
         purchaseOrder: null,
         signedQuotation: null,
         proofOfPayment: null,
+      });
+      setCloseLeadFileDates({
+        purchaseOrder: "",
+        signedQuotation: "",
+        proofOfPayment: "",
       });
     } catch (error) {
       toast.error("Client could not be closed", {
@@ -6216,6 +6272,7 @@ export function CRMBoard({
   }, [
     clients,
     closeLeadFiles,
+    closeLeadFileDates,
     currentUserId,
     pendingCloseLead,
     signedOcfCheck.signedAt,
@@ -9725,6 +9782,11 @@ export function CRMBoard({
               signedQuotation: null,
               proofOfPayment: null,
             });
+            setCloseLeadFileDates({
+              purchaseOrder: "",
+              signedQuotation: "",
+              proofOfPayment: "",
+            });
           }
         }}
       >
@@ -9780,17 +9842,42 @@ export function CRMBoard({
                 className="grid gap-1.5 text-sm font-medium text-slate-700"
               >
                 {label}
-                <input
-                  type="file"
-                  disabled={savingCloseLead}
-                  onChange={(event) =>
-                    setCloseLeadFiles((current) => ({
-                      ...current,
-                      [key]: event.target.files?.[0] ?? null,
-                    }))
-                  }
-                  className="block w-full text-xs file:mr-3 file:rounded-md file:border-0 file:bg-sky-100 file:px-3 file:py-2 file:text-xs file:font-semibold file:text-sky-700 hover:file:bg-sky-200 disabled:opacity-50"
-                />
+                <div className="flex flex-wrap items-center gap-3">
+                  <input
+                    type="file"
+                    disabled={savingCloseLead}
+                    onChange={(event) =>
+                      {
+                        setCloseLeadFiles((current) => ({
+                          ...current,
+                          [key]: event.target.files?.[0] ?? null,
+                        }));
+                        setCloseLeadFileDates((current) => ({
+                          ...current,
+                          [key]: "",
+                        }));
+                      }
+                    }
+                    className="block min-w-0 flex-1 text-xs file:mr-3 file:rounded-md file:border-0 file:bg-sky-100 file:px-3 file:py-2 file:text-xs file:font-semibold file:text-sky-700 hover:file:bg-sky-200 disabled:opacity-50"
+                  />
+                  <span className="grid gap-0.5 text-[11px] font-medium text-slate-500">
+                    <span>Document date</span>
+                    <input
+                      type="date"
+                      value={closeLeadFileDates[key]}
+                      required={Boolean(closeLeadFiles[key])}
+                      disabled={savingCloseLead || !closeLeadFiles[key]}
+                      onChange={(event) =>
+                        setCloseLeadFileDates((current) => ({
+                          ...current,
+                          [key]: event.target.value,
+                        }))
+                      }
+                      aria-label={`${label} document date`}
+                      className="h-9 w-40 rounded-md border border-slate-300 bg-white px-2 text-sm text-slate-700 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                    />
+                  </span>
+                </div>
                 {closeLeadFiles[key] && (
                   <span className="text-xs font-normal text-emerald-700">
                     {closeLeadFiles[key]?.name}
@@ -9824,11 +9911,13 @@ export function CRMBoard({
               disabled={
                 savingCloseLead ||
                 !(
-                  closeLeadFiles.purchaseOrder ||
-                  closeLeadFiles.signedQuotation ||
-                  closeLeadFiles.proofOfPayment ||
+                  (closeLeadFileDatesComplete &&
+                    (closeLeadFiles.purchaseOrder ||
+                      closeLeadFiles.signedQuotation ||
+                      closeLeadFiles.proofOfPayment)) ||
                   signedOcfCheck.signedAt
                 ) ||
+                !closeLeadFileDatesComplete ||
                 !clients
                   .find((client) => client.id === pendingCloseLead?.clientId)
                   ?.email.trim()

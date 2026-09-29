@@ -4,15 +4,27 @@ import { createClient } from "@/lib/supabase/server";
 
 const INTERNAL_ROLES = new Set(["sales", "pm", "admin", "director", "dev"]);
 
-function currentClosedLeadsGroupName() {
+function currentClosedLeadsGroupName(closingDate?: string) {
+  const source = closingDate ? new Date(closingDate) : new Date();
+  if (Number.isNaN(source.getTime())) throw new Error("Invalid closing date");
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Singapore",
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+  }).formatToParts(source);
+  const value = (type: Intl.DateTimeFormatPartTypes) =>
+    Number(parts.find((part) => part.type === type)?.value ?? 0);
+  const periodMonth = new Date(value("year"), value("month") - 1, 1);
+  if (value("day") >= 26) periodMonth.setMonth(periodMonth.getMonth() + 1);
   return `Closed Leads - ${new Intl.DateTimeFormat("en-US", {
     month: "long",
     year: "numeric",
     timeZone: "Asia/Singapore",
-  }).format(new Date())}`;
+  }).format(periodMonth)}`;
 }
 
-export async function POST() {
+export async function POST(request: Request) {
   const supabase = await createClient();
   const {
     data: { user },
@@ -28,7 +40,15 @@ export async function POST() {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const name = currentClosedLeadsGroupName();
+  const body = await request.json().catch(() => ({}));
+  let name: string;
+  try {
+    name = currentClosedLeadsGroupName(
+      typeof body?.closingDate === "string" ? body.closingDate : undefined,
+    );
+  } catch {
+    return NextResponse.json({ error: "Invalid closing date" }, { status: 400 });
+  }
   const { data: existing, error: existingError } = await supabaseAdmin
     .from("crm_groups")
     .select("id, name, color, sort_order")
