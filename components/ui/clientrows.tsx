@@ -1537,7 +1537,10 @@ export function ClientRow({
     onUpdate({ [field]: moveToNextWorkingDay ? nextWorkingDay : date });
     setPendingWorkingDate(null);
   }
-  const renderAttachmentField = (fieldKey: string) => {
+  const renderAttachmentField = (
+    fieldKey: string,
+    readOnlyItems: AttachmentItem[] = [],
+  ) => {
     const rawValue = String(client.customFields?.[fieldKey] ?? "");
     const draft = attachmentDrafts[fieldKey] ?? "";
     const parseItems = (): AttachmentItem[] => {
@@ -1562,7 +1565,7 @@ export function ClientRow({
       return [];
     };
 
-    const items = parseItems();
+    const items = [...parseItems(), ...readOnlyItems];
     const saveItems = (nextItems: AttachmentItem[]) =>
       updateClientCustomField(client.id, fieldKey, JSON.stringify(nextItems));
     const addItem = (item: AttachmentItem) => {
@@ -1647,14 +1650,16 @@ export function ClientRow({
                     )}
                   </div>
                 )}
-                <button
-                  type="button"
-                  onClick={() => removeItem(item)}
-                  title="Remove attachment"
-                  className="absolute -right-1 -top-1 hidden h-3.5 w-3.5 items-center justify-center rounded-full bg-white text-[10px] text-slate-500 shadow group-hover/attachment:flex hover:text-red-500"
-                >
-                  <X size={9} />
-                </button>
+                {!readOnlyItems.some((readOnlyItem) => readOnlyItem.id === item.id) && (
+                  <button
+                    type="button"
+                    onClick={() => removeItem(item)}
+                    title="Remove attachment"
+                    className="absolute -right-1 -top-1 hidden h-3.5 w-3.5 items-center justify-center rounded-full bg-white text-[10px] text-slate-500 shadow group-hover/attachment:flex hover:text-red-500"
+                  >
+                    <X size={9} />
+                  </button>
+                )}
               </div>
             ))}
           </div>
@@ -2047,7 +2052,7 @@ export function ClientRow({
                 sampleEstimate ? (
                   <>
                     The PDF sample quote was saved under this client’s
-                    Miscellaneous files.
+                    Files.
                   </>
                 ) : sampleEstimateError ? (
                   sampleEstimateError
@@ -3902,7 +3907,33 @@ export function ClientRow({
             order: columnOrderMap.filesMiscellaneous ?? 14,
           }}
         >
-          {renderAttachmentField("filesMiscellaneous")}
+          {renderAttachmentField(
+            "filesMiscellaneous",
+            (() => {
+              try {
+                const parsed = JSON.parse(
+                  client.customFields?.closedLeadFiles ?? "[]",
+                );
+                return Array.isArray(parsed)
+                  ? parsed
+                      .filter(
+                        (item): item is AttachmentItem =>
+                          Boolean(
+                            item &&
+                              typeof item === "object" &&
+                              "url" in item,
+                          ),
+                      )
+                      .map((item) => ({
+                        ...item,
+                        id: `closed-lead-${item.id}`,
+                      }))
+                  : [];
+              } catch {
+                return [];
+              }
+            })(),
+          )}
         </div>
         <div
           data-client-column="totalPrice"

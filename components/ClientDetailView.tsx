@@ -206,7 +206,7 @@ export function ClientDetailView({
   const fileGroups = [
     ["Closed lead files", "closedLeadFiles"],
     ["Logo / requirements", "logoRequirementsFile"],
-    ["Miscellaneous files", "filesMiscellaneous"],
+    ["Files", "filesMiscellaneous"],
   ] as const;
   const saveFiles = (field: string, next: Attachment[]) =>
     onUpdate({

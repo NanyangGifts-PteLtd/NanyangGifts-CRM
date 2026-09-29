@@ -238,7 +238,7 @@ const CLIENT_HEADER_COLS: HeaderCol[] = [
   },
   {
     key: "filesMiscellaneous",
-    label: "Files (Miscellaneous)",
+    label: "Files",
     width: 170,
     minWidth: 7,
   },
