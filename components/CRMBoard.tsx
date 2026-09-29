@@ -5117,6 +5117,11 @@ export function CRMBoard({
       ),
     [selectedSubitems],
   );
+  const formatSelectionAmount = (value: number) =>
+    value.toLocaleString("en-US", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
   const canAccessShipperPush = ["pm", "director", "dev"].includes(
     (currentUserRole ?? "").toLowerCase(),
   );
@@ -5256,6 +5261,12 @@ export function CRMBoard({
       setLoadingCombinedPush(false);
     }
   };
+  useEffect(() => {
+    const handleMultiSend = () => void openCombinedPush();
+    window.addEventListener("crm:open-multi-send", handleMultiSend);
+    return () =>
+      window.removeEventListener("crm:open-multi-send", handleMultiSend);
+  }, [openCombinedPush]);
   const confirmCombinedPush = async () => {
     if (!combinedPushPreview) return;
     setLoadingCombinedPush(true);
@@ -6488,6 +6499,8 @@ export function CRMBoard({
   );
 
   const openBin = useCallback(async () => {
+    setSelectedIds(new Set());
+    setSelectedSubitemIds([]);
     setShowBin(true);
     setSelectedBinItemKeys(new Set());
     setLoadingBin(true);
@@ -7264,6 +7277,35 @@ export function CRMBoard({
     setShowSubitemMoveMenu(false);
     setSubitemMoveSearch("");
   }, []);
+  const clearAllSelections = useCallback(() => {
+    setSelectedIds(new Set());
+    clearSubitemSelection();
+  }, [clearSubitemSelection]);
+
+  const updateSelectedSubitemStatus = useCallback(
+    async (status: string, statusOptionId: string | null) => {
+      if (!canEditSelectedSubitems) return;
+      await Promise.all(
+        selectedSubitemIds.map((subitemId) => {
+          const owner = clients.find((client) =>
+            client.subitems.some((subitem) => subitem.id === subitemId),
+          );
+          return owner
+            ? updateSubitem(owner.id, subitemId, {
+                status,
+                statusOptionId,
+              })
+            : Promise.resolve();
+        }),
+      );
+    },
+    [
+      canEditSelectedSubitems,
+      clients,
+      selectedSubitemIds,
+      updateSubitem,
+    ],
+  );
 
   const toggleMoveMenu = (
     event: React.MouseEvent<HTMLButtonElement>,
@@ -7421,7 +7463,10 @@ export function CRMBoard({
                 setDetailClientId(client.id);
                 setDetailClientInitialTab(null);
               }}
-              onOpenProfile={onOpenCustomerProfile}
+              onOpenProfile={(type, profileId) => {
+                clearAllSelections();
+                onOpenCustomerProfile?.(type, profileId);
+              }}
               onUpdate={(updates) => updateClient(detailClient.id, updates)}
               onChangeAssignees={(ids) =>
                 handleClientAssigneesChange(detailClient.id, ids)
@@ -7659,7 +7704,7 @@ export function CRMBoard({
         </AlertDialogContent>
       </AlertDialog>
       {selectedIds.size > 0 && (
-        <div className="fixed bottom-8 left-1/2 z-[100] flex min-h-16 w-[min(1100px,calc(100vw-2rem))] -translate-x-1/2 items-center gap-2 overflow-x-auto rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-2xl">
+        <div className="fixed bottom-12 left-1/2 z-[100] flex min-h-20 w-max max-w-[calc(100vw-3.5rem)] -translate-x-1/2 items-center gap-3 overflow-x-auto rounded-2xl border border-slate-200 bg-white px-5 py-5 shadow-2xl">
           <div className="whitespace-nowrap text-base font-medium text-slate-800">
             {selectedIds.size} Client{selectedIds.size === 1 ? "" : "s"}{" "}
             selected
@@ -7802,29 +7847,29 @@ export function CRMBoard({
             <Trash2 size={17} /> Delete
           </button>
           <div className="ml-auto whitespace-nowrap text-center text-sm text-slate-600">
-            <div>Total Price</div>
+            <div className="font-extrabold text-slate-800">Total Price</div>
             <div className="font-medium text-slate-900">
-              {selectedClientTotals.totalPrice.toFixed(2)}
+              {formatSelectionAmount(selectedClientTotals.totalPrice)}
             </div>
           </div>
           <div className="whitespace-nowrap text-center text-sm text-slate-600">
-            <div>Total Markup</div>
+            <div className="font-extrabold text-slate-800">Total Markup</div>
             <div
               className={`font-medium ${selectedClientTotals.totalMarkup >= 0 ? "text-green-600" : "text-red-500"}`}
             >
-              {selectedClientTotals.totalMarkup.toFixed(2)}
+              {formatSelectionAmount(selectedClientTotals.totalMarkup)}
             </div>
           </div>
           <div className="whitespace-nowrap text-center text-sm text-slate-600">
-            <div>Total U.P</div>
+            <div className="font-extrabold text-slate-800">Total Unit Price</div>
             <div className="font-medium text-slate-900">
-              {selectedClientTotals.totalUp.toFixed(2)}
+              {formatSelectionAmount(selectedClientTotals.totalUp)}
             </div>
           </div>
           <div className="whitespace-nowrap text-center text-sm text-slate-600">
-            <div>Total U.C</div>
+            <div className="font-extrabold text-slate-800">Total Unit Cost</div>
             <div className="font-medium text-slate-900">
-              {selectedClientTotals.totalUc.toFixed(2)}
+              {formatSelectionAmount(selectedClientTotals.totalUc)}
             </div>
           </div>
           <button
@@ -7838,7 +7883,7 @@ export function CRMBoard({
         </div>
       )}
       {selectedSubitemIds.length > 0 && (
-        <div className="fixed bottom-8 left-1/2 z-[100] flex min-h-16 w-[calc(100vw-3.5rem)] max-w-[1100px] -translate-x-1/2 items-center gap-2 overflow-x-auto rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-2xl">
+        <div className="fixed bottom-12 left-1/2 z-[100] flex min-h-20 w-max max-w-[calc(100vw-3.5rem)] -translate-x-1/2 items-center gap-3 overflow-x-auto rounded-2xl border border-slate-200 bg-white px-5 py-5 shadow-2xl">
           <div className="whitespace-nowrap text-base font-medium text-slate-800">
             {selectedSubitemIds.length} Subitem
             {selectedSubitemIds.length === 1 ? "" : "s"} selected
@@ -8036,29 +8081,29 @@ export function CRMBoard({
             <Trash2 size={17} /> Delete
           </button>
           <div className="ml-auto whitespace-nowrap text-center text-sm text-slate-600">
-            <div>Total Price</div>
+            <div className="font-extrabold text-slate-800">Total Price</div>
             <div className="font-medium text-slate-900">
-              {selectedSubitemTotals.totalPrice.toFixed(2)}
+              {formatSelectionAmount(selectedSubitemTotals.totalPrice)}
             </div>
           </div>
           <div className="whitespace-nowrap text-center text-sm text-slate-600">
-            <div>Total Markup</div>
+            <div className="font-extrabold text-slate-800">Total Markup</div>
             <div
               className={`font-medium ${selectedSubitemTotals.totalMarkup >= 0 ? "text-green-600" : "text-red-500"}`}
             >
-              {selectedSubitemTotals.totalMarkup.toFixed(2)}
+              {formatSelectionAmount(selectedSubitemTotals.totalMarkup)}
             </div>
           </div>
           <div className="whitespace-nowrap text-center text-sm text-slate-600">
-            <div>Total U.P</div>
+            <div className="font-extrabold text-slate-800">Total Unit Price</div>
             <div className="font-medium text-slate-900">
-              {selectedSubitemTotals.totalUp.toFixed(2)}
+              {formatSelectionAmount(selectedSubitemTotals.totalUp)}
             </div>
           </div>
           <div className="whitespace-nowrap text-center text-sm text-slate-600">
-            <div>Total U.C</div>
+            <div className="font-extrabold text-slate-800">Total Unit Cost</div>
             <div className="font-medium text-slate-900">
-              {selectedSubitemTotals.totalUc.toFixed(2)}
+              {formatSelectionAmount(selectedSubitemTotals.totalUc)}
             </div>
           </div>
           <button
@@ -10515,12 +10560,19 @@ export function CRMBoard({
                           )
                         }
                         onOpenOcfModal={handleOpenOcfModal}
-                        onOpenDetail={() => setDetailClientId(client.id)}
+                        onOpenDetail={() => {
+                          clearAllSelections();
+                          setDetailClientId(client.id);
+                        }}
+                        onBeginFocusedAction={clearAllSelections}
                         isSelected={selectedIds.has(client.id)}
                         onToggleSelect={() => toggleSelect(client.id)}
                         onUpdate={(updates) => updateClient(client.id, updates)}
                         onUpdateSubitem={(subitemId, updates) =>
                           updateSubitem(client.id, subitemId, updates)
+                        }
+                        onApplySelectedSubitemStatus={
+                          updateSelectedSubitemStatus
                         }
                         onAddSubitem={(name) => addSubitem(client.id, name)}
                         onDeleteSubitem={(subitemId) =>
@@ -10705,9 +10757,10 @@ export function CRMBoard({
                         )}
                         onDuplicateSubitemAction={duplicateSubitemAction}
                         onMoveSubitemAction={moveSubitemAction}
-                        onOpenSubitemDetail={(subitemId) =>
-                          setDetailSubitem({ clientId: client.id, subitemId })
-                        }
+                        onOpenSubitemDetail={(subitemId) => {
+                          clearAllSelections();
+                          setDetailSubitem({ clientId: client.id, subitemId });
+                        }}
                         onPaymentRowsChanged={(subitemId, paymentRows) =>
                           setClients((current) =>
                             current.map((owner) =>

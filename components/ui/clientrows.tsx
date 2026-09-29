@@ -311,6 +311,10 @@ export type ClientRowProps = {
   onToggleSelect: () => void;
   onUpdate: (u: Partial<Client>) => void;
   onUpdateSubitem: (subitemId: string, u: Partial<Subitem>) => void;
+  onApplySelectedSubitemStatus?: (
+    status: string,
+    statusOptionId: string | null,
+  ) => void | Promise<void>;
   onAddSubitem: (name: string) => void | Promise<void>;
   onDeleteSubitem: (id: string) => void;
   selectedSubitemIds: string[];
@@ -343,6 +347,7 @@ export type ClientRowProps = {
   canDelete: boolean;
   onOpenOcfModal: (client: Client) => void;
   onOpenDetail: () => void;
+  onBeginFocusedAction?: () => void;
   profiles: Profile[];
   clientAssignedIds: string[];
   onChangeClientAssignees: (ids: string[]) => void;
@@ -483,6 +488,7 @@ export function ClientRow({
   onToggleSelect,
   onUpdate,
   onUpdateSubitem,
+  onApplySelectedSubitemStatus,
   onAddSubitem,
   onDeleteSubitem,
   selectedSubitemIds,
@@ -500,6 +506,7 @@ export function ClientRow({
   canDelete,
   onOpenOcfModal,
   onOpenDetail,
+  onBeginFocusedAction,
   profiles,
   clientAssignedIds,
   onChangeClientAssignees,
@@ -2921,7 +2928,11 @@ export function ClientRow({
           }
         }}
         style={{ width: boardWidth, minWidth: boardWidth }}
-        className="relative box-border border-b flex text-[15px] items-center flex-shrink-0 border-r border-[#D0D4E4] group transition-colors focus-within:z-[70]"
+        className={`relative box-border border-b flex text-[15px] items-center flex-shrink-0 border-r border-[#D0D4E4] group transition-colors focus-within:z-[70] ${
+          isSelected
+            ? "bg-sky-50/70 shadow-[inset_0_0_0_1px_rgba(56,189,248,0.35)]"
+            : ""
+        }`}
       >
         <div
           aria-hidden="true"
@@ -3337,6 +3348,7 @@ export function ClientRow({
                         setSampleEstimateError(null);
                         setEstimateMode("choice");
                         resetEstimateState();
+                        onBeginFocusedAction?.();
                         setShowEstimateDialog(true);
                       }}
                       className="px-2 py-2 text-[10px] font-medium text-teal-500"
@@ -3364,7 +3376,10 @@ export function ClientRow({
                   <Tooltip.Trigger asChild>
                     <button
                       type="button"
-                      onClick={() => onOpenOcfModal(client)}
+                      onClick={() => {
+                        onBeginFocusedAction?.();
+                        onOpenOcfModal(client);
+                      }}
                       className={`mx-1 inline-flex items-center justify-center rounded border px-2 py-1 text-[10px] font-semibold transition active:scale-95 ${ocfButtonClassName}`}
                       aria-label="Order Confirmation Form"
                     >
@@ -4415,6 +4430,7 @@ export function ClientRow({
           subitems={client.subitems}
           clientColor={groupAccentColor}
           onUpdateSubitem={onUpdateSubitem}
+          onApplySelectedSubitemStatus={onApplySelectedSubitemStatus}
           onAddSubitem={onAddSubitem}
           onDeleteSubitem={onDeleteSubitem}
           selectedSubitemIds={selectedSubitemIds}

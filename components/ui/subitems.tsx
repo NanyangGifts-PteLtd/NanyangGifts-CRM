@@ -316,6 +316,10 @@ type SubitemProps = {
   subitems: Subitem[];
   clientColor: string;
   onUpdateSubitem: (id: string, u: Partial<Subitem>) => void;
+  onApplySelectedSubitemStatus?: (
+    status: string,
+    statusOptionId: string | null,
+  ) => void | Promise<void>;
   onAddSubitem: (name: string) => void | Promise<void>;
   onDeleteSubitem: (id: string) => void;
   selectedSubitemIds: string[];
@@ -469,6 +473,7 @@ export function SubitemsTable({
   subitems,
   clientColor,
   onUpdateSubitem,
+  onApplySelectedSubitemStatus,
   onAddSubitem,
   onDeleteSubitem,
   selectedSubitemIds,
@@ -2199,11 +2204,18 @@ export function SubitemsTable({
             {canAccessPush
               ? (() => {
                   const wasPushed = pushedSubitemIds.has(sub.id);
+                  const isPartOfSelection = selectedSubitemIds.includes(sub.id);
                   return (
                     <button
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
+                        if (isPartOfSelection) {
+                          window.dispatchEvent(
+                            new CustomEvent("crm:open-multi-send"),
+                          );
+                          return;
+                        }
                         void openPushPreview(sub.id);
                       }}
                       disabled={
@@ -2211,15 +2223,19 @@ export function SubitemsTable({
                         preparingPushSubitemId === sub.id ||
                         !canEditSubitem(sub.id)
                       }
-                      className={`inline-flex w-14 items-center justify-center rounded px-2 py-1 text-[11px] font-medium transition disabled:cursor-not-allowed disabled:opacity-60 ${
-                        wasPushed
+                      className={`inline-flex w-[78px] whitespace-nowrap items-center justify-center rounded px-2 py-1 text-[11px] font-medium transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                        isPartOfSelection
+                          ? "border border-teal-600 bg-teal-600 text-white shadow-sm hover:bg-teal-700"
+                          : wasPushed
                           ? "border-slate-200 bg-slate-100 text-slate-400 shadow-none"
                           : "border border-teal-600 bg-teal-600 text-white shadow-sm hover:bg-teal-700"
                       }`}
                       title={
                         !canEditSubitem(sub.id)
                           ? subitemEditBlockMessage(sub.id)
-                          : wasPushed
+                          : isPartOfSelection
+                            ? "Send selected subitems as one shipment"
+                            : wasPushed
                             ? "Already sent. Edit shipment details from the Shipper view."
                             : "Send to shipper view"
                       }
@@ -2227,7 +2243,9 @@ export function SubitemsTable({
                       {pushingSubitemId === sub.id ||
                       preparingPushSubitemId === sub.id
                         ? "Preparing..."
-                        : wasPushed
+                        : isPartOfSelection
+                          ? "Multi-send"
+                          : wasPushed
                           ? "Sent"
                           : "Send"}
                     </button>
@@ -2323,12 +2341,18 @@ export function SubitemsTable({
           <div className="overflow-hidden whitespace-nowrap text-ellipsis !text-center border-r border-[#D0D4E4] p-0 h-[33.1px] flex-shrink-0 transition transform active:scale-95 duration-150">
             <StatusBadge
               value={sub.status ?? ""}
-              onChange={(v, option) =>
-                onUpdateSubitem(sub.id, {
-                  status: v,
-                  statusOptionId: option?.id ?? null,
-                })
-              }
+              onChange={(v, option) => {
+                const statusOptionId = option?.id ?? null;
+                if (
+                  selectedSubitemIds.includes(sub.id) &&
+                  selectedSubitemIds.length > 1 &&
+                  onApplySelectedSubitemStatus
+                ) {
+                  void onApplySelectedSubitemStatus(v, statusOptionId);
+                  return;
+                }
+                onUpdateSubitem(sub.id, { status: v, statusOptionId });
+              }}
               options={subitemStatusOptions}
               onAddOption={onAddSubitemStatus}
               onDeleteOption={onDeleteSubitemStatus}
@@ -3955,7 +3979,7 @@ export function SubitemsTable({
                       );
                     }
                   }}
-                  className={`relative group border-b border-r border-[#D0D4E4] hover:bg-blue-50/30 focus-within:z-[70] ${subitemDropMarker?.subitemId === sub.id ? (subitemDropMarker.edge === "top" ? "shadow-[inset_0_3px_0_#0f8da8]" : "shadow-[inset_0_-3px_0_#0f8da8]") : ""}`}
+                  className={`relative group border-b border-r border-[#D0D4E4] hover:bg-blue-50/30 focus-within:z-[70] ${selectedSubitemIds.includes(sub.id) ? "bg-sky-50/70 shadow-[inset_0_0_0_1px_rgba(56,189,248,0.35)]" : ""} ${subitemDropMarker?.subitemId === sub.id ? (subitemDropMarker.edge === "top" ? "shadow-[inset_0_3px_0_#0f8da8]" : "shadow-[inset_0_-3px_0_#0f8da8]") : ""}`}
                 >
                   <td
                     className="group relative h-[33.1px] overflow-visible align-middle border-r border-[#D0D4E4] px-2 py-1 text-center"
