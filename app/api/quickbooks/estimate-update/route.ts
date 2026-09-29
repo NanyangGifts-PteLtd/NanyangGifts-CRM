@@ -163,11 +163,18 @@ async function authorisedGeneration(
   }
   const { data: client } = await supabase
     .from("clients")
-    .select("*, subitems!subitems_client_id_fkey(*)")
+    .select("*")
     .eq("id", generation.client_id)
+    .is("deleted_at", null)
     .maybeSingle();
   if (!client) throw new Error("Client not found");
-  return { generation, client };
+  const { data: activeSubitems, error: subitemsError } = await supabase
+    .from("subitems")
+    .select("*")
+    .eq("client_id", generation.client_id)
+    .is("deleted_at", null);
+  if (subitemsError) throw subitemsError;
+  return { generation, client: { ...client, subitems: activeSubitems ?? [] } };
 }
 
 const currentPreview = (estimate: any) => ({

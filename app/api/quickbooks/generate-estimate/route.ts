@@ -179,18 +179,21 @@ export async function POST(req: NextRequest) {
 
     const { data: client, error } = await supabase
       .from("clients")
-      .select(
-        `
-        *,
-        subitems!subitems_client_id_fkey (*)
-        `,
-      )
+      .select("*")
       .eq("id", clientId)
+      .is("deleted_at", null)
       .single();
 
     if (error || !client) {
       return NextResponse.json({ error: "Client not found" }, { status: 404 });
     }
+
+    const { data: activeSubitems, error: subitemsError } = await supabase
+      .from("subitems")
+      .select("*")
+      .eq("client_id", clientId)
+      .is("deleted_at", null);
+    if (subitemsError) throw subitemsError;
 
     const eligibleStatusIds = new Set(
       (
@@ -201,7 +204,7 @@ export async function POST(req: NextRequest) {
         )
       ).map((label) => label.id),
     );
-    const subitems = (client.subitems ?? [])
+    const subitems = (activeSubitems ?? [])
       .filter((s: any) => eligibleStatusIds.has(s.status_option_id))
       .sort(
         (first: any, second: any) =>

@@ -570,6 +570,7 @@ export async function POST(request: NextRequest) {
         .from("subitems")
         .select("position")
         .eq("client_id", client.id)
+        .is("deleted_at", null)
         .order("position", { ascending: false })
         .limit(1)
         .maybeSingle();

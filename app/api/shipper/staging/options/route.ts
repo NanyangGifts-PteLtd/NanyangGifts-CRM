@@ -5,9 +5,9 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 export async function GET(request: NextRequest) {
   const supabase = await createClient(); const { data: { user } } = await supabase.auth.getUser(); if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 }); const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle(); if (!profile?.role || !["pm", "admin", "director", "dev"].includes(profile.role.toLowerCase())) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const shipperId = request.nextUrl.searchParams.get("shipperId"); if (!shipperId) return NextResponse.json({ error: "shipperId is required" }, { status: 400 });
-  const { data: subitems, error } = await supabaseAdmin.from("subitems").select("id, display_id, name, client_id, cn_tracking, position").order("client_id").order("position"); if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  const { data: subitems, error } = await supabaseAdmin.from("subitems").select("id, display_id, name, client_id, cn_tracking, position").is("deleted_at", null).order("client_id").order("position"); if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   const clientIds = [...new Set((subitems ?? []).map((item) => item.client_id).filter(Boolean))];
-  const { data: clients } = clientIds.length ? await supabaseAdmin.from("clients").select("id, display_id, name, group_id, custom_fields, created_at").in("id", clientIds).order("created_at", { ascending: false }) : { data: [] };
+  const { data: clients } = clientIds.length ? await supabaseAdmin.from("clients").select("id, display_id, name, group_id, custom_fields, created_at").in("id", clientIds).is("deleted_at", null).order("created_at", { ascending: false }) : { data: [] };
   const [{ data: clientAssignments }, { data: subitemAssignments }] = await Promise.all([
     clientIds.length ? supabaseAdmin.from("client_assignees").select("client_id, assignment_type").eq("user_id", user.id).in("client_id", clientIds) : Promise.resolve({ data: [] }),
     (subitems ?? []).length ? supabaseAdmin.from("subitem_assignees").select("subitem_id").eq("user_id", user.id).in("subitem_id", (subitems ?? []).map((item) => item.id)) : Promise.resolve({ data: [] }),

@@ -120,6 +120,7 @@ export async function POST(req: NextRequest) {
         "status_option_id",
         awardedOrLaterLabels.map((label) => label.id),
       )
+      .is("deleted_at", null)
       .order("position");
 
     if (subitemsError) {

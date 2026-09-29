@@ -304,7 +304,7 @@ export async function saveSubitemAssignees(
 ) {
     const normalizedSelectedIds = [...new Set(selectedProfileIds)];
     const [{ data: subitem, error: subitemError }, { data: previousAssignments, error: readError }] = await Promise.all([
-        supabase.from('subitems').select('id, client_id, name').eq('id', subitemId).single(),
+        supabase.from('subitems').select('id, client_id, name').eq('id', subitemId).is('deleted_at', null).single(),
         supabase.from('subitem_assignees').select('user_id').eq('subitem_id', subitemId),
     ]);
     if (subitemError) throw subitemError;

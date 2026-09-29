@@ -412,7 +412,7 @@ export async function POST(req: NextRequest) {
   }
   const { data: client, error } = await supabase
     .from("clients")
-    .select("*, subitems!subitems_client_id_fkey(*)")
+    .select("*")
     .eq("id", clientId)
     .single();
   if (error || !client)
@@ -431,7 +431,17 @@ export async function POST(req: NextRequest) {
       )
     ).map((label) => label.id),
   );
-  const subitems = (client.subitems ?? [])
+  const { data: activeSubitems, error: subitemsError } = await supabase
+    .from("subitems")
+    .select("*")
+    .eq("client_id", clientId)
+    .is("deleted_at", null);
+  if (subitemsError)
+    return NextResponse.json(
+      { error: "Could not load the client's active subitems" },
+      { status: 500 },
+    );
+  const subitems = (activeSubitems ?? [])
     .filter((item: any) => eligibleStatusIds.has(item.status_option_id))
     .sort(
       (a: any, b: any) =>

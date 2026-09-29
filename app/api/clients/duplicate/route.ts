@@ -115,7 +115,7 @@ export async function POST(request: NextRequest) {
       .from("clients")
       .insert({
         ...clientCopy,
-        name: `${sourceClientResult.data.name ?? "New Client"} (Copy)`,
+        name: sourceClientResult.data.name ?? "New Client",
         status: newLeadLabel.value,
         status_option_id: newLeadLabel.id,
         custom_fields: withoutFileCustomFields(sourceClientResult.data.custom_fields),

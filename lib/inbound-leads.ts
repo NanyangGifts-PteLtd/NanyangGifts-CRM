@@ -209,10 +209,10 @@ async function updateIngestion(id: string, values: Record<string, unknown>) {
 
 async function createSubitems(clientId: string, lead: NormalizedInboundLead) {
   if (!lead.subitems.length) return 0;
-  const { data: existing, error: existingError } = await supabaseAdmin.from("subitems").select("id").eq("client_id", clientId).contains("custom_fields", { inbound_source: lead.source, inbound_external_id: lead.externalId }).limit(1);
+  const { data: existing, error: existingError } = await supabaseAdmin.from("subitems").select("id").eq("client_id", clientId).is("deleted_at", null).contains("custom_fields", { inbound_source: lead.source, inbound_external_id: lead.externalId }).limit(1);
   if (existingError) throw new InboundLeadError(existingError.message);
   if (existing?.length) return 0;
-  const { data: lastSubitem, error: positionError } = await supabaseAdmin.from("subitems").select("position").eq("client_id", clientId).order("position", { ascending: false }).limit(1).maybeSingle();
+  const { data: lastSubitem, error: positionError } = await supabaseAdmin.from("subitems").select("position").eq("client_id", clientId).is("deleted_at", null).order("position", { ascending: false }).limit(1).maybeSingle();
   if (positionError) throw new InboundLeadError(positionError.message);
   const firstPosition = Number(lastSubitem?.position ?? -1) + 1;
   const rows = lead.subitems.map((item, index) => ({

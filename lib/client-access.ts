@@ -17,6 +17,7 @@ export async function canEditClient(
   const [
     { data: profile, error: profileError },
     { data: assignment, error: assignmentError },
+    { data: client, error: clientError },
   ] = await Promise.all([
     supabase.from("profiles").select("role").eq("id", userId).maybeSingle(),
     supabase
@@ -25,14 +26,21 @@ export async function canEditClient(
       .eq("client_id", clientId)
       .eq("user_id", userId)
       .maybeSingle(),
+    supabase
+      .from("clients")
+      .select("id")
+      .eq("id", clientId)
+      .is("deleted_at", null)
+      .maybeSingle(),
   ]);
 
-  if (profileError || assignmentError) {
-    throw profileError ?? assignmentError;
+  if (profileError || assignmentError || clientError) {
+    throw profileError ?? assignmentError ?? clientError;
   }
 
   return (
-    CLIENT_WIDE_EDIT_ROLES.has(String(profile?.role ?? "").toLowerCase()) ||
-    Boolean(assignment)
+    Boolean(client) &&
+    (CLIENT_WIDE_EDIT_ROLES.has(String(profile?.role ?? "").toLowerCase()) ||
+      Boolean(assignment))
   );
 }

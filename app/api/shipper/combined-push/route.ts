@@ -90,7 +90,8 @@ export async function POST(request: NextRequest) {
       .select(
         "id, client_id, name, shipper_id, shipper, cn_tracking, timeline_groups",
       )
-      .in("id", ids);
+      .in("id", ids)
+      .is("deleted_at", null);
     if (error || (subitems?.length ?? 0) !== ids.length)
       return NextResponse.json(
         {

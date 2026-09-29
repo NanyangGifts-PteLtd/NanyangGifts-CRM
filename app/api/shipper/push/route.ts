@@ -325,7 +325,8 @@ export async function POST(req: NextRequest) {
         shipper_id
             `,
       )
-      .in("id", subitemIds);
+      .in("id", subitemIds)
+      .is("deleted_at", null);
 
     if (subitemsError) {
       return NextResponse.json(

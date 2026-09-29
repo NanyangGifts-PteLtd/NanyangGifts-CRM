@@ -244,8 +244,9 @@ export async function queueLeadReassignedMakeEvent(input: {
   const [{ data: client, error: clientError }, { data: assignees, error: assigneeError }] = await Promise.all([
     supabaseAdmin
       .from("clients")
-      .select("id, name, email, phone, requirements, nbd, billing_address, total_price, custom_fields, subitems!subitems_client_id_fkey(name, qty)")
+      .select("id, name, email, phone, requirements, nbd, billing_address, total_price, custom_fields, subitems!subitems_client_id_fkey(name, qty, deleted_at)")
       .eq("id", input.clientId)
+      .is("deleted_at", null)
       .single(),
     supabaseAdmin
       .from("profiles")
@@ -285,7 +286,7 @@ export async function queueLeadReassignedMakeEvent(input: {
       orderNumber: typeof customFields.orderNumber === "string" ? customFields.orderNumber : "",
       orderTotal: client.total_price ?? "",
       currency: typeof customFields.currency === "string" ? customFields.currency : "SGD",
-      subitems: client.subitems ?? [],
+      subitems: (client.subitems ?? []).filter((subitem) => !subitem.deleted_at),
       boardUrl: appBaseUrl() ? `${appBaseUrl()}/app?clientId=${encodeURIComponent(client.id)}` : "",
     },
     assignee: {

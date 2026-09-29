@@ -1670,6 +1670,7 @@ export async function duplicateSubitemRow(subitemId: string) {
     .from("subitems")
     .select("*")
     .eq("id", subitemId)
+    .is("deleted_at", null)
     .single();
   if (fetchError) throw fetchError;
   if (existing.custom_fields?.additionalCostLinked === "true") {
@@ -1721,21 +1722,36 @@ export async function duplicateSubitemRow(subitemId: string) {
       }))
     : copy.timeline_groups;
 
-  const { data: lastSubitem, error: lastSubitemError } = await supabase
+  const { data: siblings, error: siblingsError } = await supabase
     .from("subitems")
-    .select("position")
+    .select("id, position, created_at")
     .eq("client_id", existing.client_id)
-    .order("position", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (lastSubitemError) throw lastSubitemError;
+    .is("deleted_at", null)
+    .order("position", { ascending: true });
+  if (siblingsError) throw siblingsError;
+  const orderedSiblingIds = (siblings ?? [])
+    .sort(
+      (first, second) =>
+        Number(first.position ?? Number.MAX_SAFE_INTEGER) -
+          Number(second.position ?? Number.MAX_SAFE_INTEGER) ||
+        String(first.created_at ?? "").localeCompare(
+          String(second.created_at ?? ""),
+        ),
+    )
+    .map((sibling) => sibling.id);
+  const sourceIndex = orderedSiblingIds.indexOf(existing.id);
+  if (sourceIndex < 0) throw new Error("Subitem is no longer available.");
+  const appendPosition = Math.max(
+    -1,
+    ...(siblings ?? []).map((sibling) => Number(sibling.position ?? -1)),
+  ) + 1;
 
   const { data: duplicate, error: duplicateError } = await supabase
     .from("subitems")
     .insert({
       ...copy,
-      name: `${existing.name ?? "New Item"} (Copy)`,
-      position: Number(lastSubitem?.position ?? -1) + 1,
+      name: existing.name ?? "New Item",
+      position: appendPosition,
       timeline_rows: duplicateTimelineRows,
       timeline_groups: duplicateTimelineGroups,
     })
@@ -1777,6 +1793,10 @@ export async function duplicateSubitemRow(subitemId: string) {
     if (assigneeCopyError) throw assigneeCopyError;
   }
 
+  const nextOrder = [...orderedSiblingIds];
+  nextOrder.splice(sourceIndex + 1, 0, duplicate.id);
+  await reorderSubitemRows(existing.client_id, nextOrder);
+
   await insertActivityLog({
     clientId: duplicate.client_id,
     subitemId: duplicate.id,
@@ -1817,6 +1837,7 @@ export async function updateSubitemRow(
     .from("subitems")
     .select("*")
     .eq("id", subitemId)
+    .is("deleted_at", null)
     .single();
 
   if (fetchError) throw fetchError;
@@ -2352,6 +2373,7 @@ export async function moveSubitemRow(
     .from("subitems")
     .select("id, name, client_id, custom_fields")
     .eq("id", subitemId)
+    .is("deleted_at", null)
     .single();
   if (fetchError) throw fetchError;
   if (existing.custom_fields?.additionalCostLinked === "true") {
@@ -2364,8 +2386,12 @@ export async function moveSubitemRow(
   const { data: clients, error: clientsError } = await supabase
     .from("clients")
     .select("id, name")
-    .in("id", [existing.client_id, targetClientId]);
+    .in("id", [existing.client_id, targetClientId])
+    .is("deleted_at", null);
   if (clientsError) throw clientsError;
+  if ((clients ?? []).length !== 2) {
+    throw new Error("The source or target client is no longer available.");
+  }
 
   const oldClientName =
     clients?.find((client) => client.id === existing.client_id)?.name ??
@@ -2379,6 +2405,7 @@ export async function moveSubitemRow(
       .from("subitems")
       .select("position")
       .eq("client_id", targetClientId)
+      .is("deleted_at", null)
       .order("position", { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -2546,6 +2573,7 @@ export async function createSubitemPaymentRow(subitemId: string) {
     .from("subitems")
     .select("id, client_id, name")
     .eq("id", subitemId)
+    .is("deleted_at", null)
     .single();
   if (subitemError) throw subitemError;
   const { data: lastRow, error: lastRowError } = await supabase
@@ -2603,6 +2631,7 @@ export async function updateSubitemPaymentRow(
     .from("subitems")
     .select("client_id, name")
     .eq("id", subitemId)
+    .is("deleted_at", null)
     .single();
   if (subitemError) throw subitemError;
   const { data: existing, error: existingError } = await supabase
@@ -2694,6 +2723,7 @@ export async function deleteSubitemPaymentRow(
     .from("subitems")
     .select("client_id, name")
     .eq("id", subitemId)
+    .is("deleted_at", null)
     .single();
   if (subitemError) throw subitemError;
   const { data: row, error: rowError } = await supabase
@@ -2723,11 +2753,15 @@ export async function reorderSubitemRows(
   clientId: string,
   orderedSubitemIds: string[],
 ) {
-  const { error } = await supabase.rpc("reorder_client_subitems", {
-    target_client_id: clientId,
-    ordered_subitem_ids: orderedSubitemIds,
+  const response = await fetch("/api/subitems/reorder", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ clientId, orderedSubitemIds }),
   });
-  if (error) throw error;
+  const result = await response.json();
+  if (!response.ok) {
+    throw new Error(result?.error ?? "Could not reorder subitems.");
+  }
 }
 
 export async function duplicateClientRow(
