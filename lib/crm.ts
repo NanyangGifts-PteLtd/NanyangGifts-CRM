@@ -793,15 +793,7 @@ export async function logOcfCreated(params: {
 export async function fetchClientsWithSubitems() {
   const { data: clientsData, error: clientsError } = await supabase
     .from("clients")
-    .select(
-      `
-    *,
-    subitems!subitems_client_id_fkey (
-      *,
-      payment_rows:subitem_payment_rows (*)
-    )
-    `,
-    )
+    .select("*")
     .is("deleted_at", null)
     .order("created_at", { ascending: true });
 
@@ -810,11 +802,76 @@ export async function fetchClientsWithSubitems() {
     throw clientsError;
   }
 
+  const activeClientIds = (clientsData ?? []).map((row) => String(row.id));
+  const clientIdChunks = Array.from(
+    { length: Math.ceil(activeClientIds.length / 200) },
+    (_, index) => activeClientIds.slice(index * 200, (index + 1) * 200),
+  );
+  const subitemResults = await Promise.all(
+    clientIdChunks.map((clientIds) =>
+      supabase
+        .from("subitems")
+        .select("*")
+        .in("client_id", clientIds)
+        .is("deleted_at", null),
+    ),
+  );
+  const subitemsError = subitemResults.find((result) => result.error)?.error;
+  if (subitemsError) {
+    console.error("fetchClientsWithSubitems subitems error:", subitemsError);
+    throw subitemsError;
+  }
+  const subitemsData = subitemResults.flatMap((result) => result.data ?? []);
+  const activeSubitemIds = subitemsData.map((row) => String(row.id));
+  const subitemIdChunks = Array.from(
+    { length: Math.ceil(activeSubitemIds.length / 200) },
+    (_, index) => activeSubitemIds.slice(index * 200, (index + 1) * 200),
+  );
+  const paymentRowResults = await Promise.all(
+    subitemIdChunks.map((subitemIds) =>
+      supabase
+        .from("subitem_payment_rows")
+        .select("*")
+        .in("subitem_id", subitemIds),
+    ),
+  );
+  const paymentRowsError = paymentRowResults.find(
+    (result) => result.error,
+  )?.error;
+  if (paymentRowsError) {
+    console.error(
+      "fetchClientsWithSubitems payment rows error:",
+      paymentRowsError,
+    );
+    throw paymentRowsError;
+  }
+  const paymentRowsBySubitemId = new Map<
+    string,
+    NonNullable<Subitems["payment_rows"]>
+  >();
+  for (const paymentRow of paymentRowResults.flatMap(
+    (result) => result.data ?? [],
+  )) {
+    const subitemId = String(paymentRow.subitem_id);
+    const rows = paymentRowsBySubitemId.get(subitemId) ?? [];
+    rows.push(paymentRow as NonNullable<Subitems["payment_rows"]>[number]);
+    paymentRowsBySubitemId.set(subitemId, rows);
+  }
+  const subitemsByClientId = new Map<string, Subitems[]>();
+  for (const subitem of subitemsData) {
+    const clientId = String(subitem.client_id);
+    const rows = subitemsByClientId.get(clientId) ?? [];
+    rows.push({
+      ...(subitem as Subitems),
+      payment_rows: paymentRowsBySubitemId.get(String(subitem.id)) ?? [],
+    });
+    subitemsByClientId.set(clientId, rows);
+  }
+
   // Assignment maps are loaded separately by the Board, so embedding them in
   // every client response only duplicated a large payload. Likewise, never
   // fetch activity history belonging to soft-deleted clients: activity_log is
   // unbounded and used to be the largest part of every Board refresh.
-  const activeClientIds = (clientsData ?? []).map((row) => String(row.id));
   const { data: ocfData, error: ocfError } = activeClientIds.length
     ? await supabase
         .from("order_confirmations")
@@ -870,6 +927,7 @@ export async function fetchClientsWithSubitems() {
   return (clientsData ?? []).map((row) =>
     mapClients({
       ...(row as Clients),
+      subitems: subitemsByClientId.get(String(row.id)) ?? [],
       activity_log: activityByClientId.get((row as Clients).id) ?? [],
       ...(ocfError
         ? {}

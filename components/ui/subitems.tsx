@@ -97,6 +97,8 @@ const LOCKED_COST_INPUTS = new Set([
 // move them right. This is intentionally kept in pixels for visual tuning.
 const SUBITEM_ACCENT_RAIL_LEFT_OFFSET_PX = -4;
 const SUBITEM_ADD_ROW_HEIGHT_PX = 41;
+// Horizontal reach from the group accent rail to each subitem row.
+const SUBITEM_ELBOW_LENGTH_PX = 27.5;
 
 type ColumnDef = {
   key: string;
@@ -3958,11 +3960,22 @@ export function SubitemsTable({
                   <td
                     className="group relative h-[33.1px] overflow-visible align-middle border-r border-[#D0D4E4] px-2 py-1 text-center"
                   >
-                    <div
+                    <svg
                       aria-hidden="true"
-                      className="pointer-events-none absolute -left-8 top-1/2 z-[61] h-px w-8 -translate-y-1/2"
-                      style={{ backgroundColor: clientColor }}
-                    />
+                      className="pointer-events-none absolute top-1/2 z-[61] h-4 -translate-y-1/2 overflow-visible"
+                      style={{
+                        left: -SUBITEM_ELBOW_LENGTH_PX,
+                        width: SUBITEM_ELBOW_LENGTH_PX,
+                      }}
+                      viewBox={`0 0 ${SUBITEM_ELBOW_LENGTH_PX} 16`}
+                      fill="none"
+                    >
+                      <path
+                        d={`M0 0Q0 8 8 8H${SUBITEM_ELBOW_LENGTH_PX}`}
+                        stroke={clientColor}
+                        strokeWidth="1"
+                      />
+                    </svg>
                     <SubitemActionsMenu
                       subitemId={sub.id}
                       subitemName={sub.name}
