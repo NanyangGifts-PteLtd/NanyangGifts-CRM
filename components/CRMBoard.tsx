@@ -4154,6 +4154,10 @@ export function CRMBoard({
           signedQuotation: null,
           proofOfPayment: null,
         });
+        setSelectedIds(new Set());
+        setSelectedSubitemIds([]);
+        setShowClientMoveMenu(false);
+        setClientMoveSearch("");
         setPendingCloseLead({ clientId: localDraggedId, updates });
         return;
       }
@@ -5960,6 +5964,10 @@ export function CRMBoard({
           signedQuotation: null,
           proofOfPayment: null,
         });
+        setSelectedIds(new Set());
+        setSelectedSubitemIds([]);
+        setShowClientMoveMenu(false);
+        setClientMoveSearch("");
         setPendingCloseLead({ clientId, updates });
         return;
       }
