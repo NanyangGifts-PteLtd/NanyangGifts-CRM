@@ -264,14 +264,43 @@ function searchResults(
         subitem.customFields ?? {},
         new Set(),
       );
+      for (const paymentRow of subitem.paymentRows ?? []) {
+        const paymentReceived =
+          paymentRow.paymentReceivedLabel ??
+          (paymentRow.paymentReceived === null
+            ? ""
+            : paymentRow.paymentReceived
+              ? "Yes"
+              : "No");
+        const paymentFields: Array<[string, unknown]> = [
+          ["Subpayment", paymentRow.position + 1],
+          ["Sub-amount", paymentRow.amount],
+          ["Order Number", paymentRow.orderNumber],
+          ["Payment done?", paymentReceived],
+          ["Mode of Payment", paymentRow.modeOfPayment],
+        ];
+        for (const [field, value] of paymentFields) {
+          add({
+            clientId: client.id,
+            subitemId: subitem.id,
+            kind: "payment",
+            label: `${subitem.name || "Unnamed subitem"} · Subpayment ${paymentRow.position + 1}`,
+            context: `${client.name} · ${subitem.name} · ${field}`,
+            field,
+            value: String(value ?? ""),
+          });
+        }
+      }
       for (const timeline of subitem.timelineRows ?? []) {
         const timelineFields: Array<[string, unknown]> = [
           ["Timeline", timeline.name],
           ["Person", timeline.person],
           ["Remarks", timeline.remarks],
+          ["No. of Cartons", timeline.numOfCartons],
           ["Sub-Progress", timeline.subProgress],
           ["Start", timeline.timelineStart],
           ["End", timeline.timelineEnd],
+          ["Duration", timeline.duration],
           ["Dependency", timeline.dependency],
         ];
         for (const [field, value] of timelineFields)
@@ -284,6 +313,26 @@ function searchResults(
             field,
             value: String(value ?? ""),
           });
+      }
+      for (const sample of subitem.sampleRows ?? []) {
+        const sampleFields: Array<[string, unknown]> = [
+          ["Sample status", sample.status],
+          ["Sample type", sample.type],
+          ["Sample return by", sample.returnByDate],
+          ["Sample returned date", sample.returnedDate],
+          ["Sample sent date", sample.sentDate],
+        ];
+        for (const [field, value] of sampleFields) {
+          add({
+            clientId: client.id,
+            subitemId: subitem.id,
+            kind: "subitem",
+            label: subitem.name || "Unnamed subitem",
+            context: `${client.name} · ${subitem.name} · ${field}`,
+            field,
+            value: String(value ?? ""),
+          });
+        }
       }
     }
   }

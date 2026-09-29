@@ -20,8 +20,15 @@ export type AdvancedFilterRule = {
 export type AdvancedFilterColumn = {
   key: string;
   label: string;
-  category: "Client" | "Subitem" | "Payment";
+  category:
+    | "Client"
+    | "Subitem"
+    | "Payment"
+    | "Subpayment"
+    | "Timeline"
+    | "Sample";
   values: string[];
+  labelColors?: Record<string, string>;
 };
 const conditions: AdvancedFilterCondition[] = [
   "is",
@@ -39,6 +46,7 @@ function Combo({
   options,
   groups,
   disabled,
+  labelColors,
   onChange,
 }: {
   value: string;
@@ -46,6 +54,7 @@ function Combo({
   options: Array<{ value: string; label: string }>;
   groups?: boolean;
   disabled?: boolean;
+  labelColors?: Record<string, string>;
   onChange: (value: string) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -55,9 +64,15 @@ function Combo({
         option.label.toLowerCase().includes(value.toLowerCase()),
       )
     : options;
+  const selectedLabelColor = labelColors?.[value];
   return (
     <div className="relative min-w-0 flex-1">
       <div
+        style={
+          selectedLabelColor
+            ? { backgroundColor: selectedLabelColor, borderColor: selectedLabelColor }
+            : undefined
+        }
         className={`flex h-10 items-center rounded-md border border-slate-300 bg-white ${disabled ? "bg-slate-50 text-slate-400" : "focus-within:border-sky-400"}`}
       >
         <input
@@ -73,7 +88,9 @@ function Combo({
             setOpen(true);
           }}
           placeholder={disabled ? "Select a column first" : placeholder}
-          className="min-w-0 flex-1 bg-transparent px-3 text-sm outline-none placeholder:text-slate-400"
+          className={`min-w-0 flex-1 bg-transparent px-3 text-sm outline-none placeholder:text-slate-400 ${
+            selectedLabelColor ? "text-white placeholder:text-white/75" : ""
+          }`}
         />
         <button
           type="button"
@@ -82,7 +99,7 @@ function Combo({
             setTyping(false);
             setOpen((current) => !current);
           }}
-          className="px-2 text-slate-400"
+          className={selectedLabelColor ? "px-2 text-white" : "px-2 text-slate-400"}
         >
           <ChevronDown size={15} />
         </button>
@@ -109,7 +126,16 @@ function Combo({
                 }}
                 className="block w-full rounded px-2 py-2 text-left text-sm text-slate-700 hover:bg-sky-50"
               >
-                {option.label}
+                {labelColors?.[option.value] ? (
+                  <span
+                    className="inline-flex min-h-6 items-center rounded px-2 text-xs font-semibold text-white"
+                    style={{ backgroundColor: labelColors[option.value] }}
+                  >
+                    {option.label}
+                  </span>
+                ) : (
+                  option.label
+                )}
               </button>
             </div>
           ))}
@@ -170,6 +196,8 @@ export function AdvancedFilters({
       <div className="space-y-2">
         {rules.map((rule, index) => {
           const selected = columns.find((column) => column.key === rule.column);
+          const usesExactLabelMatch =
+            rule.condition === "is" || rule.condition === "is not";
           return (
             <div key={rule.id} className="flex items-center gap-2">
               <div className="w-20 text-center text-sm text-slate-600">
@@ -227,6 +255,9 @@ export function AdvancedFilters({
                   value,
                   label: value,
                 }))}
+                labelColors={
+                  usesExactLabelMatch ? selected?.labelColors : undefined
+                }
                 onChange={(value) => update(rule.id, { value })}
               />
               <button

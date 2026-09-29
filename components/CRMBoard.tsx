@@ -115,6 +115,7 @@ import {
   canonicalPaymentStatusOptions,
   type OptionEntry,
 } from "@/lib/board-labels";
+import { overallPaymentStatus as calculateOverallPaymentStatus } from "@/lib/payment-status";
 import {
   expandedGroupsForSearch,
   matchesBoardSearchValues,
@@ -247,6 +248,30 @@ const CLIENT_HEADER_COLS: HeaderCol[] = [
   { key: "dateCreated", label: "Date Created", width: 90, minWidth: 7 },
   { key: "addClientCol", label: "", width: 44, minWidth: 44 },
   { key: "empty", label: "", width: 44, minWidth: 44 },
+];
+const SUBPAYMENT_SEARCH_COLS = [
+  { key: "amount", label: "Sub-amount" },
+  { key: "orderNumber", label: "Order number" },
+  { key: "paymentReceivedLabel", label: "Payment done?" },
+  { key: "modeOfPayment", label: "Mode of payment" },
+];
+const TIMELINE_SEARCH_COLS = [
+  { key: "name", label: "Timeline" },
+  { key: "person", label: "Person" },
+  { key: "remarks", label: "Remarks" },
+  { key: "numOfCartons", label: "No. of Cartons" },
+  { key: "subProgress", label: "Sub-Progress" },
+  { key: "timelineStart", label: "Start" },
+  { key: "timelineEnd", label: "End" },
+  { key: "duration", label: "Duration" },
+  { key: "dependency", label: "Dependency" },
+];
+const SAMPLE_SEARCH_COLS = [
+  { key: "status", label: "Status" },
+  { key: "type", label: "Type" },
+  { key: "returnByDate", label: "Return by" },
+  { key: "returnedDate", label: "Returned date" },
+  { key: "sentDate", label: "Sent date" },
 ];
 const UNQUALIFIED_GROUP_NAME = "unqualified lead";
 const isUnqualifiedGroupName = (name?: string | null) =>
@@ -4176,11 +4201,54 @@ export function CRMBoard({
       ].sort((a, b) => a.localeCompare(b));
     const profileName = (id: string) =>
       peopleProfilesById[id]?.full_name || peopleProfilesById[id]?.email || id;
+    const labelColors = (options: OptionEntry[]) =>
+      Object.fromEntries(options.map((option) => [option.value, option.color]));
+    const labelColorsFor = (category: string, key: string) => {
+      if (category === "client") {
+        if (key === "replyStatus") return labelColors(replyStatusEntries);
+        if (key === "status") return labelColors(clientStatusEntries);
+        if (key === "channel") return labelColors(channelEntries);
+        if (key === "importance") return labelColors(importanceEntries);
+        if (key === "progress") return labelColors(progressEntries);
+        if (key === "overallPaymentStatus")
+          return labelColors(overallPaymentStatusEntries);
+      }
+      if (key === "status") return labelColors(subitemStatusEntries);
+      if (key === "payment") return labelColors(paymentEntries);
+      if (key === "paymentStatus") return labelColors(paymentStatusEntries);
+      if (key === "shipper") return labelColors(shipperEntries);
+      if (key === "localOverseas") return labelColors(localOverseasEntries);
+      if (key === "currency") return labelColors(currencyEntries);
+      if (key === "modeOfPayment") return labelColors(modeOfPaymentEntries);
+      if (category === "subpayment" && key === "paymentReceivedLabel")
+        return labelColors(paymentReceivedEntries);
+      return undefined;
+    };
     const clientValue = (client: Client, key: string): unknown => {
       if (key === "client") return client.name;
       if (key === "people")
         return (clientAssignees[client.id] ?? []).map(profileName);
       if (key === "pm") return clientPmAssigneeIds(client).map(profileName);
+      if (key === "dateCreated") return client.createdAt;
+      if (key === "totalPrice" || key === "totalMarkup") {
+        return client.subitems.reduce((total, subitem) => {
+          const financials = calculateSubitemFinancials(subitem, currencyEntries);
+          return total + (key === "totalPrice" ? financials.price : financials.markup);
+        }, 0);
+      }
+      if (key === "overallPaymentStatus") {
+        const awardedSubitems = client.subitems.filter(
+          (subitem) => subitem.status === "Awarded",
+        );
+        const paidAwardedSubitems = awardedSubitems.filter(
+          (subitem) => subitem.paymentStatus === "✅" || subitem.paymentStatus === "Resolved",
+        );
+        return calculateOverallPaymentStatus(
+          awardedSubitems.length,
+          paidAwardedSubitems.length,
+          overallPaymentStatusEntries,
+        );
+      }
       if (key.startsWith("custom:"))
         return client.customFields?.[key.slice(7)] ?? "";
       return (client as unknown as Record<string, unknown>)[key] ?? "";
@@ -4190,8 +4258,33 @@ export function CRMBoard({
         return (subitemAssignees[subitem.id] ?? []).map(profileName);
       if (key === "markup" || key === "percentMarkup")
         return calculateSubitemFinancials(subitem, currencyEntries)[key];
-      if (key === "idealMarkup" || key === "priceToSet")
-        return subitem.customFields?.[key] ?? "";
+      const quantity = Number(subitem.qty || 0);
+      const cost = Number(subitem.cost || 0);
+      const totalUc = quantity * cost;
+      const currencyMultiplier = sgdToCurrencyMultiplier(
+        currencySystemKey(subitem.currencyOptionId, currencyEntries),
+      );
+      const totalC =
+        totalUc +
+        Number(subitem.manpower || 0) * currencyMultiplier +
+        Number(subitem.ls || 0) * currencyMultiplier;
+      const totalToPay = totalC + Number(subitem.sample || 0) * cost;
+      const paymentAmount = (subitem.paymentRows ?? [])
+        .filter((row) => row.paymentReceived === true)
+        .reduce((sum, row) => sum + Number(row.amount || 0), 0);
+      if (key === "idealMarkup") return subitem.customFields?.idealMarkup ?? "";
+      if (key === "priceToSet") {
+        const idealMarkup = Number(subitem.customFields?.idealMarkup || 0);
+        return quantity > 0
+          ? (idealMarkup + calculateSubitemFinancials(subitem, currencyEntries).tc) /
+              quantity
+          : "";
+      }
+      if (key === "totalUc") return totalUc;
+      if (key === "totalC") return totalC;
+      if (key === "totalToPay") return totalToPay;
+      if (key === "paymentAmount") return paymentAmount;
+      if (key === "difference") return paymentAmount - totalToPay;
       if (key.startsWith("custom:"))
         return subitem.customFields?.[key.slice(7)] ?? "";
       return (subitem as unknown as Record<string, unknown>)[key] ?? "";
@@ -4208,7 +4301,29 @@ export function CRMBoard({
         values: unique(
           clients.map((client) => clientValue(client, column.key)),
         ),
+        labelColors: labelColorsFor("client", column.key),
       }));
+    // Display IDs are intentionally separate search/filter fields. Unlike
+    // database UUIDs, they are staff-facing values and must remain available
+    // even when the visible Client/Subitem columns are renamed.
+    const identificationColumns: AdvancedFilterColumn[] = [
+      {
+        key: "client:displayId",
+        label: "Client ID",
+        category: "Client",
+        values: unique(clients.map((client) => client.displayId)),
+      },
+      {
+        key: "subitem:displayId",
+        label: "Subitem ID",
+        category: "Subitem",
+        values: unique(
+          clients.flatMap((client) =>
+            client.subitems.map((subitem) => subitem.displayId),
+          ),
+        ),
+      },
+    ];
     const allSubitemColumns = [
       ...SUBITEM_COLS,
       ...subitemCustomCols.map((column) => ({
@@ -4227,6 +4342,7 @@ export function CRMBoard({
           client.subitems.map((subitem) => subitemValue(subitem, column.key)),
         ),
       ),
+      labelColors: labelColorsFor("subitem", column.key),
     }));
     const paymentColumns = PAYMENT_COLS.map((column) => ({
       key: `payment:${column.key}`,
@@ -4237,16 +4353,96 @@ export function CRMBoard({
           client.subitems.map((subitem) => subitemValue(subitem, column.key)),
         ),
       ),
+      labelColors: labelColorsFor("payment", column.key),
     }));
-    return [...clientColumns, ...subitemColumns, ...paymentColumns];
+    const subpaymentColumns = SUBPAYMENT_SEARCH_COLS.map((column) => ({
+      key: `subpayment:${column.key}`,
+      label: column.label,
+      category: "Subpayment" as const,
+      values: unique(
+        clients.flatMap((client) =>
+          client.subitems.flatMap((subitem) =>
+            (subitem.paymentRows ?? []).map((paymentRow) => {
+              if (
+                column.key === "paymentReceivedLabel" &&
+                !paymentRow.paymentReceivedLabel
+              )
+                return paymentRow.paymentReceived === null
+                  ? ""
+                  : paymentRow.paymentReceived
+                    ? "Yes"
+                    : "No";
+              return (
+                paymentRow as unknown as Record<string, unknown>
+              )[column.key] ?? "";
+            }),
+          ),
+        ),
+      ),
+      labelColors: labelColorsFor("subpayment", column.key),
+    }));
+    const timelineColumns = TIMELINE_SEARCH_COLS.map((column) => ({
+      key: `timeline:${column.key}`,
+      label: column.label,
+      category: "Timeline" as const,
+      values: unique(
+        clients.flatMap((client) =>
+          client.subitems.flatMap((subitem) =>
+            (subitem.timelineRows ?? []).map(
+              (timeline) =>
+                (timeline as unknown as Record<string, unknown>)[column.key] ??
+                "",
+            ),
+          ),
+        ),
+      ),
+    }));
+    const sampleColumns = SAMPLE_SEARCH_COLS.map((column) => ({
+      key: `sample:${column.key}`,
+      label: column.label,
+      category: "Sample" as const,
+      values: unique(
+        clients.flatMap((client) =>
+          client.subitems.flatMap((subitem) =>
+            (subitem.sampleRows ?? []).map(
+              (sample) =>
+                (sample as unknown as Record<string, unknown>)[column.key] ?? "",
+            ),
+          ),
+        ),
+      ),
+    }));
+    return [
+      ...clientColumns,
+      ...identificationColumns,
+      ...subitemColumns,
+      ...paymentColumns,
+      ...subpaymentColumns,
+      ...timelineColumns,
+      ...sampleColumns,
+    ];
   }, [
     clientAssignees,
     clientPmAssigneeIds,
     clients,
     mergedHeaderCols,
     peopleProfilesById,
+    channelEntries,
+    clientStatusEntries,
+    currencyEntries,
+    importanceEntries,
+    localOverseasEntries,
+    modeOfPaymentEntries,
+    overallPaymentStatusEntries,
+    paymentEntries,
+    paymentReceivedEntries,
+    paymentStatusEntries,
+    progressEntries,
+    replyStatusEntries,
+    shipperEntries,
     subitemAssignees,
     subitemCustomCols,
+    subitemStatusEntries,
   ]);
 
   const matchesAdvancedRule = useCallback(
@@ -4267,17 +4463,87 @@ export function CRMBoard({
               ? (clientAssignees[client.id] ?? []).map(profileName)
               : key === "pm"
                 ? clientPmAssigneeIds(client).map(profileName)
+                : key === "overallPaymentStatus"
+                  ? calculateOverallPaymentStatus(
+                      client.subitems.filter(
+                        (subitem) => subitem.status === "Awarded",
+                      ).length,
+                      client.subitems.filter(
+                        (subitem) =>
+                          subitem.status === "Awarded" &&
+                          (subitem.paymentStatus === "✅" ||
+                            subitem.paymentStatus === "Resolved"),
+                      ).length,
+                      overallPaymentStatusEntries,
+                    )
                 : key.startsWith("custom:")
                   ? client.customFields?.[key.slice(7)]
                   : (client as unknown as Record<string, unknown>)[key];
         values = Array.isArray(value) ? value : [value];
+      } else if (category === "subpayment") {
+        values = client.subitems.flatMap((subitem) =>
+          (subitem.paymentRows ?? []).flatMap((paymentRow) => {
+            if (key === "paymentReceivedLabel" && !paymentRow.paymentReceivedLabel)
+              return paymentRow.paymentReceived === null
+                ? [""]
+                : [paymentRow.paymentReceived ? "Yes" : "No"];
+            return [
+              (paymentRow as unknown as Record<string, unknown>)[key],
+            ];
+          }),
+        );
+      } else if (category === "timeline") {
+        values = client.subitems.flatMap((subitem) =>
+          (subitem.timelineRows ?? []).map(
+            (timeline) =>
+              (timeline as unknown as Record<string, unknown>)[key],
+          ),
+        );
+      } else if (category === "sample") {
+        values = client.subitems.flatMap((subitem) =>
+          (subitem.sampleRows ?? []).map(
+            (sample) => (sample as unknown as Record<string, unknown>)[key],
+          ),
+        );
       } else {
         values = client.subitems.flatMap((subitem) => {
+          const quantity = Number(subitem.qty || 0);
+          const cost = Number(subitem.cost || 0);
+          const totalUc = quantity * cost;
+          const currencyMultiplier = sgdToCurrencyMultiplier(
+            currencySystemKey(subitem.currencyOptionId, currencyEntries),
+          );
+          const totalC =
+            totalUc +
+            Number(subitem.manpower || 0) * currencyMultiplier +
+            Number(subitem.ls || 0) * currencyMultiplier;
+          const totalToPay = totalC + Number(subitem.sample || 0) * cost;
+          const paymentAmount = (subitem.paymentRows ?? [])
+            .filter((row) => row.paymentReceived === true)
+            .reduce((sum, row) => sum + Number(row.amount || 0), 0);
           const value =
             key === "people"
               ? (subitemAssignees[subitem.id] ?? []).map(profileName)
               : key === "markup" || key === "percentMarkup"
                 ? calculateSubitemFinancials(subitem, currencyEntries)[key]
+                : key === "idealMarkup"
+                  ? subitem.customFields?.idealMarkup
+                  : key === "priceToSet"
+                    ? quantity > 0
+                      ? (Number(subitem.customFields?.idealMarkup || 0) +
+                          calculateSubitemFinancials(subitem, currencyEntries).tc) /
+                        quantity
+                      : ""
+                    : key === "totalUc"
+                      ? totalUc
+                      : key === "totalC"
+                        ? totalC
+                        : key === "totalToPay"
+                          ? totalToPay
+                          : key === "paymentAmount"
+                            ? paymentAmount
+                            : key === "difference"
+                              ? paymentAmount - totalToPay
                 : key.startsWith("custom:")
                   ? subitem.customFields?.[key.slice(7)]
                   : (subitem as unknown as Record<string, unknown>)[key];
@@ -4299,7 +4565,9 @@ export function CRMBoard({
     [
       clientAssignees,
       clientPmAssigneeIds,
+      currencyEntries,
       peopleProfilesById,
+      overallPaymentStatusEntries,
       subitemAssignees,
     ],
   );
@@ -4354,13 +4622,62 @@ export function CRMBoard({
                       ? [clientFinancialTotals().totalPrice]
                       : key === "totalMarkup"
                         ? [clientFinancialTotals().totalMarkup]
+                      : key === "overallPaymentStatus"
+                        ? [
+                            calculateOverallPaymentStatus(
+                              client.subitems.filter(
+                                (subitem) => subitem.status === "Awarded",
+                              ).length,
+                              client.subitems.filter(
+                                (subitem) =>
+                                  subitem.status === "Awarded" &&
+                                  (subitem.paymentStatus === "✅" ||
+                                    subitem.paymentStatus === "Resolved"),
+                              ).length,
+                              overallPaymentStatusEntries,
+                            ),
+                          ]
                         : key.startsWith("custom:")
                           ? [client.customFields?.[key.slice(7)]]
                           : valuesFor(
                               client as unknown as Record<string, unknown>,
                               key,
                             )
-            : client.subitems.flatMap((subitem) =>
+            : scope === "subpayment"
+              ? client.subitems.flatMap((subitem) =>
+                  (subitem.paymentRows ?? []).flatMap((paymentRow) => {
+                    if (
+                      key === "paymentReceivedLabel" &&
+                      !paymentRow.paymentReceivedLabel
+                    )
+                      return paymentRow.paymentReceived === null
+                        ? [""]
+                        : [paymentRow.paymentReceived ? "Yes" : "No"];
+                    return valuesFor(
+                      paymentRow as unknown as Record<string, unknown>,
+                      key,
+                    );
+                  }),
+                )
+              : scope === "timeline"
+                ? client.subitems.flatMap((subitem) =>
+                    (subitem.timelineRows ?? []).flatMap((timeline) =>
+                      valuesFor(
+                        timeline as unknown as Record<string, unknown>,
+                        key,
+                      ),
+                    ),
+                  )
+                : scope === "sample"
+                  ? client.subitems.flatMap((subitem) =>
+                      (subitem.sampleRows ?? []).flatMap((sample) =>
+                        valuesFor(
+                          sample as unknown as Record<string, unknown>,
+                          key,
+                        ),
+                      ),
+                    )
+              : client.subitems.flatMap((subitem) =>
                 key === "people"
                   ? (subitemAssignees[subitem.id] ?? []).map(profileName)
                   : key === "markup" || key === "percentMarkup"
@@ -4388,6 +4705,8 @@ export function CRMBoard({
       boardSearchTerm,
       clientAssignees,
       clientPmAssigneeIds,
+      currencyEntries,
+      overallPaymentStatusEntries,
       peopleProfilesById,
       subitemAssignees,
     ],
