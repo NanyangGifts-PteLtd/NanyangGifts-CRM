@@ -2406,14 +2406,25 @@ export function CRMBoard({
     }
     const handleClickAway = (event: MouseEvent) => {
       if (!boardSearchRef.current?.contains(event.target as Node)) {
-        setShowBoardSearch(false);
+        // Closing the search controls must not clear the active board filter.
+        // Flush any debounced keystrokes first, so clicking a filtered row
+        // immediately after typing also keeps the intended search term.
+        if (boardSearchDebounceRef.current !== null) {
+          window.clearTimeout(boardSearchDebounceRef.current);
+          boardSearchDebounceRef.current = null;
+        }
+        const nextSearchTerm =
+          boardSearchInputRef.current?.value ?? boardSearchTerm;
+        setBoardSearchTerm(nextSearchTerm);
+        // Keep an active filter visible. The compact Search button is only
+        // useful when the board is not currently narrowed by a search.
+        if (!nextSearchTerm.trim()) setShowBoardSearch(false);
         setShowBoardSearchOptions(false);
-        setBoardSearchTerm("");
       }
     };
     document.addEventListener("mousedown", handleClickAway);
     return () => document.removeEventListener("mousedown", handleClickAway);
-  }, [showBoardSearch]);
+  }, [boardSearchTerm, showBoardSearch]);
 
   useEffect(
     () => () => {
@@ -7783,7 +7794,7 @@ export function CRMBoard({
         </button>
 
         <div ref={boardSearchRef} className="relative">
-          {showBoardSearch ? (
+          {showBoardSearch || boardSearchActive ? (
             <div className="flex h-8 w-72 items-center rounded border border-sky-500 bg-white">
               <Search size={16} className="ml-2 shrink-0 text-slate-500" />
               <input
