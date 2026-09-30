@@ -282,8 +282,6 @@ const FORMULA_RESULT_FIELDS = new Set([
 // are results rather than editable source inputs in that table.
 const PAYMENT_FORMULA_RESULT_FIELDS = new Set([
   ...FORMULA_RESULT_FIELDS,
-  "manpower",
-  "ls",
   "totalUc",
   "totalC",
   "difference",
@@ -2775,6 +2773,23 @@ export function SubitemsTable({
         .trim()
         .toLowerCase(),
     );
+    const updateConvertedSgdField = (field: "manpower" | "ls", value: string) => {
+      const trimmed = value.trim();
+      if (!trimmed) {
+        onUpdateSubitem(sub.id, { [field]: "" });
+        return;
+      }
+      if (!currencyMultiplier) {
+        toast.error("Choose a currency before editing this converted value.");
+        return;
+      }
+      const entered = Number(trimmed.replace(/,/g, ""));
+      if (!Number.isFinite(entered)) return;
+      // Payment values are in the selected currency. Store their SGD source
+      // value so both Board tables remain synchronized.
+      const sgdValue = Math.round((entered / currencyMultiplier) * 1_000_000) / 1_000_000;
+      onUpdateSubitem(sub.id, { [field]: String(sgdValue) });
+    };
 
     switch (key) {
       case "name":
@@ -3042,15 +3057,31 @@ export function SubitemsTable({
         );
       case "manpower":
         return (
-          <div className="flex justify-center text-xs text-gray-800">
-            {hasCurrency ? formatMoney(manpowerInCurrency) : ""}
-          </div>
+          <EditableCell
+            value={hasCurrency ? String(manpowerInCurrency) : ""}
+            onChange={(value) => updateConvertedSgdField("manpower", value)}
+            type="number"
+            readOnly={costLocked || !hasCurrency}
+            readOnlyReason={
+              costLocked
+                ? paidLockReason
+                : "Choose a currency before editing this converted value."
+            }
+          />
         );
       case "ls":
         return (
-          <div className="flex justify-center text-xs text-gray-800">
-            {hasCurrency ? formatMoney(lsInCurrency) : ""}
-          </div>
+          <EditableCell
+            value={hasCurrency ? String(lsInCurrency) : ""}
+            onChange={(value) => updateConvertedSgdField("ls", value)}
+            type="number"
+            readOnly={costLocked || !hasCurrency}
+            readOnlyReason={
+              costLocked
+                ? paidLockReason
+                : "Choose a currency before editing this converted value."
+            }
+          />
         );
       case "totalC":
         return (
