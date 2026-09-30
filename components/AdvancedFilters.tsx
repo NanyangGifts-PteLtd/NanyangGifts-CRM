@@ -21,12 +21,7 @@ export type AdvancedFilterColumn = {
   key: string;
   label: string;
   category:
-    | "Client"
-    | "Subitem"
-    | "Payment"
-    | "Subpayment"
-    | "Timeline"
-    | "Sample";
+    "Client" | "Subitem" | "Payment" | "Subpayment" | "Timeline" | "Sample";
   values: string[];
   labelColors?: Record<string, string>;
 };
@@ -70,7 +65,10 @@ function Combo({
       <div
         style={
           selectedLabelColor
-            ? { backgroundColor: selectedLabelColor, borderColor: selectedLabelColor }
+            ? {
+                backgroundColor: selectedLabelColor,
+                borderColor: selectedLabelColor,
+              }
             : undefined
         }
         className={`flex h-10 items-center rounded-md border border-slate-300 bg-white ${disabled ? "bg-slate-50 text-slate-400" : "focus-within:border-sky-400"}`}
@@ -99,13 +97,15 @@ function Combo({
             setTyping(false);
             setOpen((current) => !current);
           }}
-          className={selectedLabelColor ? "px-2 text-white" : "px-2 text-slate-400"}
+          className={
+            selectedLabelColor ? "px-2 text-white" : "px-2 text-slate-400"
+          }
         >
           <ChevronDown size={15} />
         </button>
       </div>
       {open && !disabled && (
-        <div className="absolute left-0 top-full z-[90] mt-1 max-h-64 w-full min-w-56 overflow-auto rounded-md border border-slate-200 bg-white p-1 shadow-xl">
+        <div className="absolute left-0 top-full z-menu mt-1 max-h-64 w-full min-w-56 overflow-auto rounded-md border border-slate-200 bg-white p-1 shadow-xl">
           {filtered.map((option, index) => (
             <div key={option.value}>
               {groups &&

@@ -133,7 +133,7 @@ export function EditableCell({
             setEditing(false);
           }
         }}
-        className={`w-full px-2 py-1.5 text-xs border border-blue-400 rounded outline-none bg-white ${resizableMultiline ? "absolute left-0 top-0 z-[1000] h-[260px] min-h-[80px] resize overflow-auto shadow-lg" : "resize-none overflow-hidden"} ${className}`}
+        className={`w-full px-2 py-1.5 text-xs border border-blue-400 rounded outline-none bg-white ${resizableMultiline ? "absolute left-0 top-0 z-menu h-[260px] min-h-[80px] resize overflow-auto shadow-lg" : "resize-none overflow-hidden"} ${className}`}
         style={{
           minWidth: 40,
           width: resizableMultiline
@@ -155,7 +155,7 @@ export function EditableCell({
       <div className="relative h-[22px] w-full">
         {textarea}
         {(recommended || matches.length > 0) && (
-          <div className="absolute left-0 top-[264px] z-[1001] flex w-[min(620px,calc(100vw-48px))] flex-wrap gap-1 rounded-b border border-slate-200 bg-white p-2 shadow-lg">
+          <div className="absolute left-0 top-[264px] z-menu flex w-[min(620px,calc(100vw-48px))] flex-wrap gap-1 rounded-b border border-slate-200 bg-white p-2 shadow-lg">
             {recommended && (
               <button
                 type="button"

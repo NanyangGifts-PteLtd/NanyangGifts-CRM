@@ -35,7 +35,8 @@ type Attachment = {
   signed?: boolean;
 };
 type OcfFile = Pick<Attachment, "id" | "name" | "url" | "createdAt" | "signed">;
-type Tab = "overview" | "files" | "activity" | "updates" | "related" | "profiles";
+type Tab =
+  "overview" | "files" | "activity" | "updates" | "related" | "profiles";
 type ClientUpdate = {
   id: string;
   client_id: string;
@@ -157,7 +158,9 @@ export function ClientDetailView({
 }) {
   const [tab, setTab] = useState<Tab>(initialTab ?? "overview");
   const canManageSubitemLock = ["director", "dev"].includes(
-    String(currentUserRole ?? "").trim().toLowerCase(),
+    String(currentUserRole ?? "")
+      .trim()
+      .toLowerCase(),
   );
   const subitemsLocked = client.customFields?.subitemsLocked === "true";
   const [hoverName, setHoverName] = useState(false);
@@ -178,7 +181,9 @@ export function ClientDetailView({
   const [linkedContact, setLinkedContact] = useState({ name: "", phone: "" });
   const [linkingContact, setLinkingContact] = useState(false);
   const [linkContactError, setLinkContactError] = useState<string | null>(null);
-  const [pendingUnlinkProfileId, setPendingUnlinkProfileId] = useState<string | null>(null);
+  const [pendingUnlinkProfileId, setPendingUnlinkProfileId] = useState<
+    string | null
+  >(null);
   const [unlinkingProfile, setUnlinkingProfile] = useState(false);
   const [ocfFiles, setOcfFiles] = useState<OcfFile[]>([]);
   const index = clients.findIndex((item) => item.id === client.id);
@@ -237,7 +242,8 @@ export function ClientDetailView({
   }, [initialTab]);
   useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || event.defaultPrevented || event.isComposing) return;
+      if (event.key !== "Escape" || event.defaultPrevented || event.isComposing)
+        return;
       if (document.querySelector("[data-crm-subitem-detail]")) return;
       event.preventDefault();
       onClose();
@@ -362,9 +368,10 @@ export function ClientDetailView({
   }, [client.id, tab, relatedRefresh]);
   const relatedByClient = useMemo(() => {
     if (!relatedData) return [];
-    const currentLink = relatedData.links.find(
-      (link) => link.client_id === client.id && link.is_primary_client,
-    ) ?? relatedData.links.find((link) => link.client_id === client.id);
+    const currentLink =
+      relatedData.links.find(
+        (link) => link.client_id === client.id && link.is_primary_client,
+      ) ?? relatedData.links.find((link) => link.client_id === client.id);
     const phone = normalizeRelatedPhone(client.phone ?? "");
     const profileId =
       currentLink?.client_profile_id ??
@@ -388,9 +395,10 @@ export function ClientDetailView({
   }, [client.id, client.phone, clients, relatedData]);
   const relatedByCompany = useMemo(() => {
     if (!relatedData) return [];
-    const currentLink = relatedData.links.find(
-      (link) => link.client_id === client.id && link.is_primary_company,
-    ) ?? relatedData.links.find((link) => link.client_id === client.id);
+    const currentLink =
+      relatedData.links.find(
+        (link) => link.client_id === client.id && link.is_primary_company,
+      ) ?? relatedData.links.find((link) => link.client_id === client.id);
     const company = normalizeRelatedCompany(client.company ?? "");
     const profileId =
       currentLink?.company_profile_id ??
@@ -417,7 +425,9 @@ export function ClientDetailView({
     const linked = relatedData.links
       .filter((link) => link.client_id === client.id && link.client_profile_id)
       .flatMap((link) => {
-        const profile = relatedData.clients.find((item) => item.id === link.client_profile_id);
+        const profile = relatedData.clients.find(
+          (item) => item.id === link.client_profile_id,
+        );
         if (!profile || seen.has(profile.id)) return [];
         seen.add(profile.id);
         return [{ profile, primary: Boolean(link.is_primary_client) }];
@@ -425,8 +435,10 @@ export function ClientDetailView({
     if (linked.some((item) => item.primary)) return linked;
     const phone = normalizeRelatedPhone(client.phone ?? "");
     const inferred = relatedData.clients.find((profile) =>
-      [profile.phone_number, ...(profile.phone_numbers ?? []).map((item) => item.phone_number)]
-        .some((value) => normalizeRelatedPhone(value) === phone),
+      [
+        profile.phone_number,
+        ...(profile.phone_numbers ?? []).map((item) => item.phone_number),
+      ].some((value) => normalizeRelatedPhone(value) === phone),
     );
     return inferred && !seen.has(inferred.id)
       ? [{ profile: inferred, primary: true }, ...linked]
@@ -438,14 +450,18 @@ export function ClientDetailView({
     const linked = relatedData.links
       .filter((link) => link.client_id === client.id && link.company_profile_id)
       .flatMap((link) => {
-        const profile = relatedData.companies.find((item) => item.id === link.company_profile_id);
+        const profile = relatedData.companies.find(
+          (item) => item.id === link.company_profile_id,
+        );
         if (!profile || seen.has(profile.id)) return [];
         seen.add(profile.id);
         return [{ profile, primary: Boolean(link.is_primary_company) }];
       });
     if (linked.some((item) => item.primary)) return linked;
     const company = normalizeRelatedCompany(client.company ?? "");
-    const inferred = relatedData.companies.find((profile) => normalizeRelatedCompany(profile.name) === company);
+    const inferred = relatedData.companies.find(
+      (profile) => normalizeRelatedCompany(profile.name) === company,
+    );
     return inferred && !seen.has(inferred.id)
       ? [{ profile: inferred, primary: true }, ...linked]
       : linked;
@@ -454,11 +470,15 @@ export function ClientDetailView({
     setLinkContactError(null);
     const requestedPhone = normalizeRelatedPhone(linkedContact.phone);
     const alreadyLinked = linkedClientProfiles.some(({ profile }) =>
-      [profile.phone_number, ...(profile.phone_numbers ?? []).map((item) => item.phone_number)]
-        .some((phone) => normalizeRelatedPhone(phone) === requestedPhone),
+      [
+        profile.phone_number,
+        ...(profile.phone_numbers ?? []).map((item) => item.phone_number),
+      ].some((phone) => normalizeRelatedPhone(phone) === requestedPhone),
     );
     if (requestedPhone && alreadyLinked) {
-      setLinkContactError("This client profile is already linked to this lead.");
+      setLinkContactError(
+        "This client profile is already linked to this lead.",
+      );
       return;
     }
     setLinkingContact(true);
@@ -468,12 +488,17 @@ export function ClientDetailView({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ clientId: client.id, ...linkedContact }),
       });
-      const result = await response.json() as { error?: string };
-      if (!response.ok) throw new Error(result.error || "Unable to link the client profile.");
+      const result = (await response.json()) as { error?: string };
+      if (!response.ok)
+        throw new Error(result.error || "Unable to link the client profile.");
       setLinkedContact({ name: "", phone: "" });
       setRelatedRefresh((value) => value + 1);
     } catch (error) {
-      setLinkContactError(error instanceof Error ? error.message : "Unable to link the client profile.");
+      setLinkContactError(
+        error instanceof Error
+          ? error.message
+          : "Unable to link the client profile.",
+      );
     } finally {
       setLinkingContact(false);
     }
@@ -486,14 +511,24 @@ export function ClientDetailView({
       const response = await fetch("/api/customer-profiles/lead-client-link", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ clientId: client.id, profileId: pendingUnlinkProfileId }),
+        body: JSON.stringify({
+          clientId: client.id,
+          profileId: pendingUnlinkProfileId,
+        }),
       });
-      const result = await response.json() as { error?: string };
-      if (!response.ok) throw new Error(result.error || "Unable to remove the linked client profile.");
+      const result = (await response.json()) as { error?: string };
+      if (!response.ok)
+        throw new Error(
+          result.error || "Unable to remove the linked client profile.",
+        );
       setPendingUnlinkProfileId(null);
       setRelatedRefresh((value) => value + 1);
     } catch (error) {
-      setLinkContactError(error instanceof Error ? error.message : "Unable to remove the linked client profile.");
+      setLinkContactError(
+        error instanceof Error
+          ? error.message
+          : "Unable to remove the linked client profile.",
+      );
     } finally {
       setUnlinkingProfile(false);
     }
@@ -543,7 +578,10 @@ export function ClientDetailView({
   };
 
   return (
-    <div data-crm-client-detail className="fixed inset-0 z-[200] bg-slate-950/40 p-3 sm:p-6">
+    <div
+      data-crm-client-detail
+      className="fixed inset-0 z-detail bg-slate-950/40 p-3 sm:p-6"
+    >
       <section className="flex h-full flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
         <header
           className={`flex items-center gap-4 border-b px-6 py-4 ${
@@ -576,8 +614,12 @@ export function ClientDetailView({
                 }}
               />
               {client.displayId ? (
-                <span title="Client ID" className={`shrink-0 rounded border px-2 py-1 text-xs font-medium ${isBlacklisted ? "border-red-300/70 bg-red-800/40 text-red-50" : "border-slate-200 bg-slate-50 text-slate-500"}`}>
-                  Client ID: <span className="font-mono">{client.displayId}</span>
+                <span
+                  title="Client ID"
+                  className={`shrink-0 rounded border px-2 py-1 text-xs font-medium ${isBlacklisted ? "border-red-300/70 bg-red-800/40 text-red-50" : "border-slate-200 bg-slate-50 text-slate-500"}`}
+                >
+                  Client ID:{" "}
+                  <span className="font-mono">{client.displayId}</span>
                 </span>
               ) : null}
               {isBlacklisted ? (
@@ -630,9 +672,7 @@ export function ClientDetailView({
             onDelete={onDelete}
             canManageSubitemLock={canManageSubitemLock}
             subitemsLocked={subitemsLocked}
-            onToggleSubitemsLock={() =>
-              onToggleSubitemsLock?.(!subitemsLocked)
-            }
+            onToggleSubitemsLock={() => onToggleSubitemsLock?.(!subitemsLocked)}
             className="shrink-0"
           />
           <button
@@ -1065,7 +1105,10 @@ export function ClientDetailView({
                 loading={relatedLoading}
               >
                 {linkedClientProfiles.map(({ profile, primary }) => (
-                  <div key={profile.id} className="flex items-center border-b border-slate-100 last:border-b-0">
+                  <div
+                    key={profile.id}
+                    className="flex items-center border-b border-slate-100 last:border-b-0"
+                  >
                     <button
                       type="button"
                       onClick={() => onOpenProfile?.("client", profile.id)}
@@ -1075,49 +1118,160 @@ export function ClientDetailView({
                         {profile.name.trim().slice(0, 2).toUpperCase() || "?"}
                       </span>
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm font-semibold text-slate-800">{profile.name || "Unnamed client"}</span>
-                        <span className="mt-0.5 block truncate text-xs text-slate-500">{profile.phone_number}</span>
+                        <span className="block truncate text-sm font-semibold text-slate-800">
+                          {profile.name || "Unnamed client"}
+                        </span>
+                        <span className="mt-0.5 block truncate text-xs text-slate-500">
+                          {profile.phone_number}
+                        </span>
                       </span>
-                      {primary && <span className="rounded-full bg-sky-100 px-2 py-1 text-[11px] font-semibold text-sky-700">Primary</span>}
-                      <ChevronRight size={17} className="shrink-0 text-slate-300" />
+                      {primary && (
+                        <span className="rounded-full bg-sky-100 px-2 py-1 text-[11px] font-semibold text-sky-700">
+                          Primary
+                        </span>
+                      )}
+                      <ChevronRight
+                        size={17}
+                        className="shrink-0 text-slate-300"
+                      />
                     </button>
-                    {!primary && canEdit && <button type="button" onClick={() => setPendingUnlinkProfileId(profile.id)} className="mr-4 rounded-md p-2 text-slate-400 hover:bg-red-50 hover:text-red-600" title="Remove linked contact" aria-label={`Remove ${profile.name} from this lead`}><Trash2 size={16} /></button>}
+                    {!primary && canEdit && (
+                      <button
+                        type="button"
+                        onClick={() => setPendingUnlinkProfileId(profile.id)}
+                        className="mr-4 rounded-md p-2 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                        title="Remove linked contact"
+                        aria-label={`Remove ${profile.name} from this lead`}
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    )}
                   </div>
                 ))}
-                {!relatedLoading && !linkedClientProfiles.length && <p className="px-5 py-8 text-center text-sm text-slate-400">No client profiles are linked yet.</p>}
+                {!relatedLoading && !linkedClientProfiles.length && (
+                  <p className="px-5 py-8 text-center text-sm text-slate-400">
+                    No client profiles are linked yet.
+                  </p>
+                )}
                 {canEdit && (
-                  <form className="border-t border-slate-200 p-5" onSubmit={(event) => { event.preventDefault(); void addLinkedContact(); }}>
-                    <h3 className="text-sm font-semibold text-slate-700">Add or link another contact</h3>
-                    <p className="mt-1 text-xs text-slate-500">An existing number links its profile; a new number creates a new client profile.</p>
+                  <form
+                    className="border-t border-slate-200 p-5"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      void addLinkedContact();
+                    }}
+                  >
+                    <h3 className="text-sm font-semibold text-slate-700">
+                      Add or link another contact
+                    </h3>
+                    <p className="mt-1 text-xs text-slate-500">
+                      An existing number links its profile; a new number creates
+                      a new client profile.
+                    </p>
                     <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                      <input value={linkedContact.name} onChange={(event) => setLinkedContact((value) => ({ ...value, name: event.target.value }))} placeholder="Contact name" className="h-9 rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-sky-500" />
-                      <input value={linkedContact.phone} onChange={(event) => setLinkedContact((value) => ({ ...value, phone: event.target.value }))} placeholder="Phone number" className="h-9 rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-sky-500" />
+                      <input
+                        value={linkedContact.name}
+                        onChange={(event) =>
+                          setLinkedContact((value) => ({
+                            ...value,
+                            name: event.target.value,
+                          }))
+                        }
+                        placeholder="Contact name"
+                        className="h-9 rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-sky-500"
+                      />
+                      <input
+                        value={linkedContact.phone}
+                        onChange={(event) =>
+                          setLinkedContact((value) => ({
+                            ...value,
+                            phone: event.target.value,
+                          }))
+                        }
+                        placeholder="Phone number"
+                        className="h-9 rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-sky-500"
+                      />
                     </div>
-                    {linkContactError && <p className="mt-2 text-xs text-red-600">{linkContactError}</p>}
-                    <button type="submit" disabled={linkingContact} className="mt-3 rounded-md bg-sky-600 px-3 py-2 text-sm font-semibold text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50">{linkingContact ? "Linking..." : "Add / link contact"}</button>
+                    {linkContactError && (
+                      <p className="mt-2 text-xs text-red-600">
+                        {linkContactError}
+                      </p>
+                    )}
+                    <button
+                      type="submit"
+                      disabled={linkingContact}
+                      className="mt-3 rounded-md bg-sky-600 px-3 py-2 text-sm font-semibold text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {linkingContact ? "Linking..." : "Add / link contact"}
+                    </button>
                   </form>
                 )}
                 {pendingUnlinkProfileId && (
                   <div className="border-t border-amber-200 bg-amber-50 px-5 py-4">
-                    <p className="text-sm font-medium text-amber-900">Remove this linked contact from the lead?</p>
-                    <p className="mt-1 text-xs text-amber-800">The customer profile itself will not be deleted.</p>
+                    <p className="text-sm font-medium text-amber-900">
+                      Remove this linked contact from the lead?
+                    </p>
+                    <p className="mt-1 text-xs text-amber-800">
+                      The customer profile itself will not be deleted.
+                    </p>
                     <div className="mt-3 flex gap-2">
-                      <button type="button" onClick={() => void removeLinkedContact()} disabled={unlinkingProfile} className="rounded-md bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50">{unlinkingProfile ? "Removing..." : "Remove contact"}</button>
-                      <button type="button" onClick={() => setPendingUnlinkProfileId(null)} disabled={unlinkingProfile} className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Cancel</button>
+                      <button
+                        type="button"
+                        onClick={() => void removeLinkedContact()}
+                        disabled={unlinkingProfile}
+                        className="rounded-md bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+                      >
+                        {unlinkingProfile ? "Removing..." : "Remove contact"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPendingUnlinkProfileId(null)}
+                        disabled={unlinkingProfile}
+                        className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                      >
+                        Cancel
+                      </button>
                     </div>
                   </div>
                 )}
               </ProfileLinkSection>
-              <ProfileLinkSection title="Linked company profiles" description="Profiles associated with this lead's company." icon={<Building2 size={19} />} loading={relatedLoading}>
+              <ProfileLinkSection
+                title="Linked company profiles"
+                description="Profiles associated with this lead's company."
+                icon={<Building2 size={19} />}
+                loading={relatedLoading}
+              >
                 {linkedCompanyProfiles.map(({ profile, primary }) => (
-                  <button key={profile.id} type="button" onClick={() => onOpenProfile?.("company", profile.id)} className="flex w-full items-center gap-3 px-5 py-4 text-left transition hover:bg-sky-50/60 focus:bg-sky-50/60 focus:outline-none">
-                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-violet-50 text-violet-700"><Building2 size={17} /></span>
-                    <span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold text-slate-800">{profile.name}</span></span>
-                    {primary && <span className="rounded-full bg-violet-100 px-2 py-1 text-[11px] font-semibold text-violet-700">Primary</span>}
-                    <ChevronRight size={17} className="shrink-0 text-slate-300" />
+                  <button
+                    key={profile.id}
+                    type="button"
+                    onClick={() => onOpenProfile?.("company", profile.id)}
+                    className="flex w-full items-center gap-3 px-5 py-4 text-left transition hover:bg-sky-50/60 focus:bg-sky-50/60 focus:outline-none"
+                  >
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-violet-50 text-violet-700">
+                      <Building2 size={17} />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-semibold text-slate-800">
+                        {profile.name}
+                      </span>
+                    </span>
+                    {primary && (
+                      <span className="rounded-full bg-violet-100 px-2 py-1 text-[11px] font-semibold text-violet-700">
+                        Primary
+                      </span>
+                    )}
+                    <ChevronRight
+                      size={17}
+                      className="shrink-0 text-slate-300"
+                    />
                   </button>
                 ))}
-                {!relatedLoading && !linkedCompanyProfiles.length && <p className="px-5 py-8 text-center text-sm text-slate-400">No company profile is linked yet.</p>}
+                {!relatedLoading && !linkedCompanyProfiles.length && (
+                  <p className="px-5 py-8 text-center text-sm text-slate-400">
+                    No company profile is linked yet.
+                  </p>
+                )}
               </ProfileLinkSection>
             </div>
           </main>
@@ -1143,8 +1297,14 @@ export function ClientDetailView({
                             className="ml-4 inline-flex items-center rounded-md bg-teal-100 px-2 py-1 text-[12.6px] font-medium text-teal-600 hover:bg-teal-200"
                           >
                             {entry.action === "estimate_created" ||
-                            ["Sample Estimate", "Sample Quote", "Draft Quote"].some((prefix) =>
-                              String(entry.meta?.fileName ?? "").startsWith(prefix),
+                            [
+                              "Sample Estimate",
+                              "Sample Quote",
+                              "Draft Quote",
+                            ].some((prefix) =>
+                              String(entry.meta?.fileName ?? "").startsWith(
+                                prefix,
+                              ),
                             )
                               ? "Open Quote"
                               : "Open OCF"}
@@ -1204,7 +1364,7 @@ export function ClientDetailView({
         <button
           type="button"
           onClick={() => setPermissionNotice(null)}
-          className="fixed z-[210] rounded bg-slate-800 px-3 py-2 text-xs text-white shadow-lg"
+          className="fixed z-nested rounded bg-slate-800 px-3 py-2 text-xs text-white shadow-lg"
           style={{ left: permissionNotice.x, top: permissionNotice.y }}
         >
           You can only edit items that are assigned to you
@@ -1230,10 +1390,21 @@ function ProfileLinkSection({
   return (
     <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
       <header className="flex items-start gap-3 border-b border-slate-200 px-5 py-4">
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-sky-50 text-sky-600">{icon}</span>
-        <div><h2 className="font-semibold text-slate-800">{title}</h2><p className="mt-0.5 text-xs text-slate-500">{description}</p></div>
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-sky-50 text-sky-600">
+          {icon}
+        </span>
+        <div>
+          <h2 className="font-semibold text-slate-800">{title}</h2>
+          <p className="mt-0.5 text-xs text-slate-500">{description}</p>
+        </div>
       </header>
-      {loading ? <p className="px-5 py-10 text-center text-sm text-slate-400">Loading linked profiles...</p> : children}
+      {loading ? (
+        <p className="px-5 py-10 text-center text-sm text-slate-400">
+          Loading linked profiles...
+        </p>
+      ) : (
+        children
+      )}
     </section>
   );
 }

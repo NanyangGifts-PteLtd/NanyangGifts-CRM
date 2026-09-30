@@ -259,13 +259,10 @@ export function SubitemDetailView({
       });
       return;
     }
-    void uploadCrmFiles(
-      [incoming],
-      `subitems/${subitem.id}/${key}`,
-      { clientId, subitemId: subitem.id },
-    ).then(
-      ([file]) => saveSingleFile(key, file),
-    );
+    void uploadCrmFiles([incoming], `subitems/${subitem.id}/${key}`, {
+      clientId,
+      subitemId: subitem.id,
+    }).then(([file]) => saveSingleFile(key, file));
   };
   const requestSingleFileRemoval = (
     key: "artworkFile" | "ocfFinalArtworkFile",
@@ -281,17 +278,17 @@ export function SubitemDetailView({
     if (type === "remove") {
       saveSingleFile(key, null);
     } else if (incoming) {
-      void uploadCrmFiles(
-        [incoming],
-        `subitems/${subitem.id}/${key}`,
-        { clientId, subitemId: subitem.id },
-      ).then(([file]) => saveSingleFile(key, file));
+      void uploadCrmFiles([incoming], `subitems/${subitem.id}/${key}`, {
+        clientId,
+        subitemId: subitem.id,
+      }).then(([file]) => saveSingleFile(key, file));
     }
     setPendingSingleFileChange(null);
   };
   useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || event.defaultPrevented || event.isComposing) return;
+      if (event.key !== "Escape" || event.defaultPrevented || event.isComposing)
+        return;
       event.preventDefault();
       onClose();
     };
@@ -340,7 +337,10 @@ export function SubitemDetailView({
     }
   }, [subitem.id, canEdit, options.subProgress]);
   return (
-    <div data-crm-subitem-detail className="fixed inset-0 z-[220] bg-slate-950/40 p-3 sm:p-6">
+    <div
+      data-crm-subitem-detail
+      className="fixed inset-0 z-detail bg-slate-950/40 p-3 sm:p-6"
+    >
       <section className="flex h-full flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
         <header className="flex items-center gap-4 border-b border-slate-200 px-6 py-4">
           <div
@@ -361,8 +361,12 @@ export function SubitemDetailView({
                 }}
               />
               {subitem.displayId ? (
-                <span title="Subitem ID" className="shrink-0 rounded border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-medium text-slate-500">
-                  Subitem ID: <span className="font-mono">{subitem.displayId}</span>
+                <span
+                  title="Subitem ID"
+                  className="shrink-0 rounded border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-medium text-slate-500"
+                >
+                  Subitem ID:{" "}
+                  <span className="font-mono">{subitem.displayId}</span>
                 </span>
               ) : null}
             </div>
@@ -463,7 +467,9 @@ export function SubitemDetailView({
                       file,
                     )
                   }
-                  onRemove={() => requestSingleFileRemoval("ocfFinalArtworkFile")}
+                  onRemove={() =>
+                    requestSingleFileRemoval("ocfFinalArtworkFile")
+                  }
                 />
               </div>
               <Section title="Subitem details">
@@ -692,17 +698,18 @@ export function SubitemDetailView({
                       file,
                     )
                   }
-                  onRemove={() => requestSingleFileRemoval("ocfFinalArtworkFile")}
+                  onRemove={() =>
+                    requestSingleFileRemoval("ocfFinalArtworkFile")
+                  }
                 />
               </div>
               <FileDropTarget
                 disabled={!canEdit}
                 onFiles={(dropped) => {
-                  void uploadCrmFiles(
-                    dropped,
-                    `subitems/${subitem.id}/files`,
-                    { clientId, subitemId: subitem.id },
-                  ).then((next) => saveFiles([...files, ...next]));
+                  void uploadCrmFiles(dropped, `subitems/${subitem.id}/files`, {
+                    clientId,
+                    subitemId: subitem.id,
+                  }).then((next) => saveFiles([...files, ...next]));
                 }}
               >
                 <section className="rounded-xl border border-slate-200 bg-white p-5">
@@ -806,8 +813,14 @@ export function SubitemDetailView({
                             className="ml-4 inline-flex rounded-md bg-teal-100 px-2 py-1 text-xs font-medium text-teal-600"
                           >
                             {entry.action === "estimate_created" ||
-                            ["Sample Estimate", "Sample Quote", "Draft Quote"].some((prefix) =>
-                              String(entry.meta?.fileName ?? "").startsWith(prefix),
+                            [
+                              "Sample Estimate",
+                              "Sample Quote",
+                              "Draft Quote",
+                            ].some((prefix) =>
+                              String(entry.meta?.fileName ?? "").startsWith(
+                                prefix,
+                              ),
                             )
                               ? "Open Quote"
                               : "Open OCF"}
@@ -841,9 +854,7 @@ export function SubitemDetailView({
                           disabled={!canEdit}
                           onClick={() => void onUndo(entry)}
                           title={
-                            !canEdit
-                              ? readOnlyMessage
-                              : "Undo this action"
+                            !canEdit ? readOnlyMessage : "Undo this action"
                           }
                           className="shrink-0 rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] font-medium text-gray-600 disabled:cursor-not-allowed disabled:opacity-50"
                         >
@@ -866,7 +877,7 @@ export function SubitemDetailView({
         <button
           type="button"
           onClick={() => setNotice(null)}
-          className="fixed z-[230] rounded bg-slate-800 px-3 py-2 text-xs text-white shadow-lg"
+          className="fixed z-nested rounded bg-slate-800 px-3 py-2 text-xs text-white shadow-lg"
           style={notice}
         >
           {notice.message}

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 import {
   Bell,
   Settings,
@@ -256,9 +257,9 @@ function searchResults(
         subitem.name || "Unnamed subitem",
         `${client.name} · ${subitem.name}`,
         subitem as unknown as Record<string, unknown>,
-      // Keep the subitem UUID internal too; use the explicit Subitem ID
-      // field above for user searches instead.
-      new Set(["id", "timelineRows", "sampleRows", "customFields"]),
+        // Keep the subitem UUID internal too; use the explicit Subitem ID
+        // field above for user searches instead.
+        new Set(["id", "timelineRows", "sampleRows", "customFields"]),
       );
       addScalarFields(
         client.id,
@@ -495,7 +496,8 @@ export default function TopBar({
   const profileRef = useRef<HTMLDivElement>(null);
   const settingsRef = useRef<HTMLDivElement>(null);
   const [showOcfSettings, setShowOcfSettings] = useState(false);
-  const [showAutomationsReference, setShowAutomationsReference] = useState(false);
+  const [showAutomationsReference, setShowAutomationsReference] =
+    useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [hasNewNotification, setHasNewNotification] = useState(false);
   const results = searchResults(
@@ -615,7 +617,7 @@ export default function TopBar({
   }, []);
 
   return (
-    <div className="h-16 bg-[#ffffff] flex items-center px-4 gap-3 border-b border-[#f2f8ff] flex-shrink-0 overflow-visible sticky top-0 z-50">
+    <div className="h-16 bg-[#ffffff] flex items-center px-4 gap-3 border-b border-[#f2f8ff] flex-shrink-0 overflow-visible sticky top-0 z-sticky">
       <div ref={searchRef} className="relative flex-1 max-w-90">
         <SearchBar
           value={value}
@@ -633,9 +635,11 @@ export default function TopBar({
           }}
           placeholder={placeholder}
         />
-        {showSearchResults && (
+        {showSearchResults &&
+          typeof document !== "undefined" &&
+          createPortal(
           <div
-            className="fixed inset-0 z-[500] bg-slate-950/45 p-2 sm:p-5"
+            className="fixed inset-0 z-modal bg-slate-950/45 p-2 sm:p-5"
             onMouseDown={(event) => {
               if (event.target === event.currentTarget)
                 setShowSearchResults(false);
@@ -817,7 +821,8 @@ export default function TopBar({
                 )}
               </main>
             </section>
-          </div>
+          </div>,
+          document.body,
         )}
       </div>
 
@@ -845,7 +850,7 @@ export default function TopBar({
         </button>
 
         {showNotifs && (
-          <div className="absolute right-0 top-full mt-1 w-80 bg-white font-semibold rounded-lg shadow-2xl border border-gray-200 z-[60] overflow-hidden">
+          <div className="absolute right-0 top-full mt-1 w-80 bg-white font-semibold rounded-lg shadow-2xl border border-gray-200 z-menu overflow-hidden">
             <div className="flex items-center justify-between px-4 py-2.5 bg-gray-50 border-b">
               <span className="text-xs font-semibold text-gray-700">
                 Notifications
@@ -903,7 +908,7 @@ export default function TopBar({
           <Settings size={16} />
         </button>
         {showSettings && (
-          <div className="absolute right-0 top-full mt-1 w-64 bg-white font-semibold rounded-lg shadow-2xl border border-gray-200 z-[60] overflow-hidden">
+          <div className="absolute right-0 top-full mt-1 w-64 bg-white font-semibold rounded-lg shadow-2xl border border-gray-200 z-menu overflow-hidden">
             <div className="px-4 py-2 bg-gray-50 border-b">
               <span className="text-xs font-semibold text-gray-700">
                 Settings
@@ -991,7 +996,7 @@ export default function TopBar({
         </button>
 
         {showProfile && (
-          <div className="absolute right-0 top-full mt-1 w-56 bg-white font-semibold rounded-lg shadow-2xl border border-gray-200 z-[60] overflow-hidden">
+          <div className="absolute right-0 top-full mt-1 w-56 bg-white font-semibold rounded-lg shadow-2xl border border-gray-200 z-menu overflow-hidden">
             <div className="px-4 py-3 bg-gray-50 border-b">
               <p className="text-xs font-semibold text-gray-800 truncate">
                 {userEmail}

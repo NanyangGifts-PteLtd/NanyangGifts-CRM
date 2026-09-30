@@ -94,7 +94,7 @@ export function SubitemActionsMenu({
       ref={menuRef}
       data-subitem-action-menu
       data-detail-action-menu={!onOpen || undefined}
-      className={`${onOpen ? "absolute top-1/2 -translate-y-1/2" : "relative"} ${open ? "z-[200]" : "z-30"}`}
+      className={`${onOpen ? "absolute top-1/2 -translate-y-1/2" : "relative"} ${open ? "z-menu" : "z-30"}`}
       style={onOpen ? { left: triggerOffsetPx } : undefined}
     >
       <button
@@ -109,7 +109,7 @@ export function SubitemActionsMenu({
         <MoreHorizontal size={14} />
       </button>
       {open && (
-        <div className="absolute left-0 top-full z-[120] mt-1 w-44 rounded-md border border-slate-200 bg-white p-1 text-left shadow-xl">
+        <div className="absolute left-0 top-full z-menu mt-1 w-44 rounded-md border border-slate-200 bg-white p-1 text-left shadow-xl">
           {onOpen && (
             <button
               type="button"
@@ -207,38 +207,43 @@ export function SubitemActionsMenu({
                             <ChevronRight size={14} />
                           )}
                         </button>
-                        {expandedGroups.has(group.name) && clients.map((client) => (
-                          <button
-                            disabled={!!processing || client.canMoveHere === false}
-                            key={client.id}
-                            type="button"
-                            onClick={() =>
-                              void run("move", () => onMove(client.id))
-                            }
-                            title={
-                              client.canMoveHere === false
-                                ? "You can only move subitems into clients assigned to you"
-                                : "Move subitem here"
-                            }
-                            className="block w-full rounded px-2 py-2 text-left text-sm text-slate-700 hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-40"
-                          >
-                            {client.name}
-                            {client.displayId ? (
-                              <span className="ml-1 font-mono text-xs text-slate-400">
-                                · {client.displayId}
+                        {expandedGroups.has(group.name) &&
+                          clients.map((client) => (
+                            <button
+                              disabled={
+                                !!processing || client.canMoveHere === false
+                              }
+                              key={client.id}
+                              type="button"
+                              onClick={() =>
+                                void run("move", () => onMove(client.id))
+                              }
+                              title={
+                                client.canMoveHere === false
+                                  ? "You can only move subitems into clients assigned to you"
+                                  : "Move subitem here"
+                              }
+                              className="block w-full rounded px-2 py-2 text-left text-sm text-slate-700 hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-40"
+                            >
+                              {client.name}
+                              {client.displayId ? (
+                                <span className="ml-1 font-mono text-xs text-slate-400">
+                                  · {client.displayId}
+                                </span>
+                              ) : null}
+                              <span className="mt-0.5 block truncate text-xs text-slate-500">
+                                Company: {client.company || "—"} · Email:{" "}
+                                {client.email || "—"}
                               </span>
-                            ) : null}
-                            <span className="mt-0.5 block truncate text-xs text-slate-500">
-                              Company: {client.company || "—"} · Email: {client.email || "—"}
-                            </span>
-                            <span className="mt-0.5 block truncate text-xs text-slate-400">
-                              Subitems ({client.subitems?.length ?? 0}): {client.subitems?.length
-                                ? client.subitems.slice(0, 3).join(", ") +
-                                  (client.subitems.length > 3 ? "…" : "")
-                                : "None"}
-                            </span>
-                          </button>
-                        ))}
+                              <span className="mt-0.5 block truncate text-xs text-slate-400">
+                                Subitems ({client.subitems?.length ?? 0}):{" "}
+                                {client.subitems?.length
+                                  ? client.subitems.slice(0, 3).join(", ") +
+                                    (client.subitems.length > 3 ? "…" : "")
+                                  : "None"}
+                              </span>
+                            </button>
+                          ))}
                       </div>
                     ) : null;
                   })}

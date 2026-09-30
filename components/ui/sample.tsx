@@ -96,7 +96,7 @@ export function SamplesSection({
       {permissionNotice && (
         <div
           role="alert"
-          className="fixed z-[10000] rounded-md bg-slate-800 px-3 py-2 text-xs font-medium text-white shadow-xl"
+          className="fixed z-tooltip rounded-md bg-slate-800 px-3 py-2 text-xs font-medium text-white shadow-xl"
           style={permissionNotice}
         >
           You can only edit items that are assigned to you

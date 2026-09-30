@@ -28,15 +28,15 @@ export function PreviousShipmentChoicesDialog({
     (row) => (history[row.subitemId] ?? []).length,
   );
   return (
-    <div className="fixed inset-0 z-[175] flex items-center justify-center bg-slate-950/40 p-4">
+    <div className="fixed inset-0 z-modal flex items-center justify-center bg-slate-950/40 p-4">
       <div className="w-full max-w-2xl rounded-xl bg-white shadow-2xl">
         <header className="border-b px-5 py-4">
           <h2 className="font-semibold">Previous shipment choices</h2>
           <div className="mt-3 rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
             <strong>Previously sent subitems</strong>
             <br />
-            Every subitem listed below has already been sent. Select a
-            specific past shipment to amend, or create a separate new shipment.
+            Every subitem listed below has already been sent. Select a specific
+            past shipment to amend, or create a separate new shipment.
           </div>
         </header>
         <main className="max-h-[60vh] space-y-4 overflow-y-auto p-5">

@@ -408,12 +408,15 @@ export function SupplierProfilesPanel({
     }
   };
   const deleteTagOption = async (tag: Tag) => {
-    if (!(await confirm({
-      title: "Delete tag?",
-      description: `Delete the tag ${tag.name}? It will be removed from every supplier profile.`,
-      confirmLabel: "Delete tag",
-      destructive: true,
-    }))) return;
+    if (
+      !(await confirm({
+        title: "Delete tag?",
+        description: `Delete the tag ${tag.name}? It will be removed from every supplier profile.`,
+        confirmLabel: "Delete tag",
+        destructive: true,
+      }))
+    )
+      return;
     setPending(`delete-tag:${tag.id}`);
     try {
       await request("DELETE", { action: "tag-option", id: tag.id });
@@ -1388,7 +1391,7 @@ function Dialog({
   className?: string;
 }) {
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-950/40 p-4">
+    <div className="fixed inset-0 z-modal flex items-center justify-center bg-slate-950/40 p-4">
       <section
         className={`w-full rounded-xl bg-white p-5 shadow-2xl ${className ?? "max-w-xl"}`}
       >

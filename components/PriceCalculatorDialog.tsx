@@ -368,7 +368,7 @@ export function PriceCalculatorDialog(props: Props) {
   );
   const slider = values(markup);
   return (
-    <div className="fixed inset-0 z-[250] flex items-center justify-center bg-slate-950/45 p-4">
+    <div className="fixed inset-0 z-modal flex items-center justify-center bg-slate-950/45 p-4">
       <section className="max-h-[calc(100vh-2rem)] w-full max-w-[1600px] overflow-y-auto rounded-xl bg-slate-50 p-6 shadow-2xl">
         <header className="mb-5 flex items-center justify-between border-b pb-4">
           <div>
@@ -459,7 +459,7 @@ export function PriceCalculatorDialog(props: Props) {
           </button>
         </section>
         {allHistory && (
-          <div className="fixed inset-0 z-[260] flex items-center justify-center bg-slate-950/45 p-4">
+          <div className="fixed inset-0 z-nested flex items-center justify-center bg-slate-950/45 p-4">
             <section className="max-h-[calc(100vh-3rem)] w-full max-w-[1500px] overflow-auto rounded-xl bg-white p-5 shadow-2xl">
               <header className="mb-4 flex items-center justify-between">
                 <h3 className="text-lg font-semibold">

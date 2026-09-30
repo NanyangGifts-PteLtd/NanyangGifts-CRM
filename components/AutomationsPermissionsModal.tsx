@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { Bot, LockKeyhole, X } from "lucide-react";
 import { useEscapeClose } from "./hooks/use-escape-close";
 
@@ -281,8 +282,10 @@ export default function AutomationsPermissionsModal({
   useEscapeClose({ open, onClose });
   if (!open) return null;
   const items = tab === "automations" ? automations : restrictions;
-  return (
-    <div className="fixed inset-0 z-[20000] flex items-center justify-center bg-black/40 px-4">
+  if (typeof document === "undefined") return null;
+
+  return createPortal(
+    <div className="fixed inset-0 z-modal flex items-center justify-center bg-black/40 px-4">
       <div className="flex max-h-[calc(100vh-2rem)] w-full max-w-5xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
         <div className="flex shrink-0 items-start justify-between border-b border-slate-200 px-5 py-4">
           <div>
@@ -366,6 +369,7 @@ export default function AutomationsPermissionsModal({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

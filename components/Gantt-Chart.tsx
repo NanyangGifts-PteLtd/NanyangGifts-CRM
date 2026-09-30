@@ -1418,7 +1418,7 @@ export default function GanttChart({
       </div>
       {contextMenu && (
         <div
-          className="fixed z-[300] w-48 rounded-lg border border-slate-200 bg-white p-1.5 shadow-xl"
+          className="fixed z-menu w-48 rounded-lg border border-slate-200 bg-white p-1.5 shadow-xl"
           style={{ left: contextMenu.x, top: contextMenu.y }}
           onPointerDown={(event) => event.stopPropagation()}
         >
@@ -1440,7 +1440,7 @@ export default function GanttChart({
       )}
       {filterMenu && (
         <div
-          className={`fixed z-[320] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl ${filterMenu.kind === "all" ? "w-[360px]" : "w-[280px]"}`}
+          className={`fixed z-menu overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl ${filterMenu.kind === "all" ? "w-[360px]" : "w-[280px]"}`}
           style={{
             left: filterMenu.x,
             top: filterMenu.y,

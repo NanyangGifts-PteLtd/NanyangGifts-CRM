@@ -88,7 +88,7 @@ export function ClientActionsMenu({
       ref={menuRef}
       data-client-action-menu
       data-detail-action-menu={!onOpen || undefined}
-      className={`relative ${className} ${open ? "z-[200]" : ""}`}
+      className={`relative ${className} ${open ? "z-menu" : ""}`}
     >
       <button
         type="button"
@@ -103,7 +103,7 @@ export function ClientActionsMenu({
       </button>
       {open && (
         <div
-          className={`absolute top-full z-[120] mt-1 w-44 rounded-md border border-slate-200 bg-white p-1 text-left shadow-xl ${align === "left" ? "left-0" : "right-0"}`}
+          className={`absolute top-full z-menu mt-1 w-44 rounded-md border border-slate-200 bg-white p-1 text-left shadow-xl ${align === "left" ? "left-0" : "right-0"}`}
         >
           {onOpen && (
             <button
@@ -133,7 +133,9 @@ export function ClientActionsMenu({
               ) : (
                 <LockKeyhole size={14} />
               )}
-              {subitemsLocked ? "Unlock Client's Subitems" : "Lock Client's Subitems"}
+              {subitemsLocked
+                ? "Unlock Client's Subitems"
+                : "Lock Client's Subitems"}
             </button>
           )}
           <button

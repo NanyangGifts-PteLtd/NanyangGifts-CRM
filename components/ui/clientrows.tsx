@@ -45,7 +45,10 @@ import {
 import { Tooltip } from "radix-ui";
 import type { CustomColumn } from "@/lib/custom-columns";
 import { calculateSubitemFinancials } from "@/lib/subitem-calculations";
-import { currencySystemKey, sgdToCurrencyMultiplier } from "@/lib/currency-labels";
+import {
+  currencySystemKey,
+  sgdToCurrencyMultiplier,
+} from "@/lib/currency-labels";
 import { useGenerateEstimate } from "@/components/hooks/use-generate-estimate-button";
 import { ClientActionsMenu } from "@/components/ClientActionsMenu";
 import { FileDropTarget } from "./file-drop-target";
@@ -56,7 +59,11 @@ import { useEscapeClose } from "@/components/hooks/use-escape-close";
 import { useAppConfirmation } from "./confirmation-provider";
 import { findSystemOption, type OptionEntry } from "@/lib/board-labels";
 import { overallPaymentStatus as calculateOverallPaymentStatus } from "@/lib/payment-status";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 
 type AttachmentItem = {
   id: string;
@@ -87,7 +94,15 @@ function PdfIcon({ size = 16 }: { size?: number }) {
     >
       <path d="M6 2.75h7l5 5v13.5H6z" />
       <path d="M13 2.75v5h5" />
-      <rect x="3" y="10.5" width="18" height="7.25" rx="1.25" fill="currentColor" stroke="none" />
+      <rect
+        x="3"
+        y="10.5"
+        width="18"
+        height="7.25"
+        rx="1.25"
+        fill="currentColor"
+        stroke="none"
+      />
       <text
         x="12"
         y="15.75"
@@ -161,8 +176,9 @@ function WorkingDatePicker({
   const month = displayedMonth.getMonth();
   const firstWeekday = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const cells = Array.from({ length: firstWeekday + daysInMonth }, (_, index) =>
-    index < firstWeekday ? null : index - firstWeekday + 1,
+  const cells = Array.from(
+    { length: firstWeekday + daysInMonth },
+    (_, index) => (index < firstWeekday ? null : index - firstWeekday + 1),
   );
   const selectDate = (day: number) => {
     onCommit(dateToValue(new Date(year, month, day)));
@@ -182,7 +198,7 @@ function WorkingDatePicker({
       </PopoverTrigger>
       <PopoverContent
         align="start"
-        className="z-[10001] w-[248px] !border-slate-200 !bg-white !p-3 !text-slate-800 !opacity-100 shadow-xl"
+        className="z-tooltip w-[248px] !border-slate-200 !bg-white !p-3 !text-slate-800 !opacity-100 shadow-xl"
         style={{ backgroundColor: "#ffffff", opacity: 1 }}
       >
         <div className="mb-2 flex items-center justify-between">
@@ -195,7 +211,10 @@ function WorkingDatePicker({
             <ChevronLeft size={16} />
           </button>
           <span className="text-sm font-semibold text-slate-800">
-            {displayedMonth.toLocaleDateString("en-SG", { month: "long", year: "numeric" })}
+            {displayedMonth.toLocaleDateString("en-SG", {
+              month: "long",
+              year: "numeric",
+            })}
           </span>
           <button
             type="button"
@@ -208,18 +227,24 @@ function WorkingDatePicker({
         </div>
         <div className="grid grid-cols-7 gap-1 text-center text-xs">
           {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((day) => (
-            <span key={day} className="py-1 font-medium text-slate-400">{day}</span>
-          ))}
-          {cells.map((day, index) => day === null ? <span key={`blank-${index}`} /> : (
-            <button
-              key={day}
-              type="button"
-              onClick={() => selectDate(day)}
-              className={`h-8 rounded text-sm hover:bg-sky-100 ${selected?.getFullYear() === year && selected.getMonth() === month && selected.getDate() === day ? "bg-sky-600 font-semibold text-white hover:bg-sky-700" : "text-slate-700"}`}
-            >
+            <span key={day} className="py-1 font-medium text-slate-400">
               {day}
-            </button>
+            </span>
           ))}
+          {cells.map((day, index) =>
+            day === null ? (
+              <span key={`blank-${index}`} />
+            ) : (
+              <button
+                key={day}
+                type="button"
+                onClick={() => selectDate(day)}
+                className={`h-8 rounded text-sm hover:bg-sky-100 ${selected?.getFullYear() === year && selected.getMonth() === month && selected.getDate() === day ? "bg-sky-600 font-semibold text-white hover:bg-sky-700" : "text-slate-700"}`}
+              >
+                {day}
+              </button>
+            ),
+          )}
         </div>
         {value && (
           <div className="border-t border-slate-100 p-2">
@@ -712,17 +737,28 @@ export function ClientRow({
     [statusOptions],
   );
   const awardedOrLaterStatusIds = useMemo(
-    () => new Set([
-      "subitem_status_awarded",
-      "subitem_status_verify_later",
-      "subitem_status_verified",
-      "subitem_status_variation_cost_difference",
-    ].map((key) => subitemStatusOptions.find((option) => option.systemKey === key)?.id)
-      .filter((id): id is string => Boolean(id))),
+    () =>
+      new Set(
+        [
+          "subitem_status_awarded",
+          "subitem_status_verify_later",
+          "subitem_status_verified",
+          "subitem_status_variation_cost_difference",
+        ]
+          .map(
+            (key) =>
+              subitemStatusOptions.find((option) => option.systemKey === key)
+                ?.id,
+          )
+          .filter((id): id is string => Boolean(id)),
+      ),
     [subitemStatusOptions],
   );
   const contributesToAwardedTotals = (subitem: Subitem) =>
-    Boolean(subitem.statusOptionId && awardedOrLaterStatusIds.has(subitem.statusOptionId));
+    Boolean(
+      subitem.statusOptionId &&
+      awardedOrLaterStatusIds.has(subitem.statusOptionId),
+    );
   const estimateEligibleStatusIds = useMemo(
     () =>
       new Set(
@@ -1113,7 +1149,8 @@ export function ClientRow({
       const totalPrice = client.subitems
         .filter(contributesToAwardedTotals)
         .reduce(
-          (total, subitem) => total + calculateSubitemFinancials(subitem, currencyOptions).price,
+          (total, subitem) =>
+            total + calculateSubitemFinancials(subitem, currencyOptions).price,
           0,
         );
       const priceDifference = Math.abs(totalPrice - invoiceSubtotal);
@@ -1165,7 +1202,7 @@ export function ClientRow({
   const estimateEligibleSubitems = client.subitems.filter((subitem) =>
     Boolean(
       subitem.statusOptionId &&
-        estimateEligibleStatusIds.has(subitem.statusOptionId),
+      estimateEligibleStatusIds.has(subitem.statusOptionId),
     ),
   );
   const editableQuoteTaxLineIds = [
@@ -1422,11 +1459,13 @@ export function ClientRow({
     try {
       const preparedArtwork = await Promise.all(
         sampleEstimateArtwork
-          .filter(({ subitem }) => selectedDraftQuoteSubitemIds.includes(subitem.id))
+          .filter(({ subitem }) =>
+            selectedDraftQuoteSubitemIds.includes(subitem.id),
+          )
           .map(async ({ subitem, artwork }) => ({
-          subitemId: subitem.id,
-          dataUrl: artwork ? await artworkUrlToDataUrl(artwork.url) : "",
-        })),
+            subitemId: subitem.id,
+            dataUrl: artwork ? await artworkUrlToDataUrl(artwork.url) : "",
+          })),
       );
       const response = await fetch("/api/estimates/sample", {
         method: "POST",
@@ -1464,22 +1503,24 @@ export function ClientRow({
         JSON.stringify([...current, attachment]),
       );
       sampleEstimateArtwork
-        .filter(({ subitem }) => selectedDraftQuoteSubitemIds.includes(subitem.id))
+        .filter(({ subitem }) =>
+          selectedDraftQuoteSubitemIds.includes(subitem.id),
+        )
         .forEach(({ subitem, artwork }) => {
-        const uploaded = sampleArtworkUploads[subitem.id];
-        if (!uploaded || !artwork) return;
-        onUpdateSubitem(subitem.id, {
-          customFields: {
-            ...subitem.customFields,
-            artworkFile: JSON.stringify({
-              id: crypto.randomUUID(),
-              kind: "file",
-              name: uploaded.name,
-              url: uploaded.url,
-              mimeType: uploaded.mimeType,
-            }),
-          },
-        });
+          const uploaded = sampleArtworkUploads[subitem.id];
+          if (!uploaded || !artwork) return;
+          onUpdateSubitem(subitem.id, {
+            customFields: {
+              ...subitem.customFields,
+              artworkFile: JSON.stringify({
+                id: crypto.randomUUID(),
+                kind: "file",
+                name: uploaded.name,
+                url: uploaded.url,
+                mimeType: uploaded.mimeType,
+              }),
+            },
+          });
         });
       setSampleEstimate({ filename: result.filename, url: result.url });
     } catch (error: unknown) {
@@ -1562,16 +1603,30 @@ export function ClientRow({
       return;
     }
     try {
-      const response = await fetch(`/api/working-calendar/next-working-day?date=${encodeURIComponent(date)}`);
+      const response = await fetch(
+        `/api/working-calendar/next-working-day?date=${encodeURIComponent(date)}`,
+      );
       const result = await response.json();
-      if (!response.ok) throw new Error(result?.error ?? "Could not check the working calendar.");
+      if (!response.ok)
+        throw new Error(
+          result?.error ?? "Could not check the working calendar.",
+        );
       if (result.isWorkingDay || !result.nextWorkingDay) {
         save(date);
         return;
       }
-      setPendingWorkingDate({ field, date, nextWorkingDay: String(result.nextWorkingDay) });
+      setPendingWorkingDate({
+        field,
+        date,
+        nextWorkingDay: String(result.nextWorkingDay),
+      });
     } catch (error) {
-      toast.error("Could not check the working calendar", { description: error instanceof Error ? error.message : "The selected date was kept." });
+      toast.error("Could not check the working calendar", {
+        description:
+          error instanceof Error
+            ? error.message
+            : "The selected date was kept.",
+      });
       save(date);
     }
   }
@@ -1695,7 +1750,9 @@ export function ClientRow({
                     )}
                   </div>
                 )}
-                {!readOnlyItems.some((readOnlyItem) => readOnlyItem.id === item.id) && (
+                {!readOnlyItems.some(
+                  (readOnlyItem) => readOnlyItem.id === item.id,
+                ) && (
                   <button
                     type="button"
                     onClick={() => removeItem(item)}
@@ -1754,7 +1811,7 @@ export function ClientRow({
           )}
           {attachmentLinkDialog === fieldKey && (
             <div
-              className="fixed inset-0 z-[120] flex items-center justify-center bg-black/30 p-4"
+              className="fixed inset-0 z-modal flex items-center justify-center bg-black/30 p-4"
               onMouseDown={() => setAttachmentLinkDialog(null)}
             >
               <div
@@ -1845,7 +1902,10 @@ export function ClientRow({
     .filter(contributesToAwardedTotals)
     .reduce(
       (totals, subitem) => {
-        const { price, markup } = calculateSubitemFinancials(subitem, currencyOptions);
+        const { price, markup } = calculateSubitemFinancials(
+          subitem,
+          currencyOptions,
+        );
 
         return {
           totalPrice: totals.totalPrice + price,
@@ -2029,7 +2089,7 @@ export function ClientRow({
       {permissionNotice && (
         <div
           role="alert"
-          className="fixed z-[10000] rounded-md bg-slate-800 px-3 py-2 text-xs font-medium text-white shadow-xl"
+          className="fixed z-tooltip rounded-md bg-slate-800 px-3 py-2 text-xs font-medium text-white shadow-xl"
           style={permissionNotice}
         >
           You can only edit items that are assigned to you
@@ -2038,7 +2098,7 @@ export function ClientRow({
       {blacklistNotice && (
         <div
           role="alert"
-          className="pointer-events-none fixed z-[10010] rounded-md border border-red-700 bg-red-600 px-3 py-2 text-xs font-semibold text-white shadow-xl"
+          className="pointer-events-none fixed z-tooltip rounded-md border border-red-700 bg-red-600 px-3 py-2 text-xs font-semibold text-white shadow-xl"
           style={blacklistNotice}
         >
           This client is in the blacklist
@@ -2101,10 +2161,7 @@ export function ClientRow({
                 "Choose whether to create a PDF preview or send a quote to QuickBooks."
               ) : estimateMode === "sample" ? (
                 sampleEstimate ? (
-                  <>
-                    The PDF draft quote was saved under this client’s
-                    Files.
-                  </>
+                  <>The PDF draft quote was saved under this client’s Files.</>
                 ) : sampleEstimateError ? (
                   sampleEstimateError
                 ) : null
@@ -2159,7 +2216,9 @@ export function ClientRow({
               <div className="overflow-hidden rounded-md border border-slate-200 bg-white text-xs text-slate-600">
                 <div className="grid grid-cols-[minmax(0,1fr)_220px] border-b border-slate-200 bg-slate-50 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                   <div className="px-3 py-2">Subitems</div>
-                  <div className="border-l border-slate-200 px-3 py-2">Artworks</div>
+                  <div className="border-l border-slate-200 px-3 py-2">
+                    Artworks
+                  </div>
                 </div>
                 {sampleEstimateArtwork.map(({ subitem, artwork }) => {
                   const isSelected = selectedDraftQuoteSubitemIds.includes(
@@ -2253,7 +2312,7 @@ export function ClientRow({
                 {draftQuoteArtworkPreview && typeof document !== "undefined"
                   ? createPortal(
                       <div
-                        className="pointer-events-auto fixed inset-0 z-[400] flex items-center justify-center bg-slate-950/60 p-6"
+                        className="pointer-events-auto fixed inset-0 z-nested flex items-center justify-center bg-slate-950/60 p-6"
                         onMouseDown={() => setDraftQuoteArtworkPreview(null)}
                       >
                         <div
@@ -2873,7 +2932,9 @@ export function ClientRow({
                       void generateSampleEstimate();
                     }}
                   >
-                    {isGeneratingSample ? "Generating…" : "Generate draft quote PDF"}
+                    {isGeneratingSample
+                      ? "Generating…"
+                      : "Generate draft quote PDF"}
                   </AlertDialogAction>
                 </>
               )
@@ -3223,7 +3284,7 @@ export function ClientRow({
             {showActivityLog && (
               <div
                 data-activity-log
-                className="fixed inset-0 z-50 flex items-center justify-center bg-black/30"
+                className="fixed inset-0 z-modal flex items-center justify-center bg-black/30"
                 onPointerDown={(event) => event.stopPropagation()}
                 onDragStart={(event) => event.stopPropagation()}
               >
@@ -3532,7 +3593,12 @@ export function ClientRow({
         >
           <StatusBadge
             value={client.replyStatus}
-            onChange={(v, option) => onUpdate({ replyStatus: v as ReplyStatus, replyStatusOptionId: option?.id ?? null })}
+            onChange={(v, option) =>
+              onUpdate({
+                replyStatus: v as ReplyStatus,
+                replyStatusOptionId: option?.id ?? null,
+              })
+            }
             options={replyStatusOptions}
             onAddOption={onAddReplyStatus}
             onDeleteOption={onDeleteReplyStatus}
@@ -3560,7 +3626,9 @@ export function ClientRow({
         >
           <WorkingDatePicker
             value={toDateInputValue(client.followUp)}
-            onCommit={(date) => void commitWorkingCalendarDate("followUp", date)}
+            onCommit={(date) =>
+              void commitWorkingCalendarDate("followUp", date)
+            }
             className={`text-[12.6px] px-1 border-none outline-none bg-transparent cursor-pointer w-full ${toDateInputValue(client.followUp) ? "text-gray-700" : "text-transparent focus:text-gray-700"}`}
           />
         </div>
@@ -3578,7 +3646,10 @@ export function ClientRow({
             value={client.status}
             onChange={(v, option) => {
               const nextStatus = v as ClientStatus;
-              onUpdate({ status: nextStatus, statusOptionId: option?.id ?? null });
+              onUpdate({
+                status: nextStatus,
+                statusOptionId: option?.id ?? null,
+              });
             }}
             options={statusOptions}
             onAddOption={onAddStatus}
@@ -3752,7 +3823,9 @@ export function ClientRow({
           }
         >
           {client.customFields?.closedDate
-            ? new Date(client.customFields.closedDate).toLocaleDateString("en-SG")
+            ? new Date(client.customFields.closedDate).toLocaleDateString(
+                "en-SG",
+              )
             : ""}
         </div>
 
@@ -3810,7 +3883,9 @@ export function ClientRow({
         >
           <StatusBadge
             value={client.channel}
-            onChange={(v, option) => onUpdate({ channel: v, channelOptionId: option?.id ?? null })}
+            onChange={(v, option) =>
+              onUpdate({ channel: v, channelOptionId: option?.id ?? null })
+            }
             options={channelOptions}
             onAddOption={onAddChannel}
             onDeleteOption={onDeleteChannel}
@@ -3837,7 +3912,12 @@ export function ClientRow({
         >
           <StatusBadge
             value={client.importance}
-            onChange={(v, option) => onUpdate({ importance: v, importanceOptionId: option?.id ?? null })}
+            onChange={(v, option) =>
+              onUpdate({
+                importance: v,
+                importanceOptionId: option?.id ?? null,
+              })
+            }
             options={importanceOptions}
             onAddOption={onAddImportance}
             onDeleteOption={onDeleteImportance}
@@ -3995,13 +4075,10 @@ export function ClientRow({
                 );
                 return Array.isArray(parsed)
                   ? parsed
-                      .filter(
-                        (item): item is AttachmentItem =>
-                          Boolean(
-                            item &&
-                              typeof item === "object" &&
-                              "url" in item,
-                          ),
+                      .filter((item): item is AttachmentItem =>
+                        Boolean(
+                          item && typeof item === "object" && "url" in item,
+                        ),
                       )
                       .map((item) => ({
                         ...item,
@@ -4053,7 +4130,12 @@ export function ClientRow({
         >
           <StatusBadge
             value={client.progress}
-            onChange={(value, option) => onUpdate({ progress: value, progressOptionId: option?.id ?? null })}
+            onChange={(value, option) =>
+              onUpdate({
+                progress: value,
+                progressOptionId: option?.id ?? null,
+              })
+            }
             options={progressOptions}
             onAddOption={onAddProgress}
             onDeleteOption={onDeleteProgress}
@@ -4652,12 +4734,12 @@ export function ClientRow({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      <AlertDialog
-        open={Boolean(pendingWorkingDate)}
-      >
+      <AlertDialog open={Boolean(pendingWorkingDate)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Selected date is not a working day</AlertDialogTitle>
+            <AlertDialogTitle>
+              Selected date is not a working day
+            </AlertDialogTitle>
             <AlertDialogDescription>
               {pendingWorkingDate
                 ? `${pendingWorkingDate.date} is a weekend, Singapore public holiday, or recorded non-working day. Would you like to move it to ${pendingWorkingDate.nextWorkingDay}, the next working day?`

@@ -58,6 +58,20 @@ export default {
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
       },
+      // Application-wide stacking order. Use these semantic layers instead of
+      // arbitrary z-index values so a board control cannot escape a modal.
+      zIndex: {
+        sticky: "20",
+        board: "50",
+        menu: "100",
+        tooltip: "150",
+        selection: "200",
+        "selection-menu": "250",
+        modal: "300",
+        detail: "400",
+        nested: "500",
+        toast: "600",
+      },
     },
   },
   plugins: [tailwindcssAnimate],

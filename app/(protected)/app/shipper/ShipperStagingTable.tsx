@@ -387,7 +387,7 @@ export function ShipperStagingTable({
         </table>
       </div>
       {pickerRow && (
-        <div className="fixed inset-0 z-[210] flex items-center justify-center bg-slate-950/40 p-4">
+        <div className="fixed inset-0 z-modal flex items-center justify-center bg-slate-950/40 p-4">
           <div className="max-h-[80vh] w-full max-w-xl overflow-hidden rounded-xl bg-white shadow-2xl">
             <div className="flex items-start justify-between border-b p-4">
               <div>

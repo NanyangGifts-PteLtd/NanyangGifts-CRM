@@ -320,7 +320,7 @@ export function UserAdminPanel({ profiles }: UserAdminPanelProps) {
         </div>
       </div>
       {pendingSuspension && (
-        <div className="fixed inset-0 z-[220] flex items-center justify-center bg-slate-950/40 p-4">
+        <div className="fixed inset-0 z-modal flex items-center justify-center bg-slate-950/40 p-4">
           <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-2xl">
             <h3 className="text-base font-semibold text-slate-900">
               {suspendedById[pendingSuspension.id]

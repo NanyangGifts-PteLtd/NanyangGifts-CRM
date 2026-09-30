@@ -106,15 +106,22 @@ function dateInputValue(value?: string | null) {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? "" : date.toISOString().slice(0, 10);
 }
-function nbdTimelineRow(subitem: Pick<Subitem, "timelineRows" | "timelineGroups">) {
+function nbdTimelineRow(
+  subitem: Pick<Subitem, "timelineRows" | "timelineGroups">,
+) {
   const rows = subitem.timelineGroups?.length
     ? subitem.timelineGroups.flatMap((timeline) => timeline.rows ?? [])
-    : subitem.timelineRows ?? [];
+    : (subitem.timelineRows ?? []);
   const nbdRows = rows.filter((row) => row.name.trim().toLowerCase() === "nbd");
-  return nbdRows
-    .filter((row) => Boolean(dateInputValue(row.timelineStart)))
-    .sort((left, right) => dateInputValue(right.timelineStart).localeCompare(dateInputValue(left.timelineStart)))[0]
-    ?? nbdRows[0];
+  return (
+    nbdRows
+      .filter((row) => Boolean(dateInputValue(row.timelineStart)))
+      .sort((left, right) =>
+        dateInputValue(right.timelineStart).localeCompare(
+          dateInputValue(left.timelineStart),
+        ),
+      )[0] ?? nbdRows[0]
+  );
 }
 export function GenerateOcfModal({
   open,
@@ -143,8 +150,7 @@ export function GenerateOcfModal({
       new Set(
         OCF_ELIGIBLE_STATUS_KEYS.map(
           (key) =>
-            subitemStatusOptions.find((option) => option.systemKey === key)
-              ?.id,
+            subitemStatusOptions.find((option) => option.systemKey === key)?.id,
         ).filter((id): id is string => Boolean(id)),
       ),
     [subitemStatusOptions],
@@ -237,7 +243,11 @@ export function GenerateOcfModal({
   );
   const isDirty = useMemo(() => {
     if (!client) return false;
-    if (companyName !== (client.company ?? "") || clientEmail !== (client.email ?? "")) return true;
+    if (
+      companyName !== (client.company ?? "") ||
+      clientEmail !== (client.email ?? "")
+    )
+      return true;
     if (estimatedDeliveryDate) return true;
     const initialIds = awardedSubitems.map((item) => item.id);
     if (initialIds.join("|") !== includedSubitemIds.join("|")) return true;
@@ -245,17 +255,37 @@ export function GenerateOcfModal({
       const source = awardedSubitems.find((item) => item.id === row.subitemId);
       if (!source) return true;
       const initialDate = dateInputValue(nbdTimelineRow(source)?.timelineStart);
-      const initialAsap = !initialDate && nbdTimelineRow(source)?.remarks.trim().toLowerCase() === "asap";
-      return Boolean(row.file)
-        || String(row.qty ?? "") !== String(source.qty ?? "")
-        || row.remarks !== (source.description ?? "")
-        || row.usingFinalArtwork !== Boolean(savedFinalArtwork(source.customFields?.ocfFinalArtworkFile))
-        || row.needByDate !== initialDate
-        || row.needByAsap !== initialAsap;
+      const initialAsap =
+        !initialDate &&
+        nbdTimelineRow(source)?.remarks.trim().toLowerCase() === "asap";
+      return (
+        Boolean(row.file) ||
+        String(row.qty ?? "") !== String(source.qty ?? "") ||
+        row.remarks !== (source.description ?? "") ||
+        row.usingFinalArtwork !==
+          Boolean(
+            savedFinalArtwork(source.customFields?.ocfFinalArtworkFile),
+          ) ||
+        row.needByDate !== initialDate ||
+        row.needByAsap !== initialAsap
+      );
     });
-  }, [awardedSubitems, client, clientEmail, companyName, estimatedDeliveryDate, includedSubitemIds, rows]);
+  }, [
+    awardedSubitems,
+    client,
+    clientEmail,
+    companyName,
+    estimatedDeliveryDate,
+    includedSubitemIds,
+    rows,
+  ]);
 
-  useEscapeClose({ open: open && Boolean(client), onClose, disabled: creating, isDirty });
+  useEscapeClose({
+    open: open && Boolean(client),
+    onClose,
+    disabled: creating,
+    isDirty,
+  });
 
   function toggleIncludedSubitem(subitemId: string, checked: boolean) {
     setIncludedSubitemIds((previous) =>
@@ -444,7 +474,7 @@ export function GenerateOcfModal({
       const resolvedRows = await Promise.all(
         selectedRows.map(async (row) => ({
           row,
-          imagePath: row.uploadedPath || await uploadRowFile(row),
+          imagePath: row.uploadedPath || (await uploadRowFile(row)),
         })),
       );
       if (resolvedRows.some(({ imagePath }) => !imagePath)) {
@@ -478,10 +508,8 @@ export function GenerateOcfModal({
       }
 
       if (ocfWindow && !ocfWindow.closed) {
-        const internalHref = new URL(
-          data.internalUrl,
-          window.location.origin,
-        ).href;
+        const internalHref = new URL(data.internalUrl, window.location.origin)
+          .href;
         try {
           ocfWindow.location.replace(internalHref);
         } catch {
@@ -509,7 +537,7 @@ export function GenerateOcfModal({
   if (!open || !client) return null;
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 px-4">
+    <div className="fixed inset-0 z-modal flex items-center justify-center bg-black/40 px-4">
       <div className="w-full max-w-5xl rounded-xl bg-white shadow-2xl">
         <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
           <div>
@@ -547,27 +575,27 @@ export function GenerateOcfModal({
                   </p>
                 </div>
                 <div className="grid gap-5 md:grid-cols-2">
-                <label className="grid gap-2 text-sm font-semibold text-gray-800">
-                  <span>
-                    Company Name <span className="text-red-500">*</span>
-                  </span>
-                  <input
-                    value={companyName}
-                    onChange={(event) => setCompanyName(event.target.value)}
-                    className="h-12 rounded-md border border-gray-300 px-4 text-base font-normal outline-none focus:border-[#7BCBD5] focus:ring-1 focus:ring-[#7BCBD5]"
-                    placeholder="Enter company name"
-                  />
-                </label>
-                <label className="grid gap-2 text-sm font-semibold text-gray-800">
-                  Client Email
-                  <input
-                    type="email"
-                    value={clientEmail}
-                    onChange={(event) => setClientEmail(event.target.value)}
-                    className="h-12 rounded-md border border-gray-300 px-4 text-base font-normal outline-none focus:border-[#7BCBD5] focus:ring-1 focus:ring-[#7BCBD5]"
-                    placeholder="Enter client email (optional)"
-                  />
-                </label>
+                  <label className="grid gap-2 text-sm font-semibold text-gray-800">
+                    <span>
+                      Company Name <span className="text-red-500">*</span>
+                    </span>
+                    <input
+                      value={companyName}
+                      onChange={(event) => setCompanyName(event.target.value)}
+                      className="h-12 rounded-md border border-gray-300 px-4 text-base font-normal outline-none focus:border-[#7BCBD5] focus:ring-1 focus:ring-[#7BCBD5]"
+                      placeholder="Enter company name"
+                    />
+                  </label>
+                  <label className="grid gap-2 text-sm font-semibold text-gray-800">
+                    Client Email
+                    <input
+                      type="email"
+                      value={clientEmail}
+                      onChange={(event) => setClientEmail(event.target.value)}
+                      className="h-12 rounded-md border border-gray-300 px-4 text-base font-normal outline-none focus:border-[#7BCBD5] focus:ring-1 focus:ring-[#7BCBD5]"
+                      placeholder="Enter client email (optional)"
+                    />
+                  </label>
                 </div>
               </section>
               <div className="mb-5 grid grid-cols-1 gap-1 md:grid-cols-1">
@@ -774,7 +802,7 @@ export function GenerateOcfModal({
         </div>
       </div>
       {pendingFinalArtworkReplacement && (
-        <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/40 px-4">
+        <div className="fixed inset-0 z-nested flex items-center justify-center bg-black/40 px-4">
           <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl">
             <h3 className="text-lg font-semibold text-slate-900">
               Replace artwork?

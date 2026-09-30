@@ -450,7 +450,7 @@ function IndustryCombobox({
         <div
           id={listboxId}
           role="listbox"
-          className="absolute z-[80] mt-1 max-h-80 w-full min-w-[340px] overflow-y-auto rounded-lg border border-slate-200 bg-white p-1.5 shadow-xl"
+          className="absolute z-menu mt-1 max-h-80 w-full min-w-[340px] overflow-y-auto rounded-lg border border-slate-200 bg-white p-1.5 shadow-xl"
         >
           <div className="px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
             SSIC 2025 industries
@@ -531,7 +531,7 @@ function DeleteProfileDialog({
 }) {
   useEscapeClose({ open: true, onClose: onCancel, disabled: deleting });
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-[2px]">
+    <div className="fixed inset-0 z-modal flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-[2px]">
       <div className="w-full max-w-md overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
         <div className="flex gap-3 border-b border-slate-100 p-5">
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-50 text-red-600">
@@ -591,7 +591,7 @@ function BlacklistDialog({
   useEscapeClose({ open: true, onClose: onCancel, disabled: saving });
   return (
     <div
-      className="fixed inset-0 z-[220] flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-[2px]"
+      className="fixed inset-0 z-modal flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-[2px]"
       role="dialog"
       aria-modal="true"
     >
@@ -664,7 +664,7 @@ function DeleteRemarkDialog({
   useEscapeClose({ open: true, onClose: onCancel, disabled: deleting });
   return (
     <div
-      className="fixed inset-0 z-[210] flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-[2px]"
+      className="fixed inset-0 z-modal flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-[2px]"
       role="dialog"
       aria-modal="true"
       aria-labelledby="delete-remark-title"

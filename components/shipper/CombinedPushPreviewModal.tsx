@@ -105,9 +105,13 @@ export function CombinedPushPreviewModal({
   onClose: () => void;
   onConfirm: () => void;
 }) {
-  const initialPreview = useRef(JSON.stringify({ rows: preview.rows, shared: preview.shared }));
+  const initialPreview = useRef(
+    JSON.stringify({ rows: preview.rows, shared: preview.shared }),
+  );
   const isDirty = useMemo(
-    () => JSON.stringify({ rows: preview.rows, shared: preview.shared }) !== initialPreview.current,
+    () =>
+      JSON.stringify({ rows: preview.rows, shared: preview.shared }) !==
+      initialPreview.current,
     [preview.rows, preview.shared],
   );
   useEscapeClose({ open: true, onClose, disabled: saving, isDirty });
@@ -152,7 +156,7 @@ export function CombinedPushPreviewModal({
   );
   return (
     <div
-      className="fixed inset-0 z-[170] flex items-center justify-center bg-slate-950/40 p-4"
+      className="fixed inset-0 z-modal flex items-center justify-center bg-slate-950/40 p-4"
       role="dialog"
       aria-modal="true"
     >
@@ -177,7 +181,8 @@ export function CombinedPushPreviewModal({
         <main className="flex-1 overflow-y-auto p-5">
           {item.alreadyPushed && (
             <div className="mb-4 rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
-              Previously sent to {item.previousShipperName || "an unknown shipper"}.
+              Previously sent to{" "}
+              {item.previousShipperName || "an unknown shipper"}.
             </div>
           )}
           <label className="block text-xs font-medium text-slate-700">
@@ -188,7 +193,9 @@ export function CombinedPushPreviewModal({
                 onChange={(e) => changeItem("cn_tracking_no", e.target.value)}
                 className={`mt-1 w-full rounded border px-3 py-2 text-sm ${required("cn_tracking_no") ? "border-red-300 bg-red-50" : "border-slate-300"}`}
               >
-                <option value="">Select a project timeline CN Tracking number</option>
+                <option value="">
+                  Select a project timeline CN Tracking number
+                </option>
                 {(item.trackingOptions ?? []).map((trackingNumber: string) => (
                   <option key={trackingNumber} value={trackingNumber}>
                     {trackingNumber}
