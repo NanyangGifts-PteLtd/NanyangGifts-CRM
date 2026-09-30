@@ -8,6 +8,7 @@ export function EditableCell({
   placeholder = "",
   className = "",
   readOnly = false,
+  readOnlyReason,
   multiline = false,
   resizableMultiline = false,
   autoEdit = false,
@@ -28,6 +29,7 @@ export function EditableCell({
   placeholder?: string;
   className?: string;
   readOnly?: boolean;
+  readOnlyReason?: string;
   multiline?: boolean;
   resizableMultiline?: boolean;
   autoEdit?: boolean;
@@ -230,7 +232,7 @@ export function EditableCell({
         savedRef.current = false;
         setEditing(true);
       }}
-      title={value}
+      title={readOnlyReason ?? value}
       className={`flex w-15 justify-center py-0.5 text-xs ${readOnly ? "cursor-default" : "cursor-text hover:bg-blue-50"} rounded min-h-[22px] items-center ${
         multiline
           ? "whitespace-nowrap overflow-hidden text-ellipsis"

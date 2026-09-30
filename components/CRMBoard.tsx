@@ -4311,6 +4311,8 @@ export function CRMBoard({
       }
       if (key === "totalUc") return totalUc;
       if (key === "totalC") return totalC;
+      if (key === "leadTime")
+        return Number(subitem.pl || 0) + Number(subitem.sl || 0);
       if (key === "totalToPay") return totalToPay;
       if (key === "paymentAmount") return paymentAmount;
       if (key === "difference") return paymentAmount - totalToPay;
@@ -4568,6 +4570,8 @@ export function CRMBoard({
                       ? totalUc
                       : key === "totalC"
                         ? totalC
+                        : key === "leadTime"
+                          ? Number(subitem.pl || 0) + Number(subitem.sl || 0)
                         : key === "totalToPay"
                           ? totalToPay
                           : key === "paymentAmount"
@@ -4736,6 +4740,8 @@ export function CRMBoard({
                       ]
                     : key === "idealMarkup" || key === "priceToSet"
                       ? [subitem.customFields?.[key]]
+                      : key === "leadTime"
+                        ? [Number(subitem.pl || 0) + Number(subitem.sl || 0)]
                       : key.startsWith("custom:")
                         ? [subitem.customFields?.[key.slice(7)]]
                         : valuesFor(
@@ -5000,6 +5006,8 @@ export function CRMBoard({
         Number(subitem.ls || 0) * rate
       );
     }
+    if (column === "leadTime")
+      return Number(subitem.pl || 0) + Number(subitem.sl || 0);
     return (
       (
         subitem as unknown as Record<string, string | number | null | undefined>
@@ -5034,6 +5042,7 @@ export function CRMBoard({
       "uc",
       "pl",
       "sl",
+      "leadTime",
       "price",
       "up",
       "markup",
@@ -5172,6 +5181,22 @@ export function CRMBoard({
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     });
+  const selectedSubitemCompletionDate = useMemo(() => {
+    if (selectedSubitems.length !== 1) return null;
+    const selected = selectedSubitems[0];
+    const leadTime =
+      parseSubitemNumber(selected.pl) + parseSubitemNumber(selected.sl);
+    const date = new Date();
+    // Use the viewer's current calendar date: this is a live estimate, not a
+    // date persisted on the subitem.
+    date.setHours(12, 0, 0, 0);
+    date.setDate(date.getDate() + 1 + leadTime);
+    return date.toLocaleDateString("en-SG", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    });
+  }, [selectedSubitems]);
   const canAccessShipperPush = ["pm", "director", "dev"].includes(
     (currentUserRole ?? "").toLowerCase(),
   );
@@ -8200,6 +8225,14 @@ export function CRMBoard({
               {formatSelectionAmount(selectedSubitemTotals.totalUc)}
             </div>
           </div>
+          {selectedSubitemCompletionDate && (
+            <div className="whitespace-nowrap text-center text-sm text-slate-600">
+              <div className="font-extrabold text-slate-800">Completion Date</div>
+              <div className="font-medium text-slate-900">
+                {selectedSubitemCompletionDate}
+              </div>
+            </div>
+          )}
           <button
             type="button"
             onClick={clearSubitemSelection}

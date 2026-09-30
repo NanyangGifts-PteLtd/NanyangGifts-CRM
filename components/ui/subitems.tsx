@@ -79,7 +79,10 @@ const SUBITEM_COLUMN_DESCRIPTIONS: Record<string, string> = {
   uc: "Unit Cost",
   pl: "Production Lead Time",
   sl: "Shipping Lead Time",
+  leadTime: "Production Lead Time + Shipping Lead Time",
 };
+
+const PAID_COST_LOCK_MESSAGE = "This field is locked because the subitem has been Paid.";
 
 const LOCKED_COST_INPUTS = new Set([
   "qty",
@@ -127,6 +130,7 @@ export const SUBITEM_COLS: ColumnDef[] = [
   { key: "uc", label: "U.C", width: 90, minWidth: 7 },
   { key: "pl", label: "PL", width: 44, minWidth: 7 },
   { key: "sl", label: "SL", width: 44, minWidth: 7 },
+  { key: "leadTime", label: "Lead Time", width: 82, minWidth: 7 },
   { key: "price", label: "Price", width: 80, minWidth: 7 },
   { key: "up", label: "U.P", width: 60, minWidth: 7 },
   { key: "markup", label: "Markup", width: 80, minWidth: 7 },
@@ -203,6 +207,15 @@ function refreshColumnDefinitions(
     (key, index, keys) =>
       definitionByKey.has(key) && keys.indexOf(key) === index,
   );
+  // Existing users keep their saved order. The Lead Time formula is the one
+  // deliberate placement exception: it belongs directly after SL, including
+  // when it is introduced into an already-saved layout.
+  const leadTimeIndex = orderedKeys.indexOf("leadTime");
+  const slIndex = orderedKeys.indexOf("sl");
+  if (leadTimeIndex >= 0 && slIndex >= 0 && leadTimeIndex !== slIndex + 1) {
+    orderedKeys.splice(leadTimeIndex, 1);
+    orderedKeys.splice(orderedKeys.indexOf("sl") + 1, 0, "leadTime");
+  }
   const nextColumns = orderedKeys.map((key) => {
     const definition = definitionByKey.get(key)!;
     const current = currentByKey.get(key);
@@ -256,6 +269,7 @@ const FORMULA_RESULT_FIELDS = new Set([
   "totalToPay",
   "paymentAmount",
   "difference",
+  "leadTime",
 ]);
 // Payment mode presents these stored costs in the selected currency, so they
 // are results rather than editable source inputs in that table.
@@ -263,6 +277,8 @@ const PAYMENT_FORMULA_RESULT_FIELDS = new Set([
   ...FORMULA_RESULT_FIELDS,
   "manpower",
   "ls",
+  "totalUc",
+  "totalC",
   "difference",
 ]);
 const PAYMENT_QUANTITY_HEADER_FIELDS = new Set([
@@ -2262,7 +2278,17 @@ export function SubitemsTable({
 
   const renderSubitemCell = (sub: Subitem, key: string) => {
     const additionalCostLinked = isAdditionalCostSubitem(sub);
-    const costLocked = isCostLocked(sub) && LOCKED_COST_INPUTS.has(key);
+    const paidCostLocked =
+      isCostLocked(sub) && LOCKED_COST_INPUTS.has(key);
+    const isAssignedPm =
+      String(currentUserRole ?? "").trim().toLowerCase() === "pm" &&
+      Boolean(currentUserId) &&
+      (clientAssignedIds.includes(currentUserId!) ||
+        clientPmAssignedIds.includes(currentUserId!));
+    // An assigned PM may still maintain overseas shipping after payment; the
+    // rest of the cost inputs remain locked once a subitem is Paid.
+    const costLocked = paidCostLocked && !(key === "os" && isAssignedPm);
+    const paidLockReason = costLocked ? PAID_COST_LOCK_MESSAGE : undefined;
     const {
       quantity: qty,
       cSgd,
@@ -2386,6 +2412,11 @@ export function SubitemsTable({
             onChange={(v) => onUpdateSubitem(sub.id, { qty: v })}
             type="number"
             readOnly={costLocked || additionalCostLinked}
+            readOnlyReason={
+              additionalCostLinked
+                ? "This field is managed by the linked Payment Voucher."
+                : paidLockReason
+            }
           />
         );
       case "description":
@@ -2478,6 +2509,7 @@ export function SubitemsTable({
             onChange={(v) => onUpdateSubitem(sub.id, { cost: v })}
             type="number"
             readOnly={costLocked}
+            readOnlyReason={paidLockReason}
           />
         );
       case "currency":
@@ -2508,7 +2540,7 @@ export function SubitemsTable({
               readOnlyReason={
                 additionalCostLinked
                   ? "This field is managed by the linked Payment Voucher."
-                  : undefined
+                  : paidLockReason
               }
               small
             />
@@ -2521,6 +2553,7 @@ export function SubitemsTable({
             onChange={(v) => onUpdateSubitem(sub.id, { manpower: v })}
             type="number"
             readOnly={costLocked}
+            readOnlyReason={paidLockReason}
           />
         );
       case "ls":
@@ -2530,6 +2563,7 @@ export function SubitemsTable({
             onChange={(v) => onUpdateSubitem(sub.id, { ls: v })}
             type="number"
             readOnly={costLocked}
+            readOnlyReason={paidLockReason}
           />
         );
       case "os":
@@ -2539,6 +2573,7 @@ export function SubitemsTable({
             onChange={(v) => onUpdateSubitem(sub.id, { os: v })}
             type="number"
             readOnly={costLocked}
+            readOnlyReason={paidLockReason}
           />
         );
 
@@ -2576,6 +2611,12 @@ export function SubitemsTable({
             type="number"
           />
         );
+      case "leadTime":
+        return (
+          <div className="flex justify-center text-xs text-gray-800">
+            {formatQuantity(parseNumber(sub.pl) + parseNumber(sub.sl))}
+          </div>
+        );
       case "tcSgd":
         return (
           <div className="flex justify-center text-xs text-gray-800">
@@ -2598,6 +2639,7 @@ export function SubitemsTable({
               onChange={(v) => onUpdateSubitem(sub.id, { up: v })}
               type="number"
               readOnly={costLocked}
+              readOnlyReason={paidLockReason}
             />
           </div>
         );
@@ -2629,6 +2671,7 @@ export function SubitemsTable({
             }
             type="number"
             readOnly={costLocked}
+            readOnlyReason={paidLockReason}
           />
         );
       case "priceToSet":
@@ -2672,6 +2715,7 @@ export function SubitemsTable({
 
   const renderPaymentCell = (sub: Subitem, key: string) => {
     const costLocked = isCostLocked(sub) && LOCKED_COST_INPUTS.has(key);
+    const paidLockReason = costLocked ? PAID_COST_LOCK_MESSAGE : undefined;
     const hasCurrency = Boolean(sub.currency?.trim());
     const qty = parseNumber(sub.qty);
     const cost = parseNumber(sub.cost);
@@ -2951,6 +2995,7 @@ export function SubitemsTable({
                 onReorderOptions?.("currency", values)
               }
               readOnly={costLocked}
+              readOnlyReason={paidLockReason}
               small
             />
           </div>
@@ -2962,6 +3007,7 @@ export function SubitemsTable({
             onChange={(v) => onUpdateSubitem(sub.id, { qty: v })}
             type="number"
             readOnly={costLocked}
+            readOnlyReason={paidLockReason}
           />
         );
       case "cost":
@@ -2971,6 +3017,7 @@ export function SubitemsTable({
             onChange={(v) => onUpdateSubitem(sub.id, { cost: v })}
             type="number"
             readOnly={costLocked}
+            readOnlyReason={paidLockReason}
           />
         );
       case "totalUc":
