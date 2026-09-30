@@ -12,6 +12,7 @@ import {
   Profile,
 } from "../../app/types";
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   ChevronLeft,
   ChevronDown,
@@ -916,6 +917,12 @@ export function ClientRow({
   const [sampleArtworkUploads, setSampleArtworkUploads] = useState<
     Record<string, SampleArtworkUpload>
   >({});
+  const [selectedDraftQuoteSubitemIds, setSelectedDraftQuoteSubitemIds] =
+    useState<string[]>([]);
+  const [draftQuoteArtworkPreview, setDraftQuoteArtworkPreview] = useState<{
+    name: string;
+    url: string;
+  } | null>(null);
   const attachmentLinkDraft = attachmentLinkDialog
     ? (attachmentDrafts[attachmentLinkDialog] ?? "")
     : "";
@@ -1246,6 +1253,9 @@ export function ClientRow({
       sampleArtworkUploads[subitem.id] ??
       readArtwork(subitem.customFields?.artworkFile),
   }));
+  const selectedDraftQuoteSubitems = estimateEligibleSubitems.filter(
+    (subitem) => selectedDraftQuoteSubitemIds.includes(subitem.id),
+  );
   const loadQuickBooksDefaults = async () => {
     setQuickBooksDefaultsLoading(true);
     try {
@@ -1409,7 +1419,9 @@ export function ClientRow({
     setSampleEstimateError(null);
     try {
       const preparedArtwork = await Promise.all(
-        sampleEstimateArtwork.map(async ({ subitem, artwork }) => ({
+        sampleEstimateArtwork
+          .filter(({ subitem }) => selectedDraftQuoteSubitemIds.includes(subitem.id))
+          .map(async ({ subitem, artwork }) => ({
           subitemId: subitem.id,
           dataUrl: artwork ? await artworkUrlToDataUrl(artwork.url) : "",
         })),
@@ -1419,6 +1431,7 @@ export function ClientRow({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           clientId: client.id,
+          subitemIds: selectedDraftQuoteSubitemIds,
           artworks: preparedArtwork,
         }),
       });
@@ -1448,7 +1461,9 @@ export function ClientRow({
         "filesMiscellaneous",
         JSON.stringify([...current, attachment]),
       );
-      sampleEstimateArtwork.forEach(({ subitem, artwork }) => {
+      sampleEstimateArtwork
+        .filter(({ subitem }) => selectedDraftQuoteSubitemIds.includes(subitem.id))
+        .forEach(({ subitem, artwork }) => {
         const uploaded = sampleArtworkUploads[subitem.id];
         if (!uploaded || !artwork) return;
         onUpdateSubitem(subitem.id, {
@@ -1463,7 +1478,7 @@ export function ClientRow({
             }),
           },
         });
-      });
+        });
       setSampleEstimate({ filename: result.filename, url: result.url });
     } catch (error: unknown) {
       setSampleEstimateError(
@@ -2014,6 +2029,8 @@ export function ClientRow({
             setSampleEstimate(null);
             setSampleEstimateError(null);
             setSampleArtworkUploads({});
+            setSelectedDraftQuoteSubitemIds([]);
+            setDraftQuoteArtworkPreview(null);
             setQuickBooksDefaults(null);
             setQuickBooksPaymentTerm("");
             setQuickBooksSalesperson("");
@@ -2133,53 +2150,131 @@ export function ClientRow({
           {estimateMode === "sample" &&
             !sampleEstimate &&
             !sampleEstimateError && (
-              <div className="space-y-2 rounded-md border border-slate-200 bg-white p-3 text-xs text-slate-600">
-                <p className="font-medium text-slate-800">
-                  Add or replace Artwork without leaving this dialog
-                </p>
-                {estimateEligibleSubitems.map((subitem) => (
-                  <div
-                    key={subitem.id}
-                    className="flex items-center justify-between gap-3"
-                  >
-                    <span className="min-w-0 truncate">
-                      {subitem.name || "Unnamed subitem"}
-                    </span>
-                    <label className="shrink-0 cursor-pointer rounded border border-sky-200 bg-sky-50 px-2 py-1 text-sky-700 hover:bg-sky-100">
-                      Upload image
-                      <input
-                        type="file"
-                        accept="image/png,image/jpeg"
-                        className="hidden"
-                        onChange={(event) => {
-                          const file = event.target.files?.[0];
-                          event.target.value = "";
-                          if (!file) return;
-                          if (
-                            readArtwork(subitem.customFields?.artworkFile) &&
-                            !sampleArtworkUploads[subitem.id] &&
-                            !window.confirm(
-                              "This will replace the saved Artwork for this subitem after the draft quote is created. Continue?",
+              <div className="overflow-hidden rounded-md border border-slate-200 bg-white text-xs text-slate-600">
+                <div className="grid grid-cols-[minmax(0,1fr)_220px] border-b border-slate-200 bg-slate-50 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                  <div className="px-3 py-2">Subitems</div>
+                  <div className="border-l border-slate-200 px-3 py-2">Artworks</div>
+                </div>
+                {sampleEstimateArtwork.map(({ subitem, artwork }) => {
+                  const isSelected = selectedDraftQuoteSubitemIds.includes(
+                    subitem.id,
+                  );
+                  return (
+                    <div
+                      key={subitem.id}
+                      className="grid grid-cols-[minmax(0,1fr)_220px] border-b border-slate-100 last:border-b-0"
+                    >
+                      <label className="flex min-w-0 items-center gap-2 px-3 py-2.5 text-slate-800">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() =>
+                            setSelectedDraftQuoteSubitemIds((current) =>
+                              current.includes(subitem.id)
+                                ? current.filter((id) => id !== subitem.id)
+                                : [...current, subitem.id],
                             )
-                          )
-                            return;
-                          void imageFileToArtwork(file)
-                            .then((upload) =>
-                              setSampleArtworkUploads((current) => ({
-                                ...current,
-                                [subitem.id]: upload,
-                              })),
-                            )
-                            .catch(() =>
-                              setSampleEstimateError(
-                                "Could not read that artwork image.",
-                              ),
-                            );
-                        }}
-                      />
-                    </label>
-                  </div>
-                ))}
+                          }
+                          className="h-4 w-4 shrink-0 accent-sky-600"
+                        />
+                        <span className="min-w-0 truncate font-medium">
+                          {subitem.name || "Unnamed subitem"}
+                        </span>
+                        <span className="shrink-0 text-[11px] text-slate-400">
+                          {subitem.displayId || subitem.id}
+                        </span>
+                      </label>
+                      <div
+                        className={`flex items-center gap-2 border-l border-slate-100 px-3 py-2 ${
+                          isSelected ? "" : "pointer-events-none opacity-45"
+                        }`}
+                      >
+                        <button
+                          type="button"
+                          disabled={!artwork}
+                          onClick={() =>
+                            artwork &&
+                            setDraftQuoteArtworkPreview({
+                              name: subitem.name || "Artwork preview",
+                              url: artwork.url,
+                            })
+                          }
+                          title={artwork ? "Enlarge artwork" : "No artwork"}
+                          className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded border border-slate-200 bg-slate-50 enabled:cursor-zoom-in enabled:hover:border-sky-400"
+                        >
+                          {artwork ? (
+                            <img
+                              src={artwork.url}
+                              alt=""
+                              className="h-full w-full object-contain"
+                            />
+                          ) : (
+                            <span className="text-center text-[9px] text-slate-400">
+                              No artwork
+                            </span>
+                          )}
+                        </button>
+                        <label className="cursor-pointer rounded border border-sky-200 bg-sky-50 px-2 py-1 text-sky-700 hover:bg-sky-100">
+                          Upload / replace
+                          <input
+                            type="file"
+                            accept="image/png,image/jpeg"
+                            className="hidden"
+                            disabled={!isSelected}
+                            onChange={(event) => {
+                              const file = event.target.files?.[0];
+                              event.target.value = "";
+                              if (!file) return;
+                              void imageFileToArtwork(file)
+                                .then((upload) =>
+                                  setSampleArtworkUploads((current) => ({
+                                    ...current,
+                                    [subitem.id]: upload,
+                                  })),
+                                )
+                                .catch(() =>
+                                  setSampleEstimateError(
+                                    "Could not read that artwork image.",
+                                  ),
+                                );
+                            }}
+                          />
+                        </label>
+                      </div>
+                    </div>
+                  );
+                })}
+                {draftQuoteArtworkPreview && typeof document !== "undefined"
+                  ? createPortal(
+                      <div
+                        className="pointer-events-auto fixed inset-0 z-[400] flex items-center justify-center bg-slate-950/60 p-6"
+                        onMouseDown={() => setDraftQuoteArtworkPreview(null)}
+                      >
+                        <div
+                          className="relative flex max-h-[calc(100vh-3rem)] max-w-[calc(100vw-3rem)] flex-col rounded-lg bg-white p-3 shadow-2xl"
+                          onMouseDown={(event) => event.stopPropagation()}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => setDraftQuoteArtworkPreview(null)}
+                            className="absolute right-2 top-2 z-10 rounded bg-white/90 p-1 text-slate-600 shadow hover:bg-slate-100"
+                            aria-label="Close artwork preview"
+                          >
+                            <X size={18} />
+                          </button>
+                          <img
+                            src={draftQuoteArtworkPreview.url}
+                            alt={draftQuoteArtworkPreview.name}
+                            className="block max-h-[calc(100vh-8rem)] max-w-[calc(100vw-6rem)] object-contain"
+                          />
+                          <p className="mt-2 text-center text-sm font-medium text-slate-700">
+                            {draftQuoteArtworkPreview.name}
+                          </p>
+                        </div>
+                      </div>,
+                      document.body,
+                    )
+                  : null}
               </div>
             )}
           {estimateMode === "update" && !updateEstimateResult && (
@@ -2431,49 +2526,6 @@ export function ClientRow({
               )}
             </div>
           )}
-          {estimateMode === "sample" &&
-            !sampleEstimate &&
-            !sampleEstimateError && (
-              <div className="max-h-72 space-y-2 overflow-y-auto rounded-md border border-sky-100 bg-sky-50 p-3 text-xs text-slate-600">
-                <p className="font-medium text-slate-800">
-                  Artwork for this draft quote
-                </p>
-                {sampleEstimateArtwork.map(({ subitem, artwork }) => (
-                  <div
-                    key={subitem.id}
-                    className="flex items-center gap-3 rounded border border-slate-200 bg-white p-2"
-                  >
-                    <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded border bg-slate-50">
-                      {artwork ? (
-                        <img
-                          src={artwork.url}
-                          alt=""
-                          className="h-full w-full object-contain"
-                        />
-                      ) : (
-                        <span className="text-center text-[10px] text-red-600">
-                          No artwork
-                        </span>
-                      )}
-                    </div>
-                    <div className="min-w-0">
-                      <p className="truncate font-medium text-slate-800">
-                        {subitem.name || "Unnamed subitem"}
-                      </p>
-                      <p
-                        className={
-                          artwork ? "text-emerald-700" : "text-slate-500"
-                        }
-                      >
-                        {artwork
-                          ? "Saved Artwork will be used"
-                          : "No artwork will be included."}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
           {estimateMode === "quickbooks" &&
             !estimateResult &&
             !estimateError && (
@@ -2696,7 +2748,12 @@ export function ClientRow({
             <div className="grid gap-4 sm:grid-cols-3">
               <button
                 type="button"
-                onClick={() => setEstimateMode("sample")}
+                onClick={() => {
+                  setSelectedDraftQuoteSubitemIds(
+                    estimateEligibleSubitems.map((subitem) => subitem.id),
+                  );
+                  setEstimateMode("sample");
+                }}
                 className="min-h-56 rounded-xl border-2 border-sky-200 bg-sky-50 p-7 text-left transition-colors hover:border-sky-400"
               >
                 <strong className="block text-center text-xl leading-snug text-sky-800">
@@ -2742,6 +2799,7 @@ export function ClientRow({
             </div>
           ) : (
             estimateMode !== "update" &&
+            estimateMode !== "sample" &&
             !estimateResult &&
             !estimateError &&
             !sampleEstimate &&
@@ -2802,14 +2860,14 @@ export function ClientRow({
                     disabled={
                       isGeneratingSample ||
                       !client.company.trim() ||
-                      !estimateEligibleSubitems.length
+                      !selectedDraftQuoteSubitems.length
                     }
                     onClick={(event) => {
                       event.preventDefault();
                       void generateSampleEstimate();
                     }}
                   >
-                    {isGeneratingSample ? "Generating…" : "Generate draft PDF"}
+                    {isGeneratingSample ? "Generating…" : "Generate draft quote PDF"}
                   </AlertDialogAction>
                 </>
               )

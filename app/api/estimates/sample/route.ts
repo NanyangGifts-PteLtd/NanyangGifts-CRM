@@ -170,6 +170,24 @@ async function makePdf({
       color,
     );
   };
+  const rightAlignedText = (
+    value: unknown,
+    rightEdge: number,
+    top: number,
+    size = 10,
+    isBold = false,
+    color = rgb(0, 0, 0),
+  ) => {
+    const font = isBold ? bold : regular;
+    text(
+      value,
+      rightEdge - font.widthOfTextAtSize(safeText(value), size),
+      top,
+      size,
+      isBold,
+      color,
+    );
+  };
   const money = (value: number) =>
     `S$${value.toLocaleString("en-SG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const subtotal = rows.reduce((sum, row) => sum + row.amount, 0),
@@ -197,8 +215,8 @@ async function makePdf({
     "GST Registration No.: 201426646R",
     "Company Registration No. 201426646R",
   ].forEach((item, index) => text(item, 225, 24 + index * 12, 8, index === 0));
-  const quotationTitle = `Quotation ${quotationNumber}`;
-  centeredText(quotationTitle, 400, 49, 177, 16, true, navy);
+  const quotationTitle = `Proforma Quotation ${quotationNumber}`;
+  rightAlignedText(quotationTitle, 577, 49, 16, true, navy);
 
   // Tight header: the separator now sits directly above the date/total pair.
   line(18, 125, 577, navy, 1.5);
@@ -227,7 +245,7 @@ async function makePdf({
   const cols = [18, 220, 381, 419, 475, 535, 577];
   const drawTableHeader = (headerTop: number) => {
     box(18, headerTop, 559, 24, rgb(0.96, 0.97, 0.99), border, 0.3);
-    ["DESCRIPTION", "DETAILS", "QTY", "RATE", "AMOUNT", "GST"].forEach(
+    ["ITEM NAME", "DESCRIPTION", "QTY", "RATE", "AMOUNT", "GST"].forEach(
       (header, index) =>
         centeredText(
           header,
@@ -401,9 +419,10 @@ export async function POST(req: NextRequest) {
   } = await supabase.auth.getUser();
   if (!user)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const { clientId, artworks = [] } = (await req.json()) as {
+  const { clientId, artworks = [], subitemIds } = (await req.json()) as {
     clientId?: string;
     artworks?: ArtworkInput[];
+    subitemIds?: string[];
   };
   if (!clientId)
     return NextResponse.json({ error: "Missing clientId" }, { status: 400 });
@@ -441,8 +460,17 @@ export async function POST(req: NextRequest) {
       { error: "Could not load the client's active subitems" },
       { status: 500 },
     );
+  const requestedSubitemIds = new Set(
+    Array.isArray(subitemIds)
+      ? subitemIds.filter((id): id is string => typeof id === "string")
+      : [],
+  );
   const subitems = (activeSubitems ?? [])
-    .filter((item: any) => eligibleStatusIds.has(item.status_option_id))
+    .filter(
+      (item: any) =>
+        eligibleStatusIds.has(item.status_option_id) &&
+        (!Array.isArray(subitemIds) || requestedSubitemIds.has(item.id)),
+    )
     .sort(
       (a: any, b: any) =>
         Number(a.position ?? Number.MAX_SAFE_INTEGER) -
