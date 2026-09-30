@@ -18,7 +18,6 @@ import {
   ChevronRight,
   Activity,
   Trash2,
-  ReceiptText,
   FileBox,
   Paperclip,
   Plus,
@@ -70,6 +69,38 @@ type AttachmentItem = {
 };
 
 type SampleArtworkUpload = { name: string; url: string; mimeType: string };
+
+function PdfIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M6 2.75h7l5 5v13.5H6z" />
+      <path d="M13 2.75v5h5" />
+      <rect x="3" y="10.5" width="18" height="7.25" rx="1.25" fill="currentColor" stroke="none" />
+      <text
+        x="12"
+        y="15.75"
+        fill="white"
+        stroke="none"
+        textAnchor="middle"
+        fontSize="5.4"
+        fontWeight="700"
+        fontFamily="Arial, sans-serif"
+      >
+        PDF
+      </text>
+    </svg>
+  );
+}
 
 const quickBooksNumber = (value: unknown) => {
   const parsed = Number(
@@ -1215,9 +1246,6 @@ export function ClientRow({
       sampleArtworkUploads[subitem.id] ??
       readArtwork(subitem.customFields?.artworkFile),
   }));
-  const missingSampleEstimateArtwork = sampleEstimateArtwork.filter(
-    ({ artwork }) => !artwork,
-  );
   const loadQuickBooksDefaults = async () => {
     setQuickBooksDefaultsLoading(true);
     try {
@@ -1396,7 +1424,7 @@ export function ClientRow({
       });
       const result = await response.json();
       if (!response.ok)
-        throw new Error(result?.error || "Could not generate sample quote");
+        throw new Error(result?.error || "Could not generate draft quote");
       const attachment: AttachmentItem = {
         id: crypto.randomUUID(),
         kind: "file",
@@ -1441,7 +1469,7 @@ export function ClientRow({
       setSampleEstimateError(
         error instanceof Error
           ? error.message
-          : "Could not generate sample quote",
+          : "Could not generate draft quote",
       );
     } finally {
       setIsGeneratingSample(false);
@@ -2031,10 +2059,10 @@ export function ClientRow({
                 ? "Generate quote"
                 : estimateMode === "sample"
                   ? sampleEstimate
-                    ? "Sample quote created"
+                    ? "Draft quote created"
                     : sampleEstimateError
-                      ? "Could not create sample quote"
-                      : "Generate sample quote?"
+                      ? "Could not create draft quote"
+                      : "Generate draft quote"
                   : estimateMode === "update"
                     ? updateEstimateResult
                       ? "QuickBooks quote updated"
@@ -2051,17 +2079,12 @@ export function ClientRow({
               ) : estimateMode === "sample" ? (
                 sampleEstimate ? (
                   <>
-                    The PDF sample quote was saved under this client’s
+                    The PDF draft quote was saved under this client’s
                     Files.
                   </>
                 ) : sampleEstimateError ? (
                   sampleEstimateError
-                ) : (
-                  <>
-                    This preview uses the same eligible subitems but does not
-                    create or change anything in QuickBooks.
-                  </>
-                )
+                ) : null
               ) : estimateMode === "update" ? (
                 updateEstimateResult ? (
                   <>
@@ -2136,7 +2159,7 @@ export function ClientRow({
                             readArtwork(subitem.customFields?.artworkFile) &&
                             !sampleArtworkUploads[subitem.id] &&
                             !window.confirm(
-                              "This will replace the saved Artwork for this subitem after the sample quote is created. Continue?",
+                              "This will replace the saved Artwork for this subitem after the draft quote is created. Continue?",
                             )
                           )
                             return;
@@ -2413,7 +2436,7 @@ export function ClientRow({
             !sampleEstimateError && (
               <div className="max-h-72 space-y-2 overflow-y-auto rounded-md border border-sky-100 bg-sky-50 p-3 text-xs text-slate-600">
                 <p className="font-medium text-slate-800">
-                  Artwork included in this sample quote
+                  Artwork for this draft quote
                 </p>
                 {sampleEstimateArtwork.map(({ subitem, artwork }) => (
                   <div
@@ -2429,7 +2452,7 @@ export function ClientRow({
                         />
                       ) : (
                         <span className="text-center text-[10px] text-red-600">
-                          Artwork required
+                          No artwork
                         </span>
                       )}
                     </div>
@@ -2439,22 +2462,16 @@ export function ClientRow({
                       </p>
                       <p
                         className={
-                          artwork ? "text-emerald-700" : "text-red-600"
+                          artwork ? "text-emerald-700" : "text-slate-500"
                         }
                       >
                         {artwork
                           ? "Saved Artwork will be used"
-                          : "Upload an image in Files (Images) > Artwork before generating."}
+                          : "No artwork will be included."}
                       </p>
                     </div>
                   </div>
                 ))}
-                {missingSampleEstimateArtwork.length > 0 && (
-                  <p className="pt-1 font-medium text-red-600">
-                    Every eligible subitem needs an Artwork image before the PDF
-                    can be generated.
-                  </p>
-                )}
               </div>
             )}
           {estimateMode === "quickbooks" &&
@@ -2683,7 +2700,7 @@ export function ClientRow({
                 className="min-h-56 rounded-xl border-2 border-sky-200 bg-sky-50 p-7 text-left transition-colors hover:border-sky-400"
               >
                 <strong className="block text-center text-xl leading-snug text-sky-800">
-                  Generate sample quote
+                  Generate draft quote
                 </strong>
                 <span className="mt-4 block text-[11px] leading-relaxed text-slate-500">
                   Create and save a PDF preview. Nothing is sent to QuickBooks.
@@ -2792,7 +2809,7 @@ export function ClientRow({
                       void generateSampleEstimate();
                     }}
                   >
-                    {isGeneratingSample ? "Generating…" : "Generate sample PDF"}
+                    {isGeneratingSample ? "Generating…" : "Generate draft PDF"}
                   </AlertDialogAction>
                 </>
               )
@@ -3357,18 +3374,16 @@ export function ClientRow({
                         setShowEstimateDialog(true);
                       }}
                       className="px-2 py-2 text-[10px] font-medium text-teal-500"
-                      aria-label="Generate sample quote or QuickBooks quote"
+                      aria-label="Generate draft quote or QuickBooks quote"
                     >
-                      <ReceiptText
-                        size={15}
-                        color="#7BCBD5"
-                        className="transition transform active:scale-150 duration-200"
-                      />
+                      <span className="text-[#7BCBD5] transition duration-200 active:scale-150">
+                        <PdfIcon size={16} />
+                      </span>
                     </button>
                   </Tooltip.Trigger>
                   <Tooltip.Portal>
                     <Tooltip.Content className="TooltipContent">
-                      Generate sample / QuickBooks quote
+                      Generate draft / QuickBooks quote
                       <Tooltip.Arrow className="TooltipArrow" />
                     </Tooltip.Content>
                   </Tooltip.Portal>

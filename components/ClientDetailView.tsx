@@ -1143,7 +1143,7 @@ export function ClientDetailView({
                             className="ml-4 inline-flex items-center rounded-md bg-teal-100 px-2 py-1 text-[12.6px] font-medium text-teal-600 hover:bg-teal-200"
                           >
                             {entry.action === "estimate_created" ||
-                            ["Sample Estimate", "Sample Quote"].some((prefix) =>
+                            ["Sample Estimate", "Sample Quote", "Draft Quote"].some((prefix) =>
                               String(entry.meta?.fileName ?? "").startsWith(prefix),
                             )
                               ? "Open Quote"

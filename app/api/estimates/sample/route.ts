@@ -465,16 +465,6 @@ export async function POST(req: NextRequest) {
       )
       .map((item) => [item.subitemId, item.dataUrl]),
   );
-  const missing = subitems.find(
-    (item: any) => !dataUrlBytes(artworkById.get(item.id) ?? ""),
-  );
-  if (missing)
-    return NextResponse.json(
-      {
-        error: `Artwork is required for ${missing.name || "each included subitem"}`,
-      },
-      { status: 400 },
-    );
   const { data: profile } = await supabase
     .from("profiles")
     .select("full_name, email")
@@ -538,7 +528,7 @@ export async function POST(req: NextRequest) {
     new_value: null,
     subitem_name: null,
     link: url,
-    title: "generated a sample quote",
+    title: "generated a draft quote",
     description: filename,
     meta: {
       kind: "sample",
