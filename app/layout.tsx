@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { ConfirmationProvider } from "@/components/ui/confirmation-provider";
 
 const defaultUrl = process.env.VERCEL_URL
     ? `https://${process.env.VERCEL_URL}`
@@ -19,7 +20,7 @@ export default function RootLayout({
     return (
         <html lang="en" suppressHydrationWarning>
             <body className="antialiased">
-                {children}
+                <ConfirmationProvider>{children}</ConfirmationProvider>
                 <div id="portal" />
             </body>
         </html>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { useAppConfirmation } from "@/components/ui/confirmation-provider";
 
 type EscapeCloseOptions = {
   open: boolean;
@@ -17,17 +18,27 @@ export function useEscapeClose({
   disabled = false,
   discardMessage = "Discard your unsaved changes and close this window?",
 }: EscapeCloseOptions) {
+  const confirm = useAppConfirmation();
   useEffect(() => {
     if (!open) return;
-    const closeOnEscape = (event: KeyboardEvent) => {
+    const closeOnEscape = async (event: KeyboardEvent) => {
       if (event.key !== "Escape" || event.defaultPrevented || event.isComposing) return;
       event.preventDefault();
       event.stopPropagation();
       if (disabled) return;
-      if (isDirty && !window.confirm(discardMessage)) return;
+      if (
+        isDirty &&
+        !(await confirm({
+          title: "Discard unsaved changes?",
+          description: discardMessage,
+          confirmLabel: "Discard",
+          destructive: true,
+        }))
+      )
+        return;
       onClose();
     };
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
-  }, [disabled, discardMessage, isDirty, onClose, open]);
+  }, [confirm, disabled, discardMessage, isDirty, onClose, open]);
 }

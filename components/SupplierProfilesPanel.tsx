@@ -14,6 +14,7 @@ import {
   X,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useAppConfirmation } from "./ui/confirmation-provider";
 
 type Supplier = {
   id: string;
@@ -70,6 +71,7 @@ export function SupplierProfilesPanel({
   initialSupplierId?: string | null;
   onSupplierChange?: (supplierId: string | null) => void;
 }) {
+  const confirm = useAppConfirmation();
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [listTagOptions, setListTagOptions] = useState<Tag[]>([]);
   const [detail, setDetail] = useState<Detail | null>(null);
@@ -406,12 +408,12 @@ export function SupplierProfilesPanel({
     }
   };
   const deleteTagOption = async (tag: Tag) => {
-    if (
-      !window.confirm(
-        `Delete the tag “${tag.name}”? It will be removed from every supplier profile.`,
-      )
-    )
-      return;
+    if (!(await confirm({
+      title: "Delete tag?",
+      description: `Delete the tag ${tag.name}? It will be removed from every supplier profile.`,
+      confirmLabel: "Delete tag",
+      destructive: true,
+    }))) return;
     setPending(`delete-tag:${tag.id}`);
     try {
       await request("DELETE", { action: "tag-option", id: tag.id });

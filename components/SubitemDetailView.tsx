@@ -444,7 +444,7 @@ export function SubitemDetailView({
             <div className="mx-auto max-w-7xl space-y-5">
               <div className="grid gap-5 md:grid-cols-2">
                 <SingleFileSlot
-                  title="Artwork"
+                  title="Artwork (for quotations)"
                   file={artwork}
                   canEdit={canEdit}
                   onAdd={(file) =>
@@ -453,7 +453,7 @@ export function SubitemDetailView({
                   onRemove={() => requestSingleFileRemoval("artworkFile")}
                 />
                 <SingleFileSlot
-                  title="OCF (Final Artwork)"
+                  title="Artwork (for OCF)"
                   file={ocfFinalArtwork}
                   canEdit={canEdit}
                   onAdd={(file) =>
@@ -673,7 +673,7 @@ export function SubitemDetailView({
             <div className="mx-auto max-w-4xl space-y-5">
               <div className="grid gap-5 md:grid-cols-2">
                 <SingleFileSlot
-                  title="Artwork"
+                  title="Artwork (for quotations)"
                   file={artwork}
                   canEdit={canEdit}
                   onAdd={(file) =>
@@ -682,7 +682,7 @@ export function SubitemDetailView({
                   onRemove={() => requestSingleFileRemoval("artworkFile")}
                 />
                 <SingleFileSlot
-                  title="OCF (Final Artwork)"
+                  title="Artwork (for OCF)"
                   file={ocfFinalArtwork}
                   canEdit={canEdit}
                   onAdd={(file) =>
@@ -940,10 +940,6 @@ function SingleFileSlot({
   onAdd: (file: File) => void;
   onRemove: () => void;
 }) {
-  const linkedNote =
-    title === "Artwork"
-      ? " Linked to quote generation."
-      : " Linked to OCF generation.";
   return (
     <FileDropTarget
       disabled={!canEdit}
@@ -952,11 +948,7 @@ function SingleFileSlot({
       }}
     >
       <section className="rounded-xl border border-slate-200 bg-white p-5">
-        <h2 className="mb-1 font-semibold text-slate-800">{title}</h2>
-        <p className="mb-4 text-xs text-slate-500">
-          One file only. Adding another file replaces the current one.
-          {linkedNote}
-        </p>
+        <h2 className="mb-1 text-lg font-semibold text-slate-800">{title}</h2>
         {file ? (
           <div className="flex items-center gap-3 rounded-lg border border-slate-200 p-3">
             <a

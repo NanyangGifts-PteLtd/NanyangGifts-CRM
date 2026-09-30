@@ -53,6 +53,7 @@ import { uploadCrmFiles } from "@/lib/crm-files";
 import { FilePreview } from "./file-preview";
 import { toast } from "sonner";
 import { useEscapeClose } from "@/components/hooks/use-escape-close";
+import { useAppConfirmation } from "./confirmation-provider";
 import { findSystemOption, type OptionEntry } from "@/lib/board-labels";
 import { overallPaymentStatus as calculateOverallPaymentStatus } from "@/lib/payment-status";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -635,6 +636,7 @@ export function ClientRow({
   autoEditName = false,
   onAutoEditNameStarted,
 }: ClientRowProps) {
+  const confirm = useAppConfirmation();
   const [permissionNotice, setPermissionNotice] = useState<{
     left: number;
     top: number;
@@ -1986,6 +1988,28 @@ export function ClientRow({
     (estimateMode === "sample" && Object.keys(sampleArtworkUploads).length > 0);
   const quoteActionInProgress =
     isGeneratingEstimate || isGeneratingSample || isUpdatingEstimate;
+  const closeEstimateDialog = () => {
+    setShowEstimateDialog(false);
+    setEstimateResult(null);
+    setSampleEstimate(null);
+    setSampleEstimateError(null);
+    setSampleArtworkUploads({});
+    setSelectedDraftQuoteSubitemIds([]);
+    setDraftQuoteArtworkPreview(null);
+    setQuickBooksDefaults(null);
+    setQuickBooksPaymentTerm("");
+    setQuickBooksSalesperson("");
+    setQuickBooksCompanyName(client.company ?? "");
+    setQuoteDeliveryBySubitem({});
+    setSameQuoteTaxForAll(false);
+    setUpdateEstimates([]);
+    setSelectedEstimateGenerationId("");
+    setUpdateEstimatePreview(null);
+    setUpdateEstimateError(null);
+    setUpdateEstimateResult(null);
+    setEstimateMode("choice");
+    resetEstimateState();
+  };
 
   return (
     <div
@@ -2023,28 +2047,8 @@ export function ClientRow({
       <AlertDialog
         open={showEstimateDialog}
         onOpenChange={(open) => {
-          setShowEstimateDialog(open);
-          if (!open) {
-            setEstimateResult(null);
-            setSampleEstimate(null);
-            setSampleEstimateError(null);
-            setSampleArtworkUploads({});
-            setSelectedDraftQuoteSubitemIds([]);
-            setDraftQuoteArtworkPreview(null);
-            setQuickBooksDefaults(null);
-            setQuickBooksPaymentTerm("");
-            setQuickBooksSalesperson("");
-            setQuickBooksCompanyName(client.company ?? "");
-            setQuoteDeliveryBySubitem({});
-            setSameQuoteTaxForAll(false);
-            setUpdateEstimates([]);
-            setSelectedEstimateGenerationId("");
-            setUpdateEstimatePreview(null);
-            setUpdateEstimateError(null);
-            setUpdateEstimateResult(null);
-            setEstimateMode("choice");
-            resetEstimateState();
-          }
+          if (open) setShowEstimateDialog(true);
+          else closeEstimateDialog();
         }}
       >
         <AlertDialogContent
@@ -2053,14 +2057,16 @@ export function ClientRow({
               event.preventDefault();
               return;
             }
-            if (
-              hasUnsavedQuoteDraft &&
-              !window.confirm(
-                "Discard this unsaved quote preview and close it?",
-              )
-            ) {
-              event.preventDefault();
-            }
+            if (!hasUnsavedQuoteDraft) return;
+            event.preventDefault();
+            void confirm({
+              title: "Discard unsaved quote preview?",
+              description: "Discard this unsaved quote preview and close it?",
+              confirmLabel: "Discard",
+              destructive: true,
+            }).then((confirmed) => {
+              if (confirmed) closeEstimateDialog();
+            });
           }}
           className={
             estimateMode === "quickbooks" || estimateMode === "update"

@@ -49,6 +49,7 @@ import {
   sgdToCurrencyMultiplier,
 } from "@/lib/currency-labels";
 import { toast } from "sonner";
+import { useAppConfirmation } from "./confirmation-provider";
 import { SubitemActionsMenu } from "@/components/SubitemActionsMenu";
 import { PriceCalculatorDialog } from "@/components/PriceCalculatorDialog";
 import {
@@ -539,6 +540,7 @@ export function SubitemsTable({
   onOpenSubitemDetail,
   onPaymentRowsChanged,
 }: SubitemProps) {
+  const confirm = useAppConfirmation();
   const [blacklistedSupplierNames, setBlacklistedSupplierNames] = useState<
     Set<string>
   >(new Set());
@@ -4262,21 +4264,24 @@ export function SubitemsTable({
                               <button
                                 type="button"
                                 disabled={!canEditSubitem(sub.id)}
-                                onClick={() => {
-                                  if (
-                                    window.confirm("Remove this payment row?")
-                                  )
-                                    void deleteSubitemPaymentRow(
+                                onClick={async () => {
+                                  if (!(await confirm({
+                                    title: "Remove payment row?",
+                                    description: "This subpayment row will be removed.",
+                                    confirmLabel: "Remove",
+                                    destructive: true,
+                                  }))) return;
+                                  void deleteSubitemPaymentRow(
+                                    sub.id,
+                                    paymentRow.id,
+                                  ).then(() =>
+                                    onPaymentRowsChanged?.(
                                       sub.id,
-                                      paymentRow.id,
-                                    ).then(() =>
-                                      onPaymentRowsChanged?.(
-                                        sub.id,
-                                        sub.paymentRows.filter(
-                                          (row) => row.id !== paymentRow.id,
-                                        ),
+                                      sub.paymentRows.filter(
+                                        (row) => row.id !== paymentRow.id,
                                       ),
-                                    );
+                                    ),
+                                  );
                                 }}
                                 className="border-l border-[#e2e8f0] text-slate-300 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-40"
                                 title="Remove payment row"

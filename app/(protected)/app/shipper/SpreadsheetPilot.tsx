@@ -14,6 +14,7 @@ import {
 } from "@glideapps/glide-data-grid";
 import { ImagePlus, PaintBucket, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { useAppConfirmation } from "@/components/ui/confirmation-provider";
 import { createClient } from "@/lib/supabase/client";
 import "@glideapps/glide-data-grid/dist/index.css";
 
@@ -476,6 +477,7 @@ export function SpreadsheetPilot({
   shipperId: string;
   mode?: "internal" | "shipper";
 }) {
+  const confirm = useAppConfirmation();
   const cachedSnapshot = workbookSnapshotCache.get(shipperId);
   const [rows, setRows] = useState<Row[]>(() => cachedSnapshot?.rows ?? []);
   const [error, setError] = useState<string | null>(null);
@@ -1388,12 +1390,13 @@ export function SpreadsheetPilot({
   );
   const selected = rows.find((row) => row.id === selectedRowId);
   const deleteRow = async () => {
-    if (
-      mode === "shipper" ||
-      !selected ||
-      !window.confirm("Delete the selected spreadsheet row?")
-    )
-      return;
+    if (mode === "shipper" || !selected) return;
+    if (!(await confirm({
+      title: "Delete spreadsheet row?",
+      description: "The selected spreadsheet row will be permanently deleted.",
+      confirmLabel: "Delete row",
+      destructive: true,
+    }))) return;
     const response = await fetch(
       `/api/shipper/spreadsheet?shipperId=${shipperId}&rowId=${selected.id}`,
       { method: "DELETE" },
@@ -1588,7 +1591,13 @@ export function SpreadsheetPilot({
   const deleteContextRow = async () => {
     if (mode === "shipper") return;
     const target = contextMenu ? rows[contextMenu.row] : undefined;
-    if (!target || !window.confirm("Delete this spreadsheet row?")) return;
+    if (!target) return;
+    if (!(await confirm({
+      title: "Delete spreadsheet row?",
+      description: "This spreadsheet row will be permanently deleted.",
+      confirmLabel: "Delete row",
+      destructive: true,
+    }))) return;
     const response = await fetch(
       `/api/shipper/spreadsheet?shipperId=${shipperId}&rowId=${target.id}`,
       { method: "DELETE" },

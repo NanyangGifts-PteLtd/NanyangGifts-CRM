@@ -134,6 +134,8 @@ export function GenerateOcfModal({
   const [loadingItems, setLoadingItems] = useState(false);
   const [creating, setCreating] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [pendingFinalArtworkReplacement, setPendingFinalArtworkReplacement] =
+    useState<{ subitemId: string; file: File } | null>(null);
 
   const clientId = client?.id ?? null;
   const awardedOrLaterStatusIds = useMemo(
@@ -205,6 +207,10 @@ export function GenerateOcfModal({
     setLoadingItems(false);
   }, [open, client, awardedOrLaterStatusIds]);
 
+  useEffect(() => {
+    if (!open) setPendingFinalArtworkReplacement(null);
+  }, [open]);
+
   const hasAwarded = awardedSubitems.length > 0;
 
   const selectedRows = useMemo(
@@ -274,16 +280,7 @@ export function GenerateOcfModal({
     );
   }
 
-  function selectImage(subitemId: string, file: File | undefined) {
-    if (!file) return;
-    const row = rows.find((item) => item.subitemId === subitemId);
-    if (
-      row?.finalArtwork &&
-      !window.confirm(
-        "This image will overwrite the current OCF (Final Artwork) after the OCF is generated. Continue?",
-      )
-    )
-      return;
+  function applySelectedImage(subitemId: string, file: File) {
     updateRow(subitemId, {
       file,
       uploadedPath: null,
@@ -291,6 +288,16 @@ export function GenerateOcfModal({
       usingFinalArtwork: false,
       loadingSavedArtwork: false,
     });
+  }
+
+  function selectImage(subitemId: string, file: File | undefined) {
+    if (!file) return;
+    const row = rows.find((item) => item.subitemId === subitemId);
+    if (row?.finalArtwork) {
+      setPendingFinalArtworkReplacement({ subitemId, file });
+      return;
+    }
+    applySelectedImage(subitemId, file);
   }
 
   async function loadSavedFinalArtwork(subitemId: string) {
@@ -766,6 +773,41 @@ export function GenerateOcfModal({
           </div>
         </div>
       </div>
+      {pendingFinalArtworkReplacement && (
+        <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl">
+            <h3 className="text-lg font-semibold text-slate-900">
+              Replace artwork?
+            </h3>
+            <p className="mt-2 text-sm text-slate-600">
+              The current OCF artwork will be replaced by the selected image
+              after the OCF is generated.
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setPendingFinalArtworkReplacement(null)}
+                className="rounded-md border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  applySelectedImage(
+                    pendingFinalArtworkReplacement.subitemId,
+                    pendingFinalArtworkReplacement.file,
+                  );
+                  setPendingFinalArtworkReplacement(null);
+                }}
+                className="rounded-md bg-[#7BCBD5] px-4 py-2 text-sm font-medium text-white hover:bg-[#6cbac4]"
+              >
+                Replace image
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
