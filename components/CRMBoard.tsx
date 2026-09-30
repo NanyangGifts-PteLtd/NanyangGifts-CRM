@@ -867,6 +867,16 @@ export function CRMBoard({
     (client: Client) => clientPmAssignees[client.id] ?? [],
     [clientPmAssignees],
   );
+  // People-based searches treat PM assignments as people assignments too.
+  // The dedicated PM column remains available for PM-only searches/filters.
+  const clientPeopleIds = useCallback(
+    (client: Client) =>
+      [...new Set([
+        ...(clientAssignees[client.id] ?? []),
+        ...clientPmAssigneeIds(client),
+      ])],
+    [clientAssignees, clientPmAssigneeIds],
+  );
 
   const canEditClientRecord = useCallback(
     (clientId: string) => {
@@ -4245,7 +4255,7 @@ export function CRMBoard({
     const clientValue = (client: Client, key: string): unknown => {
       if (key === "client") return client.name;
       if (key === "people")
-        return (clientAssignees[client.id] ?? []).map(profileName);
+        return clientPeopleIds(client).map(profileName);
       if (key === "pm") return clientPmAssigneeIds(client).map(profileName);
       if (key === "dateCreated") return client.createdAt;
       if (key === "closedDate") return client.customFields?.closedDate ?? "";
@@ -4442,6 +4452,7 @@ export function CRMBoard({
     ];
   }, [
     clientAssignees,
+    clientPeopleIds,
     clientPmAssigneeIds,
     clients,
     mergedHeaderCols,
@@ -4479,7 +4490,7 @@ export function CRMBoard({
           key === "client"
             ? client.name
             : key === "people"
-              ? (clientAssignees[client.id] ?? []).map(profileName)
+              ? clientPeopleIds(client).map(profileName)
               : key === "pm"
                 ? clientPmAssigneeIds(client).map(profileName)
                 : key === "overallPaymentStatus"
@@ -4583,6 +4594,7 @@ export function CRMBoard({
     },
     [
       clientAssignees,
+      clientPeopleIds,
       clientPmAssigneeIds,
       currencyEntries,
       peopleProfilesById,
@@ -4592,6 +4604,23 @@ export function CRMBoard({
   );
 
   const boardSearchActive = Boolean(boardSearchTerm.trim());
+  const activeFilterCount =
+    [
+      filterStatus,
+      filterSubprogress,
+      filterSubitemStatus,
+      filterPayment,
+      filterPaymentStatus,
+      filterPeople,
+      filterImportance,
+      filterReplyStatus,
+      filterChannel,
+    ].filter((value) => value !== "All").length +
+    advancedRules.filter(
+      (rule) => rule.column && rule.condition && rule.value.trim(),
+    ).length;
+  const shouldExpandGroupsForResults =
+    boardSearchActive || activeFilterCount > 0;
   const matchesBoardSearch = useCallback(
     (client: Client) => {
       const query = boardSearchTerm.trim().toLowerCase();
@@ -4630,7 +4659,7 @@ export function CRMBoard({
         const clientValues =
           scope === "client"
             ? key === "people"
-              ? (clientAssignees[client.id] ?? []).map(profileName)
+              ? clientPeopleIds(client).map(profileName)
               : key === "pm"
                 ? clientPmAssigneeIds(client).map(profileName)
                 : key === "client"
@@ -4723,6 +4752,7 @@ export function CRMBoard({
       boardSearchColumns,
       boardSearchTerm,
       clientAssignees,
+      clientPeopleIds,
       clientPmAssigneeIds,
       currencyEntries,
       overallPaymentStatusEntries,
@@ -4730,24 +4760,6 @@ export function CRMBoard({
       subitemAssignees,
     ],
   );
-
-  useEffect(() => {
-    if (!boardSearchActive) {
-      if (searchCollapsedGroupsRef.current) {
-        setCollapsedGroups(searchCollapsedGroupsRef.current);
-        searchCollapsedGroupsRef.current = null;
-      }
-      return;
-    }
-    if (!searchCollapsedGroupsRef.current)
-      searchCollapsedGroupsRef.current = collapsedGroups;
-    setCollapsedGroups((current) => {
-      return expandedGroupsForSearch(
-        groups.map((group) => group.id),
-        current,
-      );
-    });
-  }, [boardSearchActive, collapsedGroups, groups]);
 
   // --- Filtering ---
   const optionIdForValue = (options: OptionEntry[], value: string) =>
@@ -4781,7 +4793,7 @@ export function CRMBoard({
       );
     const matchesPeople =
       filterPeople === "All" ||
-      (clientAssignees[client.id] ?? []).includes(filterPeople) ||
+      clientPeopleIds(client).includes(filterPeople) ||
       client.subitems.some((subitem) =>
         (subitemAssignees[subitem.id] ?? []).includes(filterPeople),
       );
@@ -5073,6 +5085,25 @@ export function CRMBoard({
           : { ...client, subitems: [...client.subitems].sort(compareSubitems) },
       ),
   }));
+  const resultGroupIds = groupedClients
+    .filter(({ clients: groupClients }) => groupClients.length > 0)
+    .map(({ group }) => group.id);
+
+  useEffect(() => {
+    if (!shouldExpandGroupsForResults) {
+      if (searchCollapsedGroupsRef.current) {
+        setCollapsedGroups(searchCollapsedGroupsRef.current);
+        searchCollapsedGroupsRef.current = null;
+      }
+      return;
+    }
+    if (!searchCollapsedGroupsRef.current)
+      searchCollapsedGroupsRef.current = collapsedGroups;
+    setCollapsedGroups((current) =>
+      expandedGroupsForSearch(resultGroupIds, current),
+    );
+  }, [collapsedGroups, resultGroupIds, shouldExpandGroupsForResults]);
+
   const boardVisibleGroups = visibleSearchGroups(
     trackingView
       ? groupedClients.filter(({ group }) =>
@@ -5431,22 +5462,6 @@ export function CRMBoard({
   const allFilteredSelected =
     filteredClients.length > 0 &&
     filteredClients.every((c) => selectedIds.has(c.id));
-
-  const activeFilterCount =
-    [
-      filterStatus,
-      filterSubprogress,
-      filterSubitemStatus,
-      filterPayment,
-      filterPaymentStatus,
-      filterPeople,
-      filterImportance,
-      filterReplyStatus,
-      filterChannel,
-    ].filter((value) => value !== "All").length +
-    advancedRules.filter(
-      (rule) => rule.column && rule.condition && rule.value.trim(),
-    ).length;
 
   const renderFilterColumn = ({
     label,
@@ -8724,7 +8739,7 @@ export function CRMBoard({
                   countFor: (value) =>
                     clients.filter(
                       (client) =>
-                        (clientAssignees[client.id] ?? []).includes(value) ||
+                        clientPeopleIds(client).includes(value) ||
                         client.subitems.some((subitem) =>
                           (subitemAssignees[subitem.id] ?? []).includes(value),
                         ),

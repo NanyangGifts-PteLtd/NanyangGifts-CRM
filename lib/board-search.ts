@@ -52,10 +52,10 @@ export function expandedGroupsForSearch(
   collapsedGroups: Record<string, boolean>,
 ) {
   if (groupIds.every((id) => !collapsedGroups[id])) return collapsedGroups;
-  return Object.fromEntries(groupIds.map((id) => [id, false])) as Record<
-    string,
-    boolean
-  >;
+  return {
+    ...collapsedGroups,
+    ...Object.fromEntries(groupIds.map((id) => [id, false])),
+  } as Record<string, boolean>;
 }
 
 export function visibleSearchGroups<T extends { clients: unknown[] }>(

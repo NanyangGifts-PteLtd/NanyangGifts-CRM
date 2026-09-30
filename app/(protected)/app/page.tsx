@@ -870,6 +870,7 @@ export default function Page() {
           currentUserRole={currentUserRole}
           clients={clients}
           clientAssignees={clientAssignees}
+          clientPmAssignees={clientPmAssignees}
           subitemAssignees={subitemAssignees}
           profiles={profiles}
           onSelectSearchResult={selectSearchResult}

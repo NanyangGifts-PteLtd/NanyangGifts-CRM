@@ -39,6 +39,7 @@ interface TopBarProps {
   currentUserRole: string | null;
   clients: Client[];
   clientAssignees: ClientAssigneeMap;
+  clientPmAssignees: ClientAssigneeMap;
   subitemAssignees: SubitemAssigneeMap;
   profiles: Profile[];
   onSelectSearchResult?: (result: SearchResult) => void;
@@ -57,6 +58,7 @@ function searchResults(
   clients: Client[],
   query: string,
   clientAssignees: ClientAssigneeMap,
+  clientPmAssignees: ClientAssigneeMap,
   subitemAssignees: Record<string, string[]>,
   profiles: Profile[],
 ): SearchResult[] {
@@ -158,7 +160,10 @@ function searchResults(
         field,
         value: String(value ?? ""),
       });
-    for (const assigneeId of clientAssignees[client.id] ?? []) {
+    for (const assigneeId of new Set([
+      ...(clientAssignees[client.id] ?? []),
+      ...(clientPmAssignees[client.id] ?? []),
+    ])) {
       for (const value of profileValues(assigneeId)) {
         add({
           clientId: client.id,
@@ -478,6 +483,7 @@ export default function TopBar({
   currentUserRole,
   clients,
   clientAssignees,
+  clientPmAssignees,
   subitemAssignees,
   profiles,
   onSelectSearchResult,
@@ -496,6 +502,7 @@ export default function TopBar({
     clients,
     value,
     clientAssignees,
+    clientPmAssignees,
     subitemAssignees,
     profiles,
   );
