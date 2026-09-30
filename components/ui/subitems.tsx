@@ -575,6 +575,72 @@ export function SubitemsTable({
     string | null
   >(null);
   const paymentRowSaveQueuesRef = useRef(new Map<string, Promise<void>>());
+  // Payment-row writes are separate from subitem writes. Keep an optimistic
+  // copy here so the automatic status is calculated from the same rows the
+  // user is seeing, rather than waiting for a full Board reload.
+  const subitemsRef = useRef(subitems);
+  const paymentRowsBySubitemRef = useRef(
+    new Map(subitems.map((subitem) => [subitem.id, subitem.paymentRows])),
+  );
+  useEffect(() => {
+    subitemsRef.current = subitems;
+    for (const subitem of subitems) {
+      paymentRowsBySubitemRef.current.set(subitem.id, subitem.paymentRows);
+    }
+  }, [subitems]);
+
+  const syncAutomaticPaymentStatus = useCallback(
+    (subitemId: string) => {
+      const subitem = subitemsRef.current.find((item) => item.id === subitemId);
+      if (!subitem) return;
+
+      // Resolved is an explicit, privileged override and must never be
+      // replaced by a calculated status.
+      const resolvedOption = findSystemOption(
+        paymentStatusOptions,
+        "payment_status_resolved",
+        "Resolved",
+      );
+      if (
+        resolvedOption.id &&
+        subitem.paymentStatusOptionId === resolvedOption.id
+      ) {
+        return;
+      }
+
+      const rows = paymentRowsBySubitemRef.current.get(subitemId) ?? [];
+      const currencyMultiplier = sgdToCurrencyMultiplier(
+        currencySystemKey(subitem.currencyOptionId, currencyOptions),
+      );
+      const totalUc = parseNumber(subitem.cost) * parseNumber(subitem.qty);
+      const totalC =
+        totalUc +
+        parseNumber(subitem.manpower) * currencyMultiplier +
+        parseNumber(subitem.ls) * currencyMultiplier;
+      const totalToPay = totalC + parseNumber(subitem.sample) * parseNumber(subitem.cost);
+      const amountReceived = rows
+        .filter((row) => row.paymentReceived === true)
+        .reduce((sum, row) => sum + parseNumber(row.amount), 0);
+      const isPaid = Math.abs(amountReceived - totalToPay) < 0.005;
+      const nextOption = findSystemOption(
+        paymentStatusOptions,
+        isPaid ? "payment_status_paid" : "payment_status_mismatch",
+        isPaid ? "✅" : "MISMATCH",
+      );
+
+      if (
+        subitem.paymentStatus === nextOption.value &&
+        subitem.paymentStatusOptionId === (nextOption.id ?? null)
+      ) {
+        return;
+      }
+      onUpdateSubitem(subitemId, {
+        paymentStatus: nextOption.value,
+        paymentStatusOptionId: nextOption.id ?? null,
+      });
+    },
+    [currencyOptions, onUpdateSubitem, paymentStatusOptions],
+  );
   const [supplierProfiles, setSupplierProfiles] = useState<
     Array<{
       name: string;
@@ -600,9 +666,18 @@ export function SubitemsTable({
           return { ...row, ...optimisticRow };
         }),
       );
+      const currentRows =
+        paymentRowsBySubitemRef.current.get(subitemId) ?? [];
+      paymentRowsBySubitemRef.current.set(
+        subitemId,
+        currentRows.map((row) =>
+          row.id === paymentRowId ? { ...row, ...optimisticRow } : row,
+        ),
+      );
 
       const save = async () => {
         await updateSubitemPaymentRow(subitemId, paymentRowId, updates);
+        syncAutomaticPaymentStatus(subitemId);
       };
       const previousSave = paymentRowSaveQueuesRef.current.get(paymentRowId);
       const queuedSave = (previousSave ?? Promise.resolve())
@@ -621,13 +696,29 @@ export function SubitemsTable({
             return unchangedSinceThisSave ? { ...row, ...previousRow } : row;
           }),
         );
+        if (previousRow) {
+          const currentRows =
+            paymentRowsBySubitemRef.current.get(subitemId) ?? [];
+          paymentRowsBySubitemRef.current.set(
+            subitemId,
+            currentRows.map((row) =>
+              row.id === paymentRowId &&
+              Object.entries(optimisticRow).every(
+                ([key, value]) => row[key as keyof PaymentRow] === value,
+              )
+                ? { ...row, ...previousRow }
+                : row,
+            ),
+          );
+          syncAutomaticPaymentStatus(subitemId);
+        }
         toast.error("Could not save the subpayment update", {
           description:
             error instanceof Error ? error.message : "Please try again.",
         });
       });
     },
-    [onPaymentRowsChanged],
+    [onPaymentRowsChanged, syncAutomaticPaymentStatus],
   );
   useEffect(() => {
     const load = async () => {
@@ -4363,14 +4454,17 @@ export function SubitemsTable({
                                     void deleteSubitemPaymentRow(
                                       sub.id,
                                       paymentRow.id,
-                                    ).then(() =>
-                                      onPaymentRowsChanged?.(
+                                    ).then(() => {
+                                      const nextRows = sub.paymentRows.filter(
+                                        (row) => row.id !== paymentRow.id,
+                                      );
+                                      paymentRowsBySubitemRef.current.set(
                                         sub.id,
-                                        sub.paymentRows.filter(
-                                          (row) => row.id !== paymentRow.id,
-                                        ),
-                                      ),
-                                    );
+                                        nextRows,
+                                      );
+                                      onPaymentRowsChanged?.(sub.id, nextRows);
+                                      syncAutomaticPaymentStatus(sub.id);
+                                    });
                                   }}
                                   className="border-l border-[#e2e8f0] text-slate-300 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-40"
                                   title="Remove payment row"
@@ -4385,11 +4479,18 @@ export function SubitemsTable({
                             disabled={!canEditSubitem(sub.id)}
                             onClick={() =>
                               void createSubitemPaymentRow(sub.id).then(
-                                (created) =>
-                                  onPaymentRowsChanged?.(sub.id, [
+                                (created) => {
+                                  const nextRows = [
                                     ...sub.paymentRows,
                                     created,
-                                  ]),
+                                  ];
+                                  paymentRowsBySubitemRef.current.set(
+                                    sub.id,
+                                    nextRows,
+                                  );
+                                  onPaymentRowsChanged?.(sub.id, nextRows);
+                                  syncAutomaticPaymentStatus(sub.id);
+                                },
                               )
                             }
                             className="flex w-full items-center gap-1.5 px-3 py-2 text-left text-xs font-medium text-[#318d98] hover:bg-[#eefbfc] disabled:cursor-not-allowed disabled:opacity-50"

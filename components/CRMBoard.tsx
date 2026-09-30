@@ -114,6 +114,7 @@ import { CombinedPushPreviewModal } from "./shipper/CombinedPushPreviewModal";
 import { useEscapeClose } from "./hooks/use-escape-close";
 import {
   canonicalPaymentStatusOptions,
+  findSystemOption,
   type OptionEntry,
 } from "@/lib/board-labels";
 import { overallPaymentStatus as calculateOverallPaymentStatus } from "@/lib/payment-status";
@@ -133,6 +134,32 @@ type PendingOptionDeletion = {
   usageCount: number;
   setEntries: React.Dispatch<React.SetStateAction<OptionEntry[]>>;
 };
+
+// Status labels can be renamed by administrators. Derivations must therefore
+// use the stable managed-option ID instead of assuming that Paid is always
+// rendered as a particular string.
+function isPaidOrResolvedPaymentStatus(
+  subitem: Subitem,
+  paymentStatusOptions: OptionEntry[],
+) {
+  const paid = findSystemOption(
+    paymentStatusOptions,
+    "payment_status_paid",
+    "✅",
+  );
+  const resolved = findSystemOption(
+    paymentStatusOptions,
+    "payment_status_resolved",
+    "Resolved",
+  );
+  return [paid, resolved].some(
+    (option) =>
+      (option.id
+        ? subitem.paymentStatusOptionId === option.id
+        : subitem.paymentStatus === option.value),
+  );
+}
+
 type FloatingMenuPosition = { left: number; bottom: number };
 const BOARD_OPTION_GROUP_CODES = [
   "reply_status",
@@ -4317,10 +4344,8 @@ export function CRMBoard({
         const awardedSubitems = client.subitems.filter(
           (subitem) => subitem.status === "Awarded",
         );
-        const paidAwardedSubitems = awardedSubitems.filter(
-          (subitem) =>
-            subitem.paymentStatus === "✅" ||
-            subitem.paymentStatus === "Resolved",
+        const paidAwardedSubitems = awardedSubitems.filter((subitem) =>
+          isPaidOrResolvedPaymentStatus(subitem, paymentStatusEntries),
         );
         return calculateOverallPaymentStatus(
           awardedSubitems.length,
@@ -4557,8 +4582,10 @@ export function CRMBoard({
                       client.subitems.filter(
                         (subitem) =>
                           subitem.status === "Awarded" &&
-                          (subitem.paymentStatus === "✅" ||
-                            subitem.paymentStatus === "Resolved"),
+                          isPaidOrResolvedPaymentStatus(
+                            subitem,
+                            paymentStatusEntries,
+                          ),
                       ).length,
                       overallPaymentStatusEntries,
                     )
@@ -4743,8 +4770,10 @@ export function CRMBoard({
                                 client.subitems.filter(
                                   (subitem) =>
                                     subitem.status === "Awarded" &&
-                                    (subitem.paymentStatus === "✅" ||
-                                      subitem.paymentStatus === "Resolved"),
+                                    isPaidOrResolvedPaymentStatus(
+                                      subitem,
+                                      paymentStatusEntries,
+                                    ),
                                 ).length,
                                 overallPaymentStatusEntries,
                               ),
