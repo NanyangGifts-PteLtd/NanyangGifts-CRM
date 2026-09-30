@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { supabaseAdmin } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import {
   createShipment,
@@ -198,7 +199,10 @@ export async function PATCH(request: NextRequest) {
       { error: session.error },
       { status: session.error === "Unauthorized" ? 401 : 403 },
     );
-  const supabase = await createClient();
+  // Authentication and role checks above always use the caller's session.
+  // The remaining reads/writes are explicitly authorized below, so use the
+  // server client to avoid a valid PM edit depending on table-level RLS.
+  const supabase = supabaseAdmin;
 
   try {
     const body = (await request.json()) as {

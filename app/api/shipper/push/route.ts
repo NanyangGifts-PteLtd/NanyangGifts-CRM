@@ -270,7 +270,10 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const { data: allShippers, error: shippersError } = await supabase
+    // Shipper configuration is shared reference data. The caller's role has
+    // already been verified, so this lookup must not depend on a PM's
+    // table-level read policy. The item assignment check follows below.
+    const { data: allShippers, error: shippersError } = await supabaseAdmin
       .from("shippers")
       .select("id, name");
 
@@ -308,7 +311,10 @@ export async function POST(req: NextRequest) {
       return shipperByName.get(baseName) ?? null;
     };
 
-    const { data: rawSubitems, error: subitemsError } = await supabase
+    // From this point onward, access is controlled explicitly by the
+    // assignment check below. Use the server client for CRM reads/writes so a
+    // valid PM send is not accidentally blocked by unrelated table RLS.
+    const { data: rawSubitems, error: subitemsError } = await supabaseAdmin
       .from("subitems")
       .select(
         `
@@ -444,7 +450,7 @@ export async function POST(req: NextRequest) {
           (body.targetShipperLabel &&
             rawItem?.shipper !== body.targetShipperLabel))
       ) {
-        const { error: repairError } = await supabase
+        const { error: repairError } = await supabaseAdmin
           .from("subitems")
           .update({
             shipper_id: item.shipper_id,
@@ -468,7 +474,7 @@ export async function POST(req: NextRequest) {
 
     const subitemIdList = subitems.map((item) => item.id);
 
-    const { data: ocfItemsRaw, error: ocfItemsError } = await supabase
+    const { data: ocfItemsRaw, error: ocfItemsError } = await supabaseAdmin
       .from("order_confirmation_items")
       .select(
         `
@@ -700,7 +706,7 @@ export async function POST(req: NextRequest) {
         .map((group) => String(group.cnTracking ?? "").trim())
         .filter(Boolean)
         .join(", ");
-      const { error: timelineError } = await supabase
+      const { error: timelineError } = await supabaseAdmin
         .from("subitems")
         .update({
           timeline_groups: nextTimelineGroups,
@@ -773,7 +779,7 @@ export async function POST(req: NextRequest) {
       };
     });
 
-    const { data: pushedRows, error: upsertError } = await supabase
+    const { data: pushedRows, error: upsertError } = await supabaseAdmin
       .from("shipper_view_rows")
       .upsert(rowsToUpsert, { onConflict: "subitem_id" })
       .select();
@@ -907,7 +913,7 @@ export async function POST(req: NextRequest) {
         };
       });
     if (activityRows.length) {
-      const { error: activityError } = await supabase
+      const { error: activityError } = await supabaseAdmin
         .from("activity_log")
         .insert(activityRows);
       if (activityError)
