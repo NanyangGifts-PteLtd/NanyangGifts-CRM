@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import {
+  createQuickBooksVendor,
   qboQuery,
   qboRequest,
   qboUploadAttachment,
@@ -318,16 +319,7 @@ export async function PATCH(request: NextRequest) {
     if ((!supplierId && !supplierName) || !billNumber || !memo)
       throw new Error("Supplier, Invoice no., and Memo are required.");
     if (!supplierId) {
-      const createdVendor = await qboRequest("/vendor", {
-        method: "POST",
-        body: JSON.stringify({
-          DisplayName: supplierName,
-          CompanyName: supplierName,
-        }),
-      });
-      supplierId = String(createdVendor?.Vendor?.Id ?? "");
-      if (!supplierId)
-        throw new Error("QuickBooks could not create the new Supplier.");
+      supplierId = await createQuickBooksVendor(supplierName);
     }
     await ensureQuickBooksBillNumberAvailable({
       supplierId,

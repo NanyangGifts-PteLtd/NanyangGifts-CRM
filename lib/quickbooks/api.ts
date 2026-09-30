@@ -42,6 +42,30 @@ export async function qboQuery(query: string) {
   return qboRequest(`/query?query=${encoded}`, { method: 'GET' });
 }
 
+/** Creates a QuickBooks Vendor from a free-text supplier name. */
+export async function createQuickBooksVendor(supplierName: unknown) {
+  const name = String(supplierName ?? "")
+    .replace(/\u0000/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!name)
+    throw new Error(
+      "Supplier name is required to create a new QuickBooks supplier.",
+    );
+
+  const result = await qboRequest("/vendor", {
+    method: "POST",
+    body: JSON.stringify({
+      DisplayName: name,
+      CompanyName: name,
+      GivenName: name,
+    }),
+  });
+  const id = String(result?.Vendor?.Id ?? "").trim();
+  if (!id) throw new Error("QuickBooks could not create the new Supplier.");
+  return id;
+}
+
 export async function qboUploadAttachment(
   file: File,
   attachedEntity: { id: string; type: string },

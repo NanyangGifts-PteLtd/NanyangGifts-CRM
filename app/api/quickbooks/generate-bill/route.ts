@@ -4,7 +4,11 @@ import {
   assertSupabaseAdminConfiguration,
   supabaseAdmin,
 } from "@/lib/supabase/admin";
-import { qboRequest, qboUploadAttachment } from "@/lib/quickbooks/api";
+import {
+  createQuickBooksVendor,
+  qboRequest,
+  qboUploadAttachment,
+} from "@/lib/quickbooks/api";
 import { listQuickBooksTaxCodes } from "@/lib/quickbooks/bill-options";
 import { quickBooksBillGstTotal } from "@/lib/quickbooks/bill-tax";
 import { ensureQuickBooksBillNumberAvailable } from "@/lib/quickbooks/bill-duplicate-check";
@@ -148,16 +152,7 @@ export async function POST(request: NextRequest) {
       overallGstText === "" ? null : Number(overallGstText);
     if (!supplierId && !supplierName) throw new Error("Supplier is required.");
     if (!supplierId) {
-      const createdVendor = await qboRequest("/vendor", {
-        method: "POST",
-        body: JSON.stringify({
-          DisplayName: supplierName,
-          CompanyName: supplierName,
-        }),
-      });
-      supplierId = String(createdVendor?.Vendor?.Id ?? "");
-      if (!supplierId)
-        throw new Error("QuickBooks could not create the new Supplier.");
+      supplierId = await createQuickBooksVendor(supplierName);
     }
     if (!invoiceNumber) throw new Error("Invoice no. is required.");
     if (!memo) throw new Error("Memo is required.");

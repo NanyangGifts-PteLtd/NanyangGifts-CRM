@@ -4,7 +4,11 @@ import {
   assertSupabaseAdminConfiguration,
   supabaseAdmin,
 } from "@/lib/supabase/admin";
-import { qboRequest, qboUploadAttachment } from "@/lib/quickbooks/api";
+import {
+  createQuickBooksVendor,
+  qboRequest,
+  qboUploadAttachment,
+} from "@/lib/quickbooks/api";
 import { ensureQuickBooksBillNumberAvailable } from "@/lib/quickbooks/bill-duplicate-check";
 import { listQuickBooksTaxCodes } from "@/lib/quickbooks/bill-options";
 import { quickBooksBillGstTotal } from "@/lib/quickbooks/bill-tax";
@@ -89,16 +93,7 @@ export async function POST(request: NextRequest) {
     )
       throw new Error("Overall GST amount must be zero or greater.");
     if (!supplierId) {
-      const created = await qboRequest("/vendor", {
-        method: "POST",
-        body: JSON.stringify({
-          DisplayName: supplierName,
-          CompanyName: supplierName,
-        }),
-      });
-      supplierId = String(created?.Vendor?.Id ?? "");
-      if (!supplierId)
-        throw new Error("QuickBooks could not create the new Supplier.");
+      supplierId = await createQuickBooksVendor(supplierName);
     }
     await ensureQuickBooksBillNumberAvailable({ supplierId, billNumber });
     const lines = bill.lines ?? [];
