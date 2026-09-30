@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   ChevronLeft,
   ChevronRight,
+  Copy,
   FileText,
   Paperclip,
   X,
@@ -76,6 +77,26 @@ const dateValue = (value: string) => {
     ? date.toISOString().slice(0, 10)
     : "";
 };
+
+async function copySubitemId(value: string) {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(value);
+    } else {
+      const input = document.createElement("textarea");
+      input.value = value;
+      input.style.position = "fixed";
+      input.style.opacity = "0";
+      document.body.appendChild(input);
+      input.select();
+      document.execCommand("copy");
+      input.remove();
+    }
+    toast.success("Subitem ID copied", { description: value });
+  } catch {
+    toast.error("Could not copy the Subitem ID");
+  }
+}
 
 export function SubitemDetailView({
   subitem,
@@ -458,13 +479,16 @@ export function SubitemDetailView({
                 }}
               />
               {subitem.displayId ? (
-                <span
-                  title="Subitem ID"
-                  className="shrink-0 rounded border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-medium text-slate-500"
+                <button
+                  type="button"
+                  onClick={() => void copySubitemId(subitem.displayId)}
+                  title="Copy Subitem ID"
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-medium text-slate-500 transition hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-sky-300"
                 >
                   Subitem ID:{" "}
                   <span className="font-mono">{subitem.displayId}</span>
-                </span>
+                  <Copy size={13} aria-hidden="true" />
+                </button>
               ) : null}
             </div>
           </div>

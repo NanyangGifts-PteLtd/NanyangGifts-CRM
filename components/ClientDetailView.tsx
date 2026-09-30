@@ -5,6 +5,7 @@ import {
   Building2,
   ChevronLeft,
   ChevronRight,
+  Copy,
   FileText,
   Paperclip,
   Send,
@@ -13,6 +14,7 @@ import {
   UserRound,
   X,
 } from "lucide-react";
+import { toast } from "sonner";
 import type { ActivityEntry, Client, Profile } from "@/app/types";
 import { AssigneeMultiSelect, gradientForId } from "./ui/assignee-multiselect";
 import { StatusBadge, type BadgeOption } from "./ui/statusbadge";
@@ -90,6 +92,26 @@ function formatDate(value: string | undefined) {
   return Number.isNaN(parsed.getTime())
     ? value
     : parsed.toLocaleDateString("en-GB");
+}
+
+async function copyClientId(value: string) {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(value);
+    } else {
+      const input = document.createElement("textarea");
+      input.value = value;
+      input.style.position = "fixed";
+      input.style.opacity = "0";
+      document.body.appendChild(input);
+      input.select();
+      document.execCommand("copy");
+      input.remove();
+    }
+    toast.success("Client ID copied", { description: value });
+  } catch {
+    toast.error("Could not copy the Client ID");
+  }
 }
 
 function dateInputValue(value: string | undefined) {
@@ -633,13 +655,16 @@ export function ClientDetailView({
                 }}
               />
               {client.displayId ? (
-                <span
-                  title="Client ID"
-                  className={`shrink-0 rounded border px-2 py-1 text-xs font-medium ${isBlacklisted ? "border-red-300/70 bg-red-800/40 text-red-50" : "border-slate-200 bg-slate-50 text-slate-500"}`}
+                <button
+                  type="button"
+                  onClick={() => void copyClientId(client.displayId)}
+                  title="Copy Client ID"
+                  className={`inline-flex shrink-0 items-center gap-1.5 rounded border px-2 py-1 text-xs font-medium transition hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-sky-300 ${isBlacklisted ? "border-red-300/70 bg-red-800/40 text-red-50" : "border-slate-200 bg-slate-50 text-slate-500"}`}
                 >
                   Client ID:{" "}
                   <span className="font-mono">{client.displayId}</span>
-                </span>
+                  <Copy size={13} aria-hidden="true" />
+                </button>
               ) : null}
               {isBlacklisted ? (
                 <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-red-200/70 bg-white/15 px-3 py-1 text-xs font-bold uppercase tracking-wide text-white">
