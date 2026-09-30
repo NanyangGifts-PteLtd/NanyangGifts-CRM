@@ -89,6 +89,7 @@ export function SubitemDetailView({
   onUpdate,
   onAssigneesChange,
   activityLog,
+  activityLoading = false,
   onUndo,
   options,
   moveTargetGroups,
@@ -109,6 +110,7 @@ export function SubitemDetailView({
   onUpdate: (updates: Partial<Subitem>) => void;
   onAssigneesChange: (ids: string[]) => void;
   activityLog: ActivityEntry[];
+  activityLoading?: boolean;
   onUndo: (entry: ActivityEntry) => void | Promise<void>;
   options: {
     status: BadgeOption[];
@@ -864,7 +866,12 @@ export function SubitemDetailView({
                   </div>
                 </article>
               ))}
-              {!logs.length && (
+              {activityLoading ? (
+                <div className="flex min-h-28 items-center justify-center gap-2 text-sm text-slate-400">
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-sky-200 border-t-sky-600" />
+                  Loading activity history…
+                </div>
+              ) : !logs.length && (
                 <p className="text-center text-sm text-slate-400">
                   No activity recorded yet.
                 </p>

@@ -74,6 +74,7 @@ import {
   reorderSubitemRows,
   duplicateSubitemRow,
   duplicateClientRow,
+  fetchClientActivityLog,
   fetchDeletedBinItems,
   restoreClientRow,
   restoreSubitemRow,
@@ -717,6 +718,7 @@ export function CRMBoard({
     clientId: string;
     subitemId: string;
   } | null>(null);
+  const loadingActivityClientIds = useRef(new Set<string>());
   const controlledDetailTargetKey = useRef<string | null | undefined>(
     undefined,
   );
@@ -731,6 +733,44 @@ export function CRMBoard({
     setDetailClientId(openClientId);
     onOpenClientHandledRef.current?.();
   }, [clients, openClientId]);
+
+  const loadClientActivity = useCallback(
+    async (clientId: string) => {
+      if (loadingActivityClientIds.current.has(clientId)) return;
+      loadingActivityClientIds.current.add(clientId);
+      try {
+        const activityLog = await fetchClientActivityLog(clientId);
+        setClients((current) =>
+          current.map((client) =>
+            client.id === clientId ? { ...client, activityLog } : client,
+          ),
+        );
+      } catch (error) {
+        // Mark the client as attempted so a temporary error does not trigger a
+        // request loop on every board render. A normal board reload retries it.
+        console.error("Failed to load client activity", error);
+        setClients((current) =>
+          current.map((client) =>
+            client.id === clientId ? { ...client, activityLog: [] } : client,
+          ),
+        );
+      } finally {
+        loadingActivityClientIds.current.delete(clientId);
+      }
+    },
+    [setClients],
+  );
+
+  useEffect(() => {
+    const requestedClientIds = new Set(expandedIds);
+    if (detailClientId) requestedClientIds.add(detailClientId);
+    if (detailSubitem) requestedClientIds.add(detailSubitem.clientId);
+
+    for (const clientId of requestedClientIds) {
+      if (clients.find((client) => client.id === clientId)?.activityLog === undefined)
+        void loadClientActivity(clientId);
+    }
+  }, [clients, detailClientId, detailSubitem, expandedIds, loadClientActivity]);
 
   useEffect(() => {
     const targetKey = detailViewTarget
@@ -814,7 +854,7 @@ export function CRMBoard({
   ]);
 
   const refreshBlacklist = useCallback(async () => {
-    const response = await fetch("/api/customer-profiles");
+    const response = await fetch("/api/customer-profiles?summary=blacklist");
     const result = await response.json();
     if (!response.ok)
       throw new Error(result.error || "Unable to load blacklist.");
@@ -7526,6 +7566,7 @@ export function CRMBoard({
                 handleSubitemAssigneesChange(subitem.id, ids)
               }
               activityLog={owner.activityLog ?? []}
+              activityLoading={owner.activityLog === undefined}
               onUndo={undoActivity}
               options={{
                 status: subitemStatusEntries,

@@ -540,7 +540,11 @@ function mapClients(row: Clients): Client {
     groupId: row.group_id ?? null,
     expanded: row.expanded ?? false,
     color: row.color ?? "#7BCBD5",
-    activityLog: (row.activity_log ?? []).map(mapActivityEntry),
+    // Board snapshots deliberately omit activity history. It is loaded on
+    // demand after a user expands a client or opens a detail/timeline view.
+    ...(row.activity_log === undefined
+      ? {}
+      : { activityLog: (row.activity_log ?? []).map(mapActivityEntry) }),
     ocfStatus: row.ocf_status,
     subitems: (row.subitems ?? [])
       .filter((subitem) => !subitem.deleted_at)
@@ -869,9 +873,9 @@ export async function fetchClientsWithSubitems() {
   }
 
   // Assignment maps are loaded separately by the Board, so embedding them in
-  // every client response only duplicated a large payload. Likewise, never
-  // fetch activity history belonging to soft-deleted clients: activity_log is
-  // unbounded and used to be the largest part of every Board refresh.
+  // every client response only duplicated a large payload. Activity history is
+  // intentionally not part of this initial board snapshot: it is unbounded and
+  // is loaded on demand for expanded clients and detail/timeline views.
   const { data: ocfData, error: ocfError } = activeClientIds.length
     ? await supabase
         .from("order_confirmations")
@@ -901,34 +905,10 @@ export async function fetchClientsWithSubitems() {
       ocfStatusByClientId.set(ocf.client_id, current);
     }
   }
-  const { data: activityData, error: activityError } = activeClientIds.length
-    ? await supabase
-        .from("activity_log")
-        .select(
-          "id, client_id, subitem_id, actor_name, action, field_name, old_value, new_value, subitem_name, created_at, link, title, description, meta",
-        )
-        .in("client_id", activeClientIds)
-        .order("created_at", { ascending: false })
-    : { data: [], error: null };
-
-  if (activityError) {
-    console.error("fetchClientsWithSubitems activity error:", activityError);
-    throw activityError;
-  }
-
-  const activityByClientId = new Map<string, ActivityLogRow[]>();
-
-  for (const row of activityData ?? []) {
-    const list = activityByClientId.get(row.client_id) ?? [];
-    list.push(row as ActivityLogRow);
-    activityByClientId.set(row.client_id, list);
-  }
-
   return (clientsData ?? []).map((row) =>
     mapClients({
       ...(row as Clients),
       subitems: subitemsByClientId.get(String(row.id)) ?? [],
-      activity_log: activityByClientId.get((row as Clients).id) ?? [],
       ...(ocfError
         ? {}
         : {
@@ -939,6 +919,26 @@ export async function fetchClientsWithSubitems() {
           }),
     }),
   );
+}
+
+/** Loads a single client's history only when the user needs to see it. */
+export async function fetchClientActivityLog(
+  clientId: string,
+): Promise<ActivityEntry[]> {
+  const { data, error } = await supabase
+    .from("activity_log")
+    .select(
+      "id, client_id, subitem_id, actor_name, action, field_name, old_value, new_value, subitem_name, created_at, link, title, description, meta",
+    )
+    .eq("client_id", clientId)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("fetchClientActivityLog error:", error);
+    throw error;
+  }
+
+  return (data ?? []).map((row) => mapActivityEntry(row as ActivityLogRow));
 }
 
 export async function fetchDeletedBinItems(): Promise<DeletedBinItem[]> {

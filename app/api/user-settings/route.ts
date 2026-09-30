@@ -12,27 +12,31 @@ export async function GET(req: NextRequest) {
 
     if (authError || !user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const key = String(req.nextUrl.searchParams.get("key") ?? "");
-    if (!key) return NextResponse.json({ error: "Missing key" }, { status: 400 });
+    const keys = Array.from(
+      new Set(req.nextUrl.searchParams.getAll("key").map((key) => key.trim()).filter(Boolean)),
+    );
+    if (!keys.length) return NextResponse.json({ error: "Missing key" }, { status: 400 });
 
     const { data, error } = await supabase
       .from("user_settings")
-      .select("value")
+      .select("key, value")
       .eq("user_id", user.id)
-      .eq("key", key)
-      .maybeSingle();
+      .in("key", keys);
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-    // If value is a JSON string, try to parse it so clients get structured data
-    let parsed: any = data?.value ?? null;
-    if (typeof parsed === 'string') {
-      try {
-        parsed = JSON.parse(parsed);
-      } catch {}
+    const values: Record<string, any> = Object.fromEntries(keys.map((key) => [key, null]));
+    for (const row of data ?? []) {
+      let parsed: any = row.value ?? null;
+      if (typeof parsed === "string") {
+        try { parsed = JSON.parse(parsed); } catch {}
+      }
+      values[row.key] = parsed;
     }
 
-    return NextResponse.json({ ok: true, value: parsed ?? null });
+    return NextResponse.json(
+      keys.length === 1 ? { ok: true, value: values[keys[0]] } : { ok: true, values },
+    );
   } catch (err: any) {
     return NextResponse.json({ error: err?.message ?? "Unexpected server error" }, { status: 500 });
   }

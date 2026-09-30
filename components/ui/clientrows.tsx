@@ -3333,6 +3333,15 @@ export function ClientRow({
                   </div>
                   <div className="max-h-[420px] space-y-3 overflow-y-auto">
                     {(() => {
+                      if (client.activityLog === undefined) {
+                        return (
+                          <div className="flex min-h-28 items-center justify-center gap-2 rounded-lg border border-dashed border-gray-200 p-6 text-sm text-gray-500">
+                            <span className="h-4 w-4 animate-spin rounded-full border-2 border-sky-200 border-t-sky-600" />
+                            Loading activity history…
+                          </div>
+                        );
+                      }
+
                       const clientActivities = [...(client.activityLog ?? [])]
                         .filter(
                           (entry) =>
@@ -4701,6 +4710,7 @@ export function ClientRow({
           onSetColumnVisibility={onSetColumnVisibility}
           onPushToShipperView={onPushToShipperView}
           clientActivityLog={client.activityLog ?? []}
+          isActivityLoading={client.activityLog === undefined}
           onUndoActivity={onUndoActivity}
           moveTargetGroups={subitemMoveTargetGroups}
           onDuplicateSubitemAction={onDuplicateSubitemAction}

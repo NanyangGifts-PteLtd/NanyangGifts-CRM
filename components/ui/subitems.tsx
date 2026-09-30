@@ -431,6 +431,7 @@ type SubitemProps = {
   onSetColumnVisibility: (key: string, visible: boolean) => void;
   onPushToShipperView?: (subitemId: string) => Promise<void> | void;
   clientActivityLog?: ActivityEntry[];
+  isActivityLoading?: boolean;
   onUndoActivity?: (entry: ActivityEntry) => void | Promise<void>;
   moveTargetGroups: Array<{
     name: string;
@@ -556,6 +557,7 @@ export function SubitemsTable({
   onSetColumnVisibility,
   onPushToShipperView,
   clientActivityLog = [],
+  isActivityLoading = false,
   onUndoActivity,
   moveTargetGroups,
   onDuplicateSubitemAction,
@@ -3470,7 +3472,12 @@ export function SubitemsTable({
               </button>
             </div>
             <div className="max-h-[420px] space-y-2 overflow-y-auto">
-              {clientActivityLog.filter(
+              {isActivityLoading ? (
+                <div className="flex min-h-28 items-center justify-center gap-2 rounded-lg border border-dashed border-gray-200 p-6 text-sm text-gray-500">
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-sky-200 border-t-sky-600" />
+                  Loading activity history…
+                </div>
+              ) : clientActivityLog.filter(
                 (entry) => entry.subitemId === activitySubitem.id,
               ).length === 0 ? (
                 <div className="rounded-lg border border-dashed border-gray-200 p-6 text-center text-sm text-gray-500">
