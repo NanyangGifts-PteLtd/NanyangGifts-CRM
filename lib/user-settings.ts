@@ -2,7 +2,10 @@ const loadedValues = new Map<string, any>();
 const pendingValues = new Map<string, Promise<any | null>>();
 const pendingKeys = new Set<string>();
 let batchPromise: Promise<void> | null = null;
-const saveRequests = new Map<string, Promise<boolean>>();
+// Writes for the same setting must remain ordered. Returning the in-flight
+// request used to silently discard a newer value (for example, a column width
+// changed again while the previous width was still saving).
+const saveQueues = new Map<string, Promise<boolean>>();
 const savedSignatures = new Map<string, string>();
 
 const signatureFor = (value: any) =>
@@ -65,35 +68,38 @@ export function loadUserSetting(key: string): Promise<any | null> {
 
 export async function saveUserSetting(key: string, value: any): Promise<boolean> {
   const signature = signatureFor(value);
-  if (savedSignatures.get(key) === signature) return true;
-  const pending = saveRequests.get(key);
-  if (pending) return pending;
-
-  const request = (async () => {
-    try {
-      const res = await fetch(`/api/user-settings`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ key, value }),
-      });
-      if (!res.ok) {
-        if (res.status === 401) return false;
-        throw new Error(`Failed to save (${res.status})`);
+  const previous = saveQueues.get(key) ?? Promise.resolve(true);
+  const request = previous
+    .catch(() => false)
+    .then(async () => {
+      // This check happens when the queued write starts, so an identical
+      // already-saved value does not produce an unnecessary request.
+      if (savedSignatures.get(key) === signature) return true;
+      try {
+        const res = await fetch(`/api/user-settings`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ key, value }),
+        });
+        if (!res.ok) {
+          if (res.status === 401) return false;
+          throw new Error(`Failed to save (${res.status})`);
+        }
+        const data = await res.json();
+        if (data?.ok === true) {
+          loadedValues.set(key, value);
+          savedSignatures.set(key, signature);
+          return true;
+        }
+        return false;
+      } catch (error) {
+        console.warn("saveUserSetting failed", error);
+        return false;
       }
-      const data = await res.json();
-      if (data?.ok === true) {
-        loadedValues.set(key, value);
-        savedSignatures.set(key, signature);
-        return true;
-      }
-      return false;
-    } catch (error) {
-      console.warn("saveUserSetting failed", error);
-      return false;
-    } finally {
-      saveRequests.delete(key);
-    }
-  })();
-  saveRequests.set(key, request);
+    });
+  saveQueues.set(key, request);
+  void request.then(() => {
+    if (saveQueues.get(key) === request) saveQueues.delete(key);
+  });
   return request;
 }

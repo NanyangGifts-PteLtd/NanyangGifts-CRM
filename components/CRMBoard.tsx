@@ -1228,6 +1228,8 @@ export function CRMBoard({
   const [customClientWidths, setCustomClientWidths] = useState<
     Record<string, number>
   >({});
+  const clientWidthsDirtyRef = useRef(false);
+  const [clientWidthsHydrated, setClientWidthsHydrated] = useState(false);
   const [draggedHeaderKey, setDraggedHeaderKey] = useState<string | null>(null);
   const [dragOverHeaderKey, setDragOverHeaderKey] = useState<string | null>(
     null,
@@ -1235,6 +1237,10 @@ export function CRMBoard({
   const [dragOverHeaderEdge, setDragOverHeaderEdge] = useState<
     "left" | "right" | null
   >(null);
+  useEffect(() => {
+    clientWidthsDirtyRef.current = false;
+    setClientWidthsHydrated(false);
+  }, [currentUserId]);
   const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
   const [showRestoreArrangementConfirm, setShowRestoreArrangementConfirm] =
     useState(false);
@@ -2201,7 +2207,7 @@ export function CRMBoard({
         const { loadUserSetting } = await import("@/lib/user-settings");
         const value = await loadUserSetting("colWidths:clients");
         if (!mounted) return;
-        if (value && typeof value === "object") {
+        if (!clientWidthsDirtyRef.current && value && typeof value === "object") {
           setCustomClientWidths(
             Object.fromEntries(
               Object.entries(value as Record<string, unknown>).filter(
@@ -2224,7 +2230,7 @@ export function CRMBoard({
           const raw = localStorage.getItem(
             `colWidths:clients:${currentUserId}`,
           );
-          if (raw) {
+          if (!clientWidthsDirtyRef.current && raw) {
             const map = JSON.parse(raw) as Record<string, number>;
             setCustomClientWidths(
               Object.fromEntries(
@@ -2246,6 +2252,8 @@ export function CRMBoard({
         }
       } catch (e) {
         console.error("Failed to load saved client column widths", e);
+      } finally {
+        if (mounted) setClientWidthsHydrated(true);
       }
     })();
     return () => {
@@ -2254,7 +2262,7 @@ export function CRMBoard({
   }, [currentUserId]);
 
   useEffect(() => {
-    if (!currentUserId) return;
+    if (!currentUserId || !clientWidthsHydrated) return;
     (async () => {
       try {
         const { saveUserSetting } = await import("@/lib/user-settings");
@@ -2283,7 +2291,7 @@ export function CRMBoard({
         console.error("Failed to save client column widths", e);
       }
     })();
-  }, [mergedHeaderCols, currentUserId]);
+  }, [mergedHeaderCols, currentUserId, clientWidthsHydrated]);
 
   const updateClientCustomField = useCallback(
     async (clientId: string, columnId: string, value: string) => {
@@ -3817,6 +3825,7 @@ export function CRMBoard({
 
   // --- Resize ---
   const startResize = (key: string, startX: number) => {
+    clientWidthsDirtyRef.current = true;
     const startCol = mergedHeaderCols.find((col) => col.key === key);
     if (!startCol) return;
     const startWidth = startCol.width;

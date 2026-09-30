@@ -337,7 +337,7 @@ type SubitemProps = {
   subitemsLocked?: boolean;
   subitems: Subitem[];
   clientColor: string;
-  onUpdateSubitem: (id: string, u: Partial<Subitem>) => void;
+  onUpdateSubitem: (id: string, u: Partial<Subitem>) => void | Promise<void>;
   onApplySelectedSubitemStatus?: (
     status: string,
     statusOptionId: string | null,
@@ -968,6 +968,19 @@ export function SubitemsTable({
   const [paymentCols, setPaymentCols] = useState<ColumnDef[]>([
     ...PAYMENT_COLS,
   ]);
+  const subitemWidthsDirtyRef = useRef(false);
+  const paymentWidthsDirtyRef = useRef(false);
+  const [subitemWidthsHydrated, setSubitemWidthsHydrated] = useState(false);
+  const [paymentWidthsHydrated, setPaymentWidthsHydrated] = useState(false);
+  const pendingTimelineTrackingSavesRef = useRef(
+    new Map<string, Promise<void>>(),
+  );
+  useEffect(() => {
+    subitemWidthsDirtyRef.current = false;
+    paymentWidthsDirtyRef.current = false;
+    setSubitemWidthsHydrated(false);
+    setPaymentWidthsHydrated(false);
+  }, [currentUserId]);
 
   React.useLayoutEffect(() => {
     setSubitemCols((current) =>
@@ -1379,6 +1392,14 @@ export function SubitemsTable({
     const activeCols = tableMode === "payment" ? paymentCols : subitemCols;
     const startCol = activeCols.find((c) => c.key === key);
     if (!startCol) return;
+    if (key === "name") {
+      subitemWidthsDirtyRef.current = true;
+      paymentWidthsDirtyRef.current = true;
+    } else if (tableMode === "payment") {
+      paymentWidthsDirtyRef.current = true;
+    } else {
+      subitemWidthsDirtyRef.current = true;
+    }
     const startWidth = startCol.width;
     let pendingSharedNameWidth: number | null = null;
 
@@ -1513,7 +1534,7 @@ export function SubitemsTable({
         const { loadUserSetting } = await import("@/lib/user-settings");
         const value = await loadUserSetting("colWidths:subitems");
         if (!mounted) return;
-        if (value && typeof value === "object") {
+        if (!subitemWidthsDirtyRef.current && value && typeof value === "object") {
           setSubitemCols((prev) =>
             prev.map((c) => ({ ...c, width: value[c.key] ?? c.width })),
           );
@@ -1522,7 +1543,7 @@ export function SubitemsTable({
             const raw = localStorage.getItem(
               `colWidths:subitems:${currentUserId}`,
             );
-            if (raw) {
+            if (!subitemWidthsDirtyRef.current && raw) {
               const map = JSON.parse(raw) as Record<string, number>;
               setSubitemCols((prev) =>
                 prev.map((c) => ({ ...c, width: map[c.key] ?? c.width })),
@@ -1532,6 +1553,8 @@ export function SubitemsTable({
         }
       } catch (e) {
         console.error("Failed to load subitem column widths", e);
+      } finally {
+        if (mounted) setSubitemWidthsHydrated(true);
       }
     })();
     return () => {
@@ -1540,28 +1563,7 @@ export function SubitemsTable({
   }, [currentUserId]);
 
   React.useEffect(() => {
-    // try generic local cache for payments on mount
-    try {
-      const raw = localStorage.getItem("colWidths:payments:local");
-      if (raw) {
-        const owner = localStorage.getItem("colWidths:payments:local_owner");
-        if (!currentUserId) {
-          const map = JSON.parse(raw) as Record<string, number>;
-          setPaymentCols((prev) =>
-            prev.map((c) => ({ ...c, width: map[c.key] ?? c.width })),
-          );
-        } else if (owner && owner === currentUserId) {
-          const map = JSON.parse(raw) as Record<string, number>;
-          setPaymentCols((prev) =>
-            prev.map((c) => ({ ...c, width: map[c.key] ?? c.width })),
-          );
-        } else if (currentUserId && owner && owner !== currentUserId) {
-          setPaymentCols(PAYMENT_COLS.map((c) => ({ ...c })));
-        }
-      }
-    } catch {}
-
-    if (!currentUserId) return;
+    if (!currentUserId || !subitemWidthsHydrated) return;
     // debounce server saves
     const t = window.setTimeout(() => {
       (async () => {
@@ -1596,9 +1598,32 @@ export function SubitemsTable({
     }, 800);
 
     return () => window.clearTimeout(t);
-  }, [subitemCols, currentUserId]);
+  }, [subitemCols, currentUserId, subitemWidthsHydrated]);
 
   React.useEffect(() => {
+    // Apply the local payment cache only while loading. This must not run in
+    // the save effect, otherwise a resize re-applies the previous cache and
+    // visibly snaps the column back.
+    try {
+      const raw = localStorage.getItem("colWidths:payments:local");
+      if (raw) {
+        const owner = localStorage.getItem("colWidths:payments:local_owner");
+        if (!currentUserId) {
+          const map = JSON.parse(raw) as Record<string, number>;
+          setPaymentCols((prev) =>
+            prev.map((c) => ({ ...c, width: map[c.key] ?? c.width })),
+          );
+        } else if (owner && owner === currentUserId) {
+          const map = JSON.parse(raw) as Record<string, number>;
+          setPaymentCols((prev) =>
+            prev.map((c) => ({ ...c, width: map[c.key] ?? c.width })),
+          );
+        } else if (currentUserId && owner && owner !== currentUserId) {
+          setPaymentCols(PAYMENT_COLS.map((c) => ({ ...c })));
+        }
+      }
+    } catch {}
+
     if (!currentUserId) return;
     let mounted = true;
     (async () => {
@@ -1606,7 +1631,7 @@ export function SubitemsTable({
         const { loadUserSetting } = await import("@/lib/user-settings");
         const value = await loadUserSetting("colWidths:payments");
         if (!mounted) return;
-        if (value && typeof value === "object") {
+        if (!paymentWidthsDirtyRef.current && value && typeof value === "object") {
           setPaymentCols((prev) =>
             prev.map((c) => ({ ...c, width: value[c.key] ?? c.width })),
           );
@@ -1615,7 +1640,7 @@ export function SubitemsTable({
             const raw = localStorage.getItem(
               `colWidths:payments:${currentUserId}`,
             );
-            if (raw) {
+            if (!paymentWidthsDirtyRef.current && raw) {
               const map = JSON.parse(raw) as Record<string, number>;
               setPaymentCols((prev) =>
                 prev.map((c) => ({ ...c, width: map[c.key] ?? c.width })),
@@ -1625,6 +1650,8 @@ export function SubitemsTable({
         }
       } catch (e) {
         console.error("Failed to load payment column widths", e);
+      } finally {
+        if (mounted) setPaymentWidthsHydrated(true);
       }
     })();
     return () => {
@@ -1633,7 +1660,7 @@ export function SubitemsTable({
   }, [currentUserId]);
 
   React.useEffect(() => {
-    if (!currentUserId) return;
+    if (!currentUserId || !paymentWidthsHydrated) return;
     // debounce server saves
     const t2 = window.setTimeout(() => {
       (async () => {
@@ -1668,7 +1695,7 @@ export function SubitemsTable({
     }, 800);
 
     return () => window.clearTimeout(t2);
-  }, [paymentCols, currentUserId]);
+  }, [paymentCols, currentUserId, paymentWidthsHydrated]);
 
   // Listen for auth changes (SPA sign-in/out) and reload/reset widths accordingly
   React.useEffect(() => {
@@ -1951,6 +1978,10 @@ export function SubitemsTable({
     setIsLoadingPushPreview(true);
     setPreparingPushSubitemId(subitemId);
     try {
+      // A Send click triggers a timeline field blur immediately before this
+      // handler. Wait for that save so the preview reads the new tracking
+      // number rather than the preceding database value.
+      await pendingTimelineTrackingSavesRef.current.get(subitemId);
       const response = await fetch("/api/shipper/push", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -4528,9 +4559,8 @@ export function SubitemsTable({
                             cnTracking={timeline.cnTracking}
                             sgTracking={timeline.sgTracking}
                             shipper={sub.shipper ?? ""}
-                            onTrackingChange={(tracking) =>
-                              onUpdateSubitem(sub.id, {
-                                timelineGroups: (sub.timelineGroups?.length
+                            onTrackingChange={(tracking) => {
+                              const timelineGroups = (sub.timelineGroups?.length
                                   ? sub.timelineGroups
                                   : [
                                       {
@@ -4542,14 +4572,31 @@ export function SubitemsTable({
                                           : DEFAULT_TIMELINE_ROWS,
                                         isDefault: true,
                                       },
-                                    ]
-                                ).map((candidate) =>
+                                    ])
+                                .map((candidate) =>
                                   candidate.id === timeline.id
                                     ? { ...candidate, ...tracking }
                                     : candidate,
-                                ),
-                              })
-                            }
+                                );
+                              const pendingSave = Promise.resolve(
+                                onUpdateSubitem(sub.id, { timelineGroups }),
+                              );
+                              pendingTimelineTrackingSavesRef.current.set(
+                                sub.id,
+                                pendingSave,
+                              );
+                              void pendingSave.finally(() => {
+                                if (
+                                  pendingTimelineTrackingSavesRef.current.get(
+                                    sub.id,
+                                  ) === pendingSave
+                                ) {
+                                  pendingTimelineTrackingSavesRef.current.delete(
+                                    sub.id,
+                                  );
+                                }
+                              });
+                            }}
                             onRemoveTimeline={
                               timeline.isDefault || !canEditSubitem(sub.id)
                                 ? undefined
