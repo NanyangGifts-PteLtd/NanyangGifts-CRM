@@ -7546,6 +7546,11 @@ export function CRMBoard({
               siblings={owner.subitems}
               profiles={profiles}
               assigneeIds={subitemAssignees[subitem.id] ?? []}
+              currentUserId={currentUserId}
+              currentUserRole={currentUserRole}
+              clientAssigneeIds={clientAssignees[owner.id] ?? []}
+              clientPmAssigneeIds={clientPmAssigneeIds(owner)}
+              customColumns={subitemCustomCols}
               canEdit={
                 owner.customFields?.subitemsLocked !== "true" &&
                 canEditSubitemRecord(owner.id, subitem.id)
@@ -7633,6 +7638,7 @@ export function CRMBoard({
                 ) &&
                   Boolean(normalizeBlacklistPhone(detailClient.phone ?? "")))
               }
+              customColumns={clientCustomCols}
               initialTab={detailClientInitialTab ?? undefined}
               onDuplicate={() => requestClientDuplication(detailClient.id)}
               onMove={(groupId) => moveClientAction(detailClient.id, groupId)}

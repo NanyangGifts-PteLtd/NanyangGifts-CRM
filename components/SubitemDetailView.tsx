@@ -23,6 +23,8 @@ import { SubitemActionsMenu } from "./SubitemActionsMenu";
 import { FileDropTarget } from "./ui/file-drop-target";
 import { uploadCrmFiles } from "@/lib/crm-files";
 import { FilePreview } from "./ui/file-preview";
+import { calculateSubitemFinancials } from "@/lib/subitem-calculations";
+import type { CustomColumn } from "@/lib/custom-columns";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -83,6 +85,11 @@ export function SubitemDetailView({
   profiles,
   assigneeIds,
   canEdit,
+  currentUserId,
+  currentUserRole,
+  clientAssigneeIds = [],
+  clientPmAssigneeIds = [],
+  customColumns = [],
   readOnlyMessage = "You can only edit items that are assigned to you",
   onClose,
   onNavigate,
@@ -104,6 +111,11 @@ export function SubitemDetailView({
   profiles: Profile[];
   assigneeIds: string[];
   canEdit: boolean;
+  currentUserId?: string | null;
+  currentUserRole?: string | null;
+  clientAssigneeIds?: string[];
+  clientPmAssigneeIds?: string[];
+  customColumns?: CustomColumn[];
   readOnlyMessage?: string;
   onClose: () => void;
   onNavigate: (subitem: Subitem) => void;
@@ -151,18 +163,57 @@ export function SubitemDetailView({
     [assigneeIds, profiles],
   );
   const siblingIndex = siblings.findIndex((item) => item.id === subitem.id);
+  const paidPaymentOptionId = options.payment.find(
+    (option) => option.systemKey === "subitem_payment_paid",
+  )?.id;
+  const isAssignedPm =
+    String(currentUserRole ?? "").trim().toLowerCase() === "pm" &&
+    Boolean(currentUserId) &&
+    (clientAssigneeIds.includes(currentUserId!) ||
+      clientPmAssigneeIds.includes(currentUserId!));
+  const paidLockedFields = new Set([
+    "qty", "cost", "currency", "manpower", "ls", "os", "up",
+    "idealMarkup", "paymentAmount",
+  ]);
+  const formulaFields = new Set([
+    "cSgd", "tcSgd", "tc", "uc", "leadTime", "price", "totalUc",
+    "totalC", "quantityProduced", "qtyTotal", "qtyFor", "totalToPay",
+    "difference",
+  ]);
+  const financials = calculateSubitemFinancials(subitem, options.currency);
+  const formulaValue = (key: string) => {
+    const quantity = financials.quantity;
+    if (key === "cSgd") return financials.cSgd;
+    if (key === "tcSgd" || key === "totalUc") return financials.tcSgd;
+    if (key === "tc" || key === "totalC") return financials.tc;
+    if (key === "uc") return quantity ? financials.tc / quantity : "";
+    if (key === "leadTime") return Number(subitem.pl || 0) + Number(subitem.sl || 0);
+    if (key === "price") return financials.price;
+    if (key === "quantityProduced") return quantity;
+    if (key === "qtyTotal") return quantity + Number(subitem.qtyFree || 0) + Number(subitem.sample || 0);
+    if (key === "qtyFor") return quantity + Number(subitem.qtyFree || 0) + Number(subitem.sample || 0) - Number(subitem.qtyWeKeep || 0);
+    if (key === "totalToPay") return financials.tc + Number(subitem.sample || 0) * Number(subitem.cost || 0);
+    if (key === "difference") return (subitem.paymentRows ?? []).filter((row) => row.paymentReceived).reduce((total, row) => total + Number(row.amount || 0), 0) - financials.tc;
+    return "";
+  };
+  const isPaidLocked = (key: keyof Subitem) =>
+    Boolean(paidPaymentOptionId && subitem.paymentOptionId === paidPaymentOptionId) &&
+    paidLockedFields.has(String(key)) &&
+    !(key === "os" && isAssignedPm);
+  const isFieldEditable = (key: keyof Subitem) =>
+    canEdit && !formulaFields.has(String(key)) && !isPaidLocked(key);
   const logs = activityLog
     .filter((entry) => entry.subitemId === subitem.id)
     .sort(
       (a, b) =>
         new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
     );
-  const blocked = (element: HTMLElement) => {
+  const blocked = (element: HTMLElement, message = readOnlyMessage) => {
     const rect = element.getBoundingClientRect();
     setNotice({
       left: Math.min(rect.left, window.innerWidth - 300),
       top: Math.min(rect.bottom + 8, window.innerHeight - 52),
-      message: readOnlyMessage,
+      message,
     });
   };
   const lock = (event: React.MouseEvent<HTMLElement>) => {
@@ -175,12 +226,31 @@ export function SubitemDetailView({
     <label key={String(key)} className="text-sm font-medium text-slate-500">
       {label}
       <div
-        onClickCapture={lock}
-        className="mt-2 min-h-10 rounded border border-slate-200 bg-white"
+        onClickCapture={(event) => {
+          if (isFieldEditable(key)) return;
+          event.preventDefault();
+          event.stopPropagation();
+          blocked(
+            event.currentTarget,
+            formulaFields.has(String(key))
+              ? "This value is calculated from other fields."
+              : isPaidLocked(key)
+                ? "This field is locked because the subitem has been Paid."
+                : readOnlyMessage,
+          );
+        }}
+        title={
+          formulaFields.has(String(key))
+            ? "Calculated from other fields"
+            : isPaidLocked(key)
+              ? "Locked because the subitem has been Paid"
+              : undefined
+        }
+        className={`mt-2 min-h-10 rounded border border-slate-200 ${formulaFields.has(String(key)) ? "bg-violet-50/70 text-violet-900" : "bg-white"}`}
       >
         <EditableCell
-          readOnly={!canEdit}
-          value={String(subitem[key] ?? "")}
+          readOnly={!isFieldEditable(key)}
+          value={String(formulaFields.has(String(key)) ? formulaValue(key) : (subitem[key] ?? ""))}
           onChange={(value) => onUpdate({ [key]: value } as Partial<Subitem>)}
           className="min-h-[38px] px-2 text-sm"
         />
@@ -193,8 +263,18 @@ export function SubitemDetailView({
         {label}
       </label>
       <div
-        onClickCapture={lock}
-        className={`h-10 overflow-hidden rounded ${!canEdit ? "pointer-events-none opacity-70" : ""}`}
+        onClickCapture={(event) => {
+          if (isFieldEditable(key)) return;
+          event.preventDefault();
+          event.stopPropagation();
+          blocked(
+            event.currentTarget,
+            isPaidLocked(key)
+              ? "This field is locked because the subitem has been Paid."
+              : readOnlyMessage,
+          );
+        }}
+        className={`h-10 overflow-hidden rounded ${!isFieldEditable(key) ? "pointer-events-none opacity-70" : ""}`}
       >
         <StatusBadge
           value={String(subitem[key] ?? "")}
@@ -287,6 +367,21 @@ export function SubitemDetailView({
     }
     setPendingSingleFileChange(null);
   };
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    const preventBackgroundScroll = (event: WheelEvent | TouchEvent) => {
+      if (event.target instanceof Element && event.target.closest("[data-detail-scroll]")) return;
+      event.preventDefault();
+    };
+    document.body.style.overflow = "hidden";
+    document.addEventListener("wheel", preventBackgroundScroll, { passive: false });
+    document.addEventListener("touchmove", preventBackgroundScroll, { passive: false });
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("wheel", preventBackgroundScroll);
+      document.removeEventListener("touchmove", preventBackgroundScroll);
+    };
+  }, []);
   useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || event.defaultPrevented || event.isComposing)
@@ -446,7 +541,7 @@ export function SubitemDetailView({
           ))}
         </nav>
         {tab === "overview" && (
-          <main className="min-h-0 flex-1 overflow-auto bg-slate-50 p-6">
+          <main data-detail-scroll className="min-h-0 flex-1 overflow-auto bg-slate-50 p-6">
             <div className="mx-auto max-w-7xl space-y-5">
               <div className="grid gap-5 md:grid-cols-2">
                 <SingleFileSlot
@@ -510,10 +605,33 @@ export function SubitemDetailView({
                   {text("Unit cost", "uc")}
                   {text("Production lead time", "pl")}
                   {text("Shipping lead time", "sl")}
+                  <label className="text-sm font-medium text-slate-500">
+                    Lead time
+                    <div
+                      title="Formula: Production Lead Time + Shipping Lead Time"
+                      className="mt-2 flex min-h-10 items-center rounded border border-violet-200 bg-violet-50/70 px-3 text-sm text-violet-900"
+                    >
+                      {String(formulaValue("leadTime"))}
+                    </div>
+                  </label>
                   {text("Price", "price")}
                   {text("Unit price", "up")}
                   {text("CN Tracking #", "cnTracking")}
                   {text("SG Tracking #", "sgTracking")}
+                  {customColumns.map((column) => (
+                    <label key={column.id} className="text-sm font-medium text-slate-500">
+                      {column.name}
+                      <div onClickCapture={lock} className="mt-2 min-h-10 rounded border border-slate-200 bg-white">
+                        <EditableCell
+                          type={column.field_type === "number" ? "number" : "text"}
+                          readOnly={!canEdit}
+                          value={String(subitem.customFields?.[column.id] ?? "")}
+                          onChange={(value) => onUpdate({ customFields: { ...(subitem.customFields ?? {}), [column.id]: value } })}
+                          className="min-h-[38px] px-2 text-sm"
+                        />
+                      </div>
+                    </label>
+                  ))}
                 </div>
               </Section>
               <Section title="Payments">
@@ -677,7 +795,7 @@ export function SubitemDetailView({
           </main>
         )}
         {tab === "files" && (
-          <main className="min-h-0 flex-1 overflow-auto bg-slate-50 p-6">
+          <main data-detail-scroll className="min-h-0 flex-1 overflow-auto bg-slate-50 p-6">
             <div className="mx-auto max-w-4xl space-y-5">
               <div className="grid gap-5 md:grid-cols-2">
                 <SingleFileSlot
@@ -792,7 +910,7 @@ export function SubitemDetailView({
           </main>
         )}
         {tab === "activity" && (
-          <main className="min-h-0 flex-1 overflow-auto bg-slate-50 p-6">
+          <main data-detail-scroll className="min-h-0 flex-1 overflow-auto bg-slate-50 p-6">
             <div className="mx-auto max-w-4xl space-y-3">
               {logs.map((entry) => (
                 <article

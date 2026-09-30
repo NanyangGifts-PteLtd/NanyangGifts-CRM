@@ -739,6 +739,7 @@ export default function Page() {
               groups={groups}
               profiles={profiles}
               clientAssignees={clientAssignees}
+              clientPmAssignees={clientPmAssignees}
               subitemAssignees={subitemAssignees}
               onOpenClientTimeline={openGanttClientTimeline}
             />

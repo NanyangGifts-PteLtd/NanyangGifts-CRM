@@ -21,6 +21,7 @@ import { ClientActionsMenu } from "./ClientActionsMenu";
 import { FileDropTarget } from "./ui/file-drop-target";
 import { uploadCrmFiles } from "@/lib/crm-files";
 import { FilePreview } from "./ui/file-preview";
+import type { CustomColumn } from "@/lib/custom-columns";
 
 type Attachment = {
   id: string;
@@ -126,6 +127,7 @@ export function ClientDetailView({
   groupNamesById,
   initialTab,
   isBlacklisted = false,
+  customColumns = [],
   onOpenProfile,
 }: {
   client: Client;
@@ -154,6 +156,7 @@ export function ClientDetailView({
   groupNamesById: Record<string, string>;
   initialTab?: Tab;
   isBlacklisted?: boolean;
+  customColumns?: CustomColumn[];
   onOpenProfile?: (type: "client" | "company", profileId: string) => void;
 }) {
   const [tab, setTab] = useState<Tab>(initialTab ?? "overview");
@@ -202,6 +205,7 @@ export function ClientDetailView({
     ["Email", "email"],
     ["Phone", "phone"],
     ["Requirements", "requirements"],
+    ["Unqualified reason", "unqualifiedReason"],
     ["Billing address", "billingAddress"],
   ];
   const dateFields: Array<[string, "followUp" | "nbd"]> = [
@@ -240,6 +244,21 @@ export function ClientDetailView({
   useEffect(() => {
     if (initialTab) setTab(initialTab);
   }, [initialTab]);
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    const preventBackgroundScroll = (event: WheelEvent | TouchEvent) => {
+      if (event.target instanceof Element && event.target.closest("[data-detail-scroll]")) return;
+      event.preventDefault();
+    };
+    document.body.style.overflow = "hidden";
+    document.addEventListener("wheel", preventBackgroundScroll, { passive: false });
+    document.addEventListener("touchmove", preventBackgroundScroll, { passive: false });
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("wheel", preventBackgroundScroll);
+      document.removeEventListener("touchmove", preventBackgroundScroll);
+    };
+  }, []);
   useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || event.defaultPrevented || event.isComposing)
@@ -704,7 +723,7 @@ export function ClientDetailView({
           ))}
         </nav>
         {tab === "overview" && (
-          <main className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-auto bg-slate-50 p-4 lg:grid-cols-[1fr_720px]">
+          <main data-detail-scroll className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-auto bg-slate-50 p-4 lg:grid-cols-[1fr_720px]">
             <div className="flex min-h-80 items-center justify-center rounded-xl border border-slate-200 bg-white text-center text-slate-400">
               <div>
                 <h2 className="mb-2 text-lg font-medium text-slate-600">
@@ -756,7 +775,7 @@ export function ClientDetailView({
                   <label className="mb-2 block text-sm font-medium text-slate-500">
                     People
                   </label>
-                  <div className="min-h-10">
+                  <div className="min-h-10" onClickCapture={blockIfLocked}>
                     <AssigneeMultiSelect
                       profiles={profiles}
                       selectedIds={assigneeIds}
@@ -768,7 +787,7 @@ export function ClientDetailView({
                   <label className="mb-2 block text-sm font-medium text-slate-500">
                     PM
                   </label>
-                  <div className="min-h-10">
+                  <div className="min-h-10" onClickCapture={blockIfLocked}>
                     <AssigneeMultiSelect
                       profiles={pmProfiles}
                       selectedIds={pmIds}
@@ -826,12 +845,32 @@ export function ClientDetailView({
                     </div>
                   </label>
                 ))}
+                <label className="text-sm font-medium text-slate-500">
+                  Closed date
+                  <div className="mt-2 flex min-h-10 items-center rounded border border-slate-200 bg-slate-50 px-3 text-sm text-slate-700">
+                    {formatDate(client.customFields?.closedDate)}
+                  </div>
+                </label>
+                {customColumns.map((column) => (
+                  <label key={column.id} className="text-sm font-medium text-slate-500">
+                    {column.name}
+                    <div onClickCapture={blockIfLocked} className="mt-2 min-h-10 rounded border border-slate-200 bg-white">
+                      <EditableCell
+                        type={column.field_type === "number" ? "number" : "text"}
+                        readOnly={!canEdit}
+                        value={String(client.customFields?.[column.id] ?? "")}
+                        onChange={(value) => onUpdate({ customFields: { ...(client.customFields ?? {}), [column.id]: value } })}
+                        className="min-h-[38px] px-2 text-sm"
+                      />
+                    </div>
+                  </label>
+                ))}
               </div>
             </aside>
           </main>
         )}
         {tab === "files" && (
-          <main className="min-h-0 flex-1 overflow-auto bg-slate-50 p-6">
+          <main data-detail-scroll className="min-h-0 flex-1 overflow-auto bg-slate-50 p-6">
             {[
               ["OCF files", "ocfFiles", ocfItems] as const,
               ...fileGroups.map(
@@ -948,7 +987,7 @@ export function ClientDetailView({
           </main>
         )}
         {tab === "updates" && (
-          <main className="min-h-0 flex-1 overflow-auto bg-slate-50 p-6">
+          <main data-detail-scroll className="min-h-0 flex-1 overflow-auto bg-slate-50 p-6">
             <div className="mx-auto max-w-3xl">
               <div className="relative rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                 <textarea
@@ -1064,7 +1103,7 @@ export function ClientDetailView({
           </main>
         )}
         {tab === "related" && (
-          <main className="min-h-0 flex-1 overflow-auto bg-slate-50 p-6">
+          <main data-detail-scroll className="min-h-0 flex-1 overflow-auto bg-slate-50 p-6">
             <div className="mx-auto grid max-w-6xl gap-5 lg:grid-cols-2">
               <RelatedLeadSection
                 title="Related leads by client"
@@ -1096,7 +1135,7 @@ export function ClientDetailView({
           </main>
         )}
         {tab === "profiles" && (
-          <main className="min-h-0 flex-1 overflow-auto bg-slate-50 p-6">
+          <main data-detail-scroll className="min-h-0 flex-1 overflow-auto bg-slate-50 p-6">
             <div className="mx-auto grid max-w-6xl gap-5 lg:grid-cols-2">
               <ProfileLinkSection
                 title="Linked client profiles"
@@ -1277,7 +1316,7 @@ export function ClientDetailView({
           </main>
         )}
         {tab === "activity" && (
-          <main className="min-h-0 flex-1 overflow-auto bg-slate-50 p-6">
+          <main data-detail-scroll className="min-h-0 flex-1 overflow-auto bg-slate-50 p-6">
             <div className="mx-auto max-w-4xl space-y-3">
               {clientActivities.map((entry) => (
                 <article

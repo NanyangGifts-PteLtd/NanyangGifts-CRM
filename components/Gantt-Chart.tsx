@@ -54,6 +54,7 @@ type Props = {
   groups: CRMGroup[];
   profiles: Profile[];
   clientAssignees: ClientAssigneeMap;
+  clientPmAssignees: ClientAssigneeMap;
   subitemAssignees: SubitemAssigneeMap;
   onOpenClientTimeline: (clientId: string, subitemId?: string) => void;
 };
@@ -228,6 +229,7 @@ function buildSchedulerData(
   clients: Client[],
   groups: CRMGroup[],
   clientAssignees: ClientAssigneeMap,
+  clientPmAssignees: ClientAssigneeMap,
   subitemAssignees: SubitemAssigneeMap,
   progressById: Map<string, { value: string; systemKey: string | null }>,
 ): SchedulerResource[] {
@@ -331,10 +333,13 @@ function buildSchedulerData(
           subitemName,
           subitemDisplayId,
           processNames,
-          pmIds: parsePmIds(client),
+          pmIds: clientPmAssignees[client.id] ?? parsePmIds(client),
           peopleIds: Array.from(
             new Set([
               ...(clientAssignees[client.id] ?? []),
+              // The People filter represents everyone responsible for the
+              // record, including PM assignments (as it does on the Board).
+              ...(clientPmAssignees[client.id] ?? parsePmIds(client)),
               ...(subitem ? (subitemAssignees[subitem.id] ?? []) : []),
             ]),
           ),
@@ -348,6 +353,7 @@ export default function GanttChart({
   groups,
   profiles,
   clientAssignees,
+  clientPmAssignees,
   subitemAssignees,
   onOpenClientTimeline,
 }: Props) {
@@ -477,10 +483,11 @@ export default function GanttChart({
         orderedClients,
         orderedGroups,
         clientAssignees,
+        clientPmAssignees,
         subitemAssignees,
         progressById,
       ),
-    [orderedClients, orderedGroups, clientAssignees, subitemAssignees, progressById],
+    [orderedClients, orderedGroups, clientAssignees, clientPmAssignees, subitemAssignees, progressById],
   );
   const data = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
