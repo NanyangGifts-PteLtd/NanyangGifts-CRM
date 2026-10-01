@@ -5,9 +5,9 @@ import {
   supabaseAdmin,
 } from "@/lib/supabase/admin";
 import {
-  createQuickBooksVendor,
-  qboRequest,
+  createQuickBooksBillSafely,
   qboUploadAttachment,
+  resolveQuickBooksVendor,
 } from "@/lib/quickbooks/api";
 import { ensureQuickBooksBillNumberAvailable } from "@/lib/quickbooks/bill-duplicate-check";
 import { listQuickBooksTaxCodes } from "@/lib/quickbooks/bill-options";
@@ -92,10 +92,6 @@ export async function POST(request: NextRequest) {
       (!Number.isFinite(overallGstAmount) || overallGstAmount < 0)
     )
       throw new Error("Overall GST amount must be zero or greater.");
-    if (!supplierId) {
-      supplierId = await createQuickBooksVendor(supplierName);
-    }
-    await ensureQuickBooksBillNumberAvailable({ supplierId, billNumber });
     const lines = bill.lines ?? [];
     if (!lines.length) throw new Error("Add at least one expense line.");
     const normalisedLines = lines.map((line, index) => {
@@ -155,9 +151,22 @@ export async function POST(request: NextRequest) {
         : Math.round((effectiveOverallGstAmount - calculatedTaxTotal) * 100) /
           100;
     const taxRateEntries = [...taxLinesByRate.entries()];
-    const created = await qboRequest("/bill", {
-      method: "POST",
-      body: JSON.stringify({
+    // Do not create a typed supplier until every bill line and GST value has
+    // been validated; QuickBooks cannot roll a Vendor back transactionally.
+    const resolvedVendor = await resolveQuickBooksVendor(
+      supplierId,
+      supplierName,
+    );
+    supplierId = resolvedVendor.id;
+    // A Vendor created immediately above cannot yet have a Bill. Avoid an
+    // unnecessary duplicate-check request on the new-supplier path.
+    if (!resolvedVendor.created)
+      await ensureQuickBooksBillNumberAvailable({ supplierId, billNumber });
+    const quickBooksBill = await createQuickBooksBillSafely({
+      supplierId,
+      billNumber,
+      createdVendor: resolvedVendor.created,
+      billPayload: {
         VendorRef: { value: supplierId },
         TxnDate: bill.billDate || undefined,
         DueDate: bill.dueDate || undefined,
@@ -208,11 +217,8 @@ export async function POST(request: NextRequest) {
             TaxCodeRef: { value: line.taxCodeId },
           },
         })),
-      }),
+      },
     });
-    const quickBooksBill = created?.Bill;
-    if (!quickBooksBill?.Id)
-      throw new Error("QuickBooks did not return a Bill ID.");
     // Keep the preview's declared GST value in the Payment Voucher record.
     const billGstValue =
       overallGstAmount ?? quickBooksBillGstTotal(quickBooksBill);

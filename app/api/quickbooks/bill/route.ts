@@ -2,10 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import {
-  createQuickBooksVendor,
   qboQuery,
   qboRequest,
   qboUploadAttachment,
+  resolveQuickBooksVendor,
 } from "@/lib/quickbooks/api";
 import { listQuickBooksTaxCodes } from "@/lib/quickbooks/bill-options";
 import { quickBooksBillGstTotal } from "@/lib/quickbooks/bill-tax";
@@ -318,14 +318,6 @@ export async function PATCH(request: NextRequest) {
     const memo = String(draft.memo ?? "").trim();
     if ((!supplierId && !supplierName) || !billNumber || !memo)
       throw new Error("Supplier, Invoice no., and Memo are required.");
-    if (!supplierId) {
-      supplierId = await createQuickBooksVendor(supplierName);
-    }
-    await ensureQuickBooksBillNumberAvailable({
-      supplierId,
-      billNumber,
-      excludeBillId: String(voucher.quickbooks_bill_id),
-    });
     if (!Array.isArray(draft.lines) || !draft.lines.length)
       throw new Error("Add at least one expense line.");
     const lines: Array<{
@@ -408,6 +400,18 @@ export async function PATCH(request: NextRequest) {
     const delta =
       overall === null ? 0 : Math.round((overall - calculated) * 100) / 100;
     const taxEntries = [...taxRates.entries()];
+    // Defer creating a typed Vendor until all bill and tax validation has
+    // completed, so a rejected edit cannot leave a supplier behind.
+    const resolvedVendor = await resolveQuickBooksVendor(
+      supplierId,
+      supplierName,
+    );
+    supplierId = resolvedVendor.id;
+    await ensureQuickBooksBillNumberAvailable({
+      supplierId,
+      billNumber,
+      excludeBillId: String(voucher.quickbooks_bill_id),
+    });
     const updated = await qboRequest("/bill", {
       method: "POST",
       body: JSON.stringify({

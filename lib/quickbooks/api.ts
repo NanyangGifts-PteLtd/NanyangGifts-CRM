@@ -42,6 +42,123 @@ export async function qboQuery(query: string) {
   return qboRequest(`/query?query=${encoded}`, { method: 'GET' });
 }
 
+function quoteQueryValue(value: string) {
+  return value.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+}
+
+// Protect against rapid double-clicks/retries in the same application worker.
+// The QuickBooks recovery below remains the cross-worker safeguard.
+const inFlightQuickBooksBills = new Set<string>();
+
+/**
+ * Resolves a typed supplier name before creating a Vendor. This avoids a
+ * duplicate Vendor when a previous request created it but did not get as far
+ * as creating its Bill, or when two users submit the same new supplier.
+ */
+export async function resolveQuickBooksVendor(
+  supplierId: unknown,
+  supplierName: unknown,
+) {
+  const suppliedId = String(supplierId ?? "").trim();
+  if (suppliedId) return { id: suppliedId, created: false };
+  const name = String(supplierName ?? "")
+    .replace(/\u0000/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!name)
+    throw new Error("Supplier name is required to create a new QuickBooks supplier.");
+
+  const findExisting = async () => {
+    const result = await qboQuery(
+      `SELECT Id, DisplayName FROM Vendor WHERE DisplayName = '${quoteQueryValue(name)}'`,
+    );
+    const vendor = (result?.QueryResponse?.Vendor ?? []).find(
+      (candidate: { Id?: unknown; DisplayName?: unknown }) =>
+        String(candidate.DisplayName ?? "").trim().toLocaleLowerCase() ===
+        name.toLocaleLowerCase(),
+    );
+    const id = String(vendor?.Id ?? "").trim();
+    return id || null;
+  };
+
+  const existingId = await findExisting();
+  if (existingId) return { id: existingId, created: false };
+  try {
+    return { id: await createQuickBooksVendor(name), created: true };
+  } catch (error) {
+    // A parallel request can create the same name between our lookup and POST.
+    const racedId = await findExisting().catch(() => null);
+    if (racedId) return { id: racedId, created: false };
+    throw error;
+  }
+}
+
+async function findQuickBooksBill(supplierId: string, billNumber: string) {
+  const result = await qboQuery(
+    `SELECT Id, DocNumber, VendorRef, TxnTaxDetail FROM Bill WHERE VendorRef = '${quoteQueryValue(supplierId)}' AND DocNumber = '${quoteQueryValue(billNumber)}'`,
+  );
+  return (result?.QueryResponse?.Bill ?? []).find(
+    (bill: { Id?: unknown }) => Boolean(String(bill.Id ?? "").trim()),
+  );
+}
+
+async function removeUnusedQuickBooksVendor(vendorId: string) {
+  const current = await qboRequest(`/vendor/${encodeURIComponent(vendorId)}`, {
+    method: "GET",
+  });
+  const vendor = current?.Vendor;
+  if (!vendor?.Id || vendor.SyncToken == null) return;
+  await qboRequest("/vendor?operation=delete", {
+    method: "POST",
+    body: JSON.stringify({ Id: vendor.Id, SyncToken: vendor.SyncToken }),
+  });
+}
+
+/**
+ * QBO Vendor and Bill creation cannot be wrapped in one transaction. If the
+ * Bill request times out after QBO accepted it, recover that Bill by its
+ * vendor/document-number pair. If it genuinely failed, remove the Vendor we
+ * created in this request so it is not left orphaned.
+ */
+export async function createQuickBooksBillSafely({
+  supplierId,
+  billNumber,
+  billPayload,
+  createdVendor,
+}: {
+  supplierId: string;
+  billNumber: string;
+  billPayload: Record<string, unknown>;
+  createdVendor: boolean;
+}) {
+  const key = `${supplierId}::${billNumber.trim().toLocaleLowerCase()}`;
+  if (inFlightQuickBooksBills.has(key))
+    throw new Error(
+      "A QuickBooks Bill with this Supplier and Invoice no. is already being created.",
+    );
+  inFlightQuickBooksBills.add(key);
+  try {
+    const result = await qboRequest("/bill", {
+      method: "POST",
+      body: JSON.stringify(billPayload),
+    });
+    if (!result?.Bill?.Id)
+      throw new Error("QuickBooks did not return a Bill ID.");
+    return result.Bill;
+  } catch (error) {
+    const recoveredBill = await findQuickBooksBill(supplierId, billNumber).catch(
+      () => null,
+    );
+    if (recoveredBill) return recoveredBill;
+    if (createdVendor) {
+      await removeUnusedQuickBooksVendor(supplierId).catch(() => undefined);
+    }
+    throw error;
+  } finally {
+    inFlightQuickBooksBills.delete(key);
+  }
+}
+
 /** Creates a QuickBooks Vendor from a free-text supplier name. */
 export async function createQuickBooksVendor(supplierName: unknown) {
   const name = String(supplierName ?? "")

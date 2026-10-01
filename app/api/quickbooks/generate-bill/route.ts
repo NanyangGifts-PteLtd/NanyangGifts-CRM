@@ -5,9 +5,9 @@ import {
   supabaseAdmin,
 } from "@/lib/supabase/admin";
 import {
-  createQuickBooksVendor,
-  qboRequest,
+  createQuickBooksBillSafely,
   qboUploadAttachment,
+  resolveQuickBooksVendor,
 } from "@/lib/quickbooks/api";
 import { listQuickBooksTaxCodes } from "@/lib/quickbooks/bill-options";
 import { quickBooksBillGstTotal } from "@/lib/quickbooks/bill-tax";
@@ -151,15 +151,8 @@ export async function POST(request: NextRequest) {
     const overallGstAmount =
       overallGstText === "" ? null : Number(overallGstText);
     if (!supplierId && !supplierName) throw new Error("Supplier is required.");
-    if (!supplierId) {
-      supplierId = await createQuickBooksVendor(supplierName);
-    }
     if (!invoiceNumber) throw new Error("Invoice no. is required.");
     if (!memo) throw new Error("Memo is required.");
-    await ensureQuickBooksBillNumberAvailable({
-      supplierId,
-      billNumber: invoiceNumber,
-    });
     if (
       overallGstAmount !== null &&
       (!Number.isFinite(overallGstAmount) || overallGstAmount < 0)
@@ -359,9 +352,26 @@ export async function POST(request: NextRequest) {
           100;
     const taxRateEntries = [...taxLinesByRate.entries()];
 
-    const billResult = await qboRequest("/bill", {
-      method: "POST",
-      body: JSON.stringify({
+    // Every local, database, and tax validation above must finish before a
+    // typed supplier can create a durable QuickBooks Vendor.
+    const resolvedVendor = await resolveQuickBooksVendor(
+      supplierId,
+      supplierName,
+    );
+    supplierId = resolvedVendor.id;
+    // A Vendor created immediately above cannot yet have a Bill. Skipping the
+    // duplicate lookup in that case saves one full QuickBooks round trip.
+    if (!resolvedVendor.created) {
+      await ensureQuickBooksBillNumberAvailable({
+        supplierId,
+        billNumber: invoiceNumber,
+      });
+    }
+    const quickBooksBill = await createQuickBooksBillSafely({
+      supplierId,
+      billNumber: invoiceNumber,
+      createdVendor: resolvedVendor.created,
+      billPayload: {
         VendorRef: { value: supplierId },
         TxnDate: String(bill.billDate ?? "").trim() || undefined,
         DueDate: String(bill.dueDate ?? "").trim() || undefined,
@@ -416,11 +426,8 @@ export async function POST(request: NextRequest) {
             TaxCodeRef: { value: line.taxCodeId },
           },
         })),
-      }),
+      },
     });
-    const quickBooksBill = billResult?.Bill;
-    if (!quickBooksBill?.Id)
-      throw new Error("QuickBooks did not return a Bill ID.");
     // The preview's Overall GST Amount is the Payment Voucher's declared Bill
     // GST value. Retain it exactly rather than replacing it with a potentially
     // differently-rounded value returned by QuickBooks.

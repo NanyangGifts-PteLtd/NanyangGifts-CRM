@@ -61,6 +61,7 @@ type AdditionalCost = {
   quickbooks_overall_gst_override?: number | null;
   quickbooks_bill_id?: string | null;
   quickbooks_bill_sync_error?: string | null;
+  isGeneratingQuickBooksBill?: boolean;
   quickbooks_attachment_files?: Array<{
     name?: string;
     id?: string;
@@ -450,6 +451,58 @@ export function AdditionalCostsBoard({
     () => new Map(clients.map((client) => [client.id, client])),
     [clients],
   );
+  const closeBillPreview = () => {
+    setPickerOpen(false);
+    setSelectedVoucherClientId(null);
+    setOtherBillChoice(null);
+    setBillTargetVoucher(null);
+    setQuickBooksBillOnlyMode(false);
+    setBillDocumentPreview(null);
+    setPrefillFileSignature(null);
+  };
+  const pendingQuickBooksBillRow = ({
+    id,
+    clientId,
+    voucherGroup,
+    bill,
+    voucher,
+  }: {
+    id: string;
+    clientId: string;
+    voucherGroup: AdditionalCost["voucher_group"];
+    bill: typeof billDraft;
+    voucher?: typeof voucherDraft;
+  }): AdditionalCost => ({
+    id,
+    client_id: clientId,
+    date_sent: null,
+    people_id: null,
+    people_ids: [],
+    cost: bill.lines.reduce(
+      (total, line) => total + (Number.parseFloat(line.amount) || 0),
+      0,
+    ),
+    remarks: voucher?.remarks ?? bill.memo,
+    status: "",
+    reason: voucher?.reason ?? "",
+    courier: "",
+    trip_id: "Generating…",
+    items_sent: voucher?.relatedSubitemIds.join(", ") ?? "",
+    qty: "",
+    verified: null,
+    discussed: null,
+    created_at: new Date().toISOString(),
+    created_by: currentUserId ?? null,
+    has_quickbooks_bill: false,
+    quickbooks_invoice_number: bill.billNumber,
+    quickbooks_supplier_id: bill.supplierId,
+    quickbooks_supplier_name: bill.supplierName,
+    quickbooks_overall_gst_override:
+      Number.parseFloat(bill.overallGstAmount) || 0,
+    quickbooks_attachment_files: [],
+    voucher_group: voucherGroup,
+    isGeneratingQuickBooksBill: true,
+  });
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -911,18 +964,76 @@ export function AdditionalCostsBoard({
       setCreatingFor(null);
     }
   };
+  const validateBillGeneration = (needsNewVoucher: boolean) => {
+    if (!billDraft.supplierName.trim()) return "Supplier is required.";
+    if (!billDraft.billNumber.trim()) return "Invoice no. is required.";
+    if (!billDraft.memo.trim()) return "Memo is required.";
+    if (!billDraft.lines.length) return "Add at least one expense line.";
+    const invalidLine = billDraft.lines.findIndex(
+      (line) =>
+        !line.categoryId ||
+        !line.taxCodeId ||
+        !Number.isFinite(Number(line.amount)) ||
+        Number(line.amount) <= 0,
+    );
+    if (invalidLine >= 0)
+      return `Complete Category, Amount and GST for expense line ${invalidLine + 1}.`;
+    const gst = Number(billDraft.overallGstAmount);
+    if (
+      billDraft.overallGstAmount.trim() !== "" &&
+      (!Number.isFinite(gst) || gst < 0)
+    )
+      return "Overall GST amount must be zero or greater.";
+    if (!needsNewVoucher) return null;
+    const voucherCost = Number(voucherDraft.cost);
+    if (!Number.isFinite(voucherCost) || voucherCost <= 0)
+      return "Payment Voucher Cost must be greater than zero.";
+    if (Math.abs(voucherCost - billExpenseTotal) > 0.005)
+      return "Payment Voucher Cost must equal the expense-line total.";
+    if (!voucherDraft.reason) return "Payment Voucher Reason is required.";
+    if (!voucherDraft.relatedSubitemIds.length)
+      return "Select at least one Related Subitem.";
+    if (voucherReasonIsOther && !voucherDraft.remarks.trim())
+      return "Remarks is required when Reason is Other.";
+    return null;
+  };
   const generateQuickBooksBill = async (
     clientId: string,
     existingVoucher?: AdditionalCost | null,
   ) => {
+    const validationError = validateBillGeneration(!existingVoucher);
+    if (validationError) {
+      toast.error("Bill cannot be generated", { description: validationError });
+      return;
+    }
+    const draft = billDraft;
+    const pendingId = `pending-quickbooks-bill-${crypto.randomUUID()}`;
+    const pendingRow = pendingQuickBooksBillRow({
+      id: pendingId,
+      clientId,
+      voucherGroup: existingVoucher?.voucher_group ?? "other",
+      bill: draft,
+      voucher: existingVoucher ? undefined : voucherDraft,
+    });
     setCreatingFor(clientId);
+    setRows((current) =>
+      existingVoucher
+        ? current.map((row) =>
+            row.id === existingVoucher.id
+              ? { ...row, isGeneratingQuickBooksBill: true }
+              : row,
+          )
+        : [pendingRow, ...current],
+    );
+    closeBillPreview();
+    const generatingToast = toast.loading("Generating QuickBooks bill");
     try {
-      const { attachments: _attachments, ...billDraftValues } = billDraft;
+      const { attachments: _attachments, ...billDraftValues } = draft;
       const bill = {
         ...billDraftValues,
-        attachmentFiles: billDraft.attachments.length
+        attachmentFiles: draft.attachments.length
           ? await uploadCrmFiles(
-              billDraft.attachments,
+              draft.attachments,
               `payment-vouchers/${existingVoucher?.id ?? "new"}/quickbooks-bills`,
               { clientId },
             )
@@ -937,7 +1048,7 @@ export function AdditionalCostsBoard({
             : { clientId, voucher: voucherDraft, bill },
         ),
       );
-      billDraft.attachments.forEach((attachment) =>
+      draft.attachments.forEach((attachment) =>
         payload.append("attachments", attachment, attachment.name),
       );
       const response = await fetch("/api/quickbooks/generate-bill", {
@@ -954,14 +1065,9 @@ export function AdditionalCostsBoard({
           ? current.map((row) =>
               row.id === existingVoucher.id ? result.row : row,
             )
-          : [result.row, ...current],
+          : current.map((row) => (row.id === pendingId ? result.row : row)),
       );
-      setPickerOpen(false);
-      setSelectedVoucherClientId(null);
-      setOtherBillChoice(null);
-      setBillTargetVoucher(null);
-      setBillDocumentPreview(null);
-      setPrefillFileSignature(null);
+      toast.dismiss(generatingToast);
       toast.success(
         existingVoucher
           ? `QuickBooks Bill ${result.docNumber ?? ""} added to this payment voucher.`
@@ -977,6 +1083,16 @@ export function AdditionalCostsBoard({
           },
         );
     } catch (generationError) {
+      setRows((current) =>
+        existingVoucher
+          ? current.map((row) =>
+              row.id === existingVoucher.id
+                ? { ...row, isGeneratingQuickBooksBill: false }
+                : row,
+            )
+          : current.filter((row) => row.id !== pendingId),
+      );
+      toast.dismiss(generatingToast);
       toast.error("QuickBooks Bill could not be generated", {
         description:
           generationError instanceof Error
@@ -990,14 +1106,38 @@ export function AdditionalCostsBoard({
   const generateQuickBooksBillOnly = async (
     existingVoucher?: AdditionalCost | null,
   ) => {
+    const validationError = validateBillGeneration(false);
+    if (validationError) {
+      toast.error("Bill cannot be generated", { description: validationError });
+      return;
+    }
+    const draft = billDraft;
+    const pendingId = `pending-quickbooks-bill-${crypto.randomUUID()}`;
+    const pendingRow = pendingQuickBooksBillRow({
+      id: pendingId,
+      clientId: existingVoucher?.client_id ?? "",
+      voucherGroup: "quickbooks_bills_only",
+      bill: draft,
+    });
     setCreatingFor(existingVoucher?.id ?? "quickbooks-bills-only");
+    setRows((current) =>
+      existingVoucher
+        ? current.map((row) =>
+            row.id === existingVoucher.id
+              ? { ...row, isGeneratingQuickBooksBill: true }
+              : row,
+          )
+        : [pendingRow, ...current],
+    );
+    closeBillPreview();
+    const generatingToast = toast.loading("Generating QuickBooks bill");
     try {
-      const { attachments: _attachments, ...billDraftValues } = billDraft;
+      const { attachments: _attachments, ...billDraftValues } = draft;
       const bill = {
         ...billDraftValues,
-        attachmentFiles: billDraft.attachments.length
+        attachmentFiles: draft.attachments.length
           ? await uploadCrmFiles(
-              billDraft.attachments,
+              draft.attachments,
               existingVoucher?.voucher_group === "quickbooks_bills_only" ||
                 !existingVoucher
                 ? "quickbooks-bills-only"
@@ -1020,7 +1160,7 @@ export function AdditionalCostsBoard({
           bill,
         }),
       );
-      billDraft.attachments.forEach((attachment) =>
+      draft.attachments.forEach((attachment) =>
         payload.append("attachments", attachment, attachment.name),
       );
       const response = await fetch("/api/quickbooks/generate-bill-only", {
@@ -1037,12 +1177,9 @@ export function AdditionalCostsBoard({
           ? current.map((row) =>
               row.id === existingVoucher.id ? result.row : row,
             )
-          : [result.row, ...current],
+          : current.map((row) => (row.id === pendingId ? result.row : row)),
       );
-      setPickerOpen(false);
-      setQuickBooksBillOnlyMode(false);
-      setBillDocumentPreview(null);
-      setPrefillFileSignature(null);
+      toast.dismiss(generatingToast);
       toast.success(
         existingVoucher
           ? `QuickBooks Bill ${result.docNumber ?? ""} recreated.`
@@ -1059,6 +1196,16 @@ export function AdditionalCostsBoard({
         );
       }
     } catch (generationError) {
+      setRows((current) =>
+        existingVoucher
+          ? current.map((row) =>
+              row.id === existingVoucher.id
+                ? { ...row, isGeneratingQuickBooksBill: false }
+                : row,
+            )
+          : current.filter((row) => row.id !== pendingId),
+      );
+      toast.dismiss(generatingToast);
       toast.error("QuickBooks Bill could not be generated", {
         description:
           generationError instanceof Error
@@ -2161,7 +2308,12 @@ export function AdditionalCostsBoard({
                               data-voucher-col="bill_action"
                               className="border-b border-r border-slate-200 px-2 py-1"
                             >
-                              {row.has_quickbooks_bill ? (
+                              {row.isGeneratingQuickBooksBill ? (
+                                <div className="flex h-8 items-center justify-center gap-1 rounded bg-amber-50 px-2 text-xs font-semibold text-amber-700">
+                                  <LoaderCircle size={14} className="animate-spin" />
+                                  Generating…
+                                </div>
+                              ) : row.has_quickbooks_bill ? (
                                 <div className="space-y-1">
                                   <button
                                     type="button"
@@ -2230,7 +2382,11 @@ export function AdditionalCostsBoard({
                         >
                           <button
                             type="button"
-                            disabled={!canDelete(row) || deletingId === row.id}
+                            disabled={
+                              !canDelete(row) ||
+                              deletingId === row.id ||
+                              row.isGeneratingQuickBooksBill
+                            }
                             onClick={() => setPendingDelete(row)}
                             title={
                               canDelete(row)

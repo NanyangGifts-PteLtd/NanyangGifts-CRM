@@ -11,6 +11,9 @@ const Toaster = ({ ...props }: ToasterProps) => {
       theme={theme as ToasterProps["theme"]}
       className="toaster group"
       toastOptions={{
+        // Keep routine success/error messages visible long enough to read the
+        // server-provided detail, particularly for long-running integrations.
+        duration: 12_000,
         classNames: {
           toast: "!w-[420px] !max-w-[calc(100vw-2rem)] !px-5 !py-4 !text-sm !shadow-2xl",
           title: "!text-base !font-semibold",
