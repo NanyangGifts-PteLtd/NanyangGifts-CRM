@@ -8144,7 +8144,6 @@ export function CRMBoard({
             disabled={
               !canAccessShipperPush ||
               !canEditSelectedSubitems ||
-              selectedPaymentVoucherSubitems ||
               loadingCombinedPush
             }
             onClick={() =>
@@ -8161,9 +8160,7 @@ export function CRMBoard({
                 ? "Sending is available to PM, Director, and Dev roles"
                 : !canEditSelectedSubitems
                   ? "You can only edit items that are assigned to you"
-                  : selectedPaymentVoucherSubitems
-                    ? "Bulk actions are unavailable for Payment Voucher subitems"
-                    : "Send selected subitems as one shipment"
+                  : "Send selected subitems as one shipment"
             }
             className="shrink-0 flex items-center gap-1.5 rounded bg-teal-600 px-3 py-2 text-sm text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
@@ -8317,15 +8314,13 @@ export function CRMBoard({
           <button
             type="button"
             disabled={
-              !canEditSelectedSubitems || selectedPaymentVoucherSubitems
+              !canEditSelectedSubitems
             }
             onClick={() => setPendingDeleteSelectedSubitems(selectedSubitemIds)}
             title={
               !canEditSelectedSubitems
                 ? "You can only delete items that are assigned to you"
-                : selectedPaymentVoucherSubitems
-                  ? "Bulk actions are unavailable for Payment Voucher subitems"
-                  : "Delete selected subitems"
+                : "Delete selected subitems"
             }
             className="flex items-center gap-1.5 rounded px-3 py-2 text-sm text-red-500 hover:bg-red-50 disabled:cursor-not-allowed disabled:text-slate-300 disabled:hover:bg-transparent"
           >

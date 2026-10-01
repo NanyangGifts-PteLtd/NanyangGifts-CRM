@@ -94,7 +94,6 @@ const PAID_COST_LOCK_MESSAGE =
 const LOCKED_COST_INPUTS = new Set([
   "qty",
   "cost",
-  "currency",
   "manpower",
   "ls",
   "os",
@@ -861,6 +860,8 @@ export function SubitemsTable({
       subitem.statusOptionId &&
       awardedOrLaterStatusIds.has(subitem.statusOptionId),
     );
+  const isPaymentViewEligible = (subitem: Subitem) =>
+    hasReachedAwardedPhase(subitem) || isAdditionalCostSubitem(subitem);
   const paidPaymentOptionId = useMemo(
     () =>
       paymentOptions.find(
@@ -873,12 +874,12 @@ export function SubitemsTable({
       paidPaymentOptionId && subitem.paymentOptionId === paidPaymentOptionId,
     );
   const hasPaymentEligibleSubitems = subitems.some((subitem) =>
-    hasReachedAwardedPhase(subitem),
+    isPaymentViewEligible(subitem),
   );
   const toggleClientTimelines = (clickedSubitem: Subitem) => {
     if (
       !hasPaymentEligibleSubitems ||
-      !hasReachedAwardedPhase(clickedSubitem)
+      !isPaymentViewEligible(clickedSubitem)
     ) {
       toast.warning("This subitem has not been awarded yet", {
         description:
@@ -888,7 +889,7 @@ export function SubitemsTable({
     }
 
     const eligibleSubitems = subitems.filter((subitem) =>
-      hasReachedAwardedPhase(subitem),
+      isPaymentViewEligible(subitem),
     );
     setSubitemViewById((current) => {
       const allTimelinesOpen =
@@ -946,7 +947,7 @@ export function SubitemsTable({
   const toggleClientSubpayments = (clickedSubitem: Subitem) => {
     if (
       !hasPaymentEligibleSubitems ||
-      !hasReachedAwardedPhase(clickedSubitem)
+      !isPaymentViewEligible(clickedSubitem)
     ) {
       toast.warning("This subitem has not been awarded yet", {
         description:
@@ -1288,7 +1289,7 @@ export function SubitemsTable({
   );
   const displayedSubitems =
     tableMode === "payment"
-      ? subitems.filter((subitem) => hasReachedAwardedPhase(subitem))
+      ? subitems.filter((subitem) => isPaymentViewEligible(subitem))
       : subitems;
 
   React.useEffect(() => {
@@ -2235,6 +2236,7 @@ export function SubitemsTable({
   }
 
   const renderNameCell = (sub: Subitem) => {
+    const paymentVoucherLinked = isAdditionalCostSubitem(sub);
     const supplierBlacklisted = blacklistedSupplierNames.has(
       String(sub.supplier ?? "")
         .trim()
@@ -2246,15 +2248,14 @@ export function SubitemsTable({
       <div
         draggable={
           Boolean(onSubitemDragStart) &&
-          canEditSubitem(sub.id) &&
-          !isAdditionalCostSubitem(sub)
+          canEditSubitem(sub.id)
         }
         onDragStart={(event) => {
           if ((event.target as HTMLElement).closest("[data-inline-editor]")) {
             event.preventDefault();
             return;
           }
-          if (!canEditSubitem(sub.id) || isAdditionalCostSubitem(sub)) {
+          if (!canEditSubitem(sub.id)) {
             event.preventDefault();
             return;
           }
@@ -2280,11 +2281,19 @@ export function SubitemsTable({
           onChange={(v) => onUpdateSubitem(sub.id, { name: v })}
           placeholder="Subitem name"
           className={`!justify-start ${supplierBlacklisted ? "!w-full !bg-red-700 !text-white !hover:bg-red-800" : ""}`}
-          readOnly={isAdditionalCostSubitem(sub)}
+          readOnly={paymentVoucherLinked}
         />
 
-        {!isAdditionalCostSubitem(sub) && (
-          <div className="ml-auto flex items-center gap-1 shrink-0">
+        {paymentVoucherLinked && (
+          <span
+            className="shrink-0 rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-bold text-violet-700"
+            title="This is linked to a Payment Voucher"
+          >
+            PV
+          </span>
+        )}
+
+        <div className="ml-auto flex items-center gap-1 shrink-0">
             <button
               type="button"
               data-view-action
@@ -2360,7 +2369,9 @@ export function SubitemsTable({
             {canAccessPush
               ? (() => {
                   const wasPushed = pushedSubitemIds.has(sub.id);
-                  const isPartOfSelection = selectedSubitemIds.includes(sub.id);
+                  const isPartOfSelection =
+                    selectedSubitemIds.length > 1 &&
+                    selectedSubitemIds.includes(sub.id);
                   return (
                     <button
                       type="button"
@@ -2408,8 +2419,7 @@ export function SubitemsTable({
                   );
                 })()
               : null}
-          </div>
-        )}
+        </div>
       </div>
     );
   };
@@ -2675,12 +2685,8 @@ export function SubitemsTable({
               onReorderOptions={(values) =>
                 onReorderOptions?.("currency", values)
               }
-              readOnly={costLocked || additionalCostLinked}
-              readOnlyReason={
-                additionalCostLinked
-                  ? "This field is managed by the linked Payment Voucher."
-                  : paidLockReason
-              }
+              readOnly={costLocked}
+              readOnlyReason={paidLockReason}
               small
             />
           </div>
@@ -4159,11 +4165,9 @@ export function SubitemsTable({
                 <tr
                   data-subitem-id={sub.id}
                   onDragOver={(event) =>
-                    !isAdditionalCostSubitem(sub) &&
                     onSubitemRowDragOver?.(event, sub.id)
                   }
                   onDrop={(event) =>
-                    !isAdditionalCostSubitem(sub) &&
                     onSubitemRowDrop?.(event, sub.id)
                   }
                   onContextMenu={(event) => {
@@ -4336,7 +4340,7 @@ export function SubitemsTable({
 
                 {tableMode === "payment" &&
                   showSubpaymentTables &&
-                  hasReachedAwardedPhase(sub) && (
+                  isPaymentViewEligible(sub) && (
                     <tr className="bg-slate-50/70">
                       <td
                         colSpan={totalColSpan}
@@ -4540,7 +4544,7 @@ export function SubitemsTable({
 
                 {tableMode === "payment" &&
                   activeSubitemView(sub) === "timeline" &&
-                  hasReachedAwardedPhase(sub) && (
+                  isPaymentViewEligible(sub) && (
                     <ExpandedRow colSpan={totalColSpan} tone="blue">
                       <div className="flex items-start gap-3 overflow-x-auto px-0 py-1">
                         {(sub.timelineGroups?.length

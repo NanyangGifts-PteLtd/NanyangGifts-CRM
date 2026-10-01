@@ -1429,32 +1429,13 @@ export async function createSubitemRow(
       .is("deleted_at", null)
       .order("position", { ascending: true });
   if (existingSubitemsError) throw existingSubitemsError;
-  const firstAdditionalCost = (existingSubitems ?? []).find(
-    (subitem) => subitem.custom_fields?.additionalCostLinked === "true",
-  );
-  const position = firstAdditionalCost
-    ? Number(firstAdditionalCost.position ?? 0)
-    : Math.max(
-        -1,
-        ...(existingSubitems ?? []).map((subitem) =>
-          Number(subitem.position ?? -1),
-        ),
-      ) + 1;
-  if (firstAdditionalCost) {
-    const rowsToShift = (existingSubitems ?? [])
-      .filter((subitem) => Number(subitem.position ?? -1) >= position)
-      .sort(
-        (first, second) =>
-          Number(second.position ?? -1) - Number(first.position ?? -1),
-      );
-    for (const subitem of rowsToShift) {
-      const { error: shiftError } = await supabase
-        .from("subitems")
-        .update({ position: Number(subitem.position ?? -1) + 1 })
-        .eq("id", subitem.id);
-      if (shiftError) throw shiftError;
-    }
-  }
+  const position =
+    Math.max(
+      -1,
+      ...(existingSubitems ?? []).map((subitem) =>
+        Number(subitem.position ?? -1),
+      ),
+    ) + 1;
   const timelineRows = [
     {
       id: crypto.randomUUID(),
@@ -1868,12 +1849,12 @@ export async function updateSubitemRow(
   }
   if (
     existing.custom_fields?.additionalCostLinked === "true" &&
-    ["name", "status", "qty", "currency"].some(
+    ["name", "status", "qty"].some(
       (field) => updates[field as keyof Subitem] !== undefined,
     )
   ) {
     throw new Error(
-      "The name, Status, Qty, and Currency of an Additional Cost subitem are managed automatically.",
+      "The name, Status, and Qty of an Additional Cost subitem are managed automatically.",
     );
   }
 
