@@ -432,7 +432,7 @@ export function ShipperStagingTable({
                         return next;
                       })
                     }
-                    className="board-group-name flex w-full gap-2 bg-slate-50 p-3 text-left text-sm font-semibold"
+                    className="board-group-name flex w-full gap-2 bg-slate-50 p-3 text-left text-base font-bold"
                   >
                     {openGroups.has(group.id) ? (
                       <ChevronDown size={16} />

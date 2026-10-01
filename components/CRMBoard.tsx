@@ -8297,7 +8297,7 @@ export function CRMBoard({
                             return next;
                           })
                         }
-                        className="flex w-full items-center justify-between rounded px-1 py-1 text-xs font-medium text-sky-600 hover:bg-sky-50"
+                        className="flex w-full items-center justify-between rounded px-1 py-1.5 text-sm font-bold text-sky-700 hover:bg-sky-50"
                       >
                         <span>{group.name}</span>
                         {expandedSubitemMoveGroups.has(group.name) ? (
