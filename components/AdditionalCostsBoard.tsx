@@ -1688,7 +1688,7 @@ export function AdditionalCostsBoard({
   const voucherGroups = [
     {
       id: "courier" as const,
-      name: "Lalamove/Easyparcel",
+      name: "Lalamove/Easyparcel/Replacements/Additional Costs",
       rows: rows.filter((row) =>
         Boolean(
           row.courier_option_id &&
