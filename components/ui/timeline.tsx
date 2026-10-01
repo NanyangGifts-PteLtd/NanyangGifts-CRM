@@ -340,6 +340,15 @@ export function TimelineSection({
                 description: `${target.name} start date automatically set to ${nextStart} based on the ${durationDays}-day duration.`,
               });
             }
+          } else {
+            const today = formatDateUTC(new Date());
+            target.timelineStart = today;
+            const computedEnd = new Date(`${today}T00:00:00Z`);
+            computedEnd.setUTCDate(computedEnd.getUTCDate() + durationDays);
+            target.timelineEnd = formatDateUTC(computedEnd);
+            toast.success("Timeline dates initialized", {
+              description: `${target.name} start date set to today (${today}) and end date calculated from the ${durationDays}-day duration.`,
+            });
           }
         }
       } else if (field === "timelineStart" || field === "timelineEnd") {

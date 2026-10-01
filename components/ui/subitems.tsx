@@ -3363,17 +3363,17 @@ export function SubitemsTable({
 
           const start = parseDateUTC(row.timelineStart);
           const end = parseDateUTC(row.timelineEnd);
-          if (start && end) {
+          const enteredDuration = row.duration.trim() !== "" ? Number(row.duration) : NaN;
+          if (start && Number.isFinite(enteredDuration) && enteredDuration >= 0) {
+            // Preserve the dependent row's duration when its start shifts; move
+            // the end date along with it instead of shortening/lengthening it.
+            const computedEnd = new Date(start);
+            computedEnd.setUTCDate(computedEnd.getUTCDate() + enteredDuration);
+            row.timelineEnd = formatDateUTC(computedEnd);
+          } else if (start && end) {
             const durationDays = diffDaysUTC(start, end);
             row.duration = String(durationDays);
             if (durationDays < 0) negativeDurationRowNames.add(row.name);
-          } else if (row.duration) {
-            const durationDays = Number(row.duration);
-            if (Number.isFinite(durationDays) && start && durationDays >= 0) {
-              const computedEnd = new Date(start);
-              computedEnd.setUTCDate(computedEnd.getUTCDate() + durationDays);
-              row.timelineEnd = formatDateUTC(computedEnd);
-            }
           }
         }
       }
