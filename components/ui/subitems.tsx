@@ -2077,12 +2077,15 @@ export function SubitemsTable({
     SHIPPER_PUSH_FIELDS.filter((field) => field.required).every((field) =>
       pushPreview[field.key]?.trim(),
     ) &&
+    (pushPreview.cartons.trim() === "" || Number(pushPreview.cartons) >= 0) &&
     (pushPreviewTrackingOptions.length > 0 || Boolean(pushPreviewTimelineId));
   const pushField = (key: string, label: string) => {
     if (!pushPreview) return null;
     const field = SHIPPER_PUSH_FIELDS.find((item) => item.key === key);
     const value = pushPreview[key] ?? "";
-    const invalid = !!field?.required && !value.trim();
+    const invalid =
+      (!!field?.required && !value.trim()) ||
+      (key === "cartons" && value.trim() !== "" && Number(value) < 0);
     const className = `mt-1 w-full rounded-md border px-3 py-2 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-cyan-200 ${invalid ? "border-red-300 bg-red-50" : "border-slate-300"}`;
     const control =
       key === "cn_tracking_no" && pushPreviewTrackingOptions.length > 0 ? (
@@ -2160,6 +2163,8 @@ export function SubitemsTable({
                 ? "number"
                 : "text"
           }
+          min={key === "cartons" ? 0 : undefined}
+          step={key === "cartons" ? 1 : undefined}
           value={value}
           onChange={(event) => updatePushPreview(key, event.target.value)}
           className={className}

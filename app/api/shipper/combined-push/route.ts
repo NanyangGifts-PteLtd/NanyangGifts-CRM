@@ -408,6 +408,11 @@ export async function POST(request: NextRequest) {
       const unitPrice = Number(value.up);
       if (!Number.isFinite(quantity) || !Number.isFinite(unitPrice))
         throw new Error("Qty and Unit Price must be numbers.");
+      if (value.cartons !== "" && value.cartons != null) {
+        const cartons = Number(value.cartons);
+        if (!Number.isFinite(cartons) || cartons < 0)
+          throw new Error("Cartons must be a number greater than or equal to 0.");
+      }
       return {
         subitemId: id,
         clientId: source.client_id,

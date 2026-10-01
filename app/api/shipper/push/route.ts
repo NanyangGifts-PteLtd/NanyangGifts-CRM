@@ -755,11 +755,11 @@ export async function POST(req: NextRequest) {
         throw new Error("Qty and Unit Price must be valid numbers.");
       if (!/^\d{4}-\d{2}-\d{2}$/.test(String(edits.info_provided_date)))
         throw new Error("Date of submission must be a valid date.");
-      if (
-        !["", null, undefined].includes(edits.cartons) &&
-        !Number.isFinite(Number(edits.cartons))
-      )
-        throw new Error("Cartons must be a valid number.");
+      if (!["", null, undefined].includes(edits.cartons)) {
+        const cartons = Number(edits.cartons);
+        if (!Number.isFinite(cartons) || cartons < 0)
+          throw new Error("Cartons must be a number greater than or equal to 0.");
+      }
       if (!SEA_OR_AIR_VALUES.includes(String(edits.sea_or_air)))
         throw new Error("Sea or Air must be 空运, 海运, or 海运/小包.");
       if (!TAX_REFUND_VALUES.includes(String(edits.tax_refund)))
