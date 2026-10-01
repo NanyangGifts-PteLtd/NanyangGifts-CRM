@@ -666,6 +666,7 @@ export function ClientRow({
     left: number;
     top: number;
   } | null>(null);
+  const [isCompletingFollowUp, setIsCompletingFollowUp] = useState(false);
   const [blacklistNotice, setBlacklistNotice] = useState<{
     left: number;
     top: number;
@@ -707,6 +708,31 @@ export function ClientRow({
       .trim()
       .toLowerCase(),
   );
+  const completeFollowUp = async () => {
+    if (!canEditClient || isCompletingFollowUp) return;
+    onBeginFocusedAction?.();
+    setIsCompletingFollowUp(true);
+    try {
+      const response = await fetch(
+        "/api/working-calendar/add-working-days?days=2",
+      );
+      const result = await response.json();
+      if (!response.ok || !result?.date) {
+        throw new Error(result?.error ?? "Could not calculate the next follow-up date.");
+      }
+      onUpdate({ followUp: String(result.date) });
+      toast.success("Follow-up completed", {
+        description: `Follow Up moved to ${String(result.date)}.`,
+      });
+    } catch (error) {
+      toast.error("Could not complete the follow-up", {
+        description:
+          error instanceof Error ? error.message : "Please try again.",
+      });
+    } finally {
+      setIsCompletingFollowUp(false);
+    }
+  };
   const activityHasSignedOcf = (client.activityLog ?? []).some(
     (entry) => entry.action === "ocf_signed",
   );
@@ -3643,12 +3669,36 @@ export function ClientRow({
         </div>
 
         <div
+          data-client-column="followUpDone"
+          className="flex min-w-0 items-center justify-center overflow-hidden border-r border-[#D0D4E4] px-1 py-1"
+          style={{
+            minWidth: colWidth.followUpDone,
+            width: colWidth.followUpDone,
+            order: columnOrderMap.followUpDone ?? 5,
+          }}
+        >
+          <button
+            type="button"
+            disabled={!canEditClient || isCompletingFollowUp}
+            onClick={() => void completeFollowUp()}
+            title={
+              canEditClient
+                ? "Move Follow Up to two Singapore working days from today"
+                : "You must be assigned to this client to complete its follow-up"
+            }
+            className="w-full rounded bg-[#12b8aa] px-2 py-1 text-xs font-semibold text-white transition hover:bg-[#0e9f93] disabled:cursor-not-allowed disabled:opacity-45"
+          >
+            {isCompletingFollowUp ? "Saving…" : "Done"}
+          </button>
+        </div>
+
+        <div
           data-client-column="status"
           className="overflow-hidden whitespace-nowrap text-ellipsis !text-center border-r border-[#D0D4E4] p-0 h-[33.1px] flex-shrink-0 transition transform active:scale-95 duration-150"
           style={{
             minWidth: colWidth.status,
             width: colWidth.status,
-            order: columnOrderMap.status ?? 5,
+            order: columnOrderMap.status ?? 6,
           }}
         >
           <StatusBadge

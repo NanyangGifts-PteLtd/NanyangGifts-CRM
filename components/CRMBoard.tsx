@@ -237,6 +237,7 @@ const CLIENT_HEADER_COLS: HeaderCol[] = [
   { key: "pm", label: "PM", width: 60, minWidth: 7 },
   { key: "replyStatus", label: "Reply Status", width: 80, minWidth: 7 },
   { key: "followUp", label: "Follow Up", width: 100, minWidth: 7 },
+  { key: "followUpDone", label: "Follow Up Done", width: 108, minWidth: 7 },
   { key: "status", label: "Status", width: 80, minWidth: 7 },
   {
     key: "overallPaymentStatus",
@@ -1748,11 +1749,23 @@ export function CRMBoard({
       ),
       ...customClientHeaderCols,
     ];
-    const ordered = clientMergedOrderKeys
+    // Saved layouts predate Follow Up Done. Insert this new action beside its
+    // source date instead of appending it at the far end of an old layout.
+    const mergedOrderWithFollowUpDone = clientMergedOrderKeys.includes(
+      "followUpDone",
+    )
+      ? clientMergedOrderKeys
+      : (() => {
+          const next = [...clientMergedOrderKeys];
+          const followUpIndex = next.indexOf("followUp");
+          if (followUpIndex >= 0) next.splice(followUpIndex + 1, 0, "followUpDone");
+          return next;
+        })();
+    const ordered = mergedOrderWithFollowUpDone
       .map((key) => middle.find((col) => col.key === key))
       .filter(Boolean) as HeaderCol[];
     const remaining = middle.filter(
-      (col) => !clientMergedOrderKeys.includes(col.key),
+      (col) => !mergedOrderWithFollowUpDone.includes(col.key),
     );
 
     return [

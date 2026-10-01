@@ -44,7 +44,7 @@ const automations: ReferenceItem[] = [
     title: "Follow Up date",
     trigger: "A new inbound lead is created.",
     behaviour:
-      "Sets Follow Up to the third Singapore working day after creation.",
+      "Sets Follow Up to the second Singapore working day after creation.",
     scope: "Working days exclude weekends and entries in the Working Calendar.",
     source: "lib/inbound-leads.ts; lib/working-calendar.ts",
   },

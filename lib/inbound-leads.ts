@@ -271,7 +271,7 @@ export async function ingestLead(lead: NormalizedInboundLead): Promise<InboundRe
         people: "",
         reply_status: waitingLabel.value,
         reply_status_option_id: waitingLabel.id,
-        follow_up: await addSingaporeWorkingDays(dateCreated, 3),
+        follow_up: await addSingaporeWorkingDays(dateCreated, 2),
         status: newLeadLabel.value,
         status_option_id: newLeadLabel.id,
         channel: channelLabel.value,
