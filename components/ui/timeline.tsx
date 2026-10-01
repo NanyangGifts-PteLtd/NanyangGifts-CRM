@@ -30,8 +30,22 @@ export type OptionEntry = {
   color: string;
 };
 
-const getCnShipperTrackingSite = (shipper: string) => {
+type ShipperTrackingSite = {
+  name: string;
+  url: string;
+  trackingUrl?: (trackingNumber: string) => string;
+};
+
+const getCnShipperTrackingSite = (shipper: string): ShipperTrackingSite | null => {
   const normalized = shipper.trim().toLowerCase();
+  if (normalized.includes("a5") || shipper.includes("汇荣")) {
+    return {
+      name: "A5 汇荣",
+      url: "https://www.ups.com/track?loc=en_US&requester=ST/",
+      trackingUrl: (trackingNumber) =>
+        `https://www.ups.com/track?loc=en_US&requester=ST&tracknum=${encodeURIComponent(trackingNumber)}`,
+    };
+  }
   if (normalized.includes("tiger")) {
     return { name: "Tiger", url: "https://szjmwl.net/wl/order/query.jsp" };
   }
@@ -568,8 +582,11 @@ export function TimelineSection({
               );
               return;
             }
+            const trackingNumber = draftSgTracking.trim();
             window.open(
-              cnShipperTrackingSite.url,
+              trackingNumber && cnShipperTrackingSite.trackingUrl
+                ? cnShipperTrackingSite.trackingUrl(trackingNumber)
+                : cnShipperTrackingSite.url,
               "_blank",
               "noopener,noreferrer",
             );
