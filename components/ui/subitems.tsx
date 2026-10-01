@@ -573,6 +573,9 @@ export function SubitemsTable({
   const [highlightedUpSubitemId, setHighlightedUpSubitemId] = useState<
     string | null
   >(null);
+  const [editingSubitemNameIds, setEditingSubitemNameIds] = useState<
+    Set<string>
+  >(new Set());
   const paymentRowSaveQueuesRef = useRef(new Map<string, Promise<void>>());
   // Payment-row writes are separate from subitem writes. Keep an optimistic
   // copy here so the automatic status is calculated from the same rows the
@@ -2248,9 +2251,12 @@ export function SubitemsTable({
       <div
         draggable={
           Boolean(onSubitemDragStart) &&
-          canEditSubitem(sub.id)
+          canEditSubitem(sub.id) &&
+          !editingSubitemNameIds.has(sub.id)
         }
         onDragStart={(event) => {
+          // The focused name editor owns its hitbox, allowing text selection
+          // without starting a row drag.
           if ((event.target as HTMLElement).closest("[data-inline-editor]")) {
             event.preventDefault();
             return;
@@ -2273,14 +2279,23 @@ export function SubitemsTable({
             return;
           onOpenSubitemDetail?.(sub.id);
         }}
-        className={`flex h-[30px] items-center gap-1 ${supplierBlacklisted ? "bg-red-700 text-white" : ""} ${canEditSubitem(sub.id) ? "cursor-grab active:cursor-grabbing" : ""}`}
+        className={`flex h-[30px] items-center gap-1 ${supplierBlacklisted ? "bg-red-700 text-white" : ""} ${canEditSubitem(sub.id) ? editingSubitemNameIds.has(sub.id) ? "cursor-text" : "cursor-grab active:cursor-grabbing" : ""}`}
       >
         <span aria-hidden="true" className="w-2 shrink-0" />
         <EditableCell
           value={sub.name}
           onChange={(v) => onUpdateSubitem(sub.id, { name: v })}
           placeholder="Subitem name"
-          className={`!justify-start ${supplierBlacklisted ? "!w-full !bg-red-700 !text-white !hover:bg-red-800" : ""}`}
+          onEditingChange={(editing) =>
+            setEditingSubitemNameIds((current) => {
+              if (current.has(sub.id) === editing) return current;
+              const next = new Set(current);
+              if (editing) next.add(sub.id);
+              else next.delete(sub.id);
+              return next;
+            })
+          }
+          className={`!justify-start select-text ${supplierBlacklisted ? "!w-full !bg-red-700 !text-white !hover:bg-red-800" : ""}`}
           readOnly={paymentVoucherLinked}
         />
 

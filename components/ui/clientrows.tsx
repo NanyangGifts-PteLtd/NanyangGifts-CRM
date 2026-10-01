@@ -876,6 +876,7 @@ export function ClientRow({
   const [closeFiles, setCloseFiles] = useState<File[]>([]);
   const [closeConfirmed, setCloseConfirmed] = useState(false);
   const [showActivityLog, setShowActivityLog] = useState(false);
+  const [isNameEditing, setIsNameEditing] = useState(false);
   const [showOnlyAttachedActivities, setShowOnlyAttachedActivities] =
     useState(false);
   const [undoneActivityIds, setUndoneActivityIds] = useState<Set<string>>(
@@ -3213,9 +3214,11 @@ export function ClientRow({
         </div>
 
         <div
-          draggable
+          draggable={!isNameEditing}
           data-client-column="client"
           onDragStart={(event) => {
+            // Once the name editor is focused, its input becomes the active
+            // surface and must win over the row drag hitbox.
             if ((event.target as HTMLElement).closest("[data-inline-editor]")) {
               event.preventDefault();
               return;
@@ -3231,7 +3234,7 @@ export function ClientRow({
             )
               onOpenDetail();
           }}
-          className={`group/client box-border relative flex items-center min-w-0 px-1 border-l border-r border-[#D0D4E4] overflow-visible ${isBlacklisted ? "bg-red-700 text-white" : ""} ${isDragging ? "opacity-40" : ""} ${isDragging ? "cursor-grabbing" : "cursor-grab"}`}
+          className={`group/client box-border relative flex items-center min-w-0 px-1 border-l border-r border-[#D0D4E4] overflow-visible ${isBlacklisted ? "bg-red-700 text-white" : ""} ${isDragging ? "opacity-40 cursor-grabbing" : isNameEditing ? "cursor-text" : "cursor-grab"}`}
           style={{
             height: 30,
             minWidth: colWidth.client,
@@ -3246,7 +3249,8 @@ export function ClientRow({
               placeholder="Client name"
               autoEdit={autoEditName}
               onAutoEditStarted={onAutoEditNameStarted}
-              className={`!justify-start text-left font-semibold ${isBlacklisted ? "!bg-transparent !text-white !hover:bg-red-800" : "text-gray-800"}`}
+              onEditingChange={setIsNameEditing}
+              className={`!justify-start select-text text-left font-semibold ${isBlacklisted ? "!bg-transparent !text-white !hover:bg-red-800" : "text-gray-800"}`}
             />
           </div>
           <div className="ml-auto flex items-center justify-start gap-1 flex-shrink-0">
