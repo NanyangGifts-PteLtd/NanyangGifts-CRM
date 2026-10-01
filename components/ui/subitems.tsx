@@ -429,6 +429,7 @@ type SubitemProps = {
   onPushToShipperView?: (subitemId: string) => Promise<void> | void;
   clientActivityLog?: ActivityEntry[];
   isActivityLoading?: boolean;
+  onLoadClientActivity?: () => void | Promise<void>;
   onUndoActivity?: (entry: ActivityEntry) => void | Promise<void>;
   moveTargetGroups: Array<{
     name: string;
@@ -555,6 +556,7 @@ export function SubitemsTable({
   onPushToShipperView,
   clientActivityLog = [],
   isActivityLoading = false,
+  onLoadClientActivity,
   onUndoActivity,
   moveTargetGroups,
   onDuplicateSubitemAction,
@@ -2374,7 +2376,10 @@ export function SubitemsTable({
             <button
               type="button"
               data-view-action
-              onClick={() => setActivitySubitem(sub)}
+              onClick={() => {
+                setActivitySubitem(sub);
+                void onLoadClientActivity?.();
+              }}
               className="flex items-center justify-center rounded-sm border border-cyan-200 p-1 text-cyan-500 transition hover:bg-cyan-50"
               title="Activity log"
             >

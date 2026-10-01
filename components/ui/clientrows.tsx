@@ -511,6 +511,7 @@ export type ClientRowProps = {
   currentUserRole?: string | null;
   currentUserId?: string | null;
   onPushToShipperView?: (subitemId: string) => void | Promise<void>;
+  onLoadActivityLog?: () => void | Promise<void>;
   onUndoActivity?: (entry: ActivityEntry) => void | Promise<void>;
   groupNamesById: Record<string, string>;
   groups: Array<{ id: string; name: string }>;
@@ -646,6 +647,7 @@ export function ClientRow({
   currentUserRole,
   currentUserId,
   onPushToShipperView,
+  onLoadActivityLog,
   onUndoActivity,
   groupNamesById,
   groups,
@@ -3292,7 +3294,10 @@ export function ClientRow({
                     <button
                       type="button"
                       data-view-action
-                      onClick={() => setShowActivityLog(true)}
+                      onClick={() => {
+                        setShowActivityLog(true);
+                        void onLoadActivityLog?.();
+                      }}
                       onPointerDown={(event) => event.stopPropagation()}
                       className="flex whitespace-nowrap px-2 py-1 text-[10px] font-medium text-cyan-500 hover:bg-gray-50 hover:text-cyan-600 transition transform active:scale-95 duration-150"
                     >
@@ -4765,6 +4770,7 @@ export function ClientRow({
           onPushToShipperView={onPushToShipperView}
           clientActivityLog={client.activityLog ?? []}
           isActivityLoading={client.activityLog === undefined}
+          onLoadClientActivity={onLoadActivityLog}
           onUndoActivity={onUndoActivity}
           moveTargetGroups={subitemMoveTargetGroups}
           onDuplicateSubitemAction={onDuplicateSubitemAction}

@@ -151,6 +151,8 @@ export function ClientDetailView({
   isBlacklisted = false,
   customColumns = [],
   onOpenProfile,
+  activityLoading = false,
+  onLoadActivityLog,
 }: {
   client: Client;
   clients: Client[];
@@ -180,6 +182,8 @@ export function ClientDetailView({
   isBlacklisted?: boolean;
   customColumns?: CustomColumn[];
   onOpenProfile?: (type: "client" | "company", profileId: string) => void;
+  activityLoading?: boolean;
+  onLoadActivityLog?: () => void | Promise<void>;
 }) {
   const [tab, setTab] = useState<Tab>(initialTab ?? "overview");
   const canManageSubitemLock = ["director", "dev"].includes(
@@ -322,7 +326,9 @@ export function ClientDetailView({
       ? `changed ${entry.fieldName} from ${displayValue(entry.fieldName, entry.oldValue)} to ${displayValue(entry.fieldName, entry.newValue)}`
       : entry.action === "shipper_pushed"
         ? "sent this subitem to a shipper"
-        : entry.action.replaceAll("_", " "));
+        : typeof entry.action === "string"
+          ? entry.action.replaceAll("_", " ")
+          : "activity recorded");
   const clientActivities = (client.activityLog ?? [])
     .filter(
       (entry) =>
@@ -740,7 +746,10 @@ export function ClientDetailView({
           ).map(([key, label]) => (
             <button
               key={key}
-              onClick={() => setTab(key)}
+              onClick={() => {
+                setTab(key);
+                if (key === "activity") void onLoadActivityLog?.();
+              }}
               className={`border-b-2 py-3 text-sm ${tab === key ? "border-sky-500 text-sky-600" : "border-transparent text-slate-500"}`}
             >
               {label}
@@ -1343,7 +1352,12 @@ export function ClientDetailView({
         {tab === "activity" && (
           <main data-detail-scroll className="min-h-0 flex-1 overflow-auto bg-slate-50 p-6">
             <div className="mx-auto max-w-4xl space-y-3">
-              {clientActivities.map((entry) => (
+              {activityLoading ? (
+                <div className="flex min-h-28 items-center justify-center gap-2 rounded-lg border border-dashed border-slate-200 bg-white p-6 text-sm text-slate-500">
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-sky-200 border-t-sky-600" />
+                  Loading activity history…
+                </div>
+              ) : clientActivities.map((entry) => (
                 <article
                   key={entry.id}
                   className="rounded-lg border border-slate-100 bg-white px-3 py-2"
@@ -1415,7 +1429,7 @@ export function ClientDetailView({
                   </div>
                 </article>
               ))}
-              {!clientActivities.length && (
+              {!activityLoading && !clientActivities.length && (
                 <p className="text-center text-sm text-slate-400">
                   No activity recorded yet.
                 </p>

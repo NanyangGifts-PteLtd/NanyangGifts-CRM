@@ -750,6 +750,9 @@ export function CRMBoard({
     subitemId: string;
   } | null>(null);
   const loadingActivityClientIds = useRef(new Set<string>());
+  const [loadingActivityClientIdSet, setLoadingActivityClientIdSet] = useState<
+    Set<string>
+  >(new Set());
   const controlledDetailTargetKey = useRef<string | null | undefined>(
     undefined,
   );
@@ -769,6 +772,7 @@ export function CRMBoard({
     async (clientId: string) => {
       if (loadingActivityClientIds.current.has(clientId)) return;
       loadingActivityClientIds.current.add(clientId);
+      setLoadingActivityClientIdSet((current) => new Set(current).add(clientId));
       try {
         const activityLog = await fetchClientActivityLog(clientId);
         setClients((current) =>
@@ -787,6 +791,11 @@ export function CRMBoard({
         );
       } finally {
         loadingActivityClientIds.current.delete(clientId);
+        setLoadingActivityClientIdSet((current) => {
+          const next = new Set(current);
+          next.delete(clientId);
+          return next;
+        });
       }
     },
     [setClients],
@@ -7726,6 +7735,8 @@ export function CRMBoard({
               }
               customColumns={clientCustomCols}
               initialTab={detailClientInitialTab ?? undefined}
+              activityLoading={loadingActivityClientIdSet.has(detailClient.id)}
+              onLoadActivityLog={() => loadClientActivity(detailClient.id)}
               onDuplicate={() => requestClientDuplication(detailClient.id)}
               onMove={(groupId) => moveClientAction(detailClient.id, groupId)}
               onDelete={() => {
@@ -11137,6 +11148,9 @@ export function CRMBoard({
                           onSetColumnVisibility={setColumnVisibility}
                           currentUserRole={currentUserRole ?? undefined}
                           currentUserId={currentUserId}
+                          onLoadActivityLog={() =>
+                            loadClientActivity(client.id)
+                          }
                           onUndoActivity={undoActivity}
                           groupNamesById={Object.fromEntries(
                             groups.map((group) => [group.id, group.name]),
