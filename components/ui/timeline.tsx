@@ -744,14 +744,16 @@ export function TimelineSection({
                         }
                         className={`w-32 cursor-pointer rounded border border-gray-200 bg-white px-1 py-1 text-xs ${row.timelineStart ? "text-gray-700" : "text-transparent focus:text-gray-700"}`}
                       />
-                      <input
-                        type="date"
-                        value={row.timelineEnd || ""}
-                        onChange={(e) =>
-                          updateRow(row.id, "timelineEnd", e.target.value)
-                        }
-                        className={`w-32 cursor-pointer rounded border border-gray-200 bg-white px-1 py-1 text-xs ${row.timelineEnd ? "text-gray-700" : "text-transparent focus:text-gray-700"}`}
-                      />
+                      {(row.id !== "nbd" && row.name.trim().toLowerCase() !== "nbd") && (
+                        <input
+                          type="date"
+                          value={row.timelineEnd || ""}
+                          onChange={(e) =>
+                            updateRow(row.id, "timelineEnd", e.target.value)
+                          }
+                          className={`w-32 cursor-pointer rounded border border-gray-200 bg-white px-1 py-1 text-xs ${row.timelineEnd ? "text-gray-700" : "text-transparent focus:text-gray-700"}`}
+                        />
+                      )}
                     </div>
                   </td>
 
