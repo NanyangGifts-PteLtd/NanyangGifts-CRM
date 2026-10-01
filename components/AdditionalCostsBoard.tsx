@@ -97,7 +97,7 @@ const initialColumns: Column[] = [
   { key: "items_sent", label: "Related Subitems", width: 210 },
   { key: "courier", label: "Courier", width: 140 },
   { key: "created", label: "Date Created", width: 140 },
-  { key: "actions", label: "", width: 52 },
+  { key: "actions", label: "Delete", width: 96 },
 ];
 const otherVoucherColumns: Column[] = [
   { key: "project", label: "Project Name", width: 250 },
@@ -121,7 +121,7 @@ const otherVoucherColumns: Column[] = [
   { key: "quickbooks_attachment_files", label: "Attached Files", width: 240 },
   { key: "bill_action", label: "Bill Action", width: 125 },
   { key: "created", label: "Date Created", width: 140 },
-  { key: "actions", label: "", width: 52 },
+  { key: "actions", label: "Delete", width: 96 },
 ];
 const quickBooksBillsOnlyColumns: Column[] = [
   { key: "cost", label: "Cost", width: 115 },
@@ -2228,39 +2228,23 @@ export function AdditionalCostsBoard({
                           data-voucher-col="actions"
                           className="border-b border-slate-200 p-0 text-center"
                         >
-                          {group.id === "quickbooks_bills_only" ? (
-                            <button
-                              type="button"
-                              disabled={
-                                !canDelete(row) || deletingId === row.id
-                              }
-                              onClick={() => setPendingDelete(row)}
-                              title={
-                                canDelete(row)
+                          <button
+                            type="button"
+                            disabled={!canDelete(row) || deletingId === row.id}
+                            onClick={() => setPendingDelete(row)}
+                            title={
+                              canDelete(row)
+                                ? group.id === "quickbooks_bills_only"
                                   ? "Remove this row only; the QuickBooks Bill remains unchanged."
-                                  : "Only admins, directors, and developers can delete QuickBooks-Bills-only rows."
-                              }
-                              className="inline-flex h-10 w-full items-center justify-center gap-1 bg-red-50 px-2 text-xs font-semibold text-red-600 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-30"
-                            >
-                              <Trash2 size={14} /> Delete
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              disabled={
-                                !canDelete(row) || deletingId === row.id
-                              }
-                              onClick={() => setPendingDelete(row)}
-                              title={
-                                canDelete(row)
-                                  ? "Delete payment voucher and linked subitem"
+                                  : "Delete payment voucher and linked subitem"
+                                : group.id === "quickbooks_bills_only"
+                                  ? "Only admins, directors, and developers can delete QuickBooks-Bills-only rows."
                                   : "You can only edit payment vouchers for clients assigned to you"
-                              }
-                              className="inline-flex h-10 w-full items-center justify-center text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-30"
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          )}
+                            }
+                            className="inline-flex h-10 w-full items-center justify-center gap-1 bg-red-50 px-2 text-xs font-semibold text-red-600 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-30"
+                          >
+                            <Trash2 size={14} /> Delete
+                          </button>
                         </td>
                       </tr>
                     );
