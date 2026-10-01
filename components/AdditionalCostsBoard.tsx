@@ -368,6 +368,26 @@ export function AdditionalCostsBoard({
       ),
     [billDraft.lines],
   );
+  const calculatedOverallGstAmount = useMemo(() => {
+    const taxableAmountsByCode = new Map<string, number>();
+    for (const line of billDraft.lines) {
+      const amount = Number.parseFloat(line.amount);
+      if (!line.taxCodeId || !Number.isFinite(amount)) continue;
+      taxableAmountsByCode.set(
+        line.taxCodeId,
+        (taxableAmountsByCode.get(line.taxCodeId) ?? 0) + amount,
+      );
+    }
+    return [...taxableAmountsByCode.entries()].reduce(
+      (total, [taxCodeId, taxableAmount]) => {
+        const rate = billOptions.taxCodes.find(
+          (option) => option.id === taxCodeId,
+        )?.rate;
+        return total + Math.round(taxableAmount * (rate ?? 0)) / 100;
+      },
+      0,
+    );
+  }, [billDraft.lines, billOptions.taxCodes]);
   const otherReasonOptionId = useMemo(
     () =>
       labelOptions.additional_cost_reason?.find(
@@ -378,20 +398,6 @@ export function AdditionalCostsBoard({
   const voucherReasonIsOther =
     Boolean(otherReasonOptionId) &&
     voucherDraft.reasonOptionId === otherReasonOptionId;
-  const showOverallGstAmount = useMemo(
-    () =>
-      !billDraft.lines.every((line) => {
-        const taxCode = billOptions.taxCodes.find(
-          (option) => option.id === line.taxCodeId,
-        );
-        return Boolean(
-          taxCode &&
-          taxCode.rate === 0 &&
-          /out\s*of\s*scope/i.test(taxCode.name),
-        );
-      }),
-    [billDraft.lines, billOptions.taxCodes],
-  );
   useEffect(() => {
     return () => {
       if (billDocumentPreview?.url)
@@ -645,6 +651,15 @@ export function AdditionalCostsBoard({
       draft.cost === total ? draft : { ...draft, cost: total },
     );
   }, [billExpenseTotal, otherBillChoice]);
+  useEffect(() => {
+    if (otherBillChoice !== "add") return;
+    const calculated = calculatedOverallGstAmount.toFixed(2);
+    setBillDraft((draft) =>
+      draft.overallGstAmount === calculated
+        ? draft
+        : { ...draft, overallGstAmount: calculated },
+    );
+  }, [calculatedOverallGstAmount, otherBillChoice]);
   const manageLabel = async (
     code: string,
     action: "add" | "color" | "rename",
@@ -3402,34 +3417,36 @@ export function AdditionalCostsBoard({
                                 </table>
                               </div>
                             </div>
-                            {showOverallGstAmount ? (
-                              <label className="block text-sm font-medium text-slate-700">
-                                Overall GST amount{" "}
-                                <span className="font-normal text-slate-500">
-                                  (optional override)
+                            {quickBooksBillOnlyMode ? (
+                              <div className="rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
+                                <span className="font-medium text-slate-700">
+                                  Total Cost
                                 </span>
-                                <input
-                                  type="number"
-                                  min="0"
-                                  step="0.01"
-                                  value={billDraft.overallGstAmount}
-                                  onChange={(event) =>
-                                    setBillDraft((draft) => ({
-                                      ...draft,
-                                      overallGstAmount: event.target.value,
-                                    }))
-                                  }
-                                  placeholder="Let QuickBooks calculate"
-                                  className="mt-1 w-full rounded border border-slate-300 px-3 py-2 font-normal"
-                                />
-                                <span className="mt-1 block text-xs font-normal text-slate-500">
-                                  Use only when the invoice GST total differs
-                                  from the selected GST codes. The total is
-                                  distributed across taxable expense lines when
-                                  sent to QuickBooks.
+                                <span className="float-right font-semibold text-slate-900">
+                                  {billExpenseTotal.toFixed(2)}
                                 </span>
-                              </label>
+                              </div>
                             ) : null}
+                            <label className="block text-sm font-medium text-slate-700">
+                              Overall GST Amount
+                              <span className="mt-1 block text-xs font-normal text-slate-500">
+                                Calculated from the expense-line amounts and
+                                selected GST types. You may override it if needed.
+                              </span>
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={billDraft.overallGstAmount}
+                                onChange={(event) =>
+                                  setBillDraft((draft) => ({
+                                    ...draft,
+                                    overallGstAmount: event.target.value,
+                                  }))
+                                }
+                                className="mt-1 w-full rounded border border-slate-300 px-3 py-2 font-normal"
+                              />
+                            </label>
                             <label className="block text-sm font-medium text-slate-700">
                               Memo *
                               <textarea

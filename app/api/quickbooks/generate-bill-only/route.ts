@@ -213,8 +213,9 @@ export async function POST(request: NextRequest) {
     const quickBooksBill = created?.Bill;
     if (!quickBooksBill?.Id)
       throw new Error("QuickBooks did not return a Bill ID.");
+    // Keep the preview's declared GST value in the Payment Voucher record.
     const billGstValue =
-      quickBooksBillGstTotal(quickBooksBill) ?? effectiveOverallGstAmount;
+      overallGstAmount ?? quickBooksBillGstTotal(quickBooksBill);
     const attachments = formData
       .getAll("attachments")
       .filter((entry): entry is File => entry instanceof File);

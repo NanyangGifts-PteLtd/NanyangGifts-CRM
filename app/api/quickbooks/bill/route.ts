@@ -391,10 +391,16 @@ export async function PATCH(request: NextRequest) {
       );
     });
     const rawOverall = String(draft.overallGstAmount ?? "").trim();
-    const overall =
-      allOutOfScope || rawOverall === "" ? null : Number(rawOverall);
-    if (overall !== null && (!Number.isFinite(overall) || overall < 0))
+    const declaredOverall = rawOverall === "" ? null : Number(rawOverall);
+    if (
+      declaredOverall !== null &&
+      (!Number.isFinite(declaredOverall) || declaredOverall < 0)
+    )
       throw new Error("Overall GST amount must be zero or greater.");
+    // QuickBooks must not receive a GST adjustment for a wholly
+    // out-of-scope bill, but retain the preview's declared value for the
+    // voucher's Bill GST Value field.
+    const overall = allOutOfScope ? null : declaredOverall;
     const calculated = [...taxRates.values()].reduce(
       (sum, line) => sum + Math.round(line.taxableAmount * line.rate) / 100,
       0,
@@ -467,7 +473,9 @@ export async function PATCH(request: NextRequest) {
         ),
       }),
     });
-    const billGstValue = quickBooksBillGstTotal(updated?.Bill) ?? overall;
+    // Preserve the value shown and confirmed in the bill preview.
+    const billGstValue =
+      declaredOverall ?? quickBooksBillGstTotal(updated?.Bill);
     const attachments = formData
       .getAll("attachments")
       .filter((file): file is File => file instanceof File && file.size > 0);

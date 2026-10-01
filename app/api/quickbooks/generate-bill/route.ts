@@ -421,8 +421,11 @@ export async function POST(request: NextRequest) {
     const quickBooksBill = billResult?.Bill;
     if (!quickBooksBill?.Id)
       throw new Error("QuickBooks did not return a Bill ID.");
+    // The preview's Overall GST Amount is the Payment Voucher's declared Bill
+    // GST value. Retain it exactly rather than replacing it with a potentially
+    // differently-rounded value returned by QuickBooks.
     const billGstValue =
-      quickBooksBillGstTotal(quickBooksBill) ?? effectiveOverallGstAmount;
+      overallGstAmount ?? quickBooksBillGstTotal(quickBooksBill);
     const shippingUpsReason = await getSystemLabel(
       "additional_cost_reason",
       "additional_cost_reason_shipping_ups",
