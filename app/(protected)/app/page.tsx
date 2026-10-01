@@ -5,13 +5,15 @@ import { useSearchParams } from "next/navigation";
 import type {
   Client,
   ClientAssigneeMap,
+  Subitem,
   SubitemAssigneeMap,
   Profile,
   Notification,
   SearchResult,
   CRMGroup,
 } from "../../types";
-import { fetchClientsWithSubitems } from "@/lib/crm";
+import { fetchClientsWithSubitems, updateSubitemRow } from "@/lib/crm";
+import { toast } from "sonner";
 import { CRMBoard } from "@/components/CRMBoard";
 import Sidebar, { type SidePanel } from "../../../components/Sidebar";
 import TopBar from "../../../components/TopBar";
@@ -348,7 +350,28 @@ export default function Page() {
     },
     [openCrmRecord],
   );
-
+  const canEditGanttSubitem = useCallback(
+    (clientId: string, subitemId: string) => {
+      if (!user?.id) return false;
+      const role = String(currentUserRole ?? "").trim().toLowerCase();
+      if (["admin", "director", "dev"].includes(role)) return true;
+      const client = clients.find((candidate) => candidate.id === clientId);
+      return Boolean(
+        client &&
+          ((clientAssignees[clientId] ?? []).includes(user.id) ||
+            (clientPmAssignees[clientId] ?? []).includes(user.id) ||
+            (subitemAssignees[subitemId] ?? []).includes(user.id)),
+      );
+    },
+    [
+      clientAssignees,
+      clientPmAssignees,
+      clients,
+      currentUserRole,
+      subitemAssignees,
+      user?.id,
+    ],
+  );
   const openPaymentVoucherProject = useCallback(
     (clientId: string) => {
       openCrmRecord(clientId);
@@ -461,6 +484,46 @@ export default function Page() {
       console.error("Failed to load clients", error);
     }
   }, []);
+
+  const updateGanttSubitem = useCallback(
+    async (clientId: string, subitemId: string, updates: Partial<Subitem>) => {
+      if (!canEditGanttSubitem(clientId, subitemId)) {
+        toast.error("You can only edit items that are assigned to you");
+        return;
+      }
+      const client = clients.find((candidate) => candidate.id === clientId);
+      if (client?.customFields?.subitemsLocked === "true") {
+        toast.error(
+          "This client's subitems are locked. Check with the director if there are any changes",
+        );
+        return;
+      }
+      setClients((current) =>
+        current.map((candidate) =>
+          candidate.id !== clientId
+            ? candidate
+            : {
+                ...candidate,
+                subitems: candidate.subitems.map((subitem) =>
+                  subitem.id === subitemId
+                    ? { ...subitem, ...updates }
+                    : subitem,
+                ),
+              },
+        ),
+      );
+      try {
+        await updateSubitemRow(subitemId, updates);
+      } catch (error) {
+        await reloadClients();
+        toast.error("Could not save the timeline update", {
+          description:
+            error instanceof Error ? error.message : "Please try again.",
+        });
+      }
+    },
+    [canEditGanttSubitem, clients, reloadClients],
+  );
 
   useEffect(() => {
     void reloadClients();
@@ -743,6 +806,8 @@ export default function Page() {
               clientPmAssignees={clientPmAssignees}
               subitemAssignees={subitemAssignees}
               onOpenClientTimeline={openGanttClientTimeline}
+              onUpdateSubitem={updateGanttSubitem}
+              canEditSubitem={canEditGanttSubitem}
             />
           </div>
         );

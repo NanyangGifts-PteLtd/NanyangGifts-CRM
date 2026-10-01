@@ -22,6 +22,14 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import "@bitnoi.se/react-scheduler/dist/style.css";
+import { TimelineSection, type OptionEntry } from "./ui/timeline";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "./ui/dialog";
 import type {
   Client,
   ClientAssigneeMap,
@@ -39,14 +47,10 @@ const Scheduler = dynamic(
 );
 const RESOURCE_PANEL_WIDTH = 570;
 const PROCESS_LEGEND = [
-  { label: "Done", color: "#6cbaa2" },
-  { label: "Started", color: "#ff8e71" },
-  { label: "Pending", color: "#aba6dd" },
-  { label: "Late", color: "#aa0015" },
-  { label: "Delivered", color: "#0090c8" },
-  { label: "Shipped out", color: "#ff5ea1" },
-  { label: "Other / no status", color: "#60a5fa" },
-  { label: "Overdue", color: "#dc2626" },
+  { label: "Pending / not started", color: "#94a3b8" },
+  { label: "Started / shipped out", color: "#eab308" },
+  { label: "Done / delivered", color: "#22c55e" },
+  { label: "Late", color: "#dc2626" },
 ] as const;
 
 type Props = {
@@ -57,6 +61,12 @@ type Props = {
   clientPmAssignees: ClientAssigneeMap;
   subitemAssignees: SubitemAssigneeMap;
   onOpenClientTimeline: (clientId: string, subitemId?: string) => void;
+  onUpdateSubitem: (
+    clientId: string,
+    subitemId: string,
+    updates: Partial<Subitem>,
+  ) => void | Promise<void>;
+  canEditSubitem: (clientId: string, subitemId: string) => boolean;
 };
 type SchedulerItem = {
   id: string;
@@ -69,6 +79,7 @@ type SchedulerItem = {
   bgColor?: string;
   processStatus: string;
   isOverdue: boolean;
+  timelineId?: string;
 };
 type SchedulerResource = {
   id: string;
@@ -205,13 +216,18 @@ function addOneDay(date: Date) {
   return copy;
 }
 function getColor(systemKey?: string | null) {
-  if (systemKey === "subitem_subprogress_done") return "#6cbaa2";
-  if (systemKey === "subitem_subprogress_started") return "#ff8e71";
-  if (systemKey === "subitem_subprogress_pending") return "#aba6dd";
-  if (systemKey === "subitem_subprogress_late") return "#aa0015";
-  if (systemKey === "subitem_subprogress_delivered") return "#0090c8";
-  if (systemKey === "subitem_subprogress_shipped_out") return "#ff5ea1";
-  return "#60a5fa";
+  if (systemKey === "subitem_subprogress_late") return "#dc2626";
+  if (
+    systemKey === "subitem_subprogress_done" ||
+    systemKey === "subitem_subprogress_delivered"
+  )
+    return "#22c55e";
+  if (
+    systemKey === "subitem_subprogress_started" ||
+    systemKey === "subitem_subprogress_shipped_out"
+  )
+    return "#eab308";
+  return "#94a3b8";
 }
 
 function parsePmIds(client: Client): string[] {
@@ -231,7 +247,10 @@ function buildSchedulerData(
   clientAssignees: ClientAssigneeMap,
   clientPmAssignees: ClientAssigneeMap,
   subitemAssignees: SubitemAssigneeMap,
-  progressById: Map<string, { value: string; systemKey: string | null }>,
+  progressById: Map<
+    string,
+    { value: string; systemKey: string | null; color: string }
+  >,
 ): SchedulerResource[] {
   const groupMap = new Map(groups.map((group) => [group.id, group]));
   const today = new Date();
@@ -256,23 +275,29 @@ function buildSchedulerData(
               !!subitem && typeof subitem === "object",
           )
         : [];
-      const rows: Array<Subitem | null> = subitems.length ? subitems : [null];
-
-      return rows.map((subitem) => {
-        const subitemName = subitem?.name || "No subitems";
-        const subitemDisplayId = subitem?.displayId || "";
-        const timelineRows = Array.isArray(subitem?.timelineGroups) && subitem.timelineGroups.length
+      // The Gantt chart represents subitem processes. Clients without a
+      // subitem have no schedulable work, so omit them rather than rendering
+      // a placeholder "No subitems" resource row.
+      return subitems.map((subitem) => {
+        const subitemName = subitem.name || "Untitled subitem";
+        const subitemDisplayId = subitem.displayId || "";
+        const timelineRows = Array.isArray(subitem.timelineGroups) && subitem.timelineGroups.length
           ? subitem.timelineGroups.flatMap((timeline, timelineIndex) =>
               (timeline.rows ?? [])
                 .filter((row): row is TimelineRow => !!row && typeof row === "object")
-                .map((row) => ({ ...row, id: `${timeline.id}::${row.id}`, name: `[Timeline ${timelineIndex + 1}] ${row.name}` })),
+                .map((row) => ({
+                  ...row,
+                  id: `${timeline.id}::${row.id}`,
+                  name: `[Timeline ${timelineIndex + 1}] ${row.name}`,
+                  ganttTimelineId: timeline.id,
+                })),
             )
-          : Array.isArray(subitem?.timelineRows)
+          : Array.isArray(subitem.timelineRows)
             ? subitem.timelineRows.filter(
                 (row): row is TimelineRow => !!row && typeof row === "object",
               )
             : [];
-        const resourceId = `${client.id}::${subitem?.id ?? "empty"}`;
+        const resourceId = `${client.id}::${subitem.id}`;
         const items = timelineRows.flatMap((row): SchedulerItem[] => {
           const progress = progressById.get(row.subProgressOptionId ?? "");
           const start = parseDate(row?.timelineStart);
@@ -283,7 +308,7 @@ function buildSchedulerData(
             explicitEnd < today &&
             !completedSystemKeys.has(progress?.systemKey ?? ""),
           );
-          if (!start || !end || !subitem) return [];
+          if (!start || !end) return [];
           return [
             {
               id: `${client.id}::${subitem.id}::${row.id}`,
@@ -309,6 +334,11 @@ function buildSchedulerData(
               bgColor: isOverdue ? "#dc2626" : getColor(progress?.systemKey),
               processStatus: row.subProgress || "No status",
               isOverdue,
+              timelineId:
+                "ganttTimelineId" in row &&
+                typeof row.ganttTimelineId === "string"
+                  ? row.ganttTimelineId
+                  : undefined,
             },
           ];
         });
@@ -325,7 +355,7 @@ function buildSchedulerData(
           },
           data: items,
           clientId: client.id,
-          subitemId: subitem?.id,
+          subitemId: subitem.id,
           groupId: group?.id || "ungrouped",
           groupName,
           clientName,
@@ -340,7 +370,7 @@ function buildSchedulerData(
               // The People filter represents everyone responsible for the
               // record, including PM assignments (as it does on the Board).
               ...(clientPmAssignees[client.id] ?? parsePmIds(client)),
-              ...(subitem ? (subitemAssignees[subitem.id] ?? []) : []),
+              ...(subitemAssignees[subitem.id] ?? []),
             ]),
           ),
         };
@@ -356,9 +386,11 @@ export default function GanttChart({
   clientPmAssignees,
   subitemAssignees,
   onOpenClientTimeline,
+  onUpdateSubitem,
+  canEditSubitem,
 }: Props) {
   const [progressById, setProgressById] = useState<
-    Map<string, { value: string; systemKey: string | null }>
+    Map<string, { value: string; systemKey: string | null; color: string }>
   >(new Map());
   useEffect(() => {
     const supabase = createSupabaseClient();
@@ -372,13 +404,14 @@ export default function GanttChart({
       if (!group) return;
       const { data } = await supabase
         .from("option_values")
-        .select("id, value, system_key")
+        .select("id, value, system_key, color")
         .eq("group_id", group.id);
       if (active)
         setProgressById(
           new Map((data ?? []).map((option) => [option.id, {
             value: option.value,
             systemKey: option.system_key,
+            color: option.color ?? "#94a3b8",
           }])),
         );
     })();
@@ -416,6 +449,11 @@ export default function GanttChart({
   const [collapsedClientIds, setCollapsedClientIds] = useState<Set<string>>(
     new Set(),
   );
+  const [selectedTimeline, setSelectedTimeline] = useState<{
+    clientId: string;
+    subitemId: string;
+    timelineId?: string;
+  } | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -589,12 +627,51 @@ export default function GanttChart({
             (item) =>
               [
                 item.id,
-                { clientId: resource.clientId, subitemId: resource.subitemId },
+                {
+                  clientId: resource.clientId,
+                  subitemId: resource.subitemId,
+                  timelineId: item.timelineId,
+                },
               ] as const,
           ),
         ),
       ),
     [data],
+  );
+  const selectedTimelineData = useMemo(() => {
+    if (!selectedTimeline) return null;
+    const client = clients.find(
+      (candidate) => candidate.id === selectedTimeline.clientId,
+    );
+    const subitem = client?.subitems.find(
+      (candidate) => candidate.id === selectedTimeline.subitemId,
+    );
+    if (!client || !subitem) return null;
+    const fallbackTimeline = {
+      id: "default",
+      cnTracking: subitem.cnTracking ?? "",
+      sgTracking: subitem.sgTracking ?? "",
+      rows: subitem.timelineRows ?? [],
+      isDefault: true,
+    };
+    const timelines = subitem.timelineGroups?.length
+      ? subitem.timelineGroups
+      : [fallbackTimeline];
+    const timeline =
+      timelines.find(
+        (candidate) => candidate.id === selectedTimeline.timelineId,
+      ) ?? timelines[0];
+    return { client, subitem, timeline, timelineIndex: timelines.indexOf(timeline), timelines };
+  }, [clients, selectedTimeline]);
+  const timelineProgressOptions = useMemo<OptionEntry[]>(
+    () =>
+      [...progressById.entries()].map(([id, option]) => ({
+        id,
+        value: option.value,
+        systemKey: option.systemKey,
+        color: option.color,
+      })),
+    [progressById],
   );
   const profileLabels = useMemo(
     () =>
@@ -1169,7 +1246,12 @@ export default function GanttChart({
           }}
           onTileClick={(item) => {
             const target = timelineTargets.get(item.id);
-            if (target) onOpenClientTimeline(target.clientId, target.subitemId);
+            if (target?.subitemId)
+              setSelectedTimeline({
+                clientId: target.clientId,
+                subitemId: target.subitemId,
+                timelineId: target.timelineId,
+              });
           }}
           onFilterData={() => {}}
           onClearFilterData={() => {}}
@@ -1273,12 +1355,58 @@ export default function GanttChart({
             </>,
             toolbarHost,
           )}
-        {labelHosts.map(({ resource, element }) =>
+        {labelHosts.map(
+          ({
+            resource,
+            element,
+            startsVisibleGroup,
+            startsVisibleClientGroup,
+          }) =>
           createPortal(
             <div
               key={resource.id}
               className="pointer-events-none absolute inset-0 text-xs text-slate-700"
             >
+              {startsVisibleGroup && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    toggleCollapsedId(setCollapsedGroupIds, resource.groupId)
+                  }
+                  className="pointer-events-auto absolute inset-y-0 left-0 flex w-[140px] min-w-0 items-center gap-1 border-b border-r border-slate-200 bg-white px-2 text-left text-xs text-slate-700 hover:bg-slate-50"
+                  title={`${collapsedGroupIds.has(resource.groupId) ? "Expand" : "Collapse"} ${resource.groupName}`}
+                >
+                  {collapsedGroupIds.has(resource.groupId) ? (
+                    <ChevronRight size={14} className="shrink-0" />
+                  ) : (
+                    <ChevronDown size={14} className="shrink-0" />
+                  )}
+                  <span className="truncate">{resource.groupName}</span>
+                </button>
+              )}
+              {startsVisibleClientGroup &&
+                !collapsedGroupIds.has(resource.groupId) && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      toggleCollapsedId(
+                        setCollapsedClientIds,
+                        resource.clientId,
+                      )
+                    }
+                    className="pointer-events-auto absolute inset-y-0 left-[140px] flex w-[210px] min-w-0 items-center gap-1 border-b border-r border-slate-200 bg-white px-2 text-left text-xs text-slate-700 hover:bg-slate-50"
+                    title={`${collapsedClientIds.has(resource.clientId) ? "Expand" : "Collapse"} ${resource.clientName}`}
+                  >
+                    {collapsedClientIds.has(resource.clientId) ? (
+                      <ChevronRight size={14} className="shrink-0" />
+                    ) : (
+                      <ChevronDown size={14} className="shrink-0" />
+                    )}
+                    <span className="truncate font-medium">
+                      {resource.clientName}
+                    </span>
+                  </button>
+                )}
               {!collapsedGroupIds.has(resource.groupId) &&
                 !collapsedClientIds.has(resource.clientId) && (
                   <button
@@ -1304,119 +1432,6 @@ export default function GanttChart({
             element,
           ),
         )}
-        {sidebarHost &&
-          labelHosts
-            .filter((host) => host.startsVisibleGroup)
-            .map(({ resource, groupSpanHeight, groupTop }) =>
-              createPortal(
-                <button
-                  key={`group-${resource.id}`}
-                  type="button"
-                  onClick={() =>
-                    toggleCollapsedId(setCollapsedGroupIds, resource.groupId)
-                  }
-                  className="absolute left-0 z-[2] flex w-[140px] min-w-0 items-center gap-1 border-b border-r border-slate-200 bg-white px-2 text-left text-xs text-slate-700 hover:bg-slate-50"
-                  style={{ top: groupTop, height: groupSpanHeight }}
-                  title={`${collapsedGroupIds.has(resource.groupId) ? "Expand" : "Collapse"} ${resource.groupName}`}
-                >
-                  {collapsedGroupIds.has(resource.groupId) ? (
-                    <ChevronRight size={14} className="shrink-0" />
-                  ) : (
-                    <ChevronDown size={14} className="shrink-0" />
-                  )}
-                  <span className="truncate">{resource.groupName}</span>
-                </button>,
-                sidebarHost,
-              ),
-            )}
-        {sidebarHost &&
-          labelHosts
-            .filter(
-              (host) =>
-                host.startsVisibleClientGroup &&
-                !collapsedGroupIds.has(host.resource.groupId),
-            )
-            .map(({ resource, clientSpanHeight, clientTop }) =>
-              createPortal(
-                <div
-                  key={`client-${resource.id}`}
-                  className="absolute left-[140px] z-[2] flex w-[210px] min-w-0 items-center gap-1 border-b border-r border-slate-200 bg-white px-2 text-xs"
-                  style={{ top: clientTop, height: clientSpanHeight }}
-                  onContextMenu={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    setContextMenu({
-                      clientId: resource.clientId,
-                      x: event.clientX,
-                      y: event.clientY,
-                    });
-                  }}
-                  title={resource.clientName}
-                >
-                  <button
-                    type="button"
-                    onClick={() =>
-                      toggleCollapsedId(
-                        setCollapsedClientIds,
-                        resource.clientId,
-                      )
-                    }
-                    className="flex h-7 w-5 shrink-0 items-center justify-center rounded text-slate-500 hover:bg-slate-100"
-                    title={
-                      collapsedClientIds.has(resource.clientId)
-                        ? "Expand client"
-                        : "Collapse client"
-                    }
-                  >
-                    {collapsedClientIds.has(resource.clientId) ? (
-                      <ChevronRight size={14} />
-                    ) : (
-                      <ChevronDown size={14} />
-                    )}
-                  </button>
-                  <button
-                    type="button"
-                    className="min-w-0 flex-1 truncate text-left font-medium text-slate-800 hover:text-sky-700"
-                    onClick={() => onOpenClientTimeline(resource.clientId)}
-                  >
-                    {resource.clientName}
-                  </button>
-                  <span
-                    role="button"
-                    tabIndex={0}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      void togglePin(resource.clientId);
-                    }}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" || event.key === " ") {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        void togglePin(resource.clientId);
-                      }
-                    }}
-                    className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition ${pinnedClientIds.has(resource.clientId) ? "bg-sky-100 text-sky-700 hover:bg-sky-200" : "text-slate-400 hover:bg-slate-100 hover:text-sky-600"}`}
-                    title={
-                      pinnedClientIds.has(resource.clientId)
-                        ? "Unpin client"
-                        : "Pin client to top"
-                    }
-                    aria-label={
-                      pinnedClientIds.has(resource.clientId)
-                        ? "Unpin client"
-                        : "Pin client to top"
-                    }
-                  >
-                    {pinnedClientIds.has(resource.clientId) ? (
-                      <PinOff size={15} />
-                    ) : (
-                      <Pin size={15} />
-                    )}
-                  </span>
-                </div>,
-                sidebarHost,
-              ),
-            )}
         {timelineCanvasHost &&
           todayPosition !== null &&
           createPortal(
@@ -1637,6 +1652,70 @@ export default function GanttChart({
           </div>
         </div>
       )}
+      <Dialog
+        open={Boolean(selectedTimeline && selectedTimelineData)}
+        onOpenChange={(open) => !open && setSelectedTimeline(null)}
+      >
+        <DialogContent className="isolate max-h-[calc(100vh-3rem)] max-w-[calc(100vw-3rem)] overflow-hidden bg-white p-0 opacity-100 shadow-2xl sm:max-w-[1500px]">
+          {selectedTimelineData ? (
+            <div className="flex max-h-[calc(100vh-3rem)] flex-col bg-white">
+              <DialogHeader className="shrink-0 items-center border-b border-slate-200 px-6 py-5 pr-14 text-center">
+                <DialogTitle>
+                  {selectedTimelineData.subitem.name || "Untitled subitem"}
+                </DialogTitle>
+                <DialogDescription>
+                  {selectedTimelineData.client.name || "Unnamed client"} ·
+                  Project Timeline {selectedTimelineData.timelineIndex + 1}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="flex min-h-0 justify-center overflow-auto bg-white px-6 py-5">
+                <TimelineSection
+                  title={`Project Timeline ${selectedTimelineData.timelineIndex + 1}`}
+                  rows={selectedTimelineData.timeline.rows}
+                  cnTracking={selectedTimelineData.timeline.cnTracking}
+                  sgTracking={selectedTimelineData.timeline.sgTracking}
+                  shipper={selectedTimelineData.subitem.shipper ?? ""}
+                  timelineProgressOptions={timelineProgressOptions}
+                  readOnly={
+                    !canEditSubitem(
+                      selectedTimelineData.client.id,
+                      selectedTimelineData.subitem.id,
+                    )
+                  }
+                  onTrackingChange={(tracking) =>
+                    void onUpdateSubitem(
+                      selectedTimelineData.client.id,
+                      selectedTimelineData.subitem.id,
+                      {
+                        timelineGroups: selectedTimelineData.timelines.map(
+                          (candidate) =>
+                            candidate.id === selectedTimelineData.timeline.id
+                              ? { ...candidate, ...tracking }
+                              : candidate,
+                        ),
+                      },
+                    )
+                  }
+                  onUpdate={(rows) =>
+                    void onUpdateSubitem(
+                      selectedTimelineData.client.id,
+                      selectedTimelineData.subitem.id,
+                      {
+                        timelineGroups: selectedTimelineData.timelines.map(
+                          (candidate) =>
+                            candidate.id === selectedTimelineData.timeline.id
+                              ? { ...candidate, rows }
+                              : candidate,
+                        ),
+                      },
+                    )
+                  }
+                />
+              </div>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
