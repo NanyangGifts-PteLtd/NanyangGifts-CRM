@@ -439,7 +439,8 @@ export default function GanttChart({
   }, []);
 
   const orderedGroups = useMemo(() => {
-    const boardOrder = [...groups]
+    const boardOrder = groups
+      .filter((group) => /^closed leads\b/i.test(group.name.trim()))
       .sort((a, b) => a.sort_order - b.sort_order)
       .map((group, boardIndex) => ({ group, boardIndex }));
     const priority = (name: string) => {
@@ -466,6 +467,7 @@ export default function GanttChart({
     );
     const ungroupedOrder = orderedGroups.length;
     return clients
+      .filter((client) => groupOrder.has(client.groupId ?? ""))
       .map((client, index) => ({ client, index }))
       .sort(
         (a, b) =>
@@ -1102,6 +1104,10 @@ export default function GanttChart({
     },
     [],
   );
+  // react-scheduler removes its resource header when a search has no matches.
+  // Keep our controlled toolbar mounted in the chart root in that state so the
+  // existing query can always be edited or cleared.
+  const toolbarHost = headerHost ?? schedulerRootRef.current;
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col overflow-hidden p-4">
@@ -1176,10 +1182,12 @@ export default function GanttChart({
             showTooltip: false,
           }}
         />
-        {headerHost &&
+        {toolbarHost &&
           createPortal(
             <>
-              <div className="absolute inset-x-2 top-2 z-[5] flex h-9 items-center gap-1.5">
+              <div
+                className={`absolute top-2 z-[5] flex h-9 items-center gap-1.5 ${headerHost ? "inset-x-2" : "left-2 w-[calc(100%-1rem)] max-w-[554px]"}`}
+              >
                 <div className="relative min-w-0 flex-1">
                   <Search
                     size={14}
@@ -1263,7 +1271,7 @@ export default function GanttChart({
                 <div className="flex items-center px-3">Subitem</div>
               </div>
             </>,
-            headerHost,
+            toolbarHost,
           )}
         {labelHosts.map(({ resource, element }) =>
           createPortal(
