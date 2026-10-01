@@ -364,6 +364,7 @@ interface CRMBoardProps {
   setExpandedIds: React.Dispatch<React.SetStateAction<string[]>>;
   setClients: React.Dispatch<React.SetStateAction<Client[]>>;
   reloadClients: () => Promise<void>;
+  clientsLoaded?: boolean;
   search?: string;
   currentUserRole?: string | null;
   clientAssignees: ClientAssigneeMap;
@@ -479,6 +480,7 @@ export function CRMBoard({
   setExpandedIds,
   setClients,
   reloadClients,
+  clientsLoaded = true,
   search = "",
   currentUserRole,
   clientAssignees,
@@ -636,6 +638,7 @@ export function CRMBoard({
   const [loadedGroupContentIds, setLoadedGroupContentIds] = useState<
     Set<string>
   >(new Set());
+  const pendingGroupExpansionIdsRef = useRef<Set<string>>(new Set());
   const [openGroupMenu, setOpenGroupMenu] = useState<string | null>(null);
 
   useEffect(() => {
@@ -5704,9 +5707,41 @@ export function CRMBoard({
     );
   }, [collapsedGroups, groups]);
 
-  const toggleGroup = useCallback((id: string) => {
-    setCollapsedGroups((previous) => ({ ...previous, [id]: !previous[id] }));
-  }, []);
+  const toggleGroup = useCallback(
+    (id: string) => {
+      const isCollapsed = Boolean(collapsedGroups[id]);
+
+      if (!isCollapsed) {
+        pendingGroupExpansionIdsRef.current.delete(id);
+        setPendingGroupContentIds((current) => {
+          const next = new Set(current);
+          next.delete(id);
+          return next;
+        });
+        setCollapsedGroups((current) => ({ ...current, [id]: true }));
+        return;
+      }
+
+      // Paint the lightweight group skeleton before mounting a potentially
+      // large client/subitem tree, including after the board itself is loaded.
+      pendingGroupExpansionIdsRef.current.add(id);
+      setPendingGroupContentIds((current) => new Set(current).add(id));
+      requestAnimationFrame(() => {
+        if (!pendingGroupExpansionIdsRef.current.has(id)) return;
+        setCollapsedGroups((current) => ({ ...current, [id]: false }));
+        window.setTimeout(() => {
+          if (!pendingGroupExpansionIdsRef.current.has(id)) return;
+          pendingGroupExpansionIdsRef.current.delete(id);
+          setPendingGroupContentIds((current) => {
+            const next = new Set(current);
+            next.delete(id);
+            return next;
+          });
+        }, 160);
+      });
+    },
+    [collapsedGroups],
+  );
 
   useEffect(() => {
     const handleKeyboardShortcut = (event: KeyboardEvent) => {
@@ -10294,6 +10329,7 @@ export function CRMBoard({
                 (sum, column) => sum + column.width,
                 0,
               );
+              const isGroupExpanding = pendingGroupContentIds.has(group.id);
 
               return (
                 <React.Fragment key={group.id}>
@@ -10365,7 +10401,7 @@ export function CRMBoard({
                       setOpenGroupMenu(group.id);
                     }}
                     className={`group relative mt-4 flex items-start gap-2 bg-white text-sm active:cursor-grabbing ${
-                      collapsedGroups[group.id]
+                      collapsedGroups[group.id] && !isGroupExpanding
                         ? "min-h-[60px] cursor-grab rounded-l-md border border-slate-300 border-l-[5px] pb-2 pl-4 pr-3 pt-[5px] shadow-[0_1px_0_rgba(15,23,42,0.03)]"
                         : "min-h-[34px] cursor-grab border-0 pb-[5px] pl-[21px] pr-3 pt-[5px]"
                     } ${
@@ -10375,7 +10411,7 @@ export function CRMBoard({
                         : ""
                     }`}
                     style={
-                      collapsedGroups[group.id]
+                      collapsedGroups[group.id] && !isGroupExpanding
                         ? { borderLeftColor: groupAccentColor(group) }
                         : undefined
                     }
@@ -10428,8 +10464,17 @@ export function CRMBoard({
                       onClick={() => toggleGroup(group.id)}
                       className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center"
                       style={{ color: groupAccentColor(group) }}
+                      aria-label={
+                        isGroupExpanding
+                          ? `Loading ${group.name}`
+                          : collapsedGroups[group.id]
+                            ? `Expand ${group.name}`
+                            : `Collapse ${group.name}`
+                      }
                     >
-                      {collapsedGroups[group.id] ? (
+                      {isGroupExpanding ? (
+                        <LoaderCircle size={16} className="animate-spin" />
+                      ) : collapsedGroups[group.id] ? (
                         <ChevronRight size={18} strokeWidth={2.25} />
                       ) : (
                         <ChevronDown size={18} strokeWidth={2.25} />
@@ -10437,7 +10482,7 @@ export function CRMBoard({
                     </button>
                     <div
                       className={
-                        collapsedGroups[group.id]
+                        collapsedGroups[group.id] && !isGroupExpanding
                           ? ""
                           : "flex min-w-0 items-center gap-2"
                       }
@@ -10450,20 +10495,31 @@ export function CRMBoard({
                       </div>
                       <div
                         className={`text-[13px] font-normal text-slate-500 ${
-                          collapsedGroups[group.id]
+                          collapsedGroups[group.id] && !isGroupExpanding
                             ? ""
                             : "opacity-0 transition-opacity group-hover:opacity-100"
                         }`}
                       >
-                        {groupClients.length}{" "}
-                        {groupClients.length === 1 ? "Client" : "Clients"}
+                        {clientsLoaded ? (
+                          <>
+                            {groupClients.length}{" "}
+                            {groupClients.length === 1 ? "Client" : "Clients"}
+                          </>
+                        ) : (
+                          <span className="inline-flex items-center gap-1">
+                            <LoaderCircle
+                              size={13}
+                              className="animate-spin"
+                              aria-label={`Loading ${group.name} clients`}
+                            />
+                            Loading clients
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
 
-                  {false &&
-                    !collapsedGroups[group.id] &&
-                    pendingGroupContentIds.has(group.id) && (
+                  {isGroupExpanding && (
                       <div
                         className="relative overflow-hidden bg-white"
                         style={{
@@ -10473,6 +10529,11 @@ export function CRMBoard({
                         aria-busy="true"
                         aria-label={`Loading ${group.name} clients`}
                       >
+                        <div
+                          aria-hidden="true"
+                          className="pointer-events-none absolute inset-y-0 left-0 z-20 w-[5px]"
+                          style={{ backgroundColor: groupAccentColor(group) }}
+                        />
                         <div
                           className="relative flex h-7 items-center bg-white text-[12.6px]"
                           style={{
@@ -10529,7 +10590,8 @@ export function CRMBoard({
                       </div>
                     )}
 
-                  {!collapsedGroups[group.id] && (
+                  {!collapsedGroups[group.id] &&
+                    !pendingGroupContentIds.has(group.id) && (
                     <div
                       data-client-group={group.id}
                       onDragOver={(event) =>

@@ -714,6 +714,7 @@ export default function Page() {
             setExpandedIds={setExpandedClientIds}
             setClients={setClients}
             reloadClients={reloadClients}
+            clientsLoaded={clientsLoaded}
             search={search}
             currentUserRole={currentUserRole}
             clientAssignees={clientAssignees}
