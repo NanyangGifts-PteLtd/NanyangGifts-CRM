@@ -47,7 +47,10 @@ type Props = {
   onUpdate: (changes: Partial<Subitem>) => void;
   onClose: () => void;
 };
-const TIERS = [750, 1000, 1250, 1500, 1750, 2000];
+const TIERS = [
+  ...Array.from({ length: 20 }, (_, index) => (index + 1) * 250),
+  ...Array.from({ length: 10 }, (_, index) => 5500 + index * 500),
+];
 const fmt = (n: number | null | undefined) =>
   n == null || !Number.isFinite(n) ? "—" : n.toFixed(2);
 const pct = (n: number | null) => (n == null ? "—" : `${n.toFixed(1)}%`);
@@ -59,14 +62,14 @@ function Header() {
     <div
       className={`${grid} border-b bg-slate-50 px-3 py-2 text-[11px] font-semibold text-slate-500`}
     >
-      <span>Client / created</span>
-      <span>Qty</span>
-      <span>T.C</span>
-      <span>U.C</span>
+      <span>Client / Date Created</span>
+      <span>Quantity</span>
+      <span>Total Cost (including manpower and shipping)</span>
+      <span>Unit Cost</span>
       <span>Price</span>
-      <span>U.P</span>
+      <span>Unit Price</span>
       <span>Markup</span>
-      <span>% Markup</span>
+      <span>Percentage Markup</span>
       <span />
     </div>
   );
@@ -80,16 +83,30 @@ function Metric({
   value: string;
   onChange?: (value: number) => void;
 }) {
+  const [draft, setDraft] = useState(
+    value === "—" ? "" : value.replace("%", ""),
+  );
+  const [isFocused, setIsFocused] = useState(false);
+
+  useEffect(() => {
+    if (!isFocused) setDraft(value === "—" ? "" : value.replace("%", ""));
+  }, [isFocused, value]);
+
   return (
     <div className="rounded border bg-slate-50 p-3">
       <p className="text-xs font-medium text-slate-500">{label}</p>
       {onChange ? (
         <input
-          type="number"
-          step="any"
-          value={value === "—" ? "" : value.replace("%", "")}
+          type="text"
+          inputMode="decimal"
+          value={draft}
+          onFocus={() => setIsFocused(true)}
+          onBlur={() => setIsFocused(false)}
           onChange={(event) => {
-            const next = Number(event.target.value);
+            const raw = event.target.value;
+            setDraft(raw);
+            if (!raw.trim()) return;
+            const next = Number(raw.replace(/,/g, "").trim());
             if (Number.isFinite(next)) onChange(next);
           }}
           className="mt-1 w-full bg-transparent text-lg font-semibold outline-none"
@@ -129,13 +146,13 @@ export function PriceCalculatorDialog(props: Props) {
     };
   };
   const setTypedMarkup = (candidate: number) => {
-    if (!Number.isFinite(candidate) || candidate < 0 || candidate > 10000)
-      return;
-    setMarkup(candidate);
+    if (Number.isFinite(candidate)) setMarkup(candidate);
   };
   const useUp = (up: number | null) => {
     if (up != null) {
-      onUpdate({ up: String(Number(up.toFixed(2))) });
+      // Do not round before saving: at quantity, a two-decimal unit-price
+      // rounding can turn into a visible total-price mismatch on the board.
+      onUpdate({ up: String(up) });
       onClose();
     }
   };
@@ -146,7 +163,7 @@ export function PriceCalculatorDialog(props: Props) {
       setLoading(true);
       try {
         const response = await fetch(
-          `/api/price-calculator/history?name=${encodeURIComponent(subitem.name)}`,
+          `/api/price-calculator/history?name=${encodeURIComponent(subitem.name)}&excludeSubitemId=${encodeURIComponent(subitem.id)}`,
         );
         const body = await response.json();
         if (alive) setRecords(response.ok ? (body.records ?? []) : []);
@@ -158,7 +175,7 @@ export function PriceCalculatorDialog(props: Props) {
     return () => {
       alive = false;
     };
-  }, [subitem.name]);
+  }, [subitem.id, subitem.name]);
 
   const Input = ({
     label,
@@ -189,11 +206,11 @@ export function PriceCalculatorDialog(props: Props) {
     </label>
   );
   const Costs = () => (
-    <section className="rounded-lg border bg-white p-4">
+    <section className="rounded-lg border bg-white p-4 xl:h-[500px]">
       <h3 className="mb-4 font-semibold">Costs</h3>
       <div className="space-y-3">
         <div className="grid grid-cols-2 gap-3">
-          <Input label="Qty" field="qty" value={subitem.qty} />
+          <Input label="Quantity" field="qty" value={subitem.qty} />
           <Input label="Cost" field="cost" value={subitem.cost} />
         </div>
         <div className="text-xs font-medium text-slate-600">
@@ -220,18 +237,21 @@ export function PriceCalculatorDialog(props: Props) {
           </div>
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <Formula label="C-SGD" value={fmt(financials.cSgd)} />
-          <Formula label="TC-SGD" value={fmt(financials.tcSgd)} />
+          <Formula label="Cost in SGD" value={fmt(financials.cSgd)} />
+          <Formula label="Total Cost in SGD" value={fmt(financials.tcSgd)} />
         </div>
         <div className="grid grid-cols-3 gap-3">
           <Input label="Manpower" field="manpower" value={subitem.manpower} />
-          <Input label="LS" field="ls" value={subitem.ls} />
-          <Input label="OS" field="os" value={subitem.os} />
+          <Input label="Local Shipping" field="ls" value={subitem.ls} />
+          <Input label="Overseas Shipping" field="os" value={subitem.os} />
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <Formula label="T.C" value={fmt(financials.tc)} />
           <Formula
-            label="U.C"
+            label="Total Cost (including manpower and shipping)"
+            value={fmt(financials.tc)}
+          />
+          <Formula
+            label="Unit Cost"
             value={fmt(
               financials.quantity ? financials.tc / financials.quantity : null,
             )}
@@ -241,13 +261,13 @@ export function PriceCalculatorDialog(props: Props) {
     </section>
   );
   const Tiers = () => (
-    <section className="rounded-lg border bg-white p-4">
-      <h3 className="mb-4 font-semibold">Common Pricing Tiers</h3>
-      <div className="overflow-x-auto rounded border">
-        <div className="grid min-w-[560px] grid-cols-[repeat(4,1fr)_100px] gap-2 border-b bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-500">
+    <section className="flex min-h-0 flex-col rounded-lg border bg-white p-4 xl:h-[500px]">
+      <h3 className="mb-4 font-semibold">Pricing Tiers</h3>
+      <div className="min-h-0 flex-1 overflow-auto rounded border">
+        <div className="sticky top-0 z-10 grid min-w-[560px] grid-cols-[repeat(4,1fr)_100px] gap-2 border-b bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-500">
           <span>Markup</span>
-          <span>% Markup</span>
-          <span>U.P</span>
+          <span>Percentage Markup</span>
+          <span>Unit Price</span>
           <span>Price</span>
           <span />
         </div>
@@ -268,7 +288,7 @@ export function PriceCalculatorDialog(props: Props) {
                 onClick={() => useUp(row.up)}
                 className="rounded bg-amber-600 px-2 py-1 text-xs font-semibold text-white disabled:opacity-40"
               >
-                Use U.P
+                Use Unit Price
               </button>
             </div>
           );
@@ -321,7 +341,7 @@ export function PriceCalculatorDialog(props: Props) {
               onClick={() => useUp(parseSubitemNumber(record.up))}
               className="inline-flex items-center justify-center gap-1 rounded bg-amber-600 px-2 py-1.5 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"
             >
-              <Check size={14} /> Use U.P
+              <Check size={14} /> Use Unit Price
             </button>
           </div>
         );
@@ -367,20 +387,23 @@ export function PriceCalculatorDialog(props: Props) {
     </section>
   );
   const slider = values(markup);
+  // Free-form fields can hold any finite number. Keep the range control at
+  // its nearest endpoint until the user interacts with the slider again.
+  const sliderPosition = Math.min(10000, Math.max(0, markup));
   return (
     <div className="fixed inset-0 z-modal flex items-center justify-center bg-slate-950/45 p-4">
       <section className="max-h-[calc(100vh-2rem)] w-full max-w-[1600px] overflow-y-auto rounded-xl bg-slate-50 p-6 shadow-2xl">
-        <header className="mb-5 flex items-center justify-between border-b pb-4">
+        <header className="relative mb-5 flex justify-center border-b pb-4 text-center">
           <div>
-            <h2 className="text-xl font-semibold">Price Calculator</h2>
-            <p className="text-sm text-slate-500">
+            <h2 className="text-2xl font-bold">Price Calculator</h2>
+            <p className="text-lg font-medium text-slate-500">
               {subitem.name || "Unnamed subitem"}
             </p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="rounded p-2 hover:bg-slate-200"
+            className="absolute right-0 top-0 rounded p-2 hover:bg-slate-200"
           >
             <X size={20} />
           </button>
@@ -402,11 +425,9 @@ export function PriceCalculatorDialog(props: Props) {
             min="0"
             max="10000"
             step="1"
-            value={markup}
+            value={sliderPosition}
             disabled={readOnly}
-            onChange={(e) =>
-              setMarkup(Math.round(Number(e.target.value) / 50) * 50)
-            }
+            onChange={(e) => setMarkup(Number(e.target.value))}
             className="h-2 w-full cursor-pointer accent-amber-600"
           />
           <div className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-4">
@@ -416,7 +437,7 @@ export function PriceCalculatorDialog(props: Props) {
               onChange={readOnly ? undefined : setTypedMarkup}
             />
             <Metric
-              label="% Markup"
+              label="Percentage Markup"
               value={pct(slider.percent)}
               onChange={
                 readOnly
@@ -437,7 +458,7 @@ export function PriceCalculatorDialog(props: Props) {
               }
             />
             <Metric
-              label="U.P"
+              label="Unit Price"
               value={fmt(slider.up)}
               onChange={
                 readOnly
@@ -455,7 +476,7 @@ export function PriceCalculatorDialog(props: Props) {
             onClick={() => useUp(slider.up)}
             className="mt-5 rounded bg-amber-600 px-4 py-2 text-sm font-semibold text-white"
           >
-            Use slider U.P
+            Use slider Unit Price
           </button>
         </section>
         {allHistory && (

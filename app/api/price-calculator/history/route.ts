@@ -21,6 +21,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const name = String(request.nextUrl.searchParams.get("name") ?? "").trim();
+  const excludeSubitemId = String(
+    request.nextUrl.searchParams.get("excludeSubitemId") ?? "",
+  ).trim();
   if (!name)
     return NextResponse.json({ records: [] });
 
@@ -58,7 +61,7 @@ export async function GET(request: NextRequest) {
   const clientIds = (closedClients ?? []).map((client) => client.id);
   if (!clientIds.length) return NextResponse.json({ records: [] });
 
-  const { data: subitems, error: subitemsError } = await supabaseAdmin
+  let subitemsQuery = supabaseAdmin
     .from("subitems")
     .select("id, client_id, created_at, name, qty, cost, currency, currency_option_id, manpower, ls, os, up")
     .in("client_id", clientIds)
@@ -66,6 +69,8 @@ export async function GET(request: NextRequest) {
     .in("status_option_id", (awardedStatuses.data ?? []).map((status) => status.id))
     .is("deleted_at", null)
     .order("created_at", { ascending: false });
+  if (excludeSubitemId) subitemsQuery = subitemsQuery.neq("id", excludeSubitemId);
+  const { data: subitems, error: subitemsError } = await subitemsQuery;
   if (subitemsError)
     return NextResponse.json({ error: subitemsError.message }, { status: 500 });
 
