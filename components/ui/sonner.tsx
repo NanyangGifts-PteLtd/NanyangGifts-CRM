@@ -10,6 +10,10 @@ const Toaster = ({ ...props }: ToasterProps) => {
     <Sonner
       theme={theme as ToasterProps["theme"]}
       className="toaster group"
+      // Keep several messages visible together so a quick succession of
+      // success/error notifications does not visually displace an earlier
+      // message before its configured lifetime has elapsed.
+      visibleToasts={6}
       toastOptions={{
         // Keep routine success/error messages visible long enough to read the
         // server-provided detail, particularly for long-running integrations.

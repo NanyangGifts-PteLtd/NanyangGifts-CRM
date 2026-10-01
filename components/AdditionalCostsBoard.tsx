@@ -116,9 +116,10 @@ const otherVoucherColumns: Column[] = [
   { key: "quickbooks_supplier_name", label: "Supplier", width: 220 },
   {
     key: "quickbooks_overall_gst_override",
-    label: "Bill GST Value",
+    label: "GST Amount",
     width: 165,
   },
+  { key: "quickbooks_total_cost", label: "Total Cost", width: 145 },
   { key: "quickbooks_attachment_files", label: "Attached Files", width: 240 },
   { key: "bill_action", label: "Bill Action", width: 125 },
   { key: "created", label: "Date Created", width: 140 },
@@ -136,9 +137,10 @@ const quickBooksBillsOnlyColumns: Column[] = [
   },
   {
     key: "quickbooks_overall_gst_override",
-    label: "Bill GST Value",
+    label: "GST Amount",
     width: 165,
   },
+  { key: "quickbooks_total_cost", label: "Total Cost", width: 145 },
   { key: "quickbooks_attachment_files", label: "Attached Files", width: 240 },
   { key: "bill_action", label: "Bill Action", width: 125 },
   { key: "created", label: "Date Created", width: 140 },
@@ -369,6 +371,8 @@ export function AdditionalCostsBoard({
       ),
     [billDraft.lines],
   );
+  const billGrandTotal =
+    billExpenseTotal + (Number.parseFloat(billDraft.overallGstAmount) || 0);
   const calculatedOverallGstAmount = useMemo(() => {
     const taxableAmountsByCode = new Map<string, number>();
     for (const line of billDraft.lines) {
@@ -2264,6 +2268,16 @@ export function AdditionalCostsBoard({
                               {row.quickbooks_overall_gst_override ?? ""}
                             </td>
                             <td
+                              data-voucher-col="quickbooks_total_cost"
+                              className="border-b border-r border-slate-200 bg-slate-100 px-3 py-2 text-right text-sm font-medium text-slate-500"
+                              title="Cost + GST Amount"
+                            >
+                              {(
+                                Number(row.cost ?? 0) +
+                                Number(row.quickbooks_overall_gst_override ?? 0)
+                              ).toFixed(2)}
+                            </td>
+                            <td
                               data-voucher-col="quickbooks_attachment_files"
                               className="border-b border-r border-slate-200 bg-slate-100 px-3 py-2 text-xs text-slate-400"
                             >
@@ -3238,9 +3252,12 @@ export function AdditionalCostsBoard({
                                 Expense lines
                               </p>
                               <div className="overflow-x-auto rounded-md border border-slate-200">
-                                <table className="min-w-[900px] w-full text-sm">
+                                <table className="min-w-[950px] w-full text-sm">
                                   <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                                     <tr>
+                                      <th className="w-14 px-3 py-2 text-center">
+                                        #
+                                      </th>
                                       <th className="px-3 py-2">Category *</th>
                                       <th className="px-3 py-2">Description</th>
                                       <th className="px-3 py-2">Amount *</th>
@@ -3256,6 +3273,9 @@ export function AdditionalCostsBoard({
                                         key={index}
                                         className="border-t border-slate-200 align-top"
                                       >
+                                        <td className="px-3 py-2 text-center font-semibold text-slate-500">
+                                          {index + 1}
+                                        </td>
                                         <td className="px-3 py-2">
                                           <input
                                             required
@@ -3529,7 +3549,7 @@ export function AdditionalCostsBoard({
                                   </tbody>
                                   <tfoot className="border-t border-slate-200 bg-slate-50">
                                     <tr>
-                                      <td colSpan={5} className="px-3 py-2">
+                                      <td colSpan={6} className="px-3 py-2">
                                         <button
                                           type="button"
                                           onClick={() =>
@@ -3557,16 +3577,32 @@ export function AdditionalCostsBoard({
                                 </table>
                               </div>
                             </div>
-                            {quickBooksBillOnlyMode ? (
-                              <div className="rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
+                            <div className="grid grid-cols-1 gap-2 rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm sm:grid-cols-3">
+                              <div>
                                 <span className="font-medium text-slate-700">
-                                  Total Cost
+                                  Expense Total
                                 </span>
                                 <span className="float-right font-semibold text-slate-900">
                                   {billExpenseTotal.toFixed(2)}
                                 </span>
                               </div>
-                            ) : null}
+                              <div>
+                                <span className="font-medium text-slate-700">
+                                  GST Amount
+                                </span>
+                                <span className="float-right font-semibold text-slate-900">
+                                  {(Number.parseFloat(billDraft.overallGstAmount) || 0).toFixed(2)}
+                                </span>
+                              </div>
+                              <div>
+                                <span className="font-semibold text-slate-900">
+                                  Grand Total
+                                </span>
+                                <span className="float-right font-bold text-slate-900">
+                                  {billGrandTotal.toFixed(2)}
+                                </span>
+                              </div>
+                            </div>
                             <label className="block text-sm font-medium text-slate-700">
                               Overall GST Amount
                               <span className="mt-1 block text-xs font-normal text-slate-500">

@@ -391,7 +391,7 @@ export async function PATCH(request: NextRequest) {
       throw new Error("Overall GST amount must be zero or greater.");
     // QuickBooks must not receive a GST adjustment for a wholly
     // out-of-scope bill, but retain the preview's declared value for the
-    // voucher's Bill GST Value field.
+    // voucher's GST Amount field.
     const overall = allOutOfScope ? null : declaredOverall;
     const calculated = [...taxRates.values()].reduce(
       (sum, line) => sum + Math.round(line.taxableAmount * line.rate) / 100,
