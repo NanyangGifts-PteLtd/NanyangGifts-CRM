@@ -193,6 +193,7 @@ type CustomerMatchPending = {
   linkedProfileId: string | null;
   exactProfile: { id: string; name: string } | null;
   suggestions: Array<{ id: string; name: string; similarity: number }>;
+  isLoading: boolean;
 };
 type ColumnScope = "client" | "subitem" | "all";
 type BoardSortSetting = {
@@ -6114,6 +6115,20 @@ export function CRMBoard({
           );
           return;
         }
+        const pendingBase: CustomerMatchPending = {
+          clientId,
+          clientName: existingClient.name,
+          field: customerField,
+          oldValue,
+          value,
+          linkedProfileId: null,
+          exactProfile: null,
+          suggestions: [],
+          isLoading: true,
+        };
+        // Open immediately so the edit does not look as though it was simply
+        // reverted while the profile lookup is in flight.
+        if (oldValue) setCustomerMatchPending(pendingBase);
         try {
           const response = await fetch("/api/customer-profiles/match", {
             method: "POST",
@@ -6133,17 +6148,20 @@ export function CRMBoard({
               preview.error || "Unable to check customer profiles.",
             );
           const pending: CustomerMatchPending = {
-            clientId,
-            clientName: existingClient.name,
-            field: customerField,
-            oldValue,
-            value,
+            ...pendingBase,
             linkedProfileId: preview.linkedProfileId ?? null,
             exactProfile: preview.exactProfile ?? null,
             suggestions: preview.suggestions ?? [],
+            isLoading: false,
           };
           if (oldValue || pending.suggestions.length) {
-            setCustomerMatchPending(pending);
+            setCustomerMatchPending((current) =>
+              current?.clientId === clientId &&
+              current.field === customerField &&
+              current.value === value
+                ? pending
+                : current,
+            );
             return;
           }
           await commitCustomerMatch(
@@ -6152,6 +6170,13 @@ export function CRMBoard({
             preview.exactProfileId ?? undefined,
           );
         } catch (error) {
+          setCustomerMatchPending((current) =>
+            current?.clientId === clientId &&
+            current.field === customerField &&
+            current.value === value
+              ? null
+              : current,
+          );
           toast.error("Customer matching failed", {
             description:
               error instanceof Error
@@ -9352,7 +9377,12 @@ export function CRMBoard({
           if (!open && !savingCustomerMatch) setCustomerMatchPending(null);
         }}
       >
-        <AlertDialogContent className="!w-[min(92vw,70rem)] !max-w-[min(92vw,70rem)]">
+        <AlertDialogContent
+          className="!w-[min(92vw,70rem)] !max-w-[min(92vw,70rem)]"
+          // Prevent Radix from focusing Cancel while the Enter key which
+          // submitted the edited cell is still being released.
+          onOpenAutoFocus={(event) => event.preventDefault()}
+        >
           <AlertDialogHeader className="items-center text-center">
             <AlertDialogTitle>
               {customerMatchPending?.oldValue
@@ -9411,7 +9441,9 @@ export function CRMBoard({
                         <button
                           key={suggestion.id}
                           type="button"
-                          disabled={savingCustomerMatch}
+                          disabled={
+                            savingCustomerMatch || customerMatchPending.isLoading
+                          }
                           onClick={() =>
                             void commitCustomerMatch(
                               customerMatchPending,
@@ -9430,7 +9462,13 @@ export function CRMBoard({
                     </div>
                   </div>
                 )}
-              {!customerMatchPending.exactProfile &&
+              {customerMatchPending.isLoading && (
+                <p className="rounded-lg border border-dashed border-violet-200 bg-white/70 px-3 py-3 text-sm text-slate-500">
+                  Checking existing customer profiles...
+                </p>
+              )}
+              {!customerMatchPending.isLoading &&
+                !customerMatchPending.exactProfile &&
                 !customerMatchPending.suggestions.length && (
                   <p className="rounded-lg border border-dashed border-violet-200 bg-white/70 px-3 py-3 text-sm text-slate-500">
                     No similar customer profiles were found.
@@ -9479,6 +9517,7 @@ export function CRMBoard({
                         type="button"
                         disabled={
                           savingCustomerMatch ||
+                          customerMatchPending.isLoading ||
                           Boolean(
                             customerMatchPending.exactProfile &&
                             customerMatchPending.exactProfile.id !==
@@ -9500,6 +9539,7 @@ export function CRMBoard({
                       type="button"
                       disabled={
                         savingCustomerMatch ||
+                        customerMatchPending.isLoading ||
                         Boolean(
                           customerMatchPending.exactProfile &&
                           customerMatchPending.exactProfile.id !==
@@ -9530,7 +9570,9 @@ export function CRMBoard({
                 </p>
                 <button
                   type="button"
-                  disabled={savingCustomerMatch}
+                  disabled={
+                    savingCustomerMatch || customerMatchPending.isLoading
+                  }
                   onClick={() =>
                     void commitCustomerMatch(customerMatchPending, "different")
                   }
