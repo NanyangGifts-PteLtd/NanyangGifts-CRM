@@ -87,6 +87,8 @@ export function StatusBadge({
   readOnlyReason,
   includeBlankOption = true,
   sectionCount = 1,
+  autoOpen = false,
+  onAutoOpen,
 }: {
   value: string;
   onChange: (value: string, option?: BadgeOption) => void;
@@ -103,6 +105,10 @@ export function StatusBadge({
   readOnlyReason?: string;
   includeBlankOption?: boolean;
   sectionCount?: number;
+  /** Opens the selector in response to a related field requiring a label. */
+  autoOpen?: boolean;
+  /** Called once an automatic open request has been handled. */
+  onAutoOpen?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [editingLabels, setEditingLabels] = useState(false);
@@ -294,6 +300,14 @@ export function StatusBadge({
     positionMenu();
     setOpen(true);
   };
+
+  useEffect(() => {
+    if (!autoOpen || readOnly || open || !btnRef.current) return;
+    resetMenuState();
+    positionMenu();
+    setOpen(true);
+    onAutoOpen?.();
+  }, [autoOpen, onAutoOpen, open, positionMenu, readOnly]);
 
   const rename = async (oldName: string, optionId?: string) => {
     const nextName = (draftNames[oldName] ?? oldName).trim();

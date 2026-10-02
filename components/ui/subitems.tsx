@@ -575,6 +575,9 @@ export function SubitemsTable({
   const [highlightedUpSubitemId, setHighlightedUpSubitemId] = useState<
     string | null
   >(null);
+  const [currencyMenuSubitemId, setCurrencyMenuSubitemId] = useState<
+    string | null
+  >(null);
   const [editingSubitemNameIds, setEditingSubitemNameIds] = useState<
     Set<string>
   >(new Set());
@@ -2675,7 +2678,12 @@ export function SubitemsTable({
         return (
           <EditableCell
             value={sub.cost}
-            onChange={(v) => onUpdateSubitem(sub.id, { cost: v })}
+            onChange={(v) => {
+              onUpdateSubitem(sub.id, { cost: v });
+              if (v !== sub.cost && !sub.currency?.trim()) {
+                setCurrencyMenuSubitemId(sub.id);
+              }
+            }}
             type="number"
             readOnly={costLocked}
             readOnlyReason={paidLockReason}
@@ -2708,6 +2716,8 @@ export function SubitemsTable({
               readOnly={costLocked}
               readOnlyReason={paidLockReason}
               small
+              autoOpen={currencyMenuSubitemId === sub.id}
+              onAutoOpen={() => setCurrencyMenuSubitemId(null)}
             />
           </div>
         );
