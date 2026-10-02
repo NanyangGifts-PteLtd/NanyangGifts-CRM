@@ -1656,7 +1656,10 @@ export default function GanttChart({
         open={Boolean(selectedTimeline && selectedTimelineData)}
         onOpenChange={(open) => !open && setSelectedTimeline(null)}
       >
-        <DialogContent className="isolate max-h-[calc(100vh-3rem)] max-w-[calc(100vw-3rem)] overflow-hidden bg-white p-0 opacity-100 shadow-2xl sm:max-w-[1500px]">
+        <DialogContent
+          className="isolate max-h-[calc(100vh-3rem)] max-w-[calc(100vw-3rem)] overflow-hidden bg-white p-0 opacity-100 shadow-2xl sm:max-w-[1500px]"
+          onOpenAutoFocus={(event) => event.preventDefault()}
+        >
           {selectedTimelineData ? (
             <div className="flex max-h-[calc(100vh-3rem)] flex-col bg-white">
               <DialogHeader className="shrink-0 items-center border-b border-slate-200 px-6 py-5 pr-14 text-center">
