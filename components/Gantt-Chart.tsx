@@ -16,6 +16,8 @@ import {
   ListFilter,
   Pin,
   PinOff,
+  PanelLeftClose,
+  PanelLeftOpen,
   Search,
   SlidersHorizontal,
   X,
@@ -417,7 +419,7 @@ export default function GanttChart({
     })();
     return () => { active = false; };
   }, []);
-  const schedulerRootRef = useRef<HTMLDivElement>(null);
+  const schedulerRootRef = useRef<HTMLDivElement | null>(null);
   const timelinePanRef = useRef<TimelinePan | null>(null);
   const suppressTimelineClickRef = useRef(false);
   const previousPageButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -425,8 +427,12 @@ export default function GanttChart({
     new Set(),
   );
   const [labelHosts, setLabelHosts] = useState<LabelHost[]>([]);
-  const [sidebarHost, setSidebarHost] = useState<HTMLElement | null>(null);
-  const [headerHost, setHeaderHost] = useState<HTMLElement | null>(null);
+  const [schedulerRootHost, setSchedulerRootHost] =
+    useState<HTMLDivElement | null>(null);
+  const setSchedulerRootRef = useCallback((node: HTMLDivElement | null) => {
+    schedulerRootRef.current = node;
+    setSchedulerRootHost(node);
+  }, []);
   const [timelineCanvasHost, setTimelineCanvasHost] =
     useState<HTMLElement | null>(null);
   const [timelineCanvasWidth, setTimelineCanvasWidth] = useState(0);
@@ -454,6 +460,10 @@ export default function GanttChart({
     subitemId: string;
     timelineId?: string;
   } | null>(null);
+  const [resourcePaneCollapsed, setResourcePaneCollapsed] = useState(false);
+  const resourcePanelWidth = resourcePaneCollapsed
+    ? 0
+    : RESOURCE_PANEL_WIDTH;
 
   useEffect(() => {
     let active = true;
@@ -907,6 +917,7 @@ export default function GanttChart({
           used.add(element);
           setStyle(element, "position", "relative");
           setStyle(element, "padding", "0");
+          setStyle(element, "overflow", "visible");
           const originalLabel = element.firstElementChild as HTMLElement | null;
           if (originalLabel) setStyle(originalLabel, "display", "none");
           return [{ resource, element }];
@@ -958,13 +969,23 @@ export default function GanttChart({
         const sidebar = next[0]?.element.parentElement as HTMLElement | null;
         const header = sidebar?.firstElementChild as HTMLElement | null;
         if (sidebar) {
-          setStyle(sidebar, "min-width", `${RESOURCE_PANEL_WIDTH}px`);
-          setStyle(sidebar, "max-width", `${RESOURCE_PANEL_WIDTH}px`);
-          setStyle(sidebar, "width", `${RESOURCE_PANEL_WIDTH}px`);
+          // The scheduler's resource list is a flex child. Width alone is not
+          // enough to reserve its space after it has once been collapsed, so
+          // keep its flex basis in sync as well. This is deliberately the
+          // base resource layer; our custom headers/cells are layered above it.
+          setStyle(sidebar, "display", "block");
+          setStyle(sidebar, "position", "relative");
+          setStyle(sidebar, "flex", `0 0 ${resourcePanelWidth}px`);
+          setStyle(sidebar, "min-width", `${resourcePanelWidth}px`);
+          setStyle(sidebar, "max-width", `${resourcePanelWidth}px`);
+          setStyle(sidebar, "width", `${resourcePanelWidth}px`);
+          setStyle(sidebar, "overflow", "visible");
+          setStyle(sidebar, "z-index", "10");
         }
         if (header) {
-          setStyle(header, "width", `${RESOURCE_PANEL_WIDTH}px`);
+          setStyle(header, "width", `${resourcePanelWidth}px`);
           setStyle(header, "overflow", "hidden");
+          setStyle(header, "z-index", "11");
           const searchInput = header.querySelector("input");
           const searchContainer = searchInput?.parentElement;
           const previousPageControl =
@@ -981,11 +1002,16 @@ export default function GanttChart({
             setStyle(previousPageControl, "z-index", "4");
           }
         }
-        setSidebarHost((current) => (current === sidebar ? current : sidebar));
-        setHeaderHost((current) => (current === header ? current : header));
         const canvasHost = root.querySelector<HTMLElement>(
           "#reactSchedulerCanvasWrapper",
         );
+        // Keep the third-party scheduler grid at the bottom of this local
+        // stacking context. The resource pane, controls and menus are then
+        // explicitly layered above it instead of relying on DOM order.
+        if (canvasHost) {
+          setStyle(canvasHost, "position", "relative");
+          setStyle(canvasHost, "z-index", "0");
+        }
         setTimelineCanvasHost((current) =>
           current === canvasHost ? current : canvasHost,
         );
@@ -1017,7 +1043,7 @@ export default function GanttChart({
           : element.setAttribute("style", style),
       );
     };
-  }, [data]);
+  }, [data, resourcePanelWidth]);
 
   useEffect(() => {
     let frame = 0;
@@ -1120,7 +1146,7 @@ export default function GanttChart({
       const rootRect = root.getBoundingClientRect();
       const scrollerRect = scroller.getBoundingClientRect();
       if (
-        event.clientX < rootRect.left + RESOURCE_PANEL_WIDTH ||
+        event.clientX < rootRect.left + resourcePanelWidth ||
         event.clientY > scrollerRect.bottom - 16
       )
         return;
@@ -1138,7 +1164,7 @@ export default function GanttChart({
       document.body.style.userSelect = "none";
       event.currentTarget.setPointerCapture(event.pointerId);
     },
-    [],
+    [resourcePanelWidth],
   );
 
   const moveTimelinePan = useCallback(
@@ -1184,7 +1210,7 @@ export default function GanttChart({
   // react-scheduler removes its resource header when a search has no matches.
   // Keep our controlled toolbar mounted in the chart root in that state so the
   // existing query can always be edited or cleared.
-  const toolbarHost = headerHost ?? schedulerRootRef.current;
+  const toolbarHost = schedulerRootHost;
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col overflow-hidden p-4">
@@ -1206,8 +1232,8 @@ export default function GanttChart({
         ))}
       </div>
       <div
-        ref={schedulerRootRef}
-        className="relative min-h-0 w-full max-w-full flex-1 overflow-hidden rounded-xl border bg-white"
+        ref={setSchedulerRootRef}
+        className="isolate relative min-h-0 w-full max-w-full flex-1 overflow-hidden rounded-xl border bg-white"
         onPointerDown={startTimelinePan}
         onPointerMove={moveTimelinePan}
         onPointerUp={finishTimelinePan}
@@ -1264,11 +1290,36 @@ export default function GanttChart({
             showTooltip: false,
           }}
         />
+        <button
+          type="button"
+          onClick={() => setResourcePaneCollapsed((collapsed) => !collapsed)}
+          className="absolute z-30 flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 shadow-sm hover:bg-slate-50"
+          style={{
+            left: `${resourcePaneCollapsed ? 8 : resourcePanelWidth - 36}px`,
+            top: "52px",
+          }}
+          title={
+            resourcePaneCollapsed
+              ? "Expand hierarchy pane"
+              : "Collapse hierarchy pane"
+          }
+          aria-label={
+            resourcePaneCollapsed
+              ? "Expand hierarchy pane"
+              : "Collapse hierarchy pane"
+          }
+        >
+          {resourcePaneCollapsed ? (
+            <PanelLeftOpen size={17} />
+          ) : (
+            <PanelLeftClose size={17} />
+          )}
+        </button>
         {toolbarHost &&
           createPortal(
             <>
               <div
-                className={`absolute top-2 z-[5] flex h-9 items-center gap-1.5 ${headerHost ? "inset-x-2" : "left-2 w-[calc(100%-1rem)] max-w-[554px]"}`}
+                className="absolute left-2 top-2 z-board flex h-9 w-[calc(100%-1rem)] max-w-[554px] items-center gap-1.5"
               >
                 <div className="relative min-w-0 flex-1">
                   <Search
@@ -1321,7 +1372,7 @@ export default function GanttChart({
                   )}
                 </button>
               </div>
-              <div className="absolute inset-x-0 bottom-0 grid h-8 grid-cols-[140px_210px_220px] border-t border-slate-200 bg-slate-50 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+              <div className="absolute left-0 top-[92px] z-board grid h-8 w-[570px] grid-cols-[140px_210px_220px] border-y border-slate-200 bg-slate-50 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                 <div className="flex items-center justify-between border-r border-slate-200 px-3">
                   <span>Group</span>
                   <button
@@ -1355,25 +1406,53 @@ export default function GanttChart({
             </>,
             toolbarHost,
           )}
-        {labelHosts.map(
-          ({
-            resource,
-            element,
-            startsVisibleGroup,
-            startsVisibleClientGroup,
-          }) =>
+        {!resourcePaneCollapsed &&
+          schedulerRootHost &&
           createPortal(
-            <div
-              key={resource.id}
-              className="pointer-events-none absolute inset-0 text-xs text-slate-700"
-            >
+            <div className="pointer-events-auto absolute inset-y-0 left-0 z-sticky w-[570px] overflow-hidden border-r border-slate-200 bg-white shadow-[4px_0_12px_rgba(15,23,42,0.08)]">
+              {labelHosts.map(
+                ({
+                  resource,
+                  element,
+                  startsVisibleGroup,
+                  startsVisibleClientGroup,
+                  groupTop,
+                  groupSpanHeight,
+                  clientTop,
+                  clientSpanHeight,
+                }) => {
+                  const isGroupCollapsed = collapsedGroupIds.has(
+                    resource.groupId,
+                  );
+                  const isClientCollapsed = collapsedClientIds.has(
+                    resource.clientId,
+                  );
+                  return (
+                    <div key={resource.id} className="text-xs text-slate-700">
+              {startsVisibleGroup && isGroupCollapsed && (
+                <div
+                  className="absolute left-[140px] w-[430px] border-b border-slate-200 bg-white"
+                  style={{ top: element.offsetTop, height: element.offsetHeight }}
+                  aria-hidden="true"
+                />
+              )}
+              {startsVisibleClientGroup &&
+                !isGroupCollapsed &&
+                isClientCollapsed && (
+                  <div
+                    className="absolute left-[350px] w-[220px] border-b border-slate-200 bg-white"
+                    style={{ top: element.offsetTop, height: element.offsetHeight }}
+                    aria-hidden="true"
+                  />
+                )}
               {startsVisibleGroup && (
                 <button
                   type="button"
                   onClick={() =>
                     toggleCollapsedId(setCollapsedGroupIds, resource.groupId)
                   }
-                  className="pointer-events-auto absolute inset-y-0 left-0 flex w-[140px] min-w-0 items-center gap-1 border-b border-r border-slate-200 bg-white px-2 text-left text-xs text-slate-700 hover:bg-slate-50"
+                  className="absolute left-0 z-10 flex w-[140px] min-w-0 items-center gap-1 border-b border-r border-slate-200 bg-white px-2 text-left text-xs text-slate-700 hover:bg-slate-50"
+                  style={{ top: groupTop, height: groupSpanHeight }}
                   title={`${collapsedGroupIds.has(resource.groupId) ? "Expand" : "Collapse"} ${resource.groupName}`}
                 >
                   {collapsedGroupIds.has(resource.groupId) ? (
@@ -1381,11 +1460,12 @@ export default function GanttChart({
                   ) : (
                     <ChevronDown size={14} className="shrink-0" />
                   )}
-                  <span className="truncate">{resource.groupName}</span>
+                  <span className="break-words leading-4">
+                    {resource.groupName}
+                  </span>
                 </button>
               )}
-              {startsVisibleClientGroup &&
-                !collapsedGroupIds.has(resource.groupId) && (
+              {startsVisibleClientGroup && !isGroupCollapsed && (
                   <button
                     type="button"
                     onClick={() =>
@@ -1394,7 +1474,8 @@ export default function GanttChart({
                         resource.clientId,
                       )
                     }
-                    className="pointer-events-auto absolute inset-y-0 left-[140px] flex w-[210px] min-w-0 items-center gap-1 border-b border-r border-slate-200 bg-white px-2 text-left text-xs text-slate-700 hover:bg-slate-50"
+                    className="absolute left-[140px] z-10 flex w-[210px] min-w-0 items-center gap-1 border-b border-r border-slate-200 bg-white px-2 text-left text-xs text-slate-700 hover:bg-slate-50"
+                    style={{ top: clientTop, height: clientSpanHeight }}
                     title={`${collapsedClientIds.has(resource.clientId) ? "Expand" : "Collapse"} ${resource.clientName}`}
                   >
                     {collapsedClientIds.has(resource.clientId) ? (
@@ -1402,17 +1483,17 @@ export default function GanttChart({
                     ) : (
                       <ChevronDown size={14} className="shrink-0" />
                     )}
-                    <span className="truncate font-medium">
+                    <span className="break-words text-left font-medium leading-4">
                       {resource.clientName}
                     </span>
                   </button>
                 )}
-              {!collapsedGroupIds.has(resource.groupId) &&
-                !collapsedClientIds.has(resource.clientId) && (
+              {!isGroupCollapsed && !isClientCollapsed && (
                   <button
                     type="button"
                     disabled={!resource.subitemId}
-                    className={`pointer-events-auto absolute inset-y-0 left-[350px] right-0 min-w-0 truncate px-3 text-left hover:bg-sky-50 disabled:cursor-default disabled:text-slate-400 disabled:hover:bg-transparent ${resource.data.some((item) => item.isOverdue) ? "bg-red-50 font-semibold text-red-700" : ""}`}
+                    className={`absolute left-[350px] w-[220px] min-w-0 border-b border-slate-200 px-3 text-left hover:bg-sky-50 disabled:cursor-default disabled:text-slate-400 disabled:hover:bg-transparent ${resource.data.some((item) => item.isOverdue) ? "bg-red-50 font-semibold text-red-700" : ""}`}
+                    style={{ top: element.offsetTop, height: element.offsetHeight }}
                     onClick={(event) => {
                       event.stopPropagation();
                       if (resource.subitemId)
@@ -1428,10 +1509,13 @@ export default function GanttChart({
                       : resource.subitemName}
                   </button>
                 )}
+                  </div>
+                  );
+                },
+              )}
             </div>,
-            element,
-          ),
-        )}
+            schedulerRootHost,
+          )}
         {timelineCanvasHost &&
           todayPosition !== null &&
           createPortal(
