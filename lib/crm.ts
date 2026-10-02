@@ -1265,6 +1265,19 @@ export async function updateClientRow(
 
   if (error) throw error;
 
+  if (updates.email !== undefined && updates.email !== existing.email) {
+    // Profile enrichment is deliberately best-effort and non-blocking. The
+    // client edit has already succeeded; this endpoint only fills a blank
+    // profile email and never overwrites one.
+    void fetch("/api/customer-profiles/auto-save-email", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clientId }),
+    }).catch((autoSaveError) =>
+      console.warn("Unable to auto-save the client profile email", autoSaveError),
+    );
+  }
+
   for (const [key, value] of Object.entries(nextUpdates) as [
     keyof Client,
     unknown,

@@ -309,6 +309,7 @@ export async function ingestLead(lead: NormalizedInboundLead): Promise<InboundRe
         clientId,
         clientName: lead.customerName || lead.companyName,
         phone: lead.phone,
+        email: lead.email,
         company: lead.companyName,
         createdBy: assignedUserId,
       });

@@ -19,6 +19,7 @@ import {
   Factory,
   Landmark,
   LoaderCircle,
+  Mail,
   MessageSquare,
   Phone,
   Plus,
@@ -41,6 +42,7 @@ type ClientProfile = {
   id: string;
   phone_number: string;
   phone_numbers: ClientPhoneNumber[];
+  email: string | null;
   name: string;
   remarks: string | null;
   is_blacklisted: boolean;
@@ -206,7 +208,11 @@ function clientProfileFingerprint(client: ClientProfile) {
         normalizeProfilePhone(b.phoneNumber),
       ),
     );
-  return JSON.stringify({ name: client.name.trim(), phones });
+  return JSON.stringify({
+    name: client.name.trim(),
+    email: (client.email ?? "").trim(),
+    phones,
+  });
 }
 
 function companyProfileFingerprint(company: CompanyProfile) {
@@ -1052,7 +1058,11 @@ export function CustomerProfilesPanel({
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState<"client" | "company" | null>(null);
   const [saving, setSaving] = useState(false);
-  const [clientForm, setClientForm] = useState({ name: "", phoneNumber: "" });
+  const [clientForm, setClientForm] = useState({
+    name: "",
+    phoneNumber: "",
+    email: "",
+  });
   const [companyForm, setCompanyForm] = useState({
     name: "",
     paymentTerm: "",
@@ -1201,7 +1211,7 @@ export function CustomerProfilesPanel({
           a.name.localeCompare(b.name),
         ),
       );
-      setClientForm({ name: "", phoneNumber: "" });
+      setClientForm({ name: "", phoneNumber: "", email: "" });
       setAdding(null);
       toast.success("Client profile added");
     } catch (error) {
@@ -1384,6 +1394,7 @@ export function CustomerProfilesPanel({
                   isPrimary: phone.is_primary,
                 }),
               ),
+              email: selectedProfile.profile.email ?? "",
             }
           : {
               type: "company",
@@ -1539,6 +1550,20 @@ export function CustomerProfilesPanel({
                       onChange={(next) =>
                         setSelectedProfile({ type: "client", profile: next })
                       }
+                    />
+                  </ProfileEditField>
+                  <ProfileEditField label="Email" icon={<Mail size={15} />}>
+                    <input
+                      type="email"
+                      value={client.email ?? ""}
+                      onChange={(event) =>
+                        setSelectedProfile({
+                          type: "client",
+                          profile: { ...client, email: event.target.value },
+                        })
+                      }
+                      placeholder="Email address"
+                      className={inputClass}
                     />
                   </ProfileEditField>
                 </div>
@@ -1832,6 +1857,20 @@ export function CustomerProfilesPanel({
                         setClientForm((current) => ({
                           ...current,
                           phoneNumber: event.target.value,
+                        }))
+                      }
+                      className={inputClass}
+                    />
+                  </label>
+                  <label className="grid gap-1.5 text-xs font-medium text-slate-600">
+                    Email
+                    <input
+                      type="email"
+                      value={clientForm.email}
+                      onChange={(event) =>
+                        setClientForm((current) => ({
+                          ...current,
+                          email: event.target.value,
                         }))
                       }
                       className={inputClass}

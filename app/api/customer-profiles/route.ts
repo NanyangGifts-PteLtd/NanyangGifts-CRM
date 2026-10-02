@@ -4,7 +4,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 
 const CUSTOM_PAYMENT_TERM_OPTION = "Others (specify)";
 const COMPANY_SELECT = "id, name, payment_term, industry, industry_option_id, industry_custom_text, industry_source, organization_type, remarks, created_at, industry_option:industry_options!customer_company_profiles_industry_option_id_fkey(id, code, name, section_code, section_name)";
-const CLIENT_SELECT = "id, phone_number, name, remarks, is_blacklisted, blacklisted_at, created_at, phone_numbers:customer_client_profile_phone_numbers(id, phone_number, is_primary)";
+const CLIENT_SELECT = "id, phone_number, email, name, remarks, is_blacklisted, blacklisted_at, created_at, phone_numbers:customer_client_profile_phone_numbers(id, phone_number, is_primary)";
 
 async function authenticatedInternalUser() {
   const supabase = await createClient();
@@ -20,6 +20,14 @@ async function authenticatedInternalUser() {
 
 function normalizePhone(value: string) {
   return value.replace(/\D/g, "");
+}
+
+function resolveEmail(value: unknown) {
+  const email = String(value ?? "").trim();
+  if (!email) return { value: null };
+  if (email.length > 320 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+    return { error: "Enter a valid email address." };
+  return { value: email };
 }
 
 function resolvePhoneEntries(body: Record<string, unknown>) {
@@ -110,9 +118,11 @@ export async function POST(request: NextRequest) {
   if (type === "client") {
     const phones = resolvePhoneEntries(body);
     const name = String(body.name ?? "").trim();
+    const email = resolveEmail(body.email);
     if (!name) return NextResponse.json({ error: "Name is required." }, { status: 400 });
     if (phones.error || !phones.entries || !phones.primary) return NextResponse.json({ error: phones.error }, { status: 400 });
-    const { data: created, error } = await supabaseAdmin.from("customer_client_profiles").insert({ phone_number: phones.primary, name, created_by: user.id }).select("id").single();
+    if (email.error) return NextResponse.json({ error: email.error }, { status: 400 });
+    const { data: created, error } = await supabaseAdmin.from("customer_client_profiles").insert({ phone_number: phones.primary, email: email.value, name, created_by: user.id }).select("id").single();
     if (error?.code === "23505") return NextResponse.json({ error: "A client profile with this phone number already exists." }, { status: 409 });
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     const { error: phoneError } = await supabaseAdmin.rpc("replace_customer_client_profile_phone_numbers", { target_profile_id: created.id, phone_entries: phones.entries });
@@ -163,14 +173,16 @@ export async function PATCH(request: NextRequest) {
   if (type === "client") {
     const name = String(body.name ?? "").trim();
     const phones = resolvePhoneEntries(body);
+    const email = resolveEmail(body.email);
     if (!name) return NextResponse.json({ error: "Name is required." }, { status: 400 });
     if (phones.error || !phones.entries) return NextResponse.json({ error: phones.error }, { status: 400 });
+    if (email.error) return NextResponse.json({ error: email.error }, { status: 400 });
     const { error: phoneError } = await supabaseAdmin.rpc("replace_customer_client_profile_phone_numbers", { target_profile_id: id, phone_entries: phones.entries });
     if (phoneError) {
       const duplicate = phoneError.code === "23505" || phoneError.message.toLowerCase().includes("unique");
       return NextResponse.json({ error: duplicate ? "One of these phone numbers already belongs to another client profile." : phoneError.message }, { status: duplicate ? 409 : 500 });
     }
-    const { error: updateError } = await supabaseAdmin.from("customer_client_profiles").update({ name }).eq("id", id);
+    const { error: updateError } = await supabaseAdmin.from("customer_client_profiles").update({ name, email: email.value }).eq("id", id);
     if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 });
     const { data, error } = await loadClientProfile(id);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
