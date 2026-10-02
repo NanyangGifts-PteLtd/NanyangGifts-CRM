@@ -410,10 +410,33 @@ const AddClientInput = React.memo(function AddClientInput({
   onSubmit: (groupId: string, name: string) => Promise<boolean>;
 }) {
   const [draft, setDraft] = useState("");
+  const draftRef = useRef("");
+  const pendingClientSequenceRef = useRef(0);
+  const [pendingClients, setPendingClients] = useState<
+    Array<{ id: number; name: string }>
+  >([]);
   const submit = async () => {
-    const name = draft.trim();
+    const name = draftRef.current.trim();
     if (!name) return;
-    if (await onSubmit(groupId, name)) setDraft("");
+    // Make room for the next client before the current request completes.
+    draftRef.current = "";
+    setDraft("");
+    const pendingId = ++pendingClientSequenceRef.current;
+    setPendingClients((current) => [...current, { id: pendingId, name }]);
+    try {
+      if (!(await onSubmit(groupId, name))) {
+        // Never overwrite a newer draft entered while this save was pending.
+        setDraft((current) => {
+          if (current.trim()) return current;
+          draftRef.current = name;
+          return name;
+        });
+      }
+    } finally {
+      setPendingClients((current) =>
+        current.filter((pending) => pending.id !== pendingId),
+      );
+    }
   };
 
   return (
@@ -423,6 +446,21 @@ const AddClientInput = React.memo(function AddClientInput({
         className="pointer-events-none absolute inset-y-0 left-0 z-[60] w-[5px] rounded-bl-md"
         style={{ backgroundColor: `${accentColor}80` }}
       />
+      {pendingClients.map((pendingClient) => (
+        <div
+          key={pendingClient.id}
+          aria-label={`Creating ${pendingClient.name}`}
+          className="relative ml-0 flex h-7 max-w-sm items-center gap-2 rounded bg-blue-50/70 pl-7 pr-2 text-xs text-gray-700"
+          style={{ marginLeft }}
+        >
+          <span>{pendingClient.name}</span>
+          <span className="inline-flex gap-0.5" aria-label="Saving">
+            <span className="h-1 w-1 animate-pulse rounded-full bg-[#7BCBD5]" />
+            <span className="h-1 w-1 animate-pulse rounded-full bg-[#7BCBD5] [animation-delay:150ms]" />
+            <span className="h-1 w-1 animate-pulse rounded-full bg-[#7BCBD5] [animation-delay:300ms]" />
+          </span>
+        </div>
+      ))}
       <div className="relative max-w-sm" style={{ marginLeft }}>
         <Plus
           size={13}
@@ -431,7 +469,10 @@ const AddClientInput = React.memo(function AddClientInput({
         <input
           value={draft}
           disabled={disabled}
-          onChange={(event) => setDraft(event.target.value)}
+          onChange={(event) => {
+            draftRef.current = event.target.value;
+            setDraft(event.target.value);
+          }}
           onKeyDown={(event) => {
             if (event.key === "Enter") {
               event.preventDefault();
@@ -439,6 +480,7 @@ const AddClientInput = React.memo(function AddClientInput({
             }
             if (event.key === "Escape") {
               event.preventDefault();
+              draftRef.current = "";
               setDraft("");
               event.currentTarget.blur();
             }
@@ -7024,18 +7066,10 @@ export function CRMBoard({
   const submitNewClient = useCallback(
     async (groupId: string, rawName: string) => {
       const name = rawName.trim();
-      if (!name || isSubmittingNewClient.current) return false;
-
-      isSubmittingNewClient.current = true;
-      setAddingClientGroupId(groupId);
-      setIsAddingClient(true);
-      try {
-        return await addClient(groupId, name);
-      } finally {
-        isSubmittingNewClient.current = false;
-        setIsAddingClient(false);
-        setAddingClientGroupId(null);
-      }
+      if (!name) return false;
+      // Inline name rows do not share the toolbar's single-save guard. Each
+      // row can persist a client while the user continues entering another.
+      return addClient(groupId, name);
     },
     [addClient],
   );
@@ -11277,10 +11311,8 @@ export function CRMBoard({
                             (column) => column.key === "selectCheckbox",
                           )?.width ?? 34
                         }
-                        disabled={isAddingClient}
-                        isSubmitting={
-                          isAddingClient && addingClientGroupId === group.id
-                        }
+                        disabled={false}
+                        isSubmitting={false}
                         onSubmit={submitNewClient}
                       />
                       {/*

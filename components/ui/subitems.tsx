@@ -967,10 +967,11 @@ export function SubitemsTable({
     setShowSubpaymentTables((current) => !current);
   };
   const [newSubitemName, setNewSubitemName] = useState("");
-  const [isAddingSubitem, setIsAddingSubitem] = useState(false);
-  const [pendingSubitemName, setPendingSubitemName] = useState<string | null>(
-    null,
-  );
+  const newSubitemNameRef = useRef("");
+  const pendingSubitemSequenceRef = useRef(0);
+  const [pendingSubitems, setPendingSubitems] = useState<
+    Array<{ id: number; name: string }>
+  >([]);
   const [subitemCols, setSubitemCols] = useState<ColumnDef[]>([
     ...SUBITEM_COLS,
   ]);
@@ -1006,19 +1007,28 @@ export function SubitemsTable({
   const [draggedColumnKey, setDraggedColumnKey] = useState<string | null>(null);
 
   const submitNewSubitem = async () => {
-    const name = newSubitemName.trim();
-    if (!name || isAddingSubitem || !canCreateSubitems) return;
-    setIsAddingSubitem(true);
-    setPendingSubitemName(name);
+    const name = newSubitemNameRef.current.trim();
+    if (!name || !canCreateSubitems) return;
+    const pendingId = ++pendingSubitemSequenceRef.current;
+    // Clear the row before the request finishes so another subitem can be
+    // entered immediately.
+    newSubitemNameRef.current = "";
     setNewSubitemName("");
+    setPendingSubitems((current) => [...current, { id: pendingId, name }]);
     try {
       await onAddSubitem(name);
     } catch {
-      // The board displays the persistence error; keep the typed name for retrying.
-      setNewSubitemName(name);
+      // Keep a newer draft intact; otherwise restore the failed name for a
+      // convenient retry.
+      setNewSubitemName((current) => {
+        if (current.trim()) return current;
+        newSubitemNameRef.current = name;
+        return name;
+      });
     } finally {
-      setIsAddingSubitem(false);
-      setPendingSubitemName(null);
+      setPendingSubitems((current) =>
+        current.filter((pending) => pending.id !== pendingId),
+      );
     }
   };
   const [dragOverColumnKey, setDragOverColumnKey] = useState<string | null>(
@@ -4752,10 +4762,11 @@ export function SubitemsTable({
               </React.Fragment>
             ))}
 
-            {pendingSubitemName && (
+            {pendingSubitems.map((pendingSubitem) => (
               <tr
+                key={pendingSubitem.id}
                 className="border-b border-r border-[#D0D4E4] bg-blue-50/40"
-                aria-label={`Creating ${pendingSubitemName}`}
+                aria-label={`Creating ${pendingSubitem.name}`}
               >
                 <td className="border-r border-[#D0D4E4] px-2 py-1 text-center">
                   <input
@@ -4771,7 +4782,7 @@ export function SubitemsTable({
                   >
                     {col.key === "name" ? (
                       <span className="flex items-center gap-2 text-gray-700">
-                        <span>{pendingSubitemName}</span>
+                        <span>{pendingSubitem.name}</span>
                         <span
                           className="inline-flex gap-0.5"
                           aria-label="Saving"
@@ -4793,7 +4804,7 @@ export function SubitemsTable({
                 ))}
                 <td className="border-r border-[#D0D4E4]" />
               </tr>
-            )}
+            ))}
 
             <tr className="group/add-subitem bg-white hover:bg-[#f5fbff] focus-within:bg-[#f5fbff]">
               <td
@@ -4814,7 +4825,10 @@ export function SubitemsTable({
                   />
                   <input
                     value={newSubitemName}
-                    onChange={(event) => setNewSubitemName(event.target.value)}
+                    onChange={(event) => {
+                      newSubitemNameRef.current = event.target.value;
+                      setNewSubitemName(event.target.value);
+                    }}
                     onKeyDown={(event) => {
                       if (event.key === "Enter") {
                         event.preventDefault();
@@ -4822,15 +4836,13 @@ export function SubitemsTable({
                       }
                     }}
                     onBlur={() => void submitNewSubitem()}
-                    disabled={isAddingSubitem || !canCreateSubitems}
+                    disabled={!canCreateSubitems}
                     placeholder={
-                      isAddingSubitem
-                        ? "Adding subitem…"
-                        : canCreateSubitems
-                          ? "Add subitem"
-                          : subitemsLocked
-                            ? "This client's subitems are locked"
-                            : "Assignment required to add subitems"
+                      canCreateSubitems
+                        ? "Add subitem"
+                        : subitemsLocked
+                          ? "This client's subitems are locked"
+                          : "Assignment required to add subitems"
                     }
                     aria-label="New subitem name"
                     className="h-7 w-full rounded border border-transparent bg-transparent pl-7 pr-2 text-xs text-gray-700 outline-none transition group-hover/add-subitem:border-gray-500 group-hover/add-subitem:bg-white focus:border-[#3799b1] focus:bg-white focus:ring-2 focus:ring-[#7BCBD5]/25 disabled:cursor-not-allowed disabled:opacity-50"
