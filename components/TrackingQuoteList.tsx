@@ -8,11 +8,11 @@ import {
   type BadgeOptionLayout,
 } from "@/components/ui/statusbadge";
 
-export const TRACKING_QUOTE_TABLE_MIN_WIDTH = 1720;
+export const TRACKING_QUOTE_TABLE_MIN_WIDTH = 1870;
 export const TRACKING_VIEW_MIN_WIDTH = TRACKING_QUOTE_TABLE_MIN_WIDTH + 80;
 
 const QUOTE_GRID_COLUMNS =
-  "minmax(220px, 2fr) 140px 180px 125px 145px 125px 150px 80px 150px 125px 165px 105px";
+  "minmax(220px, 2fr) 140px 180px 125px 190px 125px 195px 80px 210px 125px 165px 105px";
 
 type TrackingLabelCode =
   | "tracking_summary"
@@ -277,34 +277,34 @@ export function TrackingQuoteList({
 
   if (loading)
     return (
-      <div className="flex items-center gap-2 px-3 py-3 text-xs text-slate-500">
+      <div className="flex items-center gap-2 px-3 py-3 text-[12.6px] text-slate-500">
         <LoaderCircle size={14} className="animate-spin" /> Loading quotes…
       </div>
     );
   if (error)
-    return <p className="px-3 py-3 text-xs text-red-600">{error}</p>;
+    return <p className="px-3 py-3 text-[12.6px] text-red-600">{error}</p>;
   if (!quotes.length)
     return (
-      <p className="px-3 py-3 text-xs text-slate-500">
+      <p className="px-3 py-3 text-[12.6px] text-slate-500">
         No QuickBooks quotes have been created for this client.
       </p>
     );
 
   return (
-    <div className="min-w-[1720px] overflow-visible border border-[#d0d4e4] bg-white text-xs">
+    <div className="min-w-[1870px] overflow-visible border border-[#d0d4e4] bg-white text-[12.6px]">
       <div
-        className="grid border-b border-[#d0d4e4] bg-white text-[11px] font-medium text-slate-600"
+        className="grid border-b border-[#d0d4e4] bg-white text-[12.6px] font-medium text-slate-600"
         style={{ gridTemplateColumns: QUOTE_GRID_COLUMNS }}
       >
         <span className="px-3 py-2">Quote</span>
         <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">Summary</span>
         <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">Tracking Status</span>
         <span className="border-l border-[#d0d4e4] px-3 py-2 text-right">Quote total</span>
-        <span className="border-l border-[#d0d4e4] px-3 py-2 text-right">Quote total before GST</span>
+        <span className="whitespace-nowrap border-l border-[#d0d4e4] px-3 py-2 text-right">Quote total before GST</span>
         <span className="border-l border-[#d0d4e4] px-3 py-2 text-right">Invoice total</span>
-        <span className="border-l border-[#d0d4e4] px-3 py-2 text-right">Invoice total before GST</span>
+        <span className="whitespace-nowrap border-l border-[#d0d4e4] px-3 py-2 text-right">Invoice total before GST</span>
         <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">Invoices</span>
-        <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">Price and Invoice Match?</span>
+        <span className="whitespace-nowrap border-l border-[#d0d4e4] px-3 py-2 text-center">Price and Invoice Match?</span>
         <span className="border-l border-[#d0d4e4] px-3 py-2 text-right">Total Balance</span>
         <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">Payment Status</span>
         <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">Actions</span>
@@ -337,7 +337,7 @@ export function TrackingQuoteList({
               >
                 {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                 <span className="truncate">{quoteLabel}</span>
-                <span className="shrink-0 text-[10px] font-normal text-slate-400">
+                <span className="shrink-0 text-[12.6px] font-normal text-slate-400">
                   {quote.created_at
                     ? new Date(quote.created_at).toLocaleDateString("en-GB")
                     : ""}
@@ -421,7 +421,7 @@ export function TrackingQuoteList({
                   type="button"
                   onClick={() => void syncQuoteInvoices(quote.id)}
                   disabled={syncingQuoteId === quote.id}
-                  className="rounded border border-sky-300 bg-sky-50 px-2 py-1 text-[10px] font-semibold text-sky-700 hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="rounded border border-sky-300 bg-sky-50 px-2 py-1 text-[12.6px] font-semibold text-sky-700 hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {syncingQuoteId === quote.id
                     ? "Synchronizing…"
@@ -434,7 +434,7 @@ export function TrackingQuoteList({
               <div className="border-t border-[#d0d4e4] bg-[#f7fbfc] p-3">
                 {quote.invoices.length ? (
                   <div className="overflow-hidden border border-[#d0d4e4] bg-white">
-                    <div className="grid grid-cols-[2fr_1fr_1fr_1.15fr_1fr_1fr] border-b border-[#d0d4e4] bg-white text-[11px] font-medium text-slate-600">
+                    <div className="grid grid-cols-[2fr_1fr_1fr_1.15fr_1fr_1fr] border-b border-[#d0d4e4] bg-white text-[12.6px] font-medium text-slate-600">
                       <span className="px-3 py-2">Invoice number</span>
                       <span className="border-l border-[#d0d4e4] px-3 py-2">Invoice date</span>
                       <span className="border-l border-[#d0d4e4] px-3 py-2">Due date</span>
