@@ -594,11 +594,6 @@ export function AdditionalCostsBoard({
     () =>
       new Set(
         (labelOptions.additional_cost_courier ?? [])
-          .filter(
-            (option) =>
-              option.systemKey === "additional_cost_courier_lalamove" ||
-              option.systemKey === "additional_cost_courier_easyparcel",
-          )
           .map((option) => option.id)
           .filter((id): id is string => Boolean(id)),
       ),
@@ -2197,17 +2192,53 @@ export function AdditionalCostsBoard({
                               onChange={(courier) =>
                                 void update(row.id, { courier })
                               }
-                              options={(
-                                labelOptions.additional_cost_courier ?? []
-                              ).filter(
-                                (option) =>
-                                  option.systemKey ===
-                                    "additional_cost_courier_lalamove" ||
-                                  option.systemKey ===
-                                    "additional_cost_courier_easyparcel",
-                              )}
+                              options={
+                                (labelOptions.additional_cost_courier ?? []).filter(
+                                  (option) => Boolean(option.value.trim()),
+                                )
+                              }
                               includeBlankOption={false}
                               readOnly={!canDelete(row)}
+                              onAddOption={(value) =>
+                                manageLabel(
+                                  "additional_cost_courier",
+                                  "add",
+                                  value,
+                                )
+                              }
+                              onDeleteOption={(value, optionId) =>
+                                deleteLabel(
+                                  "additional_cost_courier",
+                                  value,
+                                  optionId,
+                                )
+                              }
+                              onUpdateOptionColor={(value, color, optionId) =>
+                                manageLabel(
+                                  "additional_cost_courier",
+                                  "color",
+                                  value,
+                                  color,
+                                  optionId,
+                                )
+                              }
+                              onRenameOption={(value, nextValue, optionId) =>
+                                manageLabel(
+                                  "additional_cost_courier",
+                                  "rename",
+                                  value,
+                                  nextValue,
+                                  optionId,
+                                )
+                              }
+                              onReorderOptions={(layout) =>
+                                reorderLabels(
+                                  "additional_cost_courier",
+                                  layout,
+                                )
+                              }
+                              manageLabel="courier"
+                              sectionCount={4}
                             />
                           </td>
                         ) : (
@@ -2702,7 +2733,10 @@ export function AdditionalCostsBoard({
                   <StatusBadge
                     value={row.courier}
                     onChange={(courier) => void update(row.id, { courier })}
-                    options={labelOptions.additional_cost_courier ?? []}
+                    options={(labelOptions.additional_cost_courier ?? []).filter(
+                      (option) => Boolean(option.value.trim()),
+                    )}
+                    includeBlankOption={false}
                     onAddOption={(value) =>
                       manageLabel("additional_cost_courier", "add", value)
                     }
@@ -3903,16 +3937,12 @@ export function AdditionalCostsBoard({
                               courier,
                             }))
                           }
-                          options={(
-                            labelOptions.additional_cost_courier ?? []
-                          ).filter(
-                            (option) =>
-                              !option.value ||
-                              option.systemKey ===
-                                "additional_cost_courier_lalamove" ||
-                              option.systemKey ===
-                                "additional_cost_courier_easyparcel",
-                          )}
+                          options={
+                            (labelOptions.additional_cost_courier ?? []).filter(
+                              (option) => Boolean(option.value.trim()),
+                            )
+                          }
+                          includeBlankOption={false}
                         />
                       </div>
                     </label>

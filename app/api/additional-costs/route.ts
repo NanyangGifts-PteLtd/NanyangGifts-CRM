@@ -211,13 +211,12 @@ export async function POST(request: NextRequest) {
     const otherReason = await getSystemLabel("additional_cost_reason", "additional_cost_reason_other");
     if (reason.id === otherReason.id && !String(body.values?.remarks ?? "").trim())
       throw new Error("Remarks is required when Reason is Other.");
-    const [lalamoveCourier, easyparcelCourier, shippingUpsReason] = await Promise.all([
-      getSystemLabel("additional_cost_courier", "additional_cost_courier_lalamove"),
-      getSystemLabel("additional_cost_courier", "additional_cost_courier_easyparcel"),
-      getSystemLabel("additional_cost_reason", "additional_cost_reason_shipping_ups"),
-    ]);
-    if (!isOtherVoucher && (!courier.id || ![lalamoveCourier.id, easyparcelCourier.id].includes(courier.id)))
-      throw new Error("Choose Lalamove or Easyparcel as the Courier.");
+    const shippingUpsReason = await getSystemLabel(
+      "additional_cost_reason",
+      "additional_cost_reason_shipping_ups",
+    );
+    if (!isOtherVoucher && !courier.id)
+      throw new Error("Choose a Courier label.");
     const { data: client, error: clientError } = await supabaseAdmin
       .from("clients")
       .select("id, custom_fields")
@@ -296,6 +295,7 @@ export async function POST(request: NextRequest) {
         items_sent: itemsSent,
         courier: courier.value,
         courier_option_id: courier.id,
+        voucher_group: isOtherVoucher ? "other" : "courier",
         remarks: String(body.values?.remarks ?? "").trim(),
         trip_id: nextReference,
       })
@@ -423,14 +423,11 @@ export async function PATCH(request: NextRequest) {
     );
     if (!Object.keys(values).length)
       throw new Error("No editable changes were supplied.");
-    const [lalamoveCourier, easyparcelCourier] = await Promise.all([
-      getSystemLabel("additional_cost_courier", "additional_cost_courier_lalamove"),
-      getSystemLabel("additional_cost_courier", "additional_cost_courier_easyparcel"),
-    ]);
-    const isOtherVoucher = !new Set([
-      lalamoveCourier.id,
-      easyparcelCourier.id,
-    ]).has(String(existing.courier_option_id ?? ""));
+    // New records persist their group explicitly. The legacy fallback keeps
+    // historical rows without a Courier in the Other group.
+    const isOtherVoucher =
+      existing.voucher_group === "other" ||
+      (!existing.voucher_group && !existing.courier_option_id);
     if (
       (values.has_quickbooks_bill !== undefined ||
         values.quickbooks_invoice_number !== undefined ||
@@ -519,17 +516,6 @@ export async function PATCH(request: NextRequest) {
       throw new Error("Remarks is required when Reason is Other.");
     if (values.courier !== undefined && !values.courier)
       throw new Error("Choose a Courier label.");
-    if (values.courier !== undefined) {
-      const courierVoucherIds = new Set([lalamoveCourier.id, easyparcelCourier.id]);
-      const existingIsCourierVoucher = courierVoucherIds.has(String(existing.courier_option_id ?? ""));
-      const nextIsCourierVoucher = courierVoucherIds.has(String(values.courier_option_id ?? ""));
-      if (existingIsCourierVoucher !== nextIsCourierVoucher) {
-        throw new Error(
-          "A Payment Voucher cannot be moved between voucher groups by changing its Courier.",
-        );
-      }
-    }
-
     const { data: linkedSubitem, error: linkedSubitemError } =
       await supabaseAdmin
         .from("subitems")
