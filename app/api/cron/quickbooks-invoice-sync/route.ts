@@ -2,6 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { qboQuery, qboRequest } from "@/lib/quickbooks/api";
+import { getSystemLabel } from "@/lib/system-labels";
 
 type QuickBooksInvoice = {
   Id?: string;
@@ -48,6 +49,31 @@ export async function GET(request: NextRequest) {
   const activeGenerations = generations ?? [];
   if (!activeGenerations.length)
     return NextResponse.json({ ok: true, eligible: 0, synced: 0, failed: 0 });
+
+  let paidPaymentLabel;
+  let partiallyPaidPaymentLabel;
+  try {
+    [paidPaymentLabel, partiallyPaidPaymentLabel] = await Promise.all([
+      getSystemLabel(
+        "tracking_invoice_payment_status",
+        "tracking_invoice_payment_status_paid",
+      ),
+      getSystemLabel(
+        "tracking_invoice_payment_status",
+        "tracking_invoice_payment_status_partially_paid",
+      ),
+    ]);
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Invoice payment status labels are not configured.",
+      },
+      { status: 500 },
+    );
+  }
 
   let synced = 0;
   let failed = 0;
@@ -99,20 +125,40 @@ export async function GET(request: NextRequest) {
         if (error) throw error;
       }
       const invoiceTotal = rows.reduce((sum, row) => sum + (row.total ?? 0), 0);
+      const invoiceSubtotal = rows.reduce((sum, row) => sum + (row.subtotal ?? 0), 0);
+      const totalBalance = rows.reduce((sum, row) => sum + (row.balance ?? 0), 0);
       const quoteTotal = numberOrNull(estimate?.TotalAmt);
+      const quoteTaxTotal = numberOrNull(estimate?.TxnTaxDetail?.TotalTax) ?? 0;
+      const quoteSubtotal = quoteTotal === null ? null : quoteTotal - quoteTaxTotal;
       const priceInvoiceMatch = !rows.length
         ? ""
-        : quoteTotal !== null && Math.abs(quoteTotal - invoiceTotal) < 0.005
+        : quoteSubtotal !== null && Math.abs(quoteSubtotal - invoiceSubtotal) < 0.005
           ? "Yes"
           : "ERROR - MISMATCH";
+      const invoicePaymentLabel = !rows.length
+        ? null
+        : Math.abs(totalBalance) < 0.005
+          ? paidPaymentLabel
+          : totalBalance < invoiceTotal
+            ? partiallyPaidPaymentLabel
+            : null;
       const syncedAt = new Date().toISOString();
       const { error: generationUpdateError } = await supabaseAdmin
         .from("estimate_generations")
         .update({
           quote_total: quoteTotal,
+          quote_subtotal: quoteSubtotal,
           invoice_count: rows.length,
           invoice_total: invoiceTotal,
+          invoice_subtotal: invoiceSubtotal,
+          total_balance: totalBalance,
           price_invoice_match: priceInvoiceMatch,
+          ...(invoicePaymentLabel
+            ? {
+                invoice_payment_status: invoicePaymentLabel.value,
+                invoice_payment_status_option_id: invoicePaymentLabel.id,
+              }
+            : {}),
           last_invoice_synced_at: syncedAt,
         })
         .eq("id", generation.id);

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { qboQuery, qboRequest } from "@/lib/quickbooks/api";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { getSystemLabel } from "@/lib/system-labels";
 
 type QuickBooksLink = {
   TxnId?: string;
@@ -228,15 +229,40 @@ export async function POST(request: NextRequest) {
     }
 
     const quoteTotal = numberOrNull(estimate?.TotalAmt);
+    const quoteTaxTotal = numberOrNull(estimate?.TxnTaxDetail?.TotalTax) ?? 0;
+    const quoteSubtotal =
+      quoteTotal === null ? null : quoteTotal - quoteTaxTotal;
     const invoiceTotal = rows.reduce(
       (total, row) => total + (row.total ?? 0),
       0,
     );
+    const invoiceSubtotal = rows.reduce(
+      (total, row) => total + (row.subtotal ?? 0),
+      0,
+    );
+    const totalBalance = rows.reduce(
+      (total, row) => total + (row.balance ?? 0),
+      0,
+    );
     const priceInvoiceMatch = !rows.length
       ? ""
-      : quoteTotal !== null && Math.abs(quoteTotal - invoiceTotal) < 0.005
+      : quoteSubtotal !== null &&
+          Math.abs(quoteSubtotal - invoiceSubtotal) < 0.005
         ? "Yes"
         : "ERROR - MISMATCH";
+    const invoicePaymentLabel = !rows.length
+      ? null
+      : Math.abs(totalBalance) < 0.005
+        ? await getSystemLabel(
+            "tracking_invoice_payment_status",
+            "tracking_invoice_payment_status_paid",
+          )
+        : totalBalance < invoiceTotal
+          ? await getSystemLabel(
+              "tracking_invoice_payment_status",
+              "tracking_invoice_payment_status_partially_paid",
+            )
+          : null;
     // The caller was authorised above; use the server-only client for this
     // derived tracking write so an otherwise successful QuickBooks sync is
     // not reported as failed because of a narrower table-update RLS policy.
@@ -244,9 +270,18 @@ export async function POST(request: NextRequest) {
       .from("estimate_generations")
       .update({
         quote_total: quoteTotal,
+        quote_subtotal: quoteSubtotal,
         invoice_count: rows.length,
         invoice_total: invoiceTotal,
+        invoice_subtotal: invoiceSubtotal,
+        total_balance: totalBalance,
         price_invoice_match: priceInvoiceMatch,
+        ...(invoicePaymentLabel
+          ? {
+              invoice_payment_status: invoicePaymentLabel.value,
+              invoice_payment_status_option_id: invoicePaymentLabel.id,
+            }
+          : {}),
         last_invoice_synced_at: new Date().toISOString(),
       })
       .eq("id", generation.id);

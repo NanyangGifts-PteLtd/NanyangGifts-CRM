@@ -8,13 +8,17 @@ import {
   type BadgeOptionLayout,
 } from "@/components/ui/statusbadge";
 
-export const TRACKING_QUOTE_TABLE_MIN_WIDTH = 1120;
+export const TRACKING_QUOTE_TABLE_MIN_WIDTH = 1720;
 export const TRACKING_VIEW_MIN_WIDTH = TRACKING_QUOTE_TABLE_MIN_WIDTH + 80;
+
+const QUOTE_GRID_COLUMNS =
+  "minmax(220px, 2fr) 140px 180px 125px 145px 125px 150px 80px 150px 125px 165px 105px";
 
 type TrackingLabelCode =
   | "tracking_summary"
   | "tracking_payment_status"
-  | "tracking_price_invoice_match";
+  | "tracking_price_invoice_match"
+  | "tracking_invoice_payment_status";
 
 type Invoice = {
   id: string;
@@ -32,10 +36,15 @@ type Quote = {
   quickbooks_estimate_doc_number: string | null;
   created_at: string;
   quote_total: number | null;
+  quote_subtotal: number | null;
   invoice_total: number | null;
+  invoice_subtotal: number | null;
   invoice_count: number;
+  total_balance: number | null;
   price_invoice_match: string | null;
   payment_status: string | null;
+  invoice_payment_status: string | null;
+  invoice_payment_status_option_id: string | null;
   tracking_summary: string | null;
   last_invoice_synced_at: string | null;
   invoices: Invoice[];
@@ -45,6 +54,8 @@ type QuoteUpdates = {
   trackingSummary?: string;
   paymentStatus?: string;
   priceInvoiceMatch?: string;
+  invoicePaymentStatus?: string;
+  invoicePaymentStatusOptionId?: string | null;
 };
 
 type TrackingQuoteListProps = {
@@ -52,6 +63,7 @@ type TrackingQuoteListProps = {
   summaryOptions: BadgeOption[];
   paymentStatusOptions: BadgeOption[];
   matchOptions: BadgeOption[];
+  invoicePaymentStatusOptions: BadgeOption[];
   onAddOption?: (code: TrackingLabelCode, name: string) => void | Promise<void>;
   onDeleteOption?: (code: TrackingLabelCode, name: string) => void | Promise<void>;
   onUpdateOptionColor?: (
@@ -86,6 +98,7 @@ export function TrackingQuoteList({
   summaryOptions,
   paymentStatusOptions,
   matchOptions,
+  invoicePaymentStatusOptions,
   onAddOption,
   onDeleteOption,
   onUpdateOptionColor,
@@ -157,7 +170,9 @@ export function TrackingQuoteList({
         ? "summary"
         : updates.paymentStatus !== undefined
           ? "payment"
-          : "match";
+          : updates.priceInvoiceMatch !== undefined
+            ? "match"
+            : "invoice-payment";
     const savingKey = `${quoteId}:${field}`;
     const requestId = (latestQuoteUpdate.current.get(savingKey) ?? 0) + 1;
     latestQuoteUpdate.current.set(savingKey, requestId);
@@ -174,6 +189,14 @@ export function TrackingQuoteList({
                 updates.paymentStatus ?? quote.payment_status ?? "",
               price_invoice_match:
                 updates.priceInvoiceMatch ?? quote.price_invoice_match ?? "",
+              invoice_payment_status:
+                updates.invoicePaymentStatus ??
+                quote.invoice_payment_status ??
+                "",
+              invoice_payment_status_option_id:
+                updates.invoicePaymentStatus !== undefined
+                  ? (updates.invoicePaymentStatusOptionId ?? null)
+                  : quote.invoice_payment_status_option_id,
             }
           : quote,
       ),
@@ -211,6 +234,14 @@ export function TrackingQuoteList({
                     updates.priceInvoiceMatch !== undefined
                       ? previousQuote.price_invoice_match
                       : quote.price_invoice_match,
+                  invoice_payment_status:
+                    updates.invoicePaymentStatus !== undefined
+                      ? previousQuote.invoice_payment_status
+                      : quote.invoice_payment_status,
+                  invoice_payment_status_option_id:
+                    updates.invoicePaymentStatus !== undefined
+                      ? previousQuote.invoice_payment_status_option_id
+                      : quote.invoice_payment_status_option_id,
                 }
               : quote,
           ),
@@ -260,15 +291,22 @@ export function TrackingQuoteList({
     );
 
   return (
-    <div className="min-w-[1120px] overflow-visible border border-[#d0d4e4] bg-white text-xs">
-      <div className="grid grid-cols-[minmax(220px,2fr)_140px_180px_110px_110px_80px_150px_105px] border-b border-[#d0d4e4] bg-white text-[11px] font-medium text-slate-600">
+    <div className="min-w-[1720px] overflow-visible border border-[#d0d4e4] bg-white text-xs">
+      <div
+        className="grid border-b border-[#d0d4e4] bg-white text-[11px] font-medium text-slate-600"
+        style={{ gridTemplateColumns: QUOTE_GRID_COLUMNS }}
+      >
         <span className="px-3 py-2">Quote</span>
         <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">Summary</span>
         <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">Tracking Status</span>
         <span className="border-l border-[#d0d4e4] px-3 py-2 text-right">Quote total</span>
+        <span className="border-l border-[#d0d4e4] px-3 py-2 text-right">Quote total before GST</span>
         <span className="border-l border-[#d0d4e4] px-3 py-2 text-right">Invoice total</span>
+        <span className="border-l border-[#d0d4e4] px-3 py-2 text-right">Invoice total before GST</span>
         <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">Invoices</span>
         <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">Price and Invoice Match?</span>
+        <span className="border-l border-[#d0d4e4] px-3 py-2 text-right">Total Balance</span>
+        <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">Payment Status</span>
         <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">Actions</span>
       </div>
 
@@ -281,7 +319,10 @@ export function TrackingQuoteList({
 
         return (
           <div key={quote.id} className="border-b border-[#d0d4e4] last:border-b-0">
-            <div className="grid min-h-[36px] grid-cols-[minmax(220px,2fr)_140px_180px_110px_110px_80px_150px_105px] text-slate-700">
+            <div
+              className="grid min-h-[36px] text-slate-700"
+              style={{ gridTemplateColumns: QUOTE_GRID_COLUMNS }}
+            >
               <button
                 type="button"
                 onClick={() =>
@@ -331,7 +372,13 @@ export function TrackingQuoteList({
                 {amount(quote.quote_total)}
               </span>
               <span className="border-l border-[#d0d4e4] px-3 py-2 text-right">
+                {amount(quote.quote_subtotal)}
+              </span>
+              <span className="border-l border-[#d0d4e4] px-3 py-2 text-right">
                 {amount(quote.invoice_total)}
+              </span>
+              <span className="border-l border-[#d0d4e4] px-3 py-2 text-right">
+                {amount(quote.invoice_subtotal)}
               </span>
               <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">
                 {quote.invoice_count}
@@ -346,6 +393,27 @@ export function TrackingQuoteList({
                     void updateQuote(quote.id, { priceInvoiceMatch: value })
                   }
                   {...labelManagementProps("tracking_price_invoice_match")}
+                />
+              </div>
+              <span className="border-l border-[#d0d4e4] px-3 py-2 text-right">
+                {amount(quote.total_balance)}
+              </span>
+              <div className="min-w-0 border-l border-[#d0d4e4] p-0">
+                <StatusBadge
+                  value={quote.invoice_payment_status ?? ""}
+                  options={invoicePaymentStatusOptions}
+                  small
+                  manageLabel="invoice payment status"
+                  onChange={(value) =>
+                    void updateQuote(quote.id, {
+                      invoicePaymentStatus: value,
+                      invoicePaymentStatusOptionId:
+                        invoicePaymentStatusOptions.find(
+                          (option) => option.value === value,
+                        )?.id ?? null,
+                    })
+                  }
+                  {...labelManagementProps("tracking_invoice_payment_status")}
                 />
               </div>
               <div className="flex items-center justify-center border-l border-[#d0d4e4] px-1">
@@ -366,17 +434,18 @@ export function TrackingQuoteList({
               <div className="border-t border-[#d0d4e4] bg-[#f7fbfc] p-3">
                 {quote.invoices.length ? (
                   <div className="overflow-hidden border border-[#d0d4e4] bg-white">
-                    <div className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr] border-b border-[#d0d4e4] bg-white text-[11px] font-medium text-slate-600">
+                    <div className="grid grid-cols-[2fr_1fr_1fr_1.15fr_1fr_1fr] border-b border-[#d0d4e4] bg-white text-[11px] font-medium text-slate-600">
                       <span className="px-3 py-2">Invoice number</span>
                       <span className="border-l border-[#d0d4e4] px-3 py-2">Invoice date</span>
                       <span className="border-l border-[#d0d4e4] px-3 py-2">Due date</span>
                       <span className="border-l border-[#d0d4e4] px-3 py-2 text-right">Invoice total</span>
+                      <span className="border-l border-[#d0d4e4] px-3 py-2 text-right">Invoice total before GST</span>
                       <span className="border-l border-[#d0d4e4] px-3 py-2 text-right">Balance</span>
                     </div>
                     {quote.invoices.map((invoice) => (
                       <div
                         key={invoice.id}
-                        className="grid min-h-[36px] grid-cols-[2fr_1fr_1fr_1fr_1fr] border-b border-[#d0d4e4] text-slate-700 last:border-b-0"
+                        className="grid min-h-[36px] grid-cols-[2fr_1fr_1fr_1.15fr_1fr_1fr] border-b border-[#d0d4e4] text-slate-700 last:border-b-0"
                       >
                         <span className="px-3 py-2 font-medium">
                           {invoice.quickbooks_invoice_doc_number || "—"}
@@ -389,6 +458,9 @@ export function TrackingQuoteList({
                         </span>
                         <span className="border-l border-[#d0d4e4] px-3 py-2 text-right">
                           {amount(invoice.total)}
+                        </span>
+                        <span className="border-l border-[#d0d4e4] px-3 py-2 text-right">
+                          {amount(invoice.subtotal)}
                         </span>
                         <span className="border-l border-[#d0d4e4] px-3 py-2 text-right">
                           {amount(invoice.balance)}

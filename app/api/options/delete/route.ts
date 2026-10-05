@@ -4,7 +4,11 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { AUTOMATED_OPTION_LABELS } from "@/lib/board-labels";
 
 type LabelField = {
-  table: "clients" | "subitems" | "subitem_payment_rows";
+  table:
+    | "clients"
+    | "subitems"
+    | "subitem_payment_rows"
+    | "estimate_generations";
   valueColumn: string;
   optionIdColumn?: string;
 };
@@ -89,6 +93,11 @@ const LABEL_FIELDS: Record<string, LabelField> = {
     table: "additional_costs" as "clients",
     valueColumn: "courier",
     optionIdColumn: "courier_option_id",
+  },
+  tracking_invoice_payment_status: {
+    table: "estimate_generations",
+    valueColumn: "invoice_payment_status",
+    optionIdColumn: "invoice_payment_status_option_id",
   },
 };
 const TRACKING_CUSTOM_FIELD_BY_CODE: Record<string, string> = {

@@ -43,6 +43,14 @@ export async function PATCH(
       updates.payment_status = text(body.paymentStatus);
     if ("priceInvoiceMatch" in body)
       updates.price_invoice_match = text(body.priceInvoiceMatch);
+    if ("invoicePaymentStatus" in body) {
+      updates.invoice_payment_status = text(body.invoicePaymentStatus);
+      updates.invoice_payment_status_option_id =
+        typeof body.invoicePaymentStatusOptionId === "string" &&
+        body.invoicePaymentStatusOptionId.trim()
+          ? body.invoicePaymentStatusOptionId.trim()
+          : null;
+    }
     if (!Object.keys(updates).length)
       return NextResponse.json({ error: "No quote fields supplied" }, { status: 400 });
 
@@ -51,7 +59,7 @@ export async function PATCH(
       .update(updates)
       .eq("id", quoteId)
       .select(
-        "id, title, tracking_summary, payment_status, quickbooks_estimate_doc_number, created_at, quote_total, invoice_total, invoice_count, price_invoice_match, last_invoice_synced_at",
+        "id, title, tracking_summary, payment_status, invoice_payment_status, invoice_payment_status_option_id, quickbooks_estimate_doc_number, created_at, quote_total, quote_subtotal, invoice_total, invoice_subtotal, invoice_count, total_balance, price_invoice_match, last_invoice_synced_at",
       )
       .single();
     if (updateError) throw updateError;

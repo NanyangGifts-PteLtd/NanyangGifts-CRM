@@ -21,6 +21,7 @@ const BOARD_OPTION_CODES = new Set([
   "tracking_multiple_invoices",
   "tracking_payment_status",
   "tracking_price_invoice_match",
+  "tracking_invoice_payment_status",
   "overall_payment_status",
   "payment_received",
   "additional_cost_status",

@@ -274,6 +274,9 @@ export async function GET(request: NextRequest) {
             quickbooks_estimate_id: String(quickBooksEstimate.Id),
             quickbooks_estimate_doc_number: quickBooksEstimate.DocNumber ?? null,
             quote_total: numberValue(quickBooksEstimate.TotalAmt),
+            quote_subtotal:
+              numberValue(quickBooksEstimate.TotalAmt) -
+              numberValue(quickBooksEstimate.TxnTaxDetail?.TotalTax),
           })
           .select("id, quickbooks_customer_id, quickbooks_estimate_id, quickbooks_estimate_doc_number, created_at")
           .single();

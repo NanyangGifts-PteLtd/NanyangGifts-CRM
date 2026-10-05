@@ -183,6 +183,7 @@ const BOARD_OPTION_GROUP_CODES = [
   "tracking_multiple_invoices",
   "tracking_payment_status",
   "tracking_price_invoice_match",
+  "tracking_invoice_payment_status",
 ] as const;
 const normalizeBlacklistPhone = (value: string) => value.replace(/\D/g, "");
 type CustomerMatchPending = {
@@ -1084,6 +1085,10 @@ export function CRMBoard({
   const [
     trackingPriceInvoiceMatchEntries,
     setTrackingPriceInvoiceMatchEntries,
+  ] = useState<OptionEntry[]>([]);
+  const [
+    trackingInvoicePaymentStatusEntries,
+    setTrackingInvoicePaymentStatusEntries,
   ] = useState<OptionEntry[]>([]);
   const [pendingOptionDeletion, setPendingOptionDeletion] =
     useState<PendingOptionDeletion | null>(null);
@@ -2438,6 +2443,9 @@ export function CRMBoard({
       setTrackingPriceInvoiceMatchEntries(
         optionsFor("tracking_price_invoice_match"),
       );
+      setTrackingInvoicePaymentStatusEntries(
+        optionsFor("tracking_invoice_payment_status"),
+      );
     };
 
     void loadBoardOptions();
@@ -2854,6 +2862,8 @@ export function CRMBoard({
         tracking_multiple_invoices: setTrackingMultipleInvoicesEntries,
         tracking_payment_status: setTrackingPaymentStatusEntries,
         tracking_price_invoice_match: setTrackingPriceInvoiceMatchEntries,
+        tracking_invoice_payment_status:
+          setTrackingInvoicePaymentStatusEntries,
       };
       const setEntries = setters[code];
       let targetOptionId = optionId;
@@ -2934,6 +2944,8 @@ export function CRMBoard({
         tracking_multiple_invoices: setTrackingMultipleInvoicesEntries,
         tracking_payment_status: setTrackingPaymentStatusEntries,
         tracking_price_invoice_match: setTrackingPriceInvoiceMatchEntries,
+        tracking_invoice_payment_status:
+          setTrackingInvoicePaymentStatusEntries,
       };
       const setEntries = setters[code];
       if (!setEntries) return;
@@ -3181,6 +3193,22 @@ export function CRMBoard({
                 .eq("id", row.id);
           }
         } else {
+          if (code === "tracking_invoice_payment_status") {
+            const { error } = await supabase
+              .from("estimate_generations")
+              .update({ invoice_payment_status: trimmed })
+              .eq("invoice_payment_status", oldName);
+            if (error) {
+              await supabase
+                .from("option_values")
+                .update({ value: oldName })
+                .eq("id", option.id);
+              toast.error("Existing payment status labels could not be updated", {
+                description: error.message,
+              });
+              return;
+            }
+          }
           const trackingFieldByCode: Record<string, string> = {
             tracking_summary: "trackingSummary",
             tracking_invoice_created: "trackingInvoiceCreated",
@@ -3238,6 +3266,8 @@ export function CRMBoard({
         tracking_multiple_invoices: setTrackingMultipleInvoicesEntries,
         tracking_payment_status: setTrackingPaymentStatusEntries,
         tracking_price_invoice_match: setTrackingPriceInvoiceMatchEntries,
+        tracking_invoice_payment_status:
+          setTrackingInvoicePaymentStatusEntries,
       };
       setters[code]?.((previous) =>
         previous.map((entry) =>
@@ -3336,6 +3366,7 @@ export function CRMBoard({
     tracking_multiple_invoices: trackingMultipleInvoicesEntries,
     tracking_payment_status: trackingPaymentStatusEntries,
     tracking_price_invoice_match: trackingPriceInvoiceMatchEntries,
+    tracking_invoice_payment_status: trackingInvoicePaymentStatusEntries,
   };
   const trackingOptionSetters: Record<
     string,
@@ -3346,6 +3377,7 @@ export function CRMBoard({
     tracking_multiple_invoices: setTrackingMultipleInvoicesEntries,
     tracking_payment_status: setTrackingPaymentStatusEntries,
     tracking_price_invoice_match: setTrackingPriceInvoiceMatchEntries,
+    tracking_invoice_payment_status: setTrackingInvoicePaymentStatusEntries,
   };
   const handleAddTrackingOption = async (code: string, name: string) => {
     const entries = trackingOptionEntries[code];
@@ -11131,6 +11163,9 @@ export function CRMBoard({
                           }
                           trackingPriceInvoiceMatchOptions={
                             trackingPriceInvoiceMatchEntries
+                          }
+                          trackingInvoicePaymentStatusOptions={
+                            trackingInvoicePaymentStatusEntries
                           }
                           onAddTrackingOption={handleAddTrackingOption}
                           onDeleteTrackingOption={handleDeleteTrackingOption}

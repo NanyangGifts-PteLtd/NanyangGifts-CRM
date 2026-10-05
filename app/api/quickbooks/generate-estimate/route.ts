@@ -313,6 +313,9 @@ export async function POST(req: NextRequest) {
         quickbooks_estimate_id: estimate?.Id ?? null,
         quickbooks_estimate_doc_number: estimate?.DocNumber ?? null,
         quote_total: numberValue(estimate?.TotalAmt),
+        quote_subtotal:
+          numberValue(estimate?.TotalAmt) -
+          numberValue(estimate?.TxnTaxDetail?.TotalTax),
       })
       .select("id")
       .single();

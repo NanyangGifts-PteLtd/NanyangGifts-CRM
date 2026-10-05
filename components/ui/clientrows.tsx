@@ -452,6 +452,7 @@ export type ClientRowProps = {
   trackingMultipleInvoicesOptions: OptionEntry[];
   trackingPaymentStatusOptions: OptionEntry[];
   trackingPriceInvoiceMatchOptions: OptionEntry[];
+  trackingInvoicePaymentStatusOptions: OptionEntry[];
   onAddTrackingOption?: (code: string, name: string) => void | Promise<void>;
   onDeleteTrackingOption?: (code: string, name: string) => void | Promise<void>;
   onAddSubitemSubprogress: (name: string) => void | Promise<void>;
@@ -612,6 +613,8 @@ export function ClientRow({
   trackingMultipleInvoicesOptions: trackingMultipleInvoicesLabelOptions,
   trackingPaymentStatusOptions: trackingPaymentStatusLabelOptions,
   trackingPriceInvoiceMatchOptions: trackingPriceInvoiceMatchLabelOptions,
+  trackingInvoicePaymentStatusOptions:
+    trackingInvoicePaymentStatusLabelOptions,
   onAddTrackingOption,
   onDeleteTrackingOption,
   onAddSubitemSubprogress,
@@ -4664,6 +4667,9 @@ export function ClientRow({
               summaryOptions={trackingSummaryLabelOptions}
               paymentStatusOptions={trackingPaymentStatusLabelOptions}
               matchOptions={trackingPriceInvoiceMatchLabelOptions}
+              invoicePaymentStatusOptions={
+                trackingInvoicePaymentStatusLabelOptions
+              }
               onAddOption={(code, name) => onAddTrackingOption?.(code, name)}
               onDeleteOption={(code, name) =>
                 onDeleteTrackingOption?.(code, name)
