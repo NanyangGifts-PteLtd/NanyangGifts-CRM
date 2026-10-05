@@ -28,6 +28,7 @@ export type OptionEntry = {
   systemKey?: string | null;
   value: string;
   color: string;
+  section?: number;
 };
 
 type ShipperTrackingSite = {

@@ -96,6 +96,7 @@ type SchedulerResource = {
   clientDisplayId: string;
   subitemName: string;
   subitemDisplayId: string;
+  timelineIndex: number;
   processNames: string[];
   pmIds: string[];
   peopleIds: string[];
@@ -218,6 +219,49 @@ function addOneDay(date: Date) {
   copy.setDate(copy.getDate() + 1);
   return copy;
 }
+function formatDate(value: Date) {
+  return value.toISOString().slice(0, 10);
+}
+
+// Mirrors the CRM timeline rule: a dependent process begins the day after
+// its dependency ends, while retaining its explicitly entered duration.
+function resolveTimelineDependencies(previous: TimelineRow[], next: TimelineRow[]) {
+  const before = new Map(previous.map((row) => [row.id, row]));
+  const directlyEdited = new Set(
+    next
+      .filter((row) => {
+        const old = before.get(row.id);
+        return old && (old.timelineStart !== row.timelineStart || old.timelineEnd !== row.timelineEnd || old.dependency !== row.dependency);
+      })
+      .map((row) => row.id),
+  );
+  const resolved = next.map((row) => ({ ...row }));
+  let updates = 0;
+  for (let pass = 0; pass < resolved.length; pass += 1) {
+    let changed = false;
+    for (const row of resolved) {
+      if (directlyEdited.has(row.id) || !row.dependency) continue;
+      const dependency = resolved.find((candidate) => candidate.name === row.dependency);
+      const dependencyEnd = parseDate(dependency?.timelineEnd);
+      if (!dependencyEnd) continue;
+      const start = addOneDay(dependencyEnd);
+      const nextStart = formatDate(start);
+      if (row.timelineStart === nextStart) continue;
+      row.timelineStart = nextStart;
+      const duration = Number(row.duration);
+      if (row.duration.trim() !== "" && Number.isFinite(duration) && duration >= 0) {
+        const end = new Date(start);
+        end.setDate(end.getDate() + duration);
+        row.timelineEnd = formatDate(end);
+      }
+      updates += 1;
+      changed = true;
+    }
+    if (!changed) break;
+  }
+  if (updates) toast.success("Timeline dates updated", { description: `${updates} dependent process ${updates === 1 ? "was" : "were"} updated.` });
+  return resolved;
+}
 function getColor(systemKey?: string | null) {
   if (systemKey === "subitem_subprogress_late") return "#dc2626";
   if (
@@ -252,7 +296,12 @@ function buildSchedulerData(
   subitemAssignees: SubitemAssigneeMap,
   progressById: Map<
     string,
-    { value: string; systemKey: string | null; color: string }
+    {
+      value: string;
+      systemKey: string | null;
+      color: string;
+      section?: number;
+    }
   >,
 ): SchedulerResource[] {
   const groupMap = new Map(groups.map((group) => [group.id, group]));
@@ -281,26 +330,17 @@ function buildSchedulerData(
       // The Gantt chart represents subitem processes. Clients without a
       // subitem have no schedulable work, so omit them rather than rendering
       // a placeholder "No subitems" resource row.
-      return subitems.map((subitem) => {
+      return subitems.flatMap((subitem) => {
         const subitemName = subitem.name || "Untitled subitem";
         const subitemDisplayId = subitem.displayId || "";
-        const timelineRows = Array.isArray(subitem.timelineGroups) && subitem.timelineGroups.length
-          ? subitem.timelineGroups.flatMap((timeline, timelineIndex) =>
-              (timeline.rows ?? [])
-                .filter((row): row is TimelineRow => !!row && typeof row === "object")
-                .map((row) => ({
-                  ...row,
-                  id: `${timeline.id}::${row.id}`,
-                  name: `[Timeline ${timelineIndex + 1}] ${row.name}`,
-                  ganttTimelineId: timeline.id,
-                })),
-            )
-          : Array.isArray(subitem.timelineRows)
-            ? subitem.timelineRows.filter(
-                (row): row is TimelineRow => !!row && typeof row === "object",
-              )
-            : [];
-        const resourceId = `${client.id}::${subitem.id}`;
+        const timelines = Array.isArray(subitem.timelineGroups) && subitem.timelineGroups.length
+          ? subitem.timelineGroups
+          : [{ id: "default", rows: subitem.timelineRows ?? [] }];
+        return timelines.map((timeline, timelineIndex) => {
+        const timelineRows = (timeline.rows ?? []).filter(
+          (row): row is TimelineRow => !!row && typeof row === "object",
+        );
+        const resourceId = `${client.id}::${subitem.id}::${timeline.id}`;
         const items = timelineRows.flatMap((row): SchedulerItem[] => {
           const progress = progressById.get(row.subProgressOptionId ?? "");
           const start = parseDate(row?.timelineStart);
@@ -314,7 +354,7 @@ function buildSchedulerData(
           if (!start || !end) return [];
           return [
             {
-              id: `${client.id}::${subitem.id}::${row.id}`,
+              id: `${client.id}::${subitem.id}::${timeline.id}::${row.id}`,
               startDate: start,
               endDate: end,
               occupancy:
@@ -337,11 +377,7 @@ function buildSchedulerData(
               bgColor: isOverdue ? "#dc2626" : getColor(progress?.systemKey),
               processStatus: row.subProgress || "No status",
               isOverdue,
-              timelineId:
-                "ganttTimelineId" in row &&
-                typeof row.ganttTimelineId === "string"
-                  ? row.ganttTimelineId
-                  : undefined,
+              timelineId: timeline.id,
             },
           ];
         });
@@ -352,7 +388,7 @@ function buildSchedulerData(
         return {
           id: resourceId,
           label: {
-            title: `${groupName} ${clientName} ${subitemName} ${processNames.join(" ")}`,
+            title: `${groupName} ${clientName} ${subitemName} Timeline ${timelineIndex + 1} ${processNames.join(" ")}`,
             subtitle: resourceId,
             icon: "",
           },
@@ -365,6 +401,7 @@ function buildSchedulerData(
           clientDisplayId,
           subitemName,
           subitemDisplayId,
+          timelineIndex,
           processNames,
           pmIds: clientPmAssignees[client.id] ?? parsePmIds(client),
           peopleIds: Array.from(
@@ -377,6 +414,7 @@ function buildSchedulerData(
             ]),
           ),
         };
+        });
       });
     });
 }
@@ -393,7 +431,15 @@ export default function GanttChart({
   canEditSubitem,
 }: Props) {
   const [progressById, setProgressById] = useState<
-    Map<string, { value: string; systemKey: string | null; color: string }>
+    Map<
+      string,
+      {
+        value: string;
+        systemKey: string | null;
+        color: string;
+        section?: number;
+      }
+    >
   >(new Map());
   const [shipperOptions, setShipperOptions] = useState<OptionEntry[]>([]);
   useEffect(() => {
@@ -408,19 +454,252 @@ export default function GanttChart({
       if (!group) return;
       const { data } = await supabase
         .from("option_values")
-        .select("id, value, system_key, color")
-        .eq("group_id", group.id);
+        .select("id, value, system_key, color, section_index")
+        .eq("group_id", group.id)
+        .order("section_index")
+        .order("sort_order")
+        .order("id");
       if (active)
         setProgressById(
           new Map((data ?? []).map((option) => [option.id, {
             value: option.value,
             systemKey: option.system_key,
             color: option.color ?? "#94a3b8",
+            section: option.section_index ?? 0,
           }])),
         );
     })();
     return () => { active = false; };
   }, []);
+  const getOptionGroupId = useCallback(async (code: string) => {
+    const supabase = createSupabaseClient();
+    const { data, error } = await supabase
+      .from("option_groups")
+      .select("id")
+      .eq("code", code)
+      .maybeSingle();
+    if (error || !data) {
+      toast.error("Label group could not be found", {
+        description: error?.message ?? `No ${code.replaceAll("_", " ")} label group exists.`,
+      });
+      return null;
+    }
+    return data.id;
+  }, []);
+
+  const addGanttOption = useCallback(
+    async (code: "subitem_subprogress" | "shipper", name: string) => {
+      const value = name.trim();
+      if (!value) return;
+      const entries =
+        code === "subitem_subprogress"
+          ? Array.from(progressById.entries()).map(([id, option]) => ({ id, ...option }))
+          : shipperOptions;
+      if (entries.some((entry) => entry.value.toLowerCase() === value.toLowerCase())) {
+        toast.error("Label already exists");
+        return;
+      }
+      const groupId = await getOptionGroupId(code);
+      if (!groupId) return;
+      const supabase = createSupabaseClient();
+      const { data, error } = await supabase
+        .from("option_values")
+        .insert({
+          group_id: groupId,
+          value,
+          color: "#d1d5db",
+          sort_order: entries.length,
+          section_index: 0,
+        })
+        .select("id, value, system_key, color, section_index")
+        .single();
+      if (error || !data) {
+        toast.error("Label could not be added", { description: error?.message });
+        return;
+      }
+      if (code === "subitem_subprogress") {
+        setProgressById((current) =>
+          new Map(current).set(data.id, {
+            value: data.value,
+            systemKey: data.system_key,
+            color: data.color ?? "#94a3b8",
+            section: data.section_index ?? 0,
+          }),
+        );
+      } else {
+        setShipperOptions((current) => [
+          ...current,
+          {
+            id: data.id,
+            value: data.value,
+            systemKey: data.system_key,
+            color: data.color ?? "#94a3b8",
+            section: data.section_index ?? 0,
+          },
+        ]);
+      }
+      toast.success("Label added");
+    },
+    [getOptionGroupId, progressById, shipperOptions],
+  );
+
+  const updateGanttOptionColor = useCallback(
+    async (
+      code: "subitem_subprogress" | "shipper",
+      name: string,
+      color: string,
+      optionId?: string,
+    ) => {
+      const id = optionId ?? (
+        code === "subitem_subprogress"
+          ? Array.from(progressById.entries()).find(([, option]) => option.value === name)?.[0]
+          : shipperOptions.find((option) => option.value === name)?.id
+      );
+      if (!id) return;
+      if (code === "subitem_subprogress") {
+        setProgressById((current) => {
+          const next = new Map(current);
+          const option = next.get(id);
+          if (option) next.set(id, { ...option, color });
+          return next;
+        });
+      } else {
+        setShipperOptions((current) =>
+          current.map((option) => (option.id === id ? { ...option, color } : option)),
+        );
+      }
+      const supabase = createSupabaseClient();
+      const { error } = await supabase.from("option_values").update({ color }).eq("id", id);
+      if (error) toast.error("Label color could not be saved", { description: error.message });
+    },
+    [progressById, shipperOptions],
+  );
+
+  const renameGanttOption = useCallback(
+    async (
+      code: "subitem_subprogress" | "shipper",
+      oldName: string,
+      newName: string,
+      optionId?: string,
+    ) => {
+      const value = newName.trim();
+      if (!value || value === oldName) return;
+      const id = optionId ?? (
+        code === "subitem_subprogress"
+          ? Array.from(progressById.entries()).find(([, option]) => option.value === oldName)?.[0]
+          : shipperOptions.find((option) => option.value === oldName)?.id
+      );
+      if (!id) return;
+      const supabase = createSupabaseClient();
+      const { error } = await supabase.from("option_values").update({ value }).eq("id", id);
+      if (error) {
+        toast.error("Label could not be renamed", { description: error.message });
+        return;
+      }
+      if (code === "subitem_subprogress") {
+        setProgressById((current) => {
+          const next = new Map(current);
+          const option = next.get(id);
+          if (option) next.set(id, { ...option, value });
+          return next;
+        });
+      } else {
+        setShipperOptions((current) =>
+          current.map((option) => (option.id === id ? { ...option, value } : option)),
+        );
+      }
+      toast.success("Label renamed");
+    },
+    [progressById, shipperOptions],
+  );
+
+  const reorderGanttOptions = useCallback(
+    async (
+      code: "subitem_subprogress" | "shipper",
+      layout: Array<{ id?: string; value: string; section: number }>,
+    ) => {
+      const response = await fetch("/api/options/reorder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code, layout }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        toast.error("Label order could not be saved", { description: result.error });
+        return;
+      }
+      const layoutById = new Map(layout.filter((entry) => entry.id).map((entry) => [entry.id!, entry]));
+      if (code === "subitem_subprogress") {
+        setProgressById((current) =>
+          new Map(
+            Array.from(current.entries()).map(([id, option]) => [
+              id,
+              { ...option, section: layoutById.get(id)?.section ?? option.section },
+            ]),
+          ),
+        );
+      } else {
+        setShipperOptions((current) =>
+          current.map((option) => ({
+            ...option,
+            section: layoutById.get(option.id ?? "")?.section ?? option.section,
+          })),
+        );
+      }
+    },
+    [],
+  );
+
+  const deleteGanttOption = useCallback(
+    async (
+      code: "subitem_subprogress" | "shipper",
+      name: string,
+      optionId?: string,
+    ) => {
+      const preview = await fetch("/api/options/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "preview", code, name, optionId }),
+      });
+      const previewResult = await preview.json().catch(() => ({}));
+      if (!preview.ok || !previewResult.optionId) {
+        toast.error("Label could not be deleted", { description: previewResult.error });
+        return;
+      }
+      const count = Number(previewResult.usageCount ?? 0);
+      if (
+        count > 0 &&
+        !window.confirm(
+          `Delete “${name}” and clear it from ${count} existing ${count === 1 ? "cell" : "cells"}?`,
+        )
+      ) {
+        return;
+      }
+      const response = await fetch("/api/options/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "delete", code, name, optionId: previewResult.optionId }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        toast.error("Label could not be deleted", { description: result.error });
+        return;
+      }
+      if (code === "subitem_subprogress") {
+        setProgressById((current) => {
+          const next = new Map(current);
+          next.delete(previewResult.optionId);
+          return next;
+        });
+      } else {
+        setShipperOptions((current) =>
+          current.filter((option) => option.id !== previewResult.optionId),
+        );
+      }
+      toast.success("Label deleted");
+    },
+    [],
+  );
   useEffect(() => {
     const supabase = createSupabaseClient();
     let active = true;
@@ -433,8 +712,11 @@ export default function GanttChart({
       if (!group) return;
       const { data } = await supabase
         .from("option_values")
-        .select("id, value, system_key, color")
-        .eq("group_id", group.id);
+        .select("id, value, system_key, color, section_index")
+        .eq("group_id", group.id)
+        .order("section_index")
+        .order("sort_order")
+        .order("id");
       if (active)
         setShipperOptions(
           (data ?? []).map((option) => ({
@@ -442,6 +724,7 @@ export default function GanttChart({
             value: option.value,
             systemKey: option.system_key,
             color: option.color ?? "#94a3b8",
+            section: option.section_index ?? 0,
           })),
         );
     })();
@@ -710,6 +993,7 @@ export default function GanttChart({
         value: option.value,
         systemKey: option.systemKey,
         color: option.color,
+        section: option.section,
       })),
     [progressById],
   );
@@ -1513,8 +1797,11 @@ export default function GanttChart({
                     ) : (
                       <ChevronDown size={14} className="shrink-0" />
                     )}
-                    <span className="break-words text-left font-medium leading-4">
+                    <span className="min-w-0 break-words text-left font-medium leading-4">
                       {resource.clientName}
+                      <span className="mt-0.5 block text-[10px] font-normal text-slate-500">
+                        ID: {resource.clientDisplayId || resource.clientId}
+                      </span>
                     </span>
                   </button>
                 )}
@@ -1532,11 +1819,16 @@ export default function GanttChart({
                           resource.subitemId,
                         );
                     }}
-                    title={resource.subitemName}
+                    title={`${resource.subitemName} · Subitem ID: ${resource.subitemDisplayId || resource.subitemId} · Timeline ${resource.timelineIndex + 1}`}
                   >
-                    {resource.data.some((item) => item.isOverdue)
-                      ? `Overdue process in ${resource.subitemName}`
-                      : resource.subitemName}
+                    <span className="block break-words leading-4">
+                      {resource.data.some((item) => item.isOverdue)
+                        ? `Overdue process in ${resource.subitemName}`
+                        : resource.subitemName}
+                    </span>
+                    <span className="mt-0.5 block text-[10px] font-normal text-slate-500">
+                      ID: {resource.subitemDisplayId || resource.subitemId} · Timeline {resource.timelineIndex + 1} 
+                    </span>
                   </button>
                 )}
                   </div>
@@ -1860,6 +2152,19 @@ export default function GanttChart({
                       },
                     )
                   }
+                  onAddShipper={(name) => addGanttOption("shipper", name)}
+                  onDeleteShipper={(name, optionId) =>
+                    deleteGanttOption("shipper", name, optionId)
+                  }
+                  onUpdateShipperColor={(name, color, optionId) =>
+                    updateGanttOptionColor("shipper", name, color, optionId)
+                  }
+                  onRenameShipper={(oldName, newName, optionId) =>
+                    renameGanttOption("shipper", oldName, newName, optionId)
+                  }
+                  onReorderShippers={(layout) =>
+                    reorderGanttOptions("shipper", layout)
+                  }
                   onUpdate={(rows) =>
                     void onUpdateSubitem(
                       selectedTimelineData.client.id,
@@ -1868,11 +2173,32 @@ export default function GanttChart({
                         timelineGroups: selectedTimelineData.timelines.map(
                           (candidate) =>
                             candidate.id === selectedTimelineData.timeline.id
-                              ? { ...candidate, rows }
+                              ? {
+                                  ...candidate,
+                                  rows: resolveTimelineDependencies(
+                                    selectedTimelineData.timeline.rows,
+                                    rows,
+                                  ),
+                                }
                               : candidate,
                         ),
                       },
                     )
+                  }
+                  onAddTimelineProgress={(name) =>
+                    addGanttOption("subitem_subprogress", name)
+                  }
+                  onDeleteTimelineProgress={(name) =>
+                    deleteGanttOption("subitem_subprogress", name)
+                  }
+                  onUpdateOptionColor={(name, color) =>
+                    updateGanttOptionColor("subitem_subprogress", name, color)
+                  }
+                  onRenameOption={(oldName, newName) =>
+                    renameGanttOption("subitem_subprogress", oldName, newName)
+                  }
+                  onReorderOptions={(layout) =>
+                    reorderGanttOptions("subitem_subprogress", layout)
                   }
                 />
               </div>
