@@ -370,10 +370,9 @@ function buildSchedulerData(
                   isOverdue ? "Overdue" : "",
                   row.person ? `Owner: ${row.person}` : "",
                   row.remarks ? `Remarks: ${row.remarks}` : "",
-                  subitem.status ? `Subitem status: ${subitem.status}` : "",
                 ]
                   .filter(Boolean)
-                  .join(" - ") || "No details",
+                  .join(" - "),
               bgColor: isOverdue ? "#dc2626" : getColor(progress?.systemKey),
               processStatus: row.subProgress || "No status",
               isOverdue,
@@ -1203,6 +1202,7 @@ export default function GanttChart({
     const root = schedulerRootRef.current;
     if (!root) return;
     let frame = 0;
+    const refreshTimers: number[] = [];
     const originalStyles = new Map<HTMLElement, string | null>();
     const setStyle = (
       element: HTMLElement,
@@ -1216,6 +1216,28 @@ export default function GanttChart({
     const refreshHosts = () => {
       window.cancelAnimationFrame(frame);
       frame = window.requestAnimationFrame(() => {
+        // Restore/hide the scheduler's native resource pane before measuring
+        // any row. When it changes from display:none to display:block, its
+        // row elements briefly report offsetTop = 0. Measuring in that frame
+        // was what caused the custom Group/Client/Subitem layer to stack at
+        // the top after some pane toggles.
+        const nativeSearchInput = Array.from(
+          root.querySelectorAll<HTMLInputElement>("input"),
+        ).find((input) => input.placeholder.trim().toLowerCase() === "search");
+        const nativeSidebar = nativeSearchInput?.parentElement?.parentElement
+          ?.parentElement as HTMLElement | null;
+        if (nativeSidebar) {
+          setStyle(
+            nativeSidebar,
+            "display",
+            resourcePaneCollapsed ? "none" : "block",
+          );
+          if (!resourcePaneCollapsed) {
+            // Force the browser to finish the synchronous part of the native
+            // scheduler layout before its resource-row offsets are read.
+            void nativeSidebar.offsetHeight;
+          }
+        }
         const candidates = Array.from(
           root.querySelectorAll<HTMLElement>("[title]"),
         );
@@ -1280,14 +1302,20 @@ export default function GanttChart({
           },
         );
 
-        const sidebar = next[0]?.element.parentElement as HTMLElement | null;
+        // With no matching resources react-scheduler removes its row list,
+        // so derive its native sidebar from the built-in "Search" input as
+        // a fallback. This lets us keep its panel and search control hidden
+        // in both the populated and empty states.
+        const sidebar =
+          (next[0]?.element.parentElement as HTMLElement | null) ??
+          nativeSidebar;
         const header = sidebar?.firstElementChild as HTMLElement | null;
         if (sidebar) {
           // The scheduler's resource list is a flex child. Width alone is not
           // enough to reserve its space after it has once been collapsed, so
           // keep its flex basis in sync as well. This is deliberately the
           // base resource layer; our custom headers/cells are layered above it.
-          setStyle(sidebar, "display", "block");
+          setStyle(sidebar, "display", resourcePaneCollapsed ? "none" : "block");
           setStyle(sidebar, "position", "relative");
           setStyle(sidebar, "flex", `0 0 ${resourcePanelWidth}px`);
           setStyle(sidebar, "min-width", `${resourcePanelWidth}px`);
@@ -1295,6 +1323,12 @@ export default function GanttChart({
           setStyle(sidebar, "width", `${resourcePanelWidth}px`);
           setStyle(sidebar, "overflow", "visible");
           setStyle(sidebar, "z-index", "10");
+          if (resourcePaneCollapsed && sidebar.nextElementSibling instanceof HTMLElement) {
+            // The scheduler reserves a fixed left margin for its native
+            // resource pane. Once that pane is hidden, remove the leftover
+            // gutter so the calendar fills the available width.
+            setStyle(sidebar.nextElementSibling, "margin-left", "0");
+          }
         }
         if (header) {
           setStyle(header, "width", `${resourcePanelWidth}px`);
@@ -1348,9 +1382,18 @@ export default function GanttChart({
     const observer = new MutationObserver(refreshHosts);
     observer.observe(root, { childList: true, subtree: true });
     refreshHosts();
+    // react-scheduler finishes some reflows after its own render frame. Run
+    // a small bounded set of follow-up measurements so opening the pane from
+    // an empty/filtered/collapsed state cannot retain temporary offsets.
+    refreshTimers.push(
+      window.setTimeout(refreshHosts, 50),
+      window.setTimeout(refreshHosts, 180),
+      window.setTimeout(refreshHosts, 360),
+    );
     return () => {
       observer.disconnect();
       window.cancelAnimationFrame(frame);
+      refreshTimers.forEach((timer) => window.clearTimeout(timer));
       originalStyles.forEach((style, element) =>
         style === null
           ? element.removeAttribute("style")
@@ -1629,7 +1672,8 @@ export default function GanttChart({
             <PanelLeftClose size={17} />
           )}
         </button>
-        {toolbarHost &&
+        {!resourcePaneCollapsed &&
+          toolbarHost &&
           createPortal(
             <>
               <div
