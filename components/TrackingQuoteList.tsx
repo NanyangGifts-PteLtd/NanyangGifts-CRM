@@ -264,7 +264,7 @@ export function TrackingQuoteList({
       <div className="grid grid-cols-[minmax(220px,2fr)_140px_180px_110px_110px_80px_150px_105px] border-b border-[#d0d4e4] bg-white text-[11px] font-medium text-slate-600">
         <span className="px-3 py-2">Quote</span>
         <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">Summary</span>
-        <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">Payment</span>
+        <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">Tracking Status</span>
         <span className="border-l border-[#d0d4e4] px-3 py-2 text-right">Quote total</span>
         <span className="border-l border-[#d0d4e4] px-3 py-2 text-right">Invoice total</span>
         <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">Invoices</span>
