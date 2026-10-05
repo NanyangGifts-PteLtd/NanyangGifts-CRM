@@ -329,6 +329,7 @@ const SHIPPER_PUSH_FIELDS: Array<{
     label: "发样品海运 / Samples to send by sea",
     required: true,
   },
+  { key: "item_name", label: "Item display name" },
 ];
 
 type SubitemProps = {
@@ -1083,7 +1084,7 @@ export function SubitemsTable({
     string[]
   >([]);
   const [pushPreviewTimelineOptions, setPushPreviewTimelineOptions] = useState<
-    Array<{ id: string; label: string }>
+    Array<{ id: string; label: string; cnTracking: string; cartons: string }>
   >([]);
   const [pushPreviewTimelineId, setPushPreviewTimelineId] = useState("");
   const [pushPreviewHistory, setPushPreviewHistory] = useState<{
@@ -2026,6 +2027,12 @@ export function SubitemsTable({
               label: String(
                 (option as { label?: unknown })?.label ?? "Project Timeline",
               ).trim(),
+              cnTracking: String(
+                (option as { cnTracking?: unknown })?.cnTracking ?? "",
+              ).trim(),
+              cartons: String(
+                (option as { cartons?: unknown })?.cartons ?? "",
+              ),
             }))
             .filter((option: { id: string }) => Boolean(option.id))
         : [];
@@ -2036,6 +2043,9 @@ export function SubitemsTable({
       const today = `${singaporeNow.getUTCFullYear()}-${String(singaporeNow.getUTCMonth() + 1).padStart(2, "0")}-${String(singaporeNow.getUTCDate()).padStart(2, "0")}`;
       setPushPreview({
         subitemId,
+        // Keep the CRM name separately for reference. item_name is the
+        // editable value that will be written to the shipper workbook.
+        subitemName: String(row.item_name ?? ""),
         ...Object.fromEntries(
           SHIPPER_PUSH_FIELDS.map(({ key }) => [
             key,
@@ -2110,7 +2120,21 @@ export function SubitemsTable({
       key === "cn_tracking_no" && pushPreviewTrackingOptions.length > 0 ? (
         <select
           value={value}
-          onChange={(event) => updatePushPreview(key, event.target.value)}
+          onChange={(event) => {
+            const trackingNumber = event.target.value;
+            const timeline = pushPreviewTimelineOptions.find(
+              (candidate) => candidate.cnTracking === trackingNumber,
+            );
+            setPushPreview((previous) =>
+              previous
+                ? {
+                    ...previous,
+                    [key]: trackingNumber,
+                    cartons: timeline?.cartons ?? "",
+                  }
+                : previous,
+            );
+          }}
           className={className}
         >
           <option value="">Select a project timeline CN Tracking number</option>
@@ -2130,7 +2154,14 @@ export function SubitemsTable({
           />
           <select
             value={pushPreviewTimelineId}
-            onChange={(event) => setPushPreviewTimelineId(event.target.value)}
+            onChange={(event) => {
+              const timelineId = event.target.value;
+              const timeline = pushPreviewTimelineOptions.find(
+                (candidate) => candidate.id === timelineId,
+              );
+              setPushPreviewTimelineId(timelineId);
+              if (timeline) updatePushPreview("cartons", timeline.cartons);
+            }}
             className={`mt-2 w-full rounded-md border px-3 py-2 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-cyan-200 ${
               pushPreviewTimelineId
                 ? "border-slate-300"
@@ -3575,6 +3606,9 @@ export function SubitemsTable({
                 >
                   Sending to {pushPreviewShipperName || "selected shipper"}
                 </h2>
+                <p className="mt-1 text-sm text-slate-600">
+                  CRM subitem: {pushPreview.subitemName || "Unnamed subitem"}
+                </p>
               </div>
               <button
                 type="button"
@@ -3632,6 +3666,7 @@ export function SubitemsTable({
                 <div className="space-y-4 md:pl-4">
                   {pushField("samples_by_air", "Samples by Air")}
                   {pushField("samples_by_sea", "Samples by Sea")}
+                  {pushField("item_name", "Item display name *")}
                   {pushField("shipper_remarks", "Remarks")}
                 </div>
               </div>
@@ -4623,7 +4658,7 @@ export function SubitemsTable({
                             rows={timeline.rows}
                             cnTracking={timeline.cnTracking}
                             sgTracking={timeline.sgTracking}
-                            numOfCartons={sub.numOfCartons ?? ""}
+                            numOfCartons={timeline.numOfCartons ?? ""}
                             shipper={sub.shipper ?? ""}
                             onTrackingChange={(tracking) => {
                               const timelineGroups = (sub.timelineGroups?.length
@@ -4664,7 +4699,26 @@ export function SubitemsTable({
                               });
                             }}
                             onCartonsChange={(numOfCartons) =>
-                              onUpdateSubitem(sub.id, { numOfCartons })
+                              onUpdateSubitem(sub.id, {
+                                timelineGroups: (sub.timelineGroups?.length
+                                  ? sub.timelineGroups
+                                  : [
+                                      {
+                                        id: "default",
+                                        cnTracking: sub.cnTracking,
+                                        sgTracking: sub.sgTracking,
+                                        rows: sub.timelineRows?.length
+                                          ? sub.timelineRows
+                                          : DEFAULT_TIMELINE_ROWS,
+                                        isDefault: true,
+                                      },
+                                    ]
+                                ).map((candidate) =>
+                                  candidate.id === timeline.id
+                                    ? { ...candidate, numOfCartons }
+                                    : candidate,
+                                ),
+                              })
                             }
                             onRemoveTimeline={
                               timeline.isDefault || !canEditSubitem(sub.id)
@@ -4753,6 +4807,7 @@ export function SubitemsTable({
                                   id: crypto.randomUUID(),
                                   cnTracking: "",
                                   sgTracking: "",
+                                  numOfCartons: "",
                                   rows: DEFAULT_TIMELINE_ROWS.map((row) => ({
                                     ...row,
                                     id: crypto.randomUUID(),

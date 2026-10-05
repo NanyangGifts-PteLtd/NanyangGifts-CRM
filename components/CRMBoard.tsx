@@ -5644,11 +5644,19 @@ export function CRMBoard({
                     (option as { label?: unknown })?.label ??
                       "Project Timeline",
                   ).trim(),
+                  cnTracking: String(
+                    (option as { cnTracking?: unknown })?.cnTracking ?? "",
+                  ).trim(),
+                  cartons: String(
+                    (option as { cartons?: unknown })?.cartons ?? "",
+                  ),
                 }))
                 .filter((option: { id: string }) => Boolean(option.id))
             : [],
           qty: String(row.qty ?? ""),
           up: String(row.up ?? ""),
+          cartons: String(row.cartons ?? ""),
+          item_name: String(row.item_name ?? ""),
           samples_by_air: String(row.samples_by_air ?? ""),
           samples_by_sea: String(row.samples_by_sea ?? ""),
           shipper_remarks: String(row.shipper_remarks ?? ""),

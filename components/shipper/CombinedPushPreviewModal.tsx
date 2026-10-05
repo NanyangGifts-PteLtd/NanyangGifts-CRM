@@ -11,7 +11,12 @@ type CombinedPushPreview = {
       name: string;
       alreadyPushed: boolean;
       trackingOptions?: string[];
-      timelineOptions?: Array<{ id: string; label: string }>;
+      timelineOptions?: Array<{
+        id: string;
+        label: string;
+        cnTracking?: string;
+        cartons?: string;
+      }>;
     }
   >;
   shipperName: string;
@@ -190,7 +195,14 @@ export function CombinedPushPreviewModal({
             {(item.trackingOptions?.length ?? 0) > 0 ? (
               <select
                 value={item.cn_tracking_no ?? ""}
-                onChange={(e) => changeItem("cn_tracking_no", e.target.value)}
+                onChange={(e) => {
+                  const cnTrackingNo = e.target.value;
+                  const timeline = item.timelineOptions?.find(
+                    (candidate) => candidate.cnTracking === cnTrackingNo,
+                  );
+                  changeItem("cn_tracking_no", cnTrackingNo);
+                  if (timeline) changeItem("cartons", timeline.cartons ?? "");
+                }}
                 className={`mt-1 w-full rounded border px-3 py-2 text-sm ${required("cn_tracking_no") ? "border-red-300 bg-red-50" : "border-slate-300"}`}
               >
                 <option value="">
@@ -212,7 +224,14 @@ export function CombinedPushPreviewModal({
                 />
                 <select
                   value={item.timeline_id ?? ""}
-                  onChange={(e) => changeItem("timeline_id", e.target.value)}
+                  onChange={(e) => {
+                    const timelineId = e.target.value;
+                    const timeline = item.timelineOptions?.find(
+                      (candidate) => candidate.id === timelineId,
+                    );
+                    changeItem("timeline_id", timelineId);
+                    if (timeline) changeItem("cartons", timeline.cartons ?? "");
+                  }}
                   className={`mt-2 w-full rounded border px-3 py-2 text-sm ${item.timeline_id ? "border-slate-300" : "border-red-300 bg-red-50"}`}
                 >
                   <option value="">Select the Project Timeline</option>
@@ -227,6 +246,7 @@ export function CombinedPushPreviewModal({
           </label>
           <div className="mt-4 grid gap-5 md:grid-cols-2">
             <div className="space-y-4 border-r border-slate-200 pr-5">
+              {field("Cartons", "cartons", "number", false)}
               {field("Qty", "qty", "number")}
               {field("Unit Price", "up", "number")}
               <div className="text-xs font-medium text-slate-700">
@@ -241,6 +261,7 @@ export function CombinedPushPreviewModal({
             <div className="space-y-4">
               {field("Samples by Air", "samples_by_air")}
               {field("Samples by Sea", "samples_by_sea")}
+              {field("Item display name", "item_name", "text")}
               <label className="block text-xs font-medium text-slate-700">
                 Remarks
                 <textarea

@@ -153,6 +153,7 @@ function timelineTrackingNumbers(
 type TimelineGroup = Record<string, unknown> & {
   id?: string;
   cnTracking?: string;
+  numOfCartons?: string;
 };
 
 function timelineOptions(timelineGroups: unknown) {
@@ -161,8 +162,35 @@ function timelineOptions(timelineGroups: unknown) {
     : [];
   return groups.flatMap((group, index) => {
     const id = String(group.id ?? "").trim();
-    return id ? [{ id, label: `Project Timeline ${index + 1}` }] : [];
+    return id
+      ? [
+          {
+            id,
+            label: `Project Timeline ${index + 1}`,
+            cnTracking: String(group.cnTracking ?? "").trim(),
+            cartons: group.numOfCartons ?? null,
+          },
+        ]
+      : [];
   });
+}
+
+function timelineCartons(
+  timelineGroups: unknown,
+  options: { timelineId?: unknown; trackingNumber?: unknown } = {},
+) {
+  const groups = Array.isArray(timelineGroups)
+    ? (timelineGroups as TimelineGroup[])
+    : [];
+  const timelineId = String(options.timelineId ?? "").trim();
+  const trackingNumber = String(options.trackingNumber ?? "").trim();
+  const matchingGroup =
+    groups.find((group) => String(group.id ?? "") === timelineId) ??
+    groups.find(
+      (group) => String(group.cnTracking ?? "").trim() === trackingNumber,
+    ) ??
+    (groups.length === 1 ? groups[0] : undefined);
+  return matchingGroup?.numOfCartons ?? null;
 }
 
 function addFirstTimelineTracking(
@@ -539,10 +567,13 @@ export async function POST(req: NextRequest) {
           trackingOptions.length === 1 ? trackingOptions[0] : null,
         tracking_options: trackingOptions,
         timeline_options: timelineOptions(item.timeline_groups),
-        // Cartons are maintained once per subitem/timeline workflow in the
-        // CRM Timeline header. Bring that value into every shipper Send
-        // preview so selecting a timeline does not discard it.
-        cartons: item.num_of_cartons ?? null,
+        // Cartons belong to the selected shipment timeline. With a single
+        // tracking number (or a single timeline), we can prefill it now;
+        // otherwise the preview updates it when the user chooses a timeline.
+        cartons: timelineCartons(item.timeline_groups, {
+          trackingNumber:
+            trackingOptions.length === 1 ? trackingOptions[0] : undefined,
+        }),
         item_name: item.name ?? null,
         delivery_info: buildDeliveryInfo(ocfItem) ?? null,
         qty: item.qty ?? null,
@@ -743,6 +774,11 @@ export async function POST(req: NextRequest) {
           `Complete all mandatory fields before sending: ${missing.join(", ")}`,
         );
       const source = subitems.find((item) => item.id === preview.subitem_id);
+      // This is mandatory for the spreadsheet, but an empty preview field is
+      // deliberately safe: retain the CRM subitem name rather than blocking
+      // a send or writing an empty item name.
+      if (!String(edits.item_name ?? "").trim())
+        edits.item_name = source?.name ?? "";
       const trackingOptions = timelineTrackingNumbers(
         source?.timeline_groups,
         source?.cn_tracking,

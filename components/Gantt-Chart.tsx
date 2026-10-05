@@ -39,6 +39,7 @@ import type {
   Profile,
   Subitem,
   SubitemAssigneeMap,
+  TimelineGroup,
   TimelineRow,
 } from "../app/types";
 import { createClient as createSupabaseClient } from "@/lib/supabase/client";
@@ -657,7 +658,7 @@ export default function GanttChart({
       (candidate) => candidate.id === selectedTimeline.subitemId,
     );
     if (!client || !subitem) return null;
-    const fallbackTimeline = {
+    const fallbackTimeline: TimelineGroup = {
       id: "default",
       cnTracking: subitem.cnTracking ?? "",
       sgTracking: subitem.sgTracking ?? "",
@@ -1761,7 +1762,7 @@ export default function GanttChart({
                   rows={selectedTimelineData.timeline.rows}
                   cnTracking={selectedTimelineData.timeline.cnTracking}
                   sgTracking={selectedTimelineData.timeline.sgTracking}
-                  numOfCartons={selectedTimelineData.subitem.numOfCartons ?? ""}
+                  numOfCartons={selectedTimelineData.timeline.numOfCartons ?? ""}
                   shipper={selectedTimelineData.subitem.shipper ?? ""}
                   timelineProgressOptions={timelineProgressOptions}
                   readOnly={
@@ -1788,7 +1789,14 @@ export default function GanttChart({
                     void onUpdateSubitem(
                       selectedTimelineData.client.id,
                       selectedTimelineData.subitem.id,
-                      { numOfCartons },
+                      {
+                        timelineGroups: selectedTimelineData.timelines.map(
+                          (candidate) =>
+                            candidate.id === selectedTimelineData.timeline.id
+                              ? { ...candidate, numOfCartons }
+                              : candidate,
+                        ),
+                      },
                     )
                   }
                   onUpdate={(rows) =>

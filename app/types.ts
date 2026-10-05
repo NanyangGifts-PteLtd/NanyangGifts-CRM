@@ -80,6 +80,8 @@ export interface TimelineGroup {
   id: string;
   cnTracking: string;
   sgTracking: string;
+  /** Cartons belong to this shipment timeline, not the parent subitem. */
+  numOfCartons?: string;
   rows: TimelineRow[];
   /** The original imported timeline remains protected. */
   isDefault?: boolean;

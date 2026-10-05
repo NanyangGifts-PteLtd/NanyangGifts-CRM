@@ -296,7 +296,9 @@ export async function POST(request: NextRequest) {
           info_provided_date: shared.info_provided_date,
           cn_tracking_no: value.cn_tracking_no,
           cartons: value.cartons || null,
-          item_name: source.name || null,
+          // Keep the CRM name intact but send the name explicitly confirmed
+          // in this preview (for example, a Chinese shipper-facing name).
+          item_name: String(value.item_name ?? "").trim() || source.name || null,
           delivery_info: shared.delivery_info,
           qty,
           up,
