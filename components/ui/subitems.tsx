@@ -3381,6 +3381,21 @@ export function SubitemsTable({
     nextRows: TimelineRow[],
   ) => {
     const previousById = new Map(previousRows.map((row) => [row.id, row]));
+    // A user may intentionally move a dependent process. Keep that direct
+    // choice; only downstream rows should be repositioned automatically.
+    const directlyEditedRowIds = new Set(
+      nextRows
+        .filter((row) => {
+          const previous = previousById.get(row.id);
+          return Boolean(
+            previous &&
+              (previous.timelineStart !== row.timelineStart ||
+                previous.timelineEnd !== row.timelineEnd ||
+                previous.dependency !== row.dependency),
+          );
+        })
+        .map((row) => row.id),
+    );
     const triggered = nextRows.some((row) => {
       const previous = previousById.get(row.id);
       return (
@@ -3392,11 +3407,12 @@ export function SubitemsTable({
     if (!triggered) return nextRows;
 
     const resolvedRows = nextRows.map((row) => ({ ...row }));
-    let automaticUpdates = 0;
     const negativeDurationRowNames = new Set<string>();
+    let automaticUpdates = 0;
     for (let pass = 0; pass < resolvedRows.length; pass += 1) {
       let changedThisPass = false;
       for (const row of resolvedRows) {
+        if (directlyEditedRowIds.has(row.id)) continue;
         if (!row.dependency) continue;
         const dependency = resolvedRows.find(
           (candidate) => candidate.name === row.dependency,
@@ -4607,6 +4623,7 @@ export function SubitemsTable({
                             rows={timeline.rows}
                             cnTracking={timeline.cnTracking}
                             sgTracking={timeline.sgTracking}
+                            numOfCartons={sub.numOfCartons ?? ""}
                             shipper={sub.shipper ?? ""}
                             onTrackingChange={(tracking) => {
                               const timelineGroups = (sub.timelineGroups?.length
@@ -4646,6 +4663,9 @@ export function SubitemsTable({
                                 }
                               });
                             }}
+                            onCartonsChange={(numOfCartons) =>
+                              onUpdateSubitem(sub.id, { numOfCartons })
+                            }
                             onRemoveTimeline={
                               timeline.isDefault || !canEditSubitem(sub.id)
                                 ? undefined

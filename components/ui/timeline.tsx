@@ -75,7 +75,6 @@ export const DEFAULT_TIMELINE_ROWS = [
     name: "Sample",
     person: "",
     remarks: "",
-    numOfCartons: "",
     subProgress: "Pending",
     timelineStart: "",
     timelineEnd: "",
@@ -87,7 +86,6 @@ export const DEFAULT_TIMELINE_ROWS = [
     name: "Production 📦",
     person: "",
     remarks: "",
-    numOfCartons: "",
     subProgress: "Pending",
     timelineStart: "",
     timelineEnd: "",
@@ -99,7 +97,6 @@ export const DEFAULT_TIMELINE_ROWS = [
     name: "Check Production Status (+3 from production start)",
     person: "",
     remarks: "",
-    numOfCartons: "",
     subProgress: "Pending",
     timelineStart: "",
     timelineEnd: "",
@@ -111,7 +108,6 @@ export const DEFAULT_TIMELINE_ROWS = [
     name: "Local Shipping 🚚",
     person: "",
     remarks: "",
-    numOfCartons: "",
     subProgress: "Pending",
     timelineStart: "",
     timelineEnd: "",
@@ -123,7 +119,6 @@ export const DEFAULT_TIMELINE_ROWS = [
     name: "Sea/Air Freight ⛵✈️",
     person: "",
     remarks: "",
-    numOfCartons: "",
     subProgress: "Pending",
     timelineStart: "",
     timelineEnd: "",
@@ -135,7 +130,6 @@ export const DEFAULT_TIMELINE_ROWS = [
     name: "Check Shipment Status (+3 from shipment start)",
     person: "",
     remarks: "",
-    numOfCartons: "",
     subProgress: "Pending",
     timelineStart: "",
     timelineEnd: "",
@@ -147,7 +141,6 @@ export const DEFAULT_TIMELINE_ROWS = [
     name: "NBD",
     person: "",
     remarks: "",
-    numOfCartons: "",
     subProgress: "Pending",
     timelineStart: "",
     timelineEnd: "",
@@ -162,8 +155,10 @@ export function TimelineSection({
   title = "Project Timeline 1",
   cnTracking = "",
   sgTracking = "",
+  numOfCartons = "",
   shipper = "",
   onTrackingChange,
+  onCartonsChange,
   onRemoveTimeline,
   timelineProgressOptions,
   onAddTimelineProgress,
@@ -178,11 +173,13 @@ export function TimelineSection({
   title?: string;
   cnTracking?: string;
   sgTracking?: string;
+  numOfCartons?: string;
   shipper?: string;
   onTrackingChange?: (values: {
     cnTracking: string;
     sgTracking: string;
   }) => void;
+  onCartonsChange?: (value: string) => void;
   onRemoveTimeline?: () => void;
   timelineProgressOptions: OptionEntry[];
   onAddTimelineProgress?: (name: string) => void | Promise<void>;
@@ -376,7 +373,19 @@ export function TimelineSection({
 
         const resolvedStart = parseDateUTC(target.timelineStart);
         const resolvedEnd = parseDateUTC(target.timelineEnd);
-        if (resolvedStart && resolvedEnd) {
+        const fixedDuration = String(target.duration ?? "").trim();
+        const durationDays = Number(fixedDuration);
+        if (fixedDuration && Number.isFinite(durationDays) && durationDays >= 0) {
+          if (field === "timelineStart" && resolvedStart) {
+            const computedEnd = new Date(resolvedStart);
+            computedEnd.setUTCDate(computedEnd.getUTCDate() + durationDays);
+            target.timelineEnd = formatDateUTC(computedEnd);
+          } else if (field === "timelineEnd" && resolvedEnd) {
+            const computedStart = new Date(resolvedEnd);
+            computedStart.setUTCDate(computedStart.getUTCDate() - durationDays);
+            target.timelineStart = formatDateUTC(computedStart);
+          }
+        } else if (resolvedStart && resolvedEnd) {
           const durationDays = diffDaysUTC(resolvedStart, resolvedEnd);
           const nextDuration = String(durationDays);
           if (nextDuration !== (target.duration || "")) {
@@ -446,7 +455,6 @@ export function TimelineSection({
         name,
         person: "",
         remarks: "",
-        numOfCartons: "",
         subProgress: "Pending",
         timelineStart: "",
         timelineEnd: "",
@@ -547,6 +555,16 @@ export function TimelineSection({
       <div className="flex min-h-12 flex-wrap items-center gap-3 bg-gradient-to-r from-[#9bd9e0] to-[#7BCBD5] px-3 py-2">
         <Calendar size={12} className="text-white" />
         <span className="text-xs font-semibold text-white">{title}</span>
+        <label className="flex items-center gap-1 text-[11px] font-medium text-white">
+          No. of Cartons
+          <input
+            type="number"
+            value={numOfCartons}
+            disabled={readOnly}
+            onChange={(event) => onCartonsChange?.(event.target.value)}
+            className="h-7 w-20 rounded border border-white/60 bg-white px-2 text-xs text-slate-700 outline-none disabled:cursor-not-allowed"
+          />
+        </label>
         <label className="ml-auto flex items-center gap-1 text-[11px] font-medium text-white">
           CN Tracking
           <input
@@ -623,7 +641,6 @@ export function TimelineSection({
                 { label: "Process", w: 300 },
                 { label: "Person", w: 30 },
                 { label: "Remarks", w: 200 },
-                { label: "No. of Cartons", w: 30 },
                 { label: "Sub-Progress", w: 100 },
                 { label: "Timeline", w: 100 },
                 { label: "Duration", w: 70 },
@@ -723,14 +740,6 @@ export function TimelineSection({
                     <EditableCell
                       value={row.remarks}
                       onChange={(v) => updateRow(row.id, "remarks", v)}
-                    />
-                  </td>
-
-                  <td className="border-r border-gray-100 px-2 py-1">
-                    <EditableCell
-                      value={row.numOfCartons ?? ""}
-                      onChange={(v) => updateRow(row.id, "numOfCartons", v)}
-                      type="number"
                     />
                   </td>
 

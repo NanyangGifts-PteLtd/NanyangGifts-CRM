@@ -68,7 +68,6 @@ export interface TimelineRow {
   name: string;
   person: string;
   remarks: string;
-  numOfCartons: string;
   subProgress: TimelineProgress | string;
   subProgressOptionId?: string | null;
   timelineStart: string;

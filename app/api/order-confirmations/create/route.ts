@@ -300,7 +300,6 @@ export async function POST(req: NextRequest) {
           name: "NBD",
           person: "",
           remarks: "",
-          numOfCartons: "",
           subProgress: "",
           timelineStart: "",
           timelineEnd: "",

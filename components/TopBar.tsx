@@ -302,7 +302,6 @@ function searchResults(
           ["Timeline", timeline.name],
           ["Person", timeline.person],
           ["Remarks", timeline.remarks],
-          ["No. of Cartons", timeline.numOfCartons],
           ["Sub-Progress", timeline.subProgress],
           ["Start", timeline.timelineStart],
           ["End", timeline.timelineEnd],

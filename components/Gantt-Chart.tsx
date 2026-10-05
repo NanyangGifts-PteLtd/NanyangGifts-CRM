@@ -1761,6 +1761,7 @@ export default function GanttChart({
                   rows={selectedTimelineData.timeline.rows}
                   cnTracking={selectedTimelineData.timeline.cnTracking}
                   sgTracking={selectedTimelineData.timeline.sgTracking}
+                  numOfCartons={selectedTimelineData.subitem.numOfCartons ?? ""}
                   shipper={selectedTimelineData.subitem.shipper ?? ""}
                   timelineProgressOptions={timelineProgressOptions}
                   readOnly={
@@ -1781,6 +1782,13 @@ export default function GanttChart({
                               : candidate,
                         ),
                       },
+                    )
+                  }
+                  onCartonsChange={(numOfCartons) =>
+                    void onUpdateSubitem(
+                      selectedTimelineData.client.id,
+                      selectedTimelineData.subitem.id,
+                      { numOfCartons },
                     )
                   }
                   onUpdate={(rows) =>

@@ -694,7 +694,6 @@ export function SubitemDetailView({
                           ["Name", "name"],
                           ["Person", "person"],
                           ["Remarks", "remarks"],
-                          ["Cartons", "numOfCartons"],
                           ["Start date", "timelineStart"],
                           ["End date", "timelineEnd"],
                           ["Duration", "duration"],

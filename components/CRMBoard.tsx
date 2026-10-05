@@ -310,7 +310,6 @@ const TIMELINE_SEARCH_COLS = [
   { key: "name", label: "Timeline" },
   { key: "person", label: "Person" },
   { key: "remarks", label: "Remarks" },
-  { key: "numOfCartons", label: "No. of Cartons" },
   { key: "subProgress", label: "Sub-Progress" },
   { key: "timelineStart", label: "Start" },
   { key: "timelineEnd", label: "End" },

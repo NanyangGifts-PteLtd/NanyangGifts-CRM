@@ -327,6 +327,7 @@ export async function POST(req: NextRequest) {
         up,
         cn_tracking,
         timeline_groups,
+        num_of_cartons,
         shipper,
         shipper_id
             `,
@@ -538,7 +539,10 @@ export async function POST(req: NextRequest) {
           trackingOptions.length === 1 ? trackingOptions[0] : null,
         tracking_options: trackingOptions,
         timeline_options: timelineOptions(item.timeline_groups),
-        cartons: null,
+        // Cartons are maintained once per subitem/timeline workflow in the
+        // CRM Timeline header. Bring that value into every shipper Send
+        // preview so selecting a timeline does not discard it.
+        cartons: item.num_of_cartons ?? null,
         item_name: item.name ?? null,
         delivery_info: buildDeliveryInfo(ocfItem) ?? null,
         qty: item.qty ?? null,
