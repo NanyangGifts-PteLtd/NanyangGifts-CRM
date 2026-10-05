@@ -158,7 +158,6 @@ export const PAYMENT_COLS: ColumnDef[] = [
   { key: "name", label: "Subitem", width: 290, minWidth: 170 },
   { key: "payment", label: "Payment", width: 82, minWidth: 7 },
   { key: "status", label: "Status", width: 100, minWidth: 7 },
-  { key: "shipper", label: "Shipper", width: 80, minWidth: 7 },
   { key: "cnTracking", label: "CN Tracking #", width: 130, minWidth: 7 },
   { key: "sgTracking", label: "SG Tracking #", width: 130, minWidth: 7 },
   { key: "supplier", label: "Supplier", width: 80, minWidth: 7 },
@@ -1084,7 +1083,13 @@ export function SubitemsTable({
     string[]
   >([]);
   const [pushPreviewTimelineOptions, setPushPreviewTimelineOptions] = useState<
-    Array<{ id: string; label: string; cnTracking: string; cartons: string }>
+    Array<{
+      id: string;
+      label: string;
+      cnTracking: string;
+      cartons: string;
+      shipper: string;
+    }>
   >([]);
   const [pushPreviewTimelineId, setPushPreviewTimelineId] = useState("");
   const [pushPreviewHistory, setPushPreviewHistory] = useState<{
@@ -2033,6 +2038,9 @@ export function SubitemsTable({
               cartons: String(
                 (option as { cartons?: unknown })?.cartons ?? "",
               ),
+              shipper: String(
+                (option as { shipper?: unknown })?.shipper ?? "",
+              ),
             }))
             .filter((option: { id: string }) => Boolean(option.id))
         : [];
@@ -2064,7 +2072,14 @@ export function SubitemsTable({
           ? timelineOptions[0].id
           : "",
       );
-      setPushPreviewShipperName(String(row.shipper_name || "Selected shipper"));
+      const selectedTimelineShipper =
+        trackingOptions.length === 1
+          ? timelineOptions.find(
+              (timeline: { cnTracking: string; shipper: string }) =>
+                timeline.cnTracking === trackingOptions[0],
+            )?.shipper
+          : "";
+      setPushPreviewShipperName(selectedTimelineShipper || "");
       setPushPreviewHistory({
         alreadyPushed: Boolean(row.already_pushed),
         differentShipper: Boolean(row.pushed_to_different_shipper),
@@ -2134,6 +2149,8 @@ export function SubitemsTable({
                   }
                 : previous,
             );
+            setPushPreviewTimelineId(timeline?.id ?? "");
+            if (timeline?.shipper) setPushPreviewShipperName(timeline.shipper);
           }}
           className={className}
         >
@@ -2161,6 +2178,7 @@ export function SubitemsTable({
               );
               setPushPreviewTimelineId(timelineId);
               if (timeline) updatePushPreview("cartons", timeline.cartons);
+              if (timeline?.shipper) setPushPreviewShipperName(timeline.shipper);
             }}
             className={`mt-2 w-full rounded-md border px-3 py-2 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-cyan-200 ${
               pushPreviewTimelineId
@@ -2241,9 +2259,7 @@ export function SubitemsTable({
           values: [
             {
               ...pushPreview,
-              ...(pushPreviewTrackingOptions.length === 0
-                ? { timeline_id: pushPreviewTimelineId }
-                : {}),
+              timeline_id: pushPreviewTimelineId,
             },
           ],
         }),
@@ -3604,7 +3620,9 @@ export function SubitemsTable({
                   id="shipper-send-title"
                   className="text-xl font-semibold text-slate-900"
                 >
-                  Sending to {pushPreviewShipperName || "selected shipper"}
+                  {pushPreviewShipperName
+                    ? `Sending to ${pushPreviewShipperName}`
+                    : "Send to shipper"}
                 </h2>
                 <p className="mt-1 text-sm text-slate-600">
                   CRM subitem: {pushPreview.subitemName || "Unnamed subitem"}
@@ -4659,7 +4677,32 @@ export function SubitemsTable({
                             cnTracking={timeline.cnTracking}
                             sgTracking={timeline.sgTracking}
                             numOfCartons={timeline.numOfCartons ?? ""}
-                            shipper={sub.shipper ?? ""}
+                            shipper={timeline.shipper ?? sub.shipper ?? ""}
+                            shipperOptionId={
+                              timeline.shipperOptionId ?? sub.shipperOptionId ?? null
+                            }
+                            shipperOptions={shipperOptions}
+                            onAddShipper={onAddShipper}
+                            onDeleteShipper={onDeleteShipper}
+                            onUpdateShipperColor={(name, color, optionId) =>
+                              onUpdateOptionColor?.(
+                                "shipper",
+                                name,
+                                color,
+                                optionId,
+                              )
+                            }
+                            onRenameShipper={(oldName, newName, optionId) =>
+                              onRenameOption?.(
+                                "shipper",
+                                oldName,
+                                newName,
+                                optionId,
+                              )
+                            }
+                            onReorderShippers={(values) =>
+                              onReorderOptions?.("shipper", values)
+                            }
                             onTrackingChange={(tracking) => {
                               const timelineGroups = (sub.timelineGroups?.length
                                   ? sub.timelineGroups
@@ -4716,6 +4759,32 @@ export function SubitemsTable({
                                 ).map((candidate) =>
                                   candidate.id === timeline.id
                                     ? { ...candidate, numOfCartons }
+                                    : candidate,
+                                ),
+                              })
+                            }
+                            onShipperChange={(shipper, shipperOptionId) =>
+                              onUpdateSubitem(sub.id, {
+                                timelineGroups: (sub.timelineGroups?.length
+                                  ? sub.timelineGroups
+                                  : [
+                                      {
+                                        id: "default",
+                                        cnTracking: sub.cnTracking,
+                                        sgTracking: sub.sgTracking,
+                                        rows: sub.timelineRows?.length
+                                          ? sub.timelineRows
+                                          : DEFAULT_TIMELINE_ROWS,
+                                        isDefault: true,
+                                      },
+                                    ]
+                                ).map((candidate) =>
+                                  candidate.id === timeline.id
+                                    ? {
+                                        ...candidate,
+                                        shipper,
+                                        shipperOptionId,
+                                      }
                                     : candidate,
                                 ),
                               })

@@ -395,6 +395,7 @@ export default function GanttChart({
   const [progressById, setProgressById] = useState<
     Map<string, { value: string; systemKey: string | null; color: string }>
   >(new Map());
+  const [shipperOptions, setShipperOptions] = useState<OptionEntry[]>([]);
   useEffect(() => {
     const supabase = createSupabaseClient();
     let active = true;
@@ -419,6 +420,34 @@ export default function GanttChart({
         );
     })();
     return () => { active = false; };
+  }, []);
+  useEffect(() => {
+    const supabase = createSupabaseClient();
+    let active = true;
+    void (async () => {
+      const { data: group } = await supabase
+        .from("option_groups")
+        .select("id")
+        .eq("code", "shipper")
+        .maybeSingle();
+      if (!group) return;
+      const { data } = await supabase
+        .from("option_values")
+        .select("id, value, system_key, color")
+        .eq("group_id", group.id);
+      if (active)
+        setShipperOptions(
+          (data ?? []).map((option) => ({
+            id: option.id,
+            value: option.value,
+            systemKey: option.system_key,
+            color: option.color ?? "#94a3b8",
+          })),
+        );
+    })();
+    return () => {
+      active = false;
+    };
   }, []);
   const schedulerRootRef = useRef<HTMLDivElement | null>(null);
   const timelinePanRef = useRef<TimelinePan | null>(null);
@@ -1763,7 +1792,17 @@ export default function GanttChart({
                   cnTracking={selectedTimelineData.timeline.cnTracking}
                   sgTracking={selectedTimelineData.timeline.sgTracking}
                   numOfCartons={selectedTimelineData.timeline.numOfCartons ?? ""}
-                  shipper={selectedTimelineData.subitem.shipper ?? ""}
+                  shipper={
+                    selectedTimelineData.timeline.shipper ??
+                    selectedTimelineData.subitem.shipper ??
+                    ""
+                  }
+                  shipperOptionId={
+                    selectedTimelineData.timeline.shipperOptionId ??
+                    selectedTimelineData.subitem.shipperOptionId ??
+                    null
+                  }
+                  shipperOptions={shipperOptions}
                   timelineProgressOptions={timelineProgressOptions}
                   readOnly={
                     !canEditSubitem(
@@ -1794,6 +1833,24 @@ export default function GanttChart({
                           (candidate) =>
                             candidate.id === selectedTimelineData.timeline.id
                               ? { ...candidate, numOfCartons }
+                              : candidate,
+                        ),
+                      },
+                    )
+                  }
+                  onShipperChange={(shipper, shipperOptionId) =>
+                    void onUpdateSubitem(
+                      selectedTimelineData.client.id,
+                      selectedTimelineData.subitem.id,
+                      {
+                        timelineGroups: selectedTimelineData.timelines.map(
+                          (candidate) =>
+                            candidate.id === selectedTimelineData.timeline.id
+                              ? {
+                                  ...candidate,
+                                  shipper,
+                                  shipperOptionId,
+                                }
                               : candidate,
                         ),
                       },

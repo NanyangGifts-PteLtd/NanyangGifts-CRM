@@ -34,7 +34,31 @@ function timelineTrackingNumbers(
 type TimelineGroup = Record<string, unknown> & {
   id?: string;
   cnTracking?: string;
+  shipper?: string;
+  shipperOptionId?: string | null;
 };
+
+function timelineShipper(
+  timelineGroups: unknown,
+  fallback: { shipper_id: string | null; shipper: string | null },
+  selection: Record<string, unknown> = {},
+) {
+  const groups = Array.isArray(timelineGroups)
+    ? (timelineGroups as TimelineGroup[])
+    : [];
+  const timelineId = String(selection.timeline_id ?? "").trim();
+  const trackingNumber = String(selection.cn_tracking_no ?? "").trim();
+  const timeline =
+    groups.find((group) => String(group.id ?? "") === timelineId) ??
+    groups.find(
+      (group) => String(group.cnTracking ?? "").trim() === trackingNumber,
+    ) ??
+    (groups.length === 1 ? groups[0] : undefined);
+  return {
+    id: timeline?.shipperOptionId ?? fallback.shipper_id,
+    name: timeline?.shipper ?? fallback.shipper,
+  };
+}
 
 function addFirstTimelineTracking(
   timelineGroups: unknown,
@@ -177,10 +201,26 @@ export async function POST(request: NextRequest) {
           .toLowerCase(),
       ) ??
       null;
+    const values = new Map(
+      (body.values ?? []).map((value) => [value.subitemId, value]),
+    );
     const clientIds = new Set(
       subitems!.map((item) => item.client_id).filter(Boolean),
     );
-    const shipperIds = new Set(subitems!.map(resolveShipper).filter(Boolean));
+    const shipperIds = new Set(
+      subitems!
+        .map((item) =>
+          resolveShipper((() => {
+            const selected = timelineShipper(
+              item.timeline_groups,
+              item,
+              values.get(item.id),
+            );
+            return { shipper_id: selected.id, shipper: selected.name };
+          })()),
+        )
+        .filter(Boolean),
+    );
     if (clientIds.size !== 1)
       return NextResponse.json(
         {
@@ -198,9 +238,6 @@ export async function POST(request: NextRequest) {
         { status: 400 },
       );
 
-    const values = new Map(
-      (body.values ?? []).map((value) => [value.subitemId, value]),
-    );
     const shared = body.shared ?? {};
     const requiredShared = [
       "info_provided_date",

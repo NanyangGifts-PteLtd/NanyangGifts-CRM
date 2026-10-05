@@ -157,8 +157,16 @@ export function TimelineSection({
   sgTracking = "",
   numOfCartons = "",
   shipper = "",
+  shipperOptionId = null,
+  shipperOptions = [],
   onTrackingChange,
   onCartonsChange,
+  onShipperChange,
+  onAddShipper,
+  onDeleteShipper,
+  onUpdateShipperColor,
+  onRenameShipper,
+  onReorderShippers,
   onRemoveTimeline,
   timelineProgressOptions,
   onAddTimelineProgress,
@@ -175,11 +183,29 @@ export function TimelineSection({
   sgTracking?: string;
   numOfCartons?: string;
   shipper?: string;
+  shipperOptionId?: string | null;
+  shipperOptions?: OptionEntry[];
   onTrackingChange?: (values: {
     cnTracking: string;
     sgTracking: string;
   }) => void;
   onCartonsChange?: (value: string) => void;
+  onShipperChange?: (value: string, optionId: string | null) => void;
+  onAddShipper?: (name: string) => void | Promise<void>;
+  onDeleteShipper?: (name: string, optionId?: string) => void | Promise<void>;
+  onUpdateShipperColor?: (
+    name: string,
+    color: string,
+    optionId?: string,
+  ) => void | Promise<void>;
+  onRenameShipper?: (
+    oldName: string,
+    newName: string,
+    optionId?: string,
+  ) => void | Promise<void>;
+  onReorderShippers?: (
+    layout: Array<{ id?: string; value: string; section: number }>,
+  ) => void | Promise<void>;
   onRemoveTimeline?: () => void;
   timelineProgressOptions: OptionEntry[];
   onAddTimelineProgress?: (name: string) => void | Promise<void>;
@@ -565,6 +591,26 @@ export function TimelineSection({
             className="h-7 w-20 rounded border border-white/60 bg-white px-2 text-xs text-slate-700 outline-none disabled:cursor-not-allowed"
           />
         </label>
+        <div className="flex items-center gap-1 text-[11px] font-medium text-white">
+          Shipper
+          <div className="h-8 min-w-[132px]">
+            <StatusBadge
+              value={shipper}
+              options={shipperOptions}
+              readOnly={readOnly}
+              onChange={(value, option) =>
+                onShipperChange?.(value, option?.id ?? null)
+              }
+              onAddOption={onAddShipper}
+              onDeleteOption={onDeleteShipper}
+              onUpdateOptionColor={onUpdateShipperColor}
+              onRenameOption={onRenameShipper}
+              onReorderOptions={onReorderShippers}
+              manageLabel="shipper"
+              sectionCount={4}
+            />
+          </div>
+        </div>
         <label className="ml-auto flex items-center gap-1 text-[11px] font-medium text-white">
           CN Tracking
           <input

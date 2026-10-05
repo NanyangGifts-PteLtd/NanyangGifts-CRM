@@ -16,6 +16,7 @@ type CombinedPushPreview = {
         label: string;
         cnTracking?: string;
         cartons?: string;
+        shipper?: string;
       }>;
     }
   >;
@@ -121,13 +122,28 @@ export function CombinedPushPreviewModal({
   );
   useEscapeClose({ open: true, onClose, disabled: saving, isDirty });
   const item = preview.rows[preview.page];
-  const changeItem = (key: string, value: string) =>
+  const shipperForRow = (row: (typeof preview.rows)[number]) => {
+    const timeline = row.timelineOptions?.find(
+      (candidate) =>
+        candidate.id === row.timeline_id ||
+        candidate.cnTracking === row.cn_tracking_no,
+    );
+    return String(timeline?.shipper ?? "").trim();
+  };
+  const selectedShipperNames = new Set(
+    preview.rows.map(shipperForRow).filter(Boolean),
+  );
+  const selectedShipper = shipperForRow(item);
+  const hasMixedShippers = selectedShipperNames.size > 1;
+  const changeItemFields = (changes: Record<string, string>) =>
     onChange({
       ...preview,
       rows: preview.rows.map((row, index) =>
-        index === preview.page ? { ...row, [key]: value } : row,
+        index === preview.page ? { ...row, ...changes } : row,
       ),
     });
+  const changeItem = (key: string, value: string) =>
+    changeItemFields({ [key]: value });
   const required = (key: string) => !String(item[key] ?? "").trim();
   const complete =
     preview.rows.every((row) =>
@@ -141,7 +157,8 @@ export function CombinedPushPreviewModal({
     ) &&
     ["info_provided_date", "delivery_info", "sea_or_air", "tax_refund"].every(
       (key) => String(preview.shared[key] ?? "").trim(),
-    );
+    ) &&
+    !hasMixedShippers;
   const field = (
     label: string,
     key: string,
@@ -169,7 +186,9 @@ export function CombinedPushPreviewModal({
         <header className="flex items-start justify-between border-b border-slate-200 px-5 py-4">
           <div>
             <h2 className="text-xl font-semibold text-slate-900">
-              Sending to {preview.shipperName}
+              {selectedShipper
+                ? `Sending to ${selectedShipper}`
+                : "Send to shipper"}
             </h2>
             <p className="mt-1 text-lg font-medium text-slate-700">
               {item.name}
@@ -184,6 +203,12 @@ export function CombinedPushPreviewModal({
           </button>
         </header>
         <main className="flex-1 overflow-y-auto p-5">
+          {hasMixedShippers && (
+            <div className="mb-4 rounded border border-red-300 bg-red-50 p-3 text-sm text-red-800">
+              The selected timelines use different shippers. Multi-send can
+              only be sent when every selected timeline has the same shipper.
+            </div>
+          )}
           {item.alreadyPushed && (
             <div className="mb-4 rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
               Previously sent to{" "}
@@ -200,8 +225,15 @@ export function CombinedPushPreviewModal({
                   const timeline = item.timelineOptions?.find(
                     (candidate) => candidate.cnTracking === cnTrackingNo,
                   );
-                  changeItem("cn_tracking_no", cnTrackingNo);
-                  if (timeline) changeItem("cartons", timeline.cartons ?? "");
+                  changeItemFields({
+                    cn_tracking_no: cnTrackingNo,
+                    ...(timeline
+                      ? {
+                          timeline_id: timeline.id,
+                          cartons: timeline.cartons ?? "",
+                        }
+                      : {}),
+                  });
                 }}
                 className={`mt-1 w-full rounded border px-3 py-2 text-sm ${required("cn_tracking_no") ? "border-red-300 bg-red-50" : "border-slate-300"}`}
               >
@@ -229,8 +261,10 @@ export function CombinedPushPreviewModal({
                     const timeline = item.timelineOptions?.find(
                       (candidate) => candidate.id === timelineId,
                     );
-                    changeItem("timeline_id", timelineId);
-                    if (timeline) changeItem("cartons", timeline.cartons ?? "");
+                    changeItemFields({
+                      timeline_id: timelineId,
+                      ...(timeline ? { cartons: timeline.cartons ?? "" } : {}),
+                    });
                   }}
                   className={`mt-2 w-full rounded border px-3 py-2 text-sm ${item.timeline_id ? "border-slate-300" : "border-red-300 bg-red-50"}`}
                 >

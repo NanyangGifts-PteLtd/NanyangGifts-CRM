@@ -82,6 +82,9 @@ export interface TimelineGroup {
   sgTracking: string;
   /** Cartons belong to this shipment timeline, not the parent subitem. */
   numOfCartons?: string;
+  /** Shipper ownership belongs to this shipment timeline. */
+  shipper?: string;
+  shipperOptionId?: string | null;
   rows: TimelineRow[];
   /** The original imported timeline remains protected. */
   isDefault?: boolean;

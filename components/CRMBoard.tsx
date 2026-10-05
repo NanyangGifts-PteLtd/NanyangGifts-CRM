@@ -5650,6 +5650,9 @@ export function CRMBoard({
                   cartons: String(
                     (option as { cartons?: unknown })?.cartons ?? "",
                   ),
+                  shipper: String(
+                    (option as { shipper?: unknown })?.shipper ?? "",
+                  ),
                 }))
                 .filter((option: { id: string }) => Boolean(option.id))
             : [],

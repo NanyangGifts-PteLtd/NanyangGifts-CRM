@@ -154,7 +154,31 @@ type TimelineGroup = Record<string, unknown> & {
   id?: string;
   cnTracking?: string;
   numOfCartons?: string;
+  shipper?: string;
+  shipperOptionId?: string | null;
 };
+
+function timelineShipper(
+  timelineGroups: unknown,
+  fallback: { shipper?: string | null; shipper_id?: string | null },
+  selection: Record<string, unknown> = {},
+) {
+  const groups = Array.isArray(timelineGroups)
+    ? (timelineGroups as TimelineGroup[])
+    : [];
+  const timelineId = String(selection.timeline_id ?? "").trim();
+  const trackingNumber = String(selection.cn_tracking_no ?? "").trim();
+  const timeline =
+    groups.find((group) => String(group.id ?? "") === timelineId) ??
+    groups.find(
+      (group) => String(group.cnTracking ?? "").trim() === trackingNumber,
+    ) ??
+    (groups.length === 1 ? groups[0] : undefined);
+  return {
+    name: timeline?.shipper ?? fallback.shipper ?? "",
+    id: timeline?.shipperOptionId ?? fallback.shipper_id ?? null,
+  };
+}
 
 function timelineOptions(timelineGroups: unknown) {
   const groups = Array.isArray(timelineGroups)
@@ -169,6 +193,8 @@ function timelineOptions(timelineGroups: unknown) {
             label: `Project Timeline ${index + 1}`,
             cnTracking: String(group.cnTracking ?? "").trim(),
             cartons: group.numOfCartons ?? null,
+            shipper: String(group.shipper ?? ""),
+            shipperOptionId: group.shipperOptionId ?? null,
           },
         ]
       : [];
@@ -443,19 +469,26 @@ export async function POST(req: NextRequest) {
         { status: 400 },
       );
 
-    const subitems = (rawSubitems ?? []).map((item) => ({
-      ...item,
-      configured_shipper_id:
-        item.shipper_id && shipperIds.has(item.shipper_id)
-          ? item.shipper_id
-          : resolveShipperId(item.shipper),
-      shipper_id:
-        body.targetShipperId ??
-        (item.shipper_id && shipperIds.has(item.shipper_id)
-          ? item.shipper_id
-          : resolveShipperId(item.shipper)),
-      shipper: body.targetShipperLabel ?? item.shipper,
-    }));
+    const suppliedBySubitemId = new Map(
+      (body.values ?? []).map((value) => [value.subitemId, value]),
+    );
+    const subitems = (rawSubitems ?? []).map((item) => {
+      const timeline = timelineShipper(
+        item.timeline_groups,
+        item,
+        suppliedBySubitemId.get(item.id),
+      );
+      const resolvedId =
+        timeline.id && shipperIds.has(timeline.id)
+          ? timeline.id
+          : resolveShipperId(timeline.name);
+      return {
+        ...item,
+        configured_shipper_id: resolvedId,
+        shipper_id: body.targetShipperId ?? resolvedId,
+        shipper: body.targetShipperLabel ?? timeline.name,
+      };
+    });
     const unresolvedItems = subitems.filter((item) => !item.shipper_id);
 
     if (subitems.length === 0 || unresolvedItems.length > 0) {
@@ -711,9 +744,6 @@ export async function POST(req: NextRequest) {
         }),
       });
 
-    const suppliedBySubitemId = new Map(
-      (body.values ?? []).map((value) => [value.subitemId, value]),
-    );
     for (const preview of previews) {
       const source = subitems.find((item) => item.id === preview.subitem_id);
       const supplied = suppliedBySubitemId.get(preview.subitem_id);
