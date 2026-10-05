@@ -42,6 +42,7 @@ type Quote = {
   invoice_count: number;
   total_balance: number | null;
   price_invoice_match: string | null;
+  price_invoice_match_option_id: string | null;
   payment_status: string | null;
   invoice_payment_status: string | null;
   invoice_payment_status_option_id: string | null;
@@ -54,6 +55,7 @@ type QuoteUpdates = {
   trackingSummary?: string;
   paymentStatus?: string;
   priceInvoiceMatch?: string;
+  priceInvoiceMatchOptionId?: string | null;
   invoicePaymentStatus?: string;
   invoicePaymentStatusOptionId?: string | null;
 };
@@ -189,6 +191,10 @@ export function TrackingQuoteList({
                 updates.paymentStatus ?? quote.payment_status ?? "",
               price_invoice_match:
                 updates.priceInvoiceMatch ?? quote.price_invoice_match ?? "",
+              price_invoice_match_option_id:
+                updates.priceInvoiceMatch !== undefined
+                  ? (updates.priceInvoiceMatchOptionId ?? null)
+                  : quote.price_invoice_match_option_id,
               invoice_payment_status:
                 updates.invoicePaymentStatus ??
                 quote.invoice_payment_status ??
@@ -234,6 +240,10 @@ export function TrackingQuoteList({
                     updates.priceInvoiceMatch !== undefined
                       ? previousQuote.price_invoice_match
                       : quote.price_invoice_match,
+                  price_invoice_match_option_id:
+                    updates.priceInvoiceMatch !== undefined
+                      ? previousQuote.price_invoice_match_option_id
+                      : quote.price_invoice_match_option_id,
                   invoice_payment_status:
                     updates.invoicePaymentStatus !== undefined
                       ? previousQuote.invoice_payment_status
@@ -390,7 +400,12 @@ export function TrackingQuoteList({
                   small
                   manageLabel="price and invoice match"
                   onChange={(value) =>
-                    void updateQuote(quote.id, { priceInvoiceMatch: value })
+                    void updateQuote(quote.id, {
+                      priceInvoiceMatch: value,
+                      priceInvoiceMatchOptionId:
+                        matchOptions.find((option) => option.value === value)
+                          ?.id ?? null,
+                    })
                   }
                   {...labelManagementProps("tracking_price_invoice_match")}
                 />

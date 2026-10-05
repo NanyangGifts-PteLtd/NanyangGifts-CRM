@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { canEditClient } from "@/lib/client-access";
+import { refreshClientTrackingRollups } from "@/lib/quickbooks/tracking-rollups";
 
 const text = (value: unknown, maxLength = 200) =>
   typeof value === "string" ? value.trim().slice(0, maxLength) : "";
@@ -41,8 +42,14 @@ export async function PATCH(
       updates.tracking_summary = text(body.trackingSummary);
     if ("paymentStatus" in body)
       updates.payment_status = text(body.paymentStatus);
-    if ("priceInvoiceMatch" in body)
+    if ("priceInvoiceMatch" in body) {
       updates.price_invoice_match = text(body.priceInvoiceMatch);
+      updates.price_invoice_match_option_id =
+        typeof body.priceInvoiceMatchOptionId === "string" &&
+        body.priceInvoiceMatchOptionId.trim()
+          ? body.priceInvoiceMatchOptionId.trim()
+          : null;
+    }
     if ("invoicePaymentStatus" in body) {
       updates.invoice_payment_status = text(body.invoicePaymentStatus);
       updates.invoice_payment_status_option_id =
@@ -59,10 +66,15 @@ export async function PATCH(
       .update(updates)
       .eq("id", quoteId)
       .select(
-        "id, title, tracking_summary, payment_status, invoice_payment_status, invoice_payment_status_option_id, quickbooks_estimate_doc_number, created_at, quote_total, quote_subtotal, invoice_total, invoice_subtotal, invoice_count, total_balance, price_invoice_match, last_invoice_synced_at",
+        "id, title, tracking_summary, payment_status, invoice_payment_status, invoice_payment_status_option_id, quickbooks_estimate_doc_number, created_at, quote_total, quote_subtotal, invoice_total, invoice_subtotal, invoice_count, total_balance, price_invoice_match, price_invoice_match_option_id, last_invoice_synced_at",
       )
       .single();
     if (updateError) throw updateError;
+    if (
+      "priceInvoiceMatch" in body ||
+      "invoicePaymentStatus" in body
+    )
+      await refreshClientTrackingRollups(quote.client_id);
     return NextResponse.json({ quote: updatedQuote });
   } catch (error) {
     return NextResponse.json(

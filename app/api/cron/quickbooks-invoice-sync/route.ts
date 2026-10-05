@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { qboQuery, qboRequest } from "@/lib/quickbooks/api";
 import { getSystemLabel } from "@/lib/system-labels";
+import { refreshClientTrackingRollups } from "@/lib/quickbooks/tracking-rollups";
 
 type QuickBooksInvoice = {
   Id?: string;
@@ -52,8 +53,10 @@ export async function GET(request: NextRequest) {
 
   let paidPaymentLabel;
   let partiallyPaidPaymentLabel;
+  let matchingLabel;
+  let mismatchLabel;
   try {
-    [paidPaymentLabel, partiallyPaidPaymentLabel] = await Promise.all([
+    [paidPaymentLabel, partiallyPaidPaymentLabel, matchingLabel, mismatchLabel] = await Promise.all([
       getSystemLabel(
         "tracking_invoice_payment_status",
         "tracking_invoice_payment_status_paid",
@@ -61,6 +64,14 @@ export async function GET(request: NextRequest) {
       getSystemLabel(
         "tracking_invoice_payment_status",
         "tracking_invoice_payment_status_partially_paid",
+      ),
+      getSystemLabel(
+        "tracking_price_invoice_match",
+        "tracking_price_invoice_match_yes",
+      ),
+      getSystemLabel(
+        "tracking_price_invoice_match",
+        "tracking_price_invoice_match_mismatch",
       ),
     ]);
   } catch (error) {
@@ -77,6 +88,7 @@ export async function GET(request: NextRequest) {
 
   let synced = 0;
   let failed = 0;
+  const syncedClientIds = new Set<string>();
   const failures: Array<{ clientId: string; quoteId: string; error: string }> = [];
 
   for (const generation of activeGenerations) {
@@ -130,11 +142,11 @@ export async function GET(request: NextRequest) {
       const quoteTotal = numberOrNull(estimate?.TotalAmt);
       const quoteTaxTotal = numberOrNull(estimate?.TxnTaxDetail?.TotalTax) ?? 0;
       const quoteSubtotal = quoteTotal === null ? null : quoteTotal - quoteTaxTotal;
-      const priceInvoiceMatch = !rows.length
-        ? ""
+      const priceInvoiceMatchLabel = !rows.length
+        ? null
         : quoteSubtotal !== null && Math.abs(quoteSubtotal - invoiceSubtotal) < 0.005
-          ? "Yes"
-          : "ERROR - MISMATCH";
+          ? matchingLabel
+          : mismatchLabel;
       const invoicePaymentLabel = !rows.length
         ? null
         : Math.abs(totalBalance) < 0.005
@@ -152,7 +164,8 @@ export async function GET(request: NextRequest) {
           invoice_total: invoiceTotal,
           invoice_subtotal: invoiceSubtotal,
           total_balance: totalBalance,
-          price_invoice_match: priceInvoiceMatch,
+          price_invoice_match: priceInvoiceMatchLabel?.value ?? "",
+          price_invoice_match_option_id: priceInvoiceMatchLabel?.id ?? null,
           ...(invoicePaymentLabel
             ? {
                 invoice_payment_status: invoicePaymentLabel.value,
@@ -164,6 +177,7 @@ export async function GET(request: NextRequest) {
         .eq("id", generation.id);
       if (generationUpdateError) throw generationUpdateError;
 
+      syncedClientIds.add(generation.client_id);
       synced += 1;
     } catch (error) {
       failed += 1;
@@ -171,6 +185,22 @@ export async function GET(request: NextRequest) {
         clientId: generation.client_id,
         quoteId: generation.id,
         error: error instanceof Error ? error.message : "Invoice sync failed",
+      });
+    }
+  }
+
+  for (const clientId of syncedClientIds) {
+    try {
+      await refreshClientTrackingRollups(clientId);
+    } catch (error) {
+      failed += 1;
+      failures.push({
+        clientId,
+        quoteId: "client-rollup",
+        error:
+          error instanceof Error
+            ? error.message
+            : "Client Tracking rollup failed",
       });
     }
   }

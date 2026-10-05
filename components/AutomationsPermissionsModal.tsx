@@ -52,8 +52,36 @@ const automations: ReferenceItem[] = [
     title: "QuickBooks estimate invoice sync",
     trigger: "Daily Vercel Cron at 18:00 UTC (02:00 Singapore time).",
     behaviour:
-      "Finds QuickBooks invoices linked to tracked estimates and updates invoice number, date, tax, total, balance, and tracking fields in CRM.",
+      "Finds QuickBooks invoices linked to tracked estimates and updates invoice number, date, GST-exclusive and GST-inclusive totals, balance, and quote-level tracking fields in CRM.",
     source: "app/api/cron/quickbooks-invoice-sync/route.ts",
+  },
+  {
+    title: "Quote price and invoice matching",
+    trigger:
+      "A user synchronizes a quote's invoices, or the daily QuickBooks estimate invoice sync runs.",
+    behaviour:
+      "Compares the quote total before GST with the combined linked-invoice total before GST. An exact match within the currency rounding tolerance sets Yes; otherwise it sets ERROR - MISMATCH. The stored label is selected by stable option ID.",
+    scope: "Quotes without linked invoices remain blank.",
+    source:
+      "app/api/quickbooks/estimate-invoices/route.ts; app/api/cron/quickbooks-invoice-sync/route.ts",
+  },
+  {
+    title: "Quote invoice payment status",
+    trigger:
+      "A user synchronizes a quote's invoices, or the daily QuickBooks estimate invoice sync runs.",
+    behaviour:
+      "Sets PAID when linked invoices exist and their combined balance is zero. Sets Partially PAID when the balance is non-zero but below the combined invoice total. Other cases retain their current value. Labels are selected by stable option ID.",
+    source:
+      "app/api/quickbooks/estimate-invoices/route.ts; app/api/cron/quickbooks-invoice-sync/route.ts",
+  },
+  {
+    title: "Client Tracking quote rollups",
+    trigger:
+      "A quote's matching/payment check changes through invoice synchronization or a manual quote-label update.",
+    behaviour:
+      "Across every active quote, client matching prioritizes ERROR - MISMATCH, then Partially Invoiced, then Yes when every quote is Yes or Verified. Client payment becomes PAID when every quote is PAID, Partially PAID when statuses are mixed or only some are set, and blank when all are blank. All comparisons and stored results use stable option IDs.",
+    source:
+      "lib/quickbooks/tracking-rollups.ts; app/api/quickbooks/tracking-quotes/[id]/route.ts",
   },
   {
     title: "QuickBooks Bill sync",
@@ -142,6 +170,23 @@ const automations: ReferenceItem[] = [
     behaviour:
       "Resolves the label by stable option ID/system key rather than its visible name, so renaming a label does not break the process.",
     source: "lib/system-labels.ts; label option APIs and migrations",
+  },
+  {
+    title: "Client-profile email enrichment",
+    trigger: "A CRM client's email address is changed successfully.",
+    behaviour:
+      "Best-effort background enrichment copies the email into the linked customer profile only when that profile email is blank. It never overwrites an existing profile email and does not block the CRM edit if enrichment fails.",
+    source:
+      "lib/crm.ts; app/api/customer-profiles/auto-save-email/route.ts",
+  },
+  {
+    title: "Application update availability notification",
+    trigger:
+      "An authenticated tab is refocused, becomes visible, or reaches the five-minute deployment check interval.",
+    behaviour:
+      "Compares the loaded deployment with the current production deployment and shows a persistent Refresh now notification when a newer version is available. It never reloads automatically, protecting unsaved work.",
+    source:
+      "components/DeploymentUpdateNotifier.tsx; app/api/app-version/route.ts",
   },
 ];
 

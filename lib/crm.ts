@@ -256,6 +256,10 @@ type Clients = {
   importance_option_id?: string | null;
   progress: string | null;
   progress_option_id?: string | null;
+  tracking_overall_price_invoice_match?: string | null;
+  tracking_overall_price_invoice_match_option_id?: string | null;
+  tracking_overall_invoice_payment_status?: string | null;
+  tracking_overall_invoice_payment_status_option_id?: string | null;
   company: string | null;
   email: string | null;
   phone: string | null;
@@ -527,6 +531,14 @@ function mapClients(row: Clients): Client {
     importanceOptionId: row.importance_option_id ?? null,
     progress: row.progress ?? "",
     progressOptionId: row.progress_option_id ?? null,
+    trackingOverallPriceInvoiceMatch:
+      row.tracking_overall_price_invoice_match ?? null,
+    trackingOverallPriceInvoiceMatchOptionId:
+      row.tracking_overall_price_invoice_match_option_id ?? null,
+    trackingOverallInvoicePaymentStatus:
+      row.tracking_overall_invoice_payment_status ?? null,
+    trackingOverallInvoicePaymentStatusOptionId:
+      row.tracking_overall_invoice_payment_status_option_id ?? null,
     company: row.company ?? "",
     email: row.email ?? "",
     phone: row.phone ?? "",

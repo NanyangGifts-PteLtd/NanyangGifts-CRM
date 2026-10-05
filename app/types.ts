@@ -228,6 +228,10 @@ export interface Client {
   importanceOptionId?: string | null;
   progress: string;
   progressOptionId?: string | null;
+  trackingOverallPriceInvoiceMatch?: string | null;
+  trackingOverallPriceInvoiceMatchOptionId?: string | null;
+  trackingOverallInvoicePaymentStatus?: string | null;
+  trackingOverallInvoicePaymentStatusOptionId?: string | null;
   company: string;
   email: string;
   phone: string;

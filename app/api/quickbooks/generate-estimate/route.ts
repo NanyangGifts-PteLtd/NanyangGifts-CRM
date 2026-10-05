@@ -4,6 +4,7 @@ import { qboQuery, qboRequest } from "@/lib/quickbooks/api";
 import { getSystemLabel } from "@/lib/system-labels";
 import { canEditClient } from "@/lib/client-access";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { refreshClientTrackingRollups } from "@/lib/quickbooks/tracking-rollups";
 
 const ELIGIBLE_STATUS_KEYS = [
   "subitem_status_quoted",
@@ -371,6 +372,10 @@ export async function POST(req: NextRequest) {
         created_at: new Date().toISOString(),
       });
     if (activityError) throw activityError;
+
+    await refreshClientTrackingRollups(client.id).catch((rollupError) =>
+      console.error("Could not refresh client Tracking rollups", rollupError),
+    );
 
     return NextResponse.json({
       success: true,

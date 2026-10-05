@@ -277,6 +277,18 @@ const CLIENT_HEADER_COLS: HeaderCol[] = [
   { key: "totalPrice", label: "Total Price", width: 80, minWidth: 7 },
   { key: "totalMarkup", label: "Total Markup", width: 90, minWidth: 7 },
   { key: "progress", label: "Progress", width: 110, minWidth: 7 },
+  {
+    key: "trackingOverallPriceInvoiceMatch",
+    label: "Price and Invoice Match?",
+    width: 210,
+    minWidth: 150,
+  },
+  {
+    key: "trackingOverallInvoicePaymentStatus",
+    label: "Payment Status",
+    width: 165,
+    minWidth: 120,
+  },
   { key: "dateCreated", label: "Date Created", width: 90, minWidth: 7 },
   { key: "closedDate", label: "Closed Date", width: 90, minWidth: 7 },
   { key: "addClientCol", label: "", width: 44, minWidth: 44 },
@@ -314,11 +326,27 @@ const TRACKING_HEADER_COLS: HeaderCol[] = [
   { key: "client", label: "Client", width: 250, minWidth: 7 },
   { key: "people", label: "People", width: 90, minWidth: 7 },
   { key: "channel", label: "Channel", width: 110, minWidth: 7 },
+  {
+    key: "trackingOverallPriceInvoiceMatch",
+    label: "Price and Invoice Match?",
+    width: 210,
+    minWidth: 150,
+  },
+  {
+    key: "trackingOverallInvoicePaymentStatus",
+    label: "Payment Status",
+    width: 165,
+    minWidth: 120,
+  },
   { key: "empty", label: "", width: 44, minWidth: 44 },
 ];
 const TRACKING_CLIENT_COLUMN_KEYS = new Set(
   TRACKING_HEADER_COLS.map((column) => column.key),
 );
+const TRACKING_ONLY_CLIENT_COLUMN_KEYS = new Set([
+  "trackingOverallPriceInvoiceMatch",
+  "trackingOverallInvoicePaymentStatus",
+]);
 
 interface CRMBoardProps {
   clients: Client[];
@@ -1812,10 +1840,11 @@ export function CRMBoard({
     () =>
       mergedHeaderCols.filter(
         (col) =>
-          !hiddenColumnKeys.has(`client:${col.key}`) ||
-          ["selectCheckbox", "client", "addClientCol", "empty"].includes(
-            col.key,
-          ),
+          !TRACKING_ONLY_CLIENT_COLUMN_KEYS.has(col.key) &&
+          (!hiddenColumnKeys.has(`client:${col.key}`) ||
+            ["selectCheckbox", "client", "addClientCol", "empty"].includes(
+              col.key,
+            )),
       ),
     [mergedHeaderCols, hiddenColumnKeys],
   );

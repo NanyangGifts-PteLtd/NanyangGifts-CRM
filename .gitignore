@@ -44,3 +44,6 @@ next-env.d.ts
 
 # vscode
 .vscode/*
+
+# local migration files
+migrations/*

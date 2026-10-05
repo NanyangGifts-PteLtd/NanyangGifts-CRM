@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { qboQuery, qboRequest } from "@/lib/quickbooks/api";
 import { getSystemLabel } from "@/lib/system-labels";
+import { refreshClientTrackingRollups } from "@/lib/quickbooks/tracking-rollups";
 
 const ELIGIBLE_STATUS_KEYS = [
   "subitem_status_quoted",
@@ -307,6 +308,9 @@ export async function GET(request: NextRequest) {
     estimates.sort(
       (first, second) =>
         new Date(second.created_at).getTime() - new Date(first.created_at).getTime(),
+    );
+    await refreshClientTrackingRollups(clientId).catch((rollupError) =>
+      console.error("Could not refresh client Tracking rollups", rollupError),
     );
     return NextResponse.json({ estimates });
   } catch (error: any) {

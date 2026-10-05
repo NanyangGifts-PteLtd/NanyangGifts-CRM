@@ -3214,6 +3214,50 @@ export function ClientRow({
             </button>
           )}
         </div>
+        {trackingMode && (
+          <>
+            <div
+              data-client-column="trackingOverallPriceInvoiceMatch"
+              className="tracking-client-cell overflow-hidden border-r border-[#D0D4E4] p-0"
+              style={{
+                height: 30,
+                minWidth: colWidth.trackingOverallPriceInvoiceMatch,
+                width: colWidth.trackingOverallPriceInvoiceMatch,
+                order: columnOrderMap.trackingOverallPriceInvoiceMatch,
+              }}
+              title="Calculated from all active quotes for this client"
+            >
+              <StatusBadge
+                value={client.trackingOverallPriceInvoiceMatch ?? ""}
+                onChange={() => undefined}
+                options={trackingPriceInvoiceMatchLabelOptions}
+                readOnly
+                readOnlyReason="Calculated from all active quote matching checks"
+                manageLabel="price and invoice match"
+              />
+            </div>
+            <div
+              data-client-column="trackingOverallInvoicePaymentStatus"
+              className="tracking-client-cell overflow-hidden border-r border-[#D0D4E4] p-0"
+              style={{
+                height: 30,
+                minWidth: colWidth.trackingOverallInvoicePaymentStatus,
+                width: colWidth.trackingOverallInvoicePaymentStatus,
+                order: columnOrderMap.trackingOverallInvoicePaymentStatus,
+              }}
+              title="Calculated from all active quote payment statuses"
+            >
+              <StatusBadge
+                value={client.trackingOverallInvoicePaymentStatus ?? ""}
+                onChange={() => undefined}
+                options={trackingInvoicePaymentStatusLabelOptions}
+                readOnly
+                readOnlyReason="Calculated from all active quote payment statuses"
+                manageLabel="invoice payment status"
+              />
+            </div>
+          </>
+        )}
 
         <div
           draggable={!isNameEditing}
