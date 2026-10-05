@@ -175,8 +175,22 @@ export async function POST(request: NextRequest) {
       `SELECT * FROM Invoice WHERE CustomerRef = '${escapedCustomerId}'`,
     );
     const invoices = (response?.QueryResponse?.Invoice ?? []) as QuickBooksInvoice[];
-    const linkedInvoices = invoices.filter((invoice) =>
-      invoiceLinksToEstimate(invoice, generation.quickbooks_estimate_id),
+    const { data: storedInvoices, error: storedInvoicesError } = await supabaseAdmin
+      .from("quickbooks_estimate_invoices")
+      .select("quickbooks_invoice_id, link_source")
+      .eq("estimate_generation_id", generation.id);
+    if (storedInvoicesError) throw storedInvoicesError;
+    // Manual CRM links deliberately remain linked even if QuickBooks itself
+    // does not have an Estimate LinkedTxn for the invoice.
+    const manualInvoiceIds = new Set(
+      (storedInvoices ?? [])
+        .filter((invoice) => invoice.link_source === "manual")
+        .map((invoice) => invoice.quickbooks_invoice_id),
+    );
+    const linkedInvoices = invoices.filter(
+      (invoice) =>
+        invoiceLinksToEstimate(invoice, generation.quickbooks_estimate_id) ||
+        (invoice.Id && manualInvoiceIds.has(String(invoice.Id))),
     );
 
     const rows = linkedInvoices
@@ -200,15 +214,11 @@ export async function POST(request: NextRequest) {
         };
       });
 
-    const { data: storedInvoices, error: storedInvoicesError } = await supabaseAdmin
-      .from("quickbooks_estimate_invoices")
-      .select("quickbooks_invoice_id")
-      .eq("estimate_generation_id", generation.id);
-    if (storedInvoicesError) throw storedInvoicesError;
     const linkedInvoiceIds = new Set(
       rows.map((row) => row.quickbooks_invoice_id),
     );
     const staleInvoiceIds = (storedInvoices ?? [])
+      .filter((invoice) => invoice.link_source !== "manual")
       .map((invoice) => invoice.quickbooks_invoice_id)
       .filter((invoiceId) => !linkedInvoiceIds.has(invoiceId));
     if (staleInvoiceIds.length) {

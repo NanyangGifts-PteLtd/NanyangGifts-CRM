@@ -101,7 +101,22 @@ export async function GET(request: NextRequest) {
       const escapedCustomerId = String(customerId).replace(/'/g, "\\'");
       const response = await qboQuery(`SELECT * FROM Invoice WHERE CustomerRef = '${escapedCustomerId}'`);
       const invoices = (response?.QueryResponse?.Invoice ?? []) as QuickBooksInvoice[];
-      const linked = invoices.filter((invoice) => linksToEstimate(invoice, String(generation.quickbooks_estimate_id)) && invoice.Id);
+      const { data: stored, error: storedError } = await supabaseAdmin
+        .from("quickbooks_estimate_invoices")
+        .select("quickbooks_invoice_id, link_source")
+        .eq("estimate_generation_id", generation.id);
+      if (storedError) throw storedError;
+      const manualInvoiceIds = new Set(
+        (stored ?? [])
+          .filter((row) => row.link_source === "manual")
+          .map((row) => row.quickbooks_invoice_id),
+      );
+      const linked = invoices.filter(
+        (invoice) =>
+          invoice.Id &&
+          (linksToEstimate(invoice, String(generation.quickbooks_estimate_id)) ||
+            manualInvoiceIds.has(String(invoice.Id))),
+      );
       const rows = linked.map((invoice) => {
         const total = numberOrNull(invoice.TotalAmt);
         const taxTotal = numberOrNull(invoice.TxnTaxDetail?.TotalTax) ?? 0;
@@ -119,13 +134,11 @@ export async function GET(request: NextRequest) {
           last_synced_at: new Date().toISOString(),
         };
       });
-      const { data: stored, error: storedError } = await supabaseAdmin
-        .from("quickbooks_estimate_invoices")
-        .select("quickbooks_invoice_id")
-        .eq("estimate_generation_id", generation.id);
-      if (storedError) throw storedError;
       const ids = new Set(rows.map((row) => row.quickbooks_invoice_id));
-      const staleIds = (stored ?? []).map((row) => row.quickbooks_invoice_id).filter((id) => !ids.has(id));
+      const staleIds = (stored ?? [])
+        .filter((row) => row.link_source !== "manual")
+        .map((row) => row.quickbooks_invoice_id)
+        .filter((id) => !ids.has(id));
       if (staleIds.length) {
         const { error } = await supabaseAdmin.from("quickbooks_estimate_invoices")
           .delete().eq("estimate_generation_id", generation.id).in("quickbooks_invoice_id", staleIds);

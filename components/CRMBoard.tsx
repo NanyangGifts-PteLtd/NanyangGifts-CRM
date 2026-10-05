@@ -289,6 +289,12 @@ const CLIENT_HEADER_COLS: HeaderCol[] = [
     width: 165,
     minWidth: 120,
   },
+  {
+    key: "trackingQuoteActions",
+    label: "Quote Actions",
+    width: 125,
+    minWidth: 125,
+  },
   { key: "dateCreated", label: "Date Created", width: 90, minWidth: 7 },
   { key: "closedDate", label: "Closed Date", width: 90, minWidth: 7 },
   { key: "addClientCol", label: "", width: 44, minWidth: 44 },
@@ -338,6 +344,12 @@ const TRACKING_HEADER_COLS: HeaderCol[] = [
     width: 165,
     minWidth: 120,
   },
+  {
+    key: "trackingQuoteActions",
+    label: "Quote Actions",
+    width: 125,
+    minWidth: 125,
+  },
   { key: "empty", label: "", width: 44, minWidth: 44 },
 ];
 const TRACKING_CLIENT_COLUMN_KEYS = new Set(
@@ -346,6 +358,7 @@ const TRACKING_CLIENT_COLUMN_KEYS = new Set(
 const TRACKING_ONLY_CLIENT_COLUMN_KEYS = new Set([
   "trackingOverallPriceInvoiceMatch",
   "trackingOverallInvoicePaymentStatus",
+  "trackingQuoteActions",
 ]);
 
 interface CRMBoardProps {
@@ -1274,6 +1287,12 @@ export function CRMBoard({
   const [clientMergedOrderKeys, setClientMergedOrderKeys] = useState<string[]>(
     [],
   );
+  const [trackingClientOrderKeys, setTrackingClientOrderKeys] = useState<
+    string[]
+  >([]);
+  const [trackingClientWidths, setTrackingClientWidths] = useState<
+    Record<string, number>
+  >({});
   const [customClientWidths, setCustomClientWidths] = useState<
     Record<string, number>
   >({});
@@ -1848,9 +1867,8 @@ export function CRMBoard({
       ),
     [mergedHeaderCols, hiddenColumnKeys],
   );
-  const trackingHeaderCols = React.useMemo<HeaderCol[]>(
-    () =>
-      mergedHeaderCols.filter((column) => {
+  const trackingHeaderCols = React.useMemo<HeaderCol[]>(() => {
+    const candidates = mergedHeaderCols.filter((column) => {
         const isTrackingColumn =
           TRACKING_CLIENT_COLUMN_KEYS.has(column.key) ||
           column.key.startsWith("custom:");
@@ -1861,9 +1879,40 @@ export function CRMBoard({
           isTrackingColumn &&
           (isFixed || !hiddenColumnKeys.has(`client:${column.key}`))
         );
-      }),
-    [mergedHeaderCols, hiddenColumnKeys],
-  );
+      });
+    const byKey = new Map(candidates.map((column) => [column.key, column]));
+    // Start Tracking from its own purpose-built column definitions, rather
+    // than the general CRM arrangement/widths. Custom fields follow after the
+    // built-in Tracking columns.
+    const base = [
+      ...TRACKING_HEADER_COLS.map((definition) => {
+        const column = byKey.get(definition.key);
+        return column
+          ? { ...column, width: definition.width, minWidth: definition.minWidth }
+          : undefined;
+      }).filter(Boolean),
+      ...candidates.filter((column) => column.key.startsWith("custom:")),
+    ] as HeaderCol[];
+    const trackingByKey = new Map(base.map((column) => [column.key, column]));
+    const ordered = trackingClientOrderKeys
+      .map((key) => trackingByKey.get(key))
+      .filter(Boolean) as HeaderCol[];
+    const remaining = base.filter(
+      (column) => !trackingClientOrderKeys.includes(column.key),
+    );
+    return [...ordered, ...remaining].map((column) => ({
+      ...column,
+      width:
+        column.key === "empty"
+          ? 44
+          : (trackingClientWidths[column.key] ?? column.width),
+    }));
+  }, [
+    mergedHeaderCols,
+    hiddenColumnKeys,
+    trackingClientOrderKeys,
+    trackingClientWidths,
+  ]);
   const activeClientHeaderCols = trackingView
     ? trackingHeaderCols
     : visibleClientHeaderCols;
@@ -1885,6 +1934,45 @@ export function CRMBoard({
 
   const reorderClientColumns = useCallback(
     (draggedKey: string, targetKey: string) => {
+      if (trackingView) {
+        const movable = trackingHeaderCols.filter(
+          (col) => !["selectCheckbox", "client", "empty"].includes(col.key),
+        );
+        const from = movable.findIndex((col) => col.key === draggedKey);
+        const to = movable.findIndex((col) => col.key === targetKey);
+        if (from === -1 || to === -1) return;
+        const reordered = [...movable];
+        const [moved] = reordered.splice(from, 1);
+        reordered.splice(to, 0, moved);
+        const order = [
+          "selectCheckbox",
+          "client",
+          ...reordered.map((col) => col.key),
+          "empty",
+        ];
+        setTrackingClientOrderKeys(order);
+        try {
+          localStorage.setItem("colOrder:tracking-clients:local", JSON.stringify(order));
+          if (currentUserId)
+            localStorage.setItem(
+              `colOrder:tracking-clients:${currentUserId}`,
+              JSON.stringify(order),
+            );
+        } catch {}
+        if (currentUserId)
+          void import("@/lib/user-settings")
+            .then(({ saveUserSetting }) =>
+              saveUserSetting("colOrder:tracking-clients", order),
+            )
+            .catch((error) =>
+              console.warn("Failed to save Tracking column arrangement", error),
+            );
+        notifyChange(
+          "Tracking column arrangement saved",
+          "The Tracking View column order was saved separately.",
+        );
+        return;
+      }
       const baseCols = mergedHeaderCols.filter(
         (col) =>
           !["selectCheckbox", "client", "addClientCol", "empty"].includes(
@@ -1943,7 +2031,13 @@ export function CRMBoard({
         "The client column order was saved to your account.",
       );
     },
-    [mergedHeaderCols, currentUserId, notifyChange],
+    [
+      trackingView,
+      trackingHeaderCols,
+      mergedHeaderCols,
+      currentUserId,
+      notifyChange,
+    ],
   );
 
   const hideableColumnGroups = React.useMemo(
@@ -2141,6 +2235,46 @@ export function CRMBoard({
       Object.fromEntries(activeClientHeaderCols.map((c) => [c.key, c.width])),
     [activeClientHeaderCols],
   );
+
+  // Tracking is a compact, purpose-specific board. Its layout must not alter
+  // the user's general CRM Board client-column layout.
+  useEffect(() => {
+    try {
+      const order = JSON.parse(
+        localStorage.getItem("colOrder:tracking-clients:local") ?? "[]",
+      );
+      const widths = JSON.parse(
+        localStorage.getItem("colWidths:tracking-clients:local") ?? "{}",
+      );
+      if (Array.isArray(order)) setTrackingClientOrderKeys(order);
+      if (widths && typeof widths === "object")
+        setTrackingClientWidths(widths as Record<string, number>);
+    } catch {
+      // A malformed local preference should never prevent the board loading.
+    }
+  }, [currentUserId]);
+
+  useEffect(() => {
+    if (!currentUserId) return;
+    let mounted = true;
+    void import("@/lib/user-settings")
+      .then(async ({ loadUserSetting }) => {
+        const [order, widths] = await Promise.all([
+          loadUserSetting("colOrder:tracking-clients"),
+          loadUserSetting("colWidths:tracking-clients"),
+        ]);
+        if (!mounted) return;
+        if (Array.isArray(order)) setTrackingClientOrderKeys(order);
+        if (widths && typeof widths === "object")
+          setTrackingClientWidths(widths as Record<string, number>);
+      })
+      .catch((error) =>
+        console.warn("Failed to load Tracking column preferences", error),
+      );
+    return () => {
+      mounted = false;
+    };
+  }, [currentUserId]);
 
   // Persist client column widths per-user in DB (fallback to localStorage)
   // Apply most-recent local cache immediately on mount so SPA nav restores quickly
@@ -3916,13 +4050,17 @@ export function CRMBoard({
   // --- Resize ---
   const startResize = (key: string, startX: number) => {
     clientWidthsDirtyRef.current = true;
-    const startCol = mergedHeaderCols.find((col) => col.key === key);
+    const startCol = (trackingView ? trackingHeaderCols : mergedHeaderCols).find(
+      (col) => col.key === key,
+    );
     if (!startCol) return;
     const startWidth = startCol.width;
     const onMouseMove = (e: MouseEvent) => {
       const delta = e.clientX - startX;
       const nextWidth = Math.max(startCol.minWidth ?? 60, startWidth + delta);
-      if (key.startsWith("custom:")) {
+      if (trackingView) {
+        setTrackingClientWidths((current) => ({ ...current, [key]: nextWidth }));
+      } else if (key.startsWith("custom:")) {
         setCustomClientWidths((current) => ({ ...current, [key]: nextWidth }));
       } else {
         setHeaderCols((prev) =>
@@ -3935,6 +4073,30 @@ export function CRMBoard({
     const onMouseUp = () => {
       document.removeEventListener("mousemove", onMouseMove);
       document.removeEventListener("mouseup", onMouseUp);
+      if (trackingView) {
+        setTrackingClientWidths((current) => {
+          try {
+            localStorage.setItem(
+              "colWidths:tracking-clients:local",
+              JSON.stringify(current),
+            );
+            if (currentUserId)
+              localStorage.setItem(
+                `colWidths:tracking-clients:${currentUserId}`,
+                JSON.stringify(current),
+              );
+          } catch {}
+          if (currentUserId)
+            void import("@/lib/user-settings")
+              .then(({ saveUserSetting }) =>
+                saveUserSetting("colWidths:tracking-clients", current),
+              )
+              .catch((error) =>
+                console.warn("Failed to save Tracking column widths", error),
+              );
+          return current;
+        });
+      }
       notifyChange("Column width saved", `The ${key} column width was saved.`);
     };
     document.addEventListener("mousemove", onMouseMove);

@@ -7,12 +7,13 @@ import {
   type BadgeOption,
   type BadgeOptionLayout,
 } from "@/components/ui/statusbadge";
+import { ManualTrackingLinkDialog } from "@/components/ManualTrackingLinkDialog";
 
-export const TRACKING_QUOTE_TABLE_MIN_WIDTH = 1870;
+export const TRACKING_QUOTE_TABLE_MIN_WIDTH = 1975;
 export const TRACKING_VIEW_MIN_WIDTH = TRACKING_QUOTE_TABLE_MIN_WIDTH + 80;
 
 const QUOTE_GRID_COLUMNS =
-  "minmax(220px, 2fr) 140px 180px 125px 190px 125px 195px 80px 210px 125px 165px 105px";
+  "minmax(220px, 2fr) 140px 180px 125px 190px 125px 195px 80px 210px 125px 165px 210px";
 
 type TrackingLabelCode =
   | "tracking_summary"
@@ -84,6 +85,7 @@ type TrackingQuoteListProps = {
     code: TrackingLabelCode,
     layout: BadgeOptionLayout[],
   ) => void | Promise<void>;
+  onQuotesChanged?: () => void;
 };
 
 function amount(value: number | null) {
@@ -106,6 +108,7 @@ export function TrackingQuoteList({
   onUpdateOptionColor,
   onRenameOption,
   onReorderOptions,
+  onQuotesChanged,
 }: TrackingQuoteListProps) {
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [openQuoteIds, setOpenQuoteIds] = useState<Set<string>>(new Set());
@@ -113,6 +116,7 @@ export function TrackingQuoteList({
   const [loading, setLoading] = useState(true);
   const [reloadVersion, setReloadVersion] = useState(0);
   const [syncingQuoteId, setSyncingQuoteId] = useState<string | null>(null);
+  const [linkInvoiceQuoteId, setLinkInvoiceQuoteId] = useState<string | null>(null);
   const latestQuoteUpdate = useRef(new Map<string, number>());
 
   useEffect(() => {
@@ -301,7 +305,7 @@ export function TrackingQuoteList({
     );
 
   return (
-    <div className="min-w-[1870px] overflow-visible border border-[#d0d4e4] bg-white text-[12.6px]">
+    <div className="min-w-[1975px] overflow-visible border border-[#d0d4e4] bg-white text-[12.6px]">
       <div
         className="grid border-b border-[#d0d4e4] bg-white text-[12.6px] font-medium text-slate-600"
         style={{ gridTemplateColumns: QUOTE_GRID_COLUMNS }}
@@ -317,7 +321,7 @@ export function TrackingQuoteList({
         <span className="whitespace-nowrap border-l border-[#d0d4e4] px-3 py-2 text-center">Price and Invoice Match?</span>
         <span className="border-l border-[#d0d4e4] px-3 py-2 text-right">Total Balance</span>
         <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">Payment Status</span>
-        <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">Actions</span>
+        <span className="whitespace-nowrap border-l border-[#d0d4e4] px-3 py-2 text-center">Invoice Actions</span>
       </div>
 
       {quotes.map((quote) => {
@@ -431,7 +435,14 @@ export function TrackingQuoteList({
                   {...labelManagementProps("tracking_invoice_payment_status")}
                 />
               </div>
-              <div className="flex items-center justify-center border-l border-[#d0d4e4] px-1">
+              <div className="flex items-center justify-center gap-1 border-l border-[#d0d4e4] px-1 whitespace-nowrap">
+                <button
+                  type="button"
+                  onClick={() => setLinkInvoiceQuoteId(quote.id)}
+                  className="rounded border border-emerald-300 bg-emerald-50 px-2 py-1 text-[12.6px] font-semibold text-emerald-700 hover:bg-emerald-100"
+                >
+                  Link Invoice
+                </button>
                 <button
                   type="button"
                   onClick={() => void syncQuoteInvoices(quote.id)}
@@ -493,6 +504,19 @@ export function TrackingQuoteList({
           </div>
         );
       })}
+      <ManualTrackingLinkDialog
+        open={Boolean(linkInvoiceQuoteId)}
+        onOpenChange={(open) => {
+          if (!open) setLinkInvoiceQuoteId(null);
+        }}
+        kind="invoice"
+        clientId={clientId}
+        estimateGenerationId={linkInvoiceQuoteId ?? undefined}
+        onLinked={() => {
+          setReloadVersion((version) => version + 1);
+          onQuotesChanged?.();
+        }}
+      />
     </div>
   );
 }

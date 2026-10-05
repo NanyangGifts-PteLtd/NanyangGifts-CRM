@@ -52,6 +52,7 @@ import {
 import { useGenerateEstimate } from "@/components/hooks/use-generate-estimate-button";
 import { ClientActionsMenu } from "@/components/ClientActionsMenu";
 import { TrackingQuoteList } from "@/components/TrackingQuoteList";
+import { ManualTrackingLinkDialog } from "@/components/ManualTrackingLinkDialog";
 import { FileDropTarget } from "./file-drop-target";
 import { uploadCrmFiles } from "@/lib/crm-files";
 import { FilePreview } from "./file-preview";
@@ -867,6 +868,8 @@ export function ClientRow({
   >(null);
   const [isTrackingInvoicesExpanded, setIsTrackingInvoicesExpanded] =
     useState(false);
+  const [linkQuoteDialogOpen, setLinkQuoteDialogOpen] = useState(false);
+  const [trackingQuoteListVersion, setTrackingQuoteListVersion] = useState(0);
   const [isLoadingTrackingInvoices, setIsLoadingTrackingInvoices] =
     useState(false);
   const [trackingInvoiceRows, setTrackingInvoiceRows] = useState<
@@ -3256,6 +3259,25 @@ export function ClientRow({
                 manageLabel="invoice payment status"
               />
             </div>
+            <div
+              data-client-column="trackingQuoteActions"
+              className="tracking-client-cell flex items-center justify-center overflow-hidden border-r border-[#D0D4E4] p-1"
+              style={{
+                height: 30,
+                minWidth: colWidth.trackingQuoteActions,
+                width: colWidth.trackingQuoteActions,
+                order: columnOrderMap.trackingQuoteActions,
+              }}
+            >
+              <button
+                type="button"
+                disabled={!canManageClient}
+                onClick={() => setLinkQuoteDialogOpen(true)}
+                className="whitespace-nowrap rounded border border-emerald-300 bg-emerald-50 px-2 py-1 text-[12.6px] font-semibold text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Link Quote
+              </button>
+            </div>
           </>
         )}
 
@@ -4707,6 +4729,7 @@ export function ClientRow({
         >
           <div className="max-w-[860px]">
             <TrackingQuoteList
+              key={trackingQuoteListVersion}
               clientId={client.id}
               summaryOptions={trackingSummaryLabelOptions}
               paymentStatusOptions={trackingPaymentStatusLabelOptions}
@@ -4727,6 +4750,7 @@ export function ClientRow({
               onReorderOptions={(code, layout) =>
                 onReorderOptions?.(code, layout)
               }
+              onQuotesChanged={() => setIsTrackingInvoicesExpanded(true)}
             />
           </div>
           <div className="hidden max-w-[650px] overflow-hidden rounded border border-[#c8dce2] bg-white text-[12px] shadow-sm">
@@ -4776,6 +4800,16 @@ export function ClientRow({
           </div>
         </div>
       )}
+      <ManualTrackingLinkDialog
+        open={linkQuoteDialogOpen}
+        onOpenChange={setLinkQuoteDialogOpen}
+        kind="quote"
+        clientId={client.id}
+        onLinked={() => {
+          setTrackingQuoteListVersion((version) => version + 1);
+          setIsTrackingInvoicesExpanded(true);
+        }}
+      />
 
       {!trackingMode && isExpanded && (
         <SubitemsTable
