@@ -1767,6 +1767,10 @@ export default function GanttChart({
         </div>
       )}
       <Dialog
+        // Timeline label menus are portalled to document.body. Keeping this
+        // dialog non-modal prevents Radix from disabling pointer events on
+        // that portal while the editor is open.
+        modal={false}
         open={Boolean(selectedTimeline && selectedTimelineData)}
         onOpenChange={(open) => !open && setSelectedTimeline(null)}
       >
