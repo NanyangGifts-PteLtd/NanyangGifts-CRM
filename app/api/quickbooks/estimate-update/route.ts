@@ -273,6 +273,7 @@ export async function GET(request: NextRequest) {
             quickbooks_customer_id: String(quickBooksCustomerId),
             quickbooks_estimate_id: String(quickBooksEstimate.Id),
             quickbooks_estimate_doc_number: quickBooksEstimate.DocNumber ?? null,
+            quote_total: numberValue(quickBooksEstimate.TotalAmt),
           })
           .select("id, quickbooks_customer_id, quickbooks_estimate_id, quickbooks_estimate_doc_number, created_at")
           .single();

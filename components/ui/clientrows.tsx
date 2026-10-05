@@ -51,6 +51,7 @@ import {
 } from "@/lib/currency-labels";
 import { useGenerateEstimate } from "@/components/hooks/use-generate-estimate-button";
 import { ClientActionsMenu } from "@/components/ClientActionsMenu";
+import { TrackingQuoteList } from "@/components/TrackingQuoteList";
 import { FileDropTarget } from "./file-drop-target";
 import { uploadCrmFiles } from "@/lib/crm-files";
 import { FilePreview } from "./file-preview";
@@ -1125,7 +1126,6 @@ export function ClientRow({
   const toggleTrackingInvoices = () => {
     const next = !isTrackingInvoicesExpanded;
     setIsTrackingInvoicesExpanded(next);
-    if (next) void loadTrackingInvoices();
   };
   const pullTrackingInvoices = async () => {
     const estimateGenerationId =
@@ -2114,7 +2114,7 @@ export function ClientRow({
         )
         .join(
           "",
-        )} ${trackingMode ? `[data-client-id="${client.id}"] [data-client-column]:not([data-client-column="selectCheckbox"]):not([data-client-column="client"]):not([data-client-column="people"]):not([data-client-column="channel"]):not([data-client-column^="custom:"]):not(.tracking-client-cell){display:none!important}` : ""}`}</style>
+        )} ${trackingMode ? `[data-client-id="${client.id}"] [data-client-column]{flex-grow:0!important;flex-shrink:0!important}[data-client-id="${client.id}"] [data-client-column]:not([data-client-column="selectCheckbox"]):not([data-client-column="client"]):not([data-client-column="people"]):not([data-client-column="channel"]):not([data-client-column^="custom:"]):not(.tracking-client-cell){display:none!important}` : ""}`}</style>
       {permissionNotice && (
         <div
           role="alert"
@@ -3185,18 +3185,15 @@ export function ClientRow({
             <button
               type="button"
               data-selection-control
-              disabled={
-                !canManageClient ||
-                !client.customFields?.trackingEstimateGenerationId
-              }
+              disabled={!canManageClient}
               onClick={(event) => {
                 event.stopPropagation();
                 toggleTrackingInvoices();
               }}
               title={
-                !client.customFields?.trackingEstimateGenerationId
-                  ? "Select a QuickBooks quote first"
-                  : "Show linked invoices"
+                !canManageClient
+                  ? "You do not have permission to view this client's quote tracking"
+                  : "Show this client's quotes and linked invoices"
               }
               className="absolute left-[calc(50%+14px)] top-1/2 -translate-y-1/2 text-gray-400 transition-colors hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-40"
             >
@@ -3256,7 +3253,10 @@ export function ClientRow({
             />
           </div>
           <div className="ml-auto flex items-center justify-start gap-1 flex-shrink-0">
-            {trackingMode && (
+            {/* Invoice synchronization is now quote-specific. The legacy
+                client-level button remains disabled until its replacement is
+                added to each quote row in the next stage. */}
+            {false && trackingMode && (
               <>
                 <button
                   type="button"
@@ -4219,7 +4219,10 @@ export function ClientRow({
             }
           />
         </div>
-        {trackingMode && (
+        {/* Quote and invoice values are quote-level data. The legacy client-level
+            tracking cells are retained in source only while historic custom
+            fields are being retired, but are no longer rendered. */}
+        {false && trackingMode && (
           <>
             <div
               data-client-column="trackingSummary"
@@ -4339,9 +4342,9 @@ export function ClientRow({
                       client.customFields?.trackingEstimateGenerationId,
                   ) && (
                     <option
-                      value={client.customFields.trackingEstimateGenerationId}
+                      value={client.customFields?.trackingEstimateGenerationId}
                     >
-                      {client.customFields.trackingEstimateNumber ||
+                      {client.customFields?.trackingEstimateNumber ||
                         "Selected quote"}
                     </option>
                   )}
@@ -4655,7 +4658,28 @@ export function ClientRow({
           className="box-border border-b border-r border-[#D0D4E4] bg-[#f7fbfc] px-10 py-2"
           style={{ width: boardWidth, minWidth: boardWidth }}
         >
-          <div className="max-w-[650px] overflow-hidden rounded border border-[#c8dce2] bg-white text-[12px] shadow-sm">
+          <div className="max-w-[860px]">
+            <TrackingQuoteList
+              clientId={client.id}
+              summaryOptions={trackingSummaryLabelOptions}
+              paymentStatusOptions={trackingPaymentStatusLabelOptions}
+              matchOptions={trackingPriceInvoiceMatchLabelOptions}
+              onAddOption={(code, name) => onAddTrackingOption?.(code, name)}
+              onDeleteOption={(code, name) =>
+                onDeleteTrackingOption?.(code, name)
+              }
+              onUpdateOptionColor={(code, name, color, optionId) =>
+                onUpdateOptionColor?.(code, name, color, optionId)
+              }
+              onRenameOption={(code, oldName, newName, optionId) =>
+                onRenameOption?.(code, oldName, newName, optionId)
+              }
+              onReorderOptions={(code, layout) =>
+                onReorderOptions?.(code, layout)
+              }
+            />
+          </div>
+          <div className="hidden max-w-[650px] overflow-hidden rounded border border-[#c8dce2] bg-white text-[12px] shadow-sm">
             <div className="flex items-center border-b border-[#c8dce2] bg-[#eaf5f7] text-[11px] font-semibold uppercase tracking-wide text-slate-600">
               <div className="w-[32%] px-3 py-2">Invoice Number</div>
               <div className="w-[23%] border-l border-[#d7e5e8] px-3 py-2">

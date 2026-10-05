@@ -45,6 +45,7 @@ import {
 } from "../app/types";
 import { createClient as createSupabaseClient } from "@/lib/supabase/client";
 import { ClientRow } from "./ui/clientrows";
+import { TRACKING_VIEW_MIN_WIDTH } from "./TrackingQuoteList";
 import { gradientForId } from "./ui/assignee-multiselect";
 import { SUBITEM_COLS, PAYMENT_COLS } from "./ui/subitems";
 import {
@@ -311,53 +312,12 @@ const TRACKING_HEADER_COLS: HeaderCol[] = [
   { key: "selectCheckbox", label: "", width: 60, minWidth: 7 },
   { key: "client", label: "Client", width: 250, minWidth: 7 },
   { key: "people", label: "People", width: 90, minWidth: 7 },
-  { key: "trackingSummary", label: "Summary", width: 130, minWidth: 7 },
   { key: "channel", label: "Channel", width: 110, minWidth: 7 },
-  {
-    key: "trackingEstimateNumber",
-    label: "Quote Number",
-    width: 160,
-    minWidth: 7,
-  },
-  {
-    key: "trackingInvoiceCreated",
-    label: "Invoice created?",
-    width: 130,
-    minWidth: 7,
-  },
-  {
-    key: "trackingInvoiceNumber",
-    label: "Invoice Number",
-    width: 180,
-    minWidth: 7,
-  },
-  {
-    key: "trackingMultipleInvoices",
-    label: "Multiple Invoices?",
-    width: 180,
-    minWidth: 7,
-  },
-  {
-    key: "trackingPaymentStatus",
-    label: "Payment Status",
-    width: 190,
-    minWidth: 7,
-  },
-  { key: "trackingTotalPrice", label: "Total Price", width: 100, minWidth: 7 },
-  {
-    key: "trackingInvoiceTotal",
-    label: "Invoice Total",
-    width: 110,
-    minWidth: 7,
-  },
-  {
-    key: "trackingPriceInvoiceMatch",
-    label: "Price and Invoice Match?",
-    width: 160,
-    minWidth: 7,
-  },
   { key: "empty", label: "", width: 44, minWidth: 44 },
 ];
+const TRACKING_CLIENT_COLUMN_KEYS = new Set(
+  TRACKING_HEADER_COLS.map((column) => column.key),
+);
 
 interface CRMBoardProps {
   clients: Client[];
@@ -1855,22 +1815,20 @@ export function CRMBoard({
     [mergedHeaderCols, hiddenColumnKeys],
   );
   const trackingHeaderCols = React.useMemo<HeaderCol[]>(
-    () => [
-      ...TRACKING_HEADER_COLS.filter((column) => column.key !== "empty"),
-      ...clientCustomCols
-        .filter((column) => !hiddenColumnKeys.has(`client:custom:${column.id}`))
-        .map((column) => ({
-          key: `custom:${column.id}`,
-          label: column.name,
-          width: customClientWidths[`custom:${column.id}`] ?? 120,
-          minWidth: 80,
-          customColumnId: column.id,
-          isCustom: true,
-          field_type: column.field_type,
-        })),
-      ...TRACKING_HEADER_COLS.filter((column) => column.key === "empty"),
-    ],
-    [clientCustomCols, customClientWidths, hiddenColumnKeys],
+    () =>
+      mergedHeaderCols.filter((column) => {
+        const isTrackingColumn =
+          TRACKING_CLIENT_COLUMN_KEYS.has(column.key) ||
+          column.key.startsWith("custom:");
+        const isFixed = ["selectCheckbox", "client", "empty"].includes(
+          column.key,
+        );
+        return (
+          isTrackingColumn &&
+          (isFixed || !hiddenColumnKeys.has(`client:${column.key}`))
+        );
+      }),
+    [mergedHeaderCols, hiddenColumnKeys],
   );
   const activeClientHeaderCols = trackingView
     ? trackingHeaderCols
@@ -2137,10 +2095,13 @@ export function CRMBoard({
     } catch {}
   }, [currentUserId]);
 
-  const totalMinWidth = activeClientHeaderCols.reduce(
+  const clientTableMinWidth = activeClientHeaderCols.reduce(
     (sum, col) => sum + col.width,
     0,
   );
+  const totalMinWidth = trackingView
+    ? Math.max(clientTableMinWidth, TRACKING_VIEW_MIN_WIDTH)
+    : clientTableMinWidth;
   const colWidth = React.useMemo(
     () =>
       Object.fromEntries(activeClientHeaderCols.map((c) => [c.key, c.width])),
@@ -10418,10 +10379,13 @@ export function CRMBoard({
                   column.width,
                 ]),
               );
-              const groupTotalMinWidth = groupClientHeaderCols.reduce(
+              const groupClientTableMinWidth = groupClientHeaderCols.reduce(
                 (sum, column) => sum + column.width,
                 0,
               );
+              const groupTotalMinWidth = trackingView
+                ? Math.max(groupClientTableMinWidth, TRACKING_VIEW_MIN_WIDTH)
+                : groupClientTableMinWidth;
               const isGroupExpanding = pendingGroupContentIds.has(group.id);
 
               return (
@@ -10704,7 +10668,7 @@ export function CRMBoard({
                         style={{ backgroundColor: groupAccentColor(group) }}
                       />
                       <div
-                        className="relative flex min-w-0 flex-shrink-0 items-center justify-center overflow-visible rounded-tl-md border border-[#D0D4E4] bg-white text-[12.6px]"
+                          className={`relative flex min-w-0 flex-shrink-0 items-center ${trackingView ? "justify-start" : "justify-center"} overflow-visible rounded-tl-md border border-[#D0D4E4] bg-white text-[12.6px]`}
                         style={{
                           minWidth: groupTotalMinWidth,
                           width: groupTotalMinWidth,

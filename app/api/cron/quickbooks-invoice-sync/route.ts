@@ -37,41 +37,24 @@ function linksToEstimate(invoice: QuickBooksInvoice, estimateId: string) {
 export async function GET(request: NextRequest) {
   if (!authorized(request)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { data: clients, error: clientsError } = await supabaseAdmin
-    .from("clients")
-    .select("id, custom_fields")
-    .is("deleted_at", null)
-    .not("custom_fields->>trackingEstimateNumber", "is", null);
-  if (clientsError) return NextResponse.json({ error: clientsError.message }, { status: 500 });
-
-  const candidates = (clients ?? []).filter((client) =>
-    typeof client.custom_fields?.trackingEstimateNumber === "string" &&
-    client.custom_fields.trackingEstimateNumber.trim().length > 0,
-  );
-  if (!candidates.length) return NextResponse.json({ ok: true, eligible: 0, synced: 0, failed: 0 });
-
   const { data: generations, error: generationsError } = await supabaseAdmin
     .from("estimate_generations")
     .select("id, client_id, quickbooks_customer_id, quickbooks_estimate_id, quickbooks_estimate_doc_number, created_at")
-    .in("client_id", candidates.map((client) => client.id))
     .not("quickbooks_estimate_id", "is", null)
+    .is("archived_at", null)
     .order("created_at", { ascending: false });
   if (generationsError) return NextResponse.json({ error: generationsError.message }, { status: 500 });
 
+  const activeGenerations = generations ?? [];
+  if (!activeGenerations.length)
+    return NextResponse.json({ ok: true, eligible: 0, synced: 0, failed: 0 });
+
   let synced = 0;
   let failed = 0;
-  const failures: Array<{ clientId: string; error: string }> = [];
+  const failures: Array<{ clientId: string; quoteId: string; error: string }> = [];
 
-  for (const client of candidates) {
-    const selectedQuote = String(client.custom_fields?.trackingEstimateNumber ?? "").trim();
-    const generation = (generations ?? []).find((item) =>
-      item.client_id === client.id &&
-      [item.id, item.quickbooks_estimate_id, item.quickbooks_estimate_doc_number]
-        .filter(Boolean)
-        .some((value) => String(value) === selectedQuote),
-    );
-    if (!generation?.quickbooks_estimate_id) continue;
-
+  for (const generation of activeGenerations) {
+    if (!generation.quickbooks_estimate_id) continue;
     try {
       const estimateResult = await qboRequest(`/estimate/${generation.quickbooks_estimate_id}`, { method: "GET" });
       const estimate = estimateResult?.Estimate;
@@ -115,22 +98,42 @@ export async function GET(request: NextRequest) {
           .upsert(rows, { onConflict: "estimate_generation_id,quickbooks_invoice_id" });
         if (error) throw error;
       }
-      const invoiceNumbers = rows.map((row) => row.quickbooks_invoice_doc_number ?? row.quickbooks_invoice_id).filter(Boolean);
-      const { error: clientUpdateError } = await supabaseAdmin.from("clients").update({
-        custom_fields: {
-          ...(client.custom_fields ?? {}),
-          trackingInvoiceCreated: rows.length ? "Yes" : "No",
-          trackingInvoiceNumber: invoiceNumbers.join(", "),
-          trackingMultipleInvoices: rows.length > 1 ? "Yes" : rows.length === 1 ? "No" : "",
-        },
-      }).eq("id", client.id);
-      if (clientUpdateError) throw clientUpdateError;
+      const invoiceTotal = rows.reduce((sum, row) => sum + (row.total ?? 0), 0);
+      const quoteTotal = numberOrNull(estimate?.TotalAmt);
+      const priceInvoiceMatch = !rows.length
+        ? ""
+        : quoteTotal !== null && Math.abs(quoteTotal - invoiceTotal) < 0.005
+          ? "Yes"
+          : "ERROR - MISMATCH";
+      const syncedAt = new Date().toISOString();
+      const { error: generationUpdateError } = await supabaseAdmin
+        .from("estimate_generations")
+        .update({
+          quote_total: quoteTotal,
+          invoice_count: rows.length,
+          invoice_total: invoiceTotal,
+          price_invoice_match: priceInvoiceMatch,
+          last_invoice_synced_at: syncedAt,
+        })
+        .eq("id", generation.id);
+      if (generationUpdateError) throw generationUpdateError;
+
       synced += 1;
     } catch (error) {
       failed += 1;
-      failures.push({ clientId: client.id, error: error instanceof Error ? error.message : "Invoice sync failed" });
+      failures.push({
+        clientId: generation.client_id,
+        quoteId: generation.id,
+        error: error instanceof Error ? error.message : "Invoice sync failed",
+      });
     }
   }
 
-  return NextResponse.json({ ok: failed === 0, eligible: candidates.length, synced, failed, failures });
+  return NextResponse.json({
+    ok: failed === 0,
+    eligible: activeGenerations.length,
+    synced,
+    failed,
+    failures,
+  });
 }

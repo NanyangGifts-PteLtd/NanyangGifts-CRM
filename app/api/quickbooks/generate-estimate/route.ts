@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { qboQuery, qboRequest } from "@/lib/quickbooks/api";
 import { getSystemLabel } from "@/lib/system-labels";
 import { canEditClient } from "@/lib/client-access";
+import { supabaseAdmin } from "@/lib/supabase/admin";
 
 const ELIGIBLE_STATUS_KEYS = [
   "subitem_status_quoted",
@@ -239,7 +240,18 @@ export async function POST(req: NextRequest) {
       company: companyName,
     });
 
-    const lines = [];
+    const lines: Array<{
+      LineNum: number;
+      Amount: number;
+      Description: string;
+      DetailType: "SalesItemLineDetail";
+      SalesItemLineDetail: {
+        ItemRef: { value: string; name: string };
+        Qty: number;
+        UnitPrice: number;
+        TaxCodeRef: { value: string };
+      };
+    }> = [];
     for (let i = 0; i < subitems.length; i += 1) {
       const subitem = subitems[i];
       const item = await getOrCreateItem(subitem);
@@ -300,10 +312,35 @@ export async function POST(req: NextRequest) {
         quickbooks_customer_id: customer.Id,
         quickbooks_estimate_id: estimate?.Id ?? null,
         quickbooks_estimate_doc_number: estimate?.DocNumber ?? null,
+        quote_total: numberValue(estimate?.TotalAmt),
       })
       .select("id")
       .single();
     if (generationError) throw generationError;
+
+    // Preserve the exact set of subitems, prices, and delivery tax choices
+    // that formed this quote. Later CRM edits must not rewrite historic quote
+    // totals or make quote-to-invoice matching compare against new values.
+    const { error: snapshotError } = await supabaseAdmin
+      .from("estimate_generation_subitems")
+      .insert(
+        subitems.map((subitem: any, index: number) => {
+          const quoteLine = lines[index];
+          return {
+            estimate_generation_id: generation.id,
+            subitem_id: subitem.id,
+            position: index,
+            name: subitem.name ?? "Unnamed item",
+            description: subitem.description ?? "",
+            quantity: numberValue(quoteLine?.SalesItemLineDetail?.Qty),
+            unit_price: numberValue(quoteLine?.SalesItemLineDetail?.UnitPrice),
+            line_total: numberValue(quoteLine?.Amount),
+            tax_code: quoteLine?.SalesItemLineDetail?.TaxCodeRef?.value ?? null,
+            delivery_destination: deliveryBySubitem?.[subitem.id] ?? null,
+          };
+        }),
+      );
+    if (snapshotError) throw snapshotError;
 
     const { error: activityError } = await supabase
       .from("activity_log")

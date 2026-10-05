@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { qboQuery, qboRequest } from "@/lib/quickbooks/api";
 import { createClient } from "@/lib/supabase/server";
+import { supabaseAdmin } from "@/lib/supabase/admin";
 
 type QuickBooksLink = {
   TxnId?: string;
@@ -100,10 +101,14 @@ export async function GET(request: NextRequest) {
         { status: 400 },
       );
     }
-    const { supabase, generation } = await authorizeInvoiceAccess(
+    const { generation } = await authorizeInvoiceAccess(
       estimateGenerationId,
     );
-    const { data: invoices, error } = await supabase
+    // Access was checked by authorizeInvoiceAccess above. Invoice snapshots
+    // are a server-maintained mirror of QuickBooks, so read them through the
+    // service-role client instead of depending on a separate browser RLS
+    // policy for this internal table.
+    const { data: invoices, error } = await supabaseAdmin
       .from("quickbooks_estimate_invoices")
       .select(
         "id, quickbooks_invoice_doc_number, invoice_date, due_date, subtotal",
@@ -129,7 +134,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { supabase, generation } = await authorizeInvoiceAccess(
+    const { generation } = await authorizeInvoiceAccess(
       estimateGenerationId,
     );
 
@@ -193,7 +198,7 @@ export async function POST(request: NextRequest) {
         };
       });
 
-    const { data: storedInvoices, error: storedInvoicesError } = await supabase
+    const { data: storedInvoices, error: storedInvoicesError } = await supabaseAdmin
       .from("quickbooks_estimate_invoices")
       .select("quickbooks_invoice_id")
       .eq("estimate_generation_id", generation.id);
@@ -205,7 +210,7 @@ export async function POST(request: NextRequest) {
       .map((invoice) => invoice.quickbooks_invoice_id)
       .filter((invoiceId) => !linkedInvoiceIds.has(invoiceId));
     if (staleInvoiceIds.length) {
-      const { error: staleDeleteError } = await supabase
+      const { error: staleDeleteError } = await supabaseAdmin
         .from("quickbooks_estimate_invoices")
         .delete()
         .eq("estimate_generation_id", generation.id)
@@ -214,13 +219,38 @@ export async function POST(request: NextRequest) {
     }
 
     if (rows.length) {
-      const { error: upsertError } = await supabase
+      const { error: upsertError } = await supabaseAdmin
         .from("quickbooks_estimate_invoices")
         .upsert(rows, {
           onConflict: "estimate_generation_id,quickbooks_invoice_id",
         });
       if (upsertError) throw upsertError;
     }
+
+    const quoteTotal = numberOrNull(estimate?.TotalAmt);
+    const invoiceTotal = rows.reduce(
+      (total, row) => total + (row.total ?? 0),
+      0,
+    );
+    const priceInvoiceMatch = !rows.length
+      ? ""
+      : quoteTotal !== null && Math.abs(quoteTotal - invoiceTotal) < 0.005
+        ? "Yes"
+        : "ERROR - MISMATCH";
+    // The caller was authorised above; use the server-only client for this
+    // derived tracking write so an otherwise successful QuickBooks sync is
+    // not reported as failed because of a narrower table-update RLS policy.
+    const { error: quoteUpdateError } = await supabaseAdmin
+      .from("estimate_generations")
+      .update({
+        quote_total: quoteTotal,
+        invoice_count: rows.length,
+        invoice_total: invoiceTotal,
+        price_invoice_match: priceInvoiceMatch,
+        last_invoice_synced_at: new Date().toISOString(),
+      })
+      .eq("id", generation.id);
+    if (quoteUpdateError) throw quoteUpdateError;
 
     return NextResponse.json({
       estimateGenerationId: generation.id,
