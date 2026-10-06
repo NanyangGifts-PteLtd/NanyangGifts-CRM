@@ -58,6 +58,7 @@ type AdditionalCost = {
   quickbooks_invoice_number?: string;
   quickbooks_supplier_id?: string;
   quickbooks_supplier_name?: string;
+  quickbooks_memo?: string | null;
   quickbooks_overall_gst_override?: number | null;
   quickbooks_bill_id?: string | null;
   quickbooks_bill_sync_error?: string | null;
@@ -114,6 +115,7 @@ const otherVoucherColumns: Column[] = [
     width: 185,
   },
   { key: "quickbooks_supplier_name", label: "Supplier", width: 220 },
+  { key: "quickbooks_memo", label: "Memo", width: 280 },
   {
     key: "quickbooks_overall_gst_override",
     label: "GST Amount",
@@ -130,6 +132,7 @@ const quickBooksBillsOnlyColumns: Column[] = [
   { key: "trip_id", label: "Reference ID", width: 145 },
   { key: "has_quickbooks_bill", label: "Has QuickBooks Bill?", width: 165 },
   { key: "quickbooks_supplier_name", label: "Supplier", width: 220 },
+  { key: "quickbooks_memo", label: "Memo", width: 280 },
   {
     key: "quickbooks_invoice_number",
     label: "Invoice No. (Bill No.)",
@@ -501,6 +504,7 @@ export function AdditionalCostsBoard({
     quickbooks_invoice_number: bill.billNumber,
     quickbooks_supplier_id: bill.supplierId,
     quickbooks_supplier_name: bill.supplierName,
+    quickbooks_memo: bill.memo,
     quickbooks_overall_gst_override:
       Number.parseFloat(bill.overallGstAmount) || 0,
     quickbooks_attachment_files: [],
@@ -1370,6 +1374,13 @@ export function AdditionalCostsBoard({
         throw new Error(result.error ?? "Could not load the QuickBooks Bill.");
       }
       const bill = result.bill;
+      if (result.voucher) {
+        setRows((current) =>
+          current.map((currentRow) =>
+            currentRow.id === row.id ? result.voucher : currentRow,
+          ),
+        );
+      }
       setVoucherCreationGroup(
         row.voucher_group === "quickbooks_bills_only"
           ? "quickbooks_bills_only"
@@ -2289,6 +2300,15 @@ export function AdditionalCostsBoard({
                             >
                               <span className="block truncate">
                                 {row.quickbooks_supplier_name || "—"}
+                              </span>
+                            </td>
+                            <td
+                              data-voucher-col="quickbooks_memo"
+                              className="border-b border-r border-slate-200 bg-slate-100 px-3 py-2 text-sm text-slate-500"
+                              title={row.quickbooks_memo ?? ""}
+                            >
+                              <span className="block truncate">
+                                {row.quickbooks_memo || "â€”"}
                               </span>
                             </td>
                             <td

@@ -496,6 +496,7 @@ export async function POST(request: NextRequest) {
           quickbooks_supplier_name: String(
             bill.supplierName ?? quickBooksBill.VendorRef?.name ?? "",
           ),
+          quickbooks_memo: memo,
           quickbooks_overall_gst_override: billGstValue,
           quickbooks_bill_id: String(quickBooksBill.Id),
           quickbooks_attachment_files: uploadedAttachments,
@@ -561,6 +562,7 @@ export async function POST(request: NextRequest) {
         quickbooks_supplier_name: String(
           bill.supplierName ?? quickBooksBill.VendorRef?.name ?? "",
         ),
+        quickbooks_memo: memo,
         quickbooks_overall_gst_override: billGstValue,
         quickbooks_bill_id: String(quickBooksBill.Id),
         quickbooks_attachment_files: uploadedAttachments,

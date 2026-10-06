@@ -41,6 +41,7 @@ export async function GET(request: NextRequest) {
         quickbooks_invoice_number: String(bill.DocNumber ?? ""),
         quickbooks_supplier_id: String(bill.VendorRef?.value ?? ""),
         quickbooks_supplier_name: String(bill.VendorRef?.name ?? ""),
+        quickbooks_memo: String(bill.PrivateNote ?? ""),
         quickbooks_overall_gst_override: hasGstOverride
           ? Number(bill.TxnTaxDetail?.TotalTax ?? 0)
           : null,

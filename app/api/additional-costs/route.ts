@@ -378,6 +378,7 @@ export async function PATCH(request: NextRequest) {
       "quickbooks_invoice_number",
       "quickbooks_supplier_id",
       "quickbooks_supplier_name",
+      "quickbooks_memo",
       "quickbooks_overall_gst_override",
       "quickbooks_attachment_files",
     ];

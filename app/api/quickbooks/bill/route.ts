@@ -202,6 +202,7 @@ export async function POST(request: NextRequest) {
         quickbooks_invoice_number: String(bill.DocNumber ?? ""),
         quickbooks_supplier_id: String(bill.VendorRef?.value ?? ""),
         quickbooks_supplier_name: String(bill.VendorRef?.name ?? ""),
+        quickbooks_memo: String(bill.PrivateNote ?? ""),
         quickbooks_overall_gst_override: quickBooksBillGstTotal(bill),
         cost: total,
         updated_at: new Date().toISOString(),
@@ -251,10 +252,35 @@ export async function GET(request: NextRequest) {
         { status: 404 },
       );
     }
-    if (voucher.quickbooks_bill_sync_error)
-      await setBillSyncError(voucher.id, null);
+    const total = (bill.Line ?? [])
+      .filter((line: any) => line.DetailType === "AccountBasedExpenseLineDetail")
+      .reduce((sum: number, line: any) => sum + (Number(line.Amount) || 0), 0);
+    // Opening Edit bill is also a sync: persist the live QuickBooks snapshot
+    // immediately, even if the user closes the preview without saving edits.
+    const { data: refreshedVoucher, error: refreshError } = await supabaseAdmin
+      .from("additional_costs")
+      .update({
+        cost: total,
+        quickbooks_invoice_number: String(bill.DocNumber ?? ""),
+        quickbooks_supplier_id: String(bill.VendorRef?.value ?? ""),
+        quickbooks_supplier_name: String(bill.VendorRef?.name ?? ""),
+        quickbooks_memo: String(bill.PrivateNote ?? ""),
+        quickbooks_overall_gst_override: quickBooksBillGstTotal(bill),
+        quickbooks_bill_sync_error: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", voucher.id)
+      .select("*")
+      .single();
+    if (refreshError) throw refreshError;
+    const { error: subitemError } = await supabaseAdmin
+      .from("subitems")
+      .update({ cost: String(total) })
+      .eq("custom_fields->>additionalCostId", voucher.id)
+      .is("deleted_at", null);
+    if (subitemError) throw subitemError;
     return NextResponse.json({
-      voucher,
+      voucher: refreshedVoucher,
       bill: {
         supplierId: String(bill.VendorRef?.value ?? ""),
         supplierName: String(bill.VendorRef?.name ?? ""),
@@ -513,6 +539,7 @@ export async function PATCH(request: NextRequest) {
         quickbooks_supplier_name: String(
           draft.supplierName ?? updated?.Bill?.VendorRef?.name ?? "",
         ),
+        quickbooks_memo: memo,
         quickbooks_attachment_files: uploaded,
         quickbooks_overall_gst_override: billGstValue,
         quickbooks_bill_sync_error: null,
@@ -546,6 +573,7 @@ export async function DELETE(request: NextRequest) {
         quickbooks_invoice_number: "",
         quickbooks_supplier_id: "",
         quickbooks_supplier_name: "",
+        quickbooks_memo: null,
         quickbooks_overall_gst_override: null,
         quickbooks_attachment_files: [],
         quickbooks_bill_sync_error: null,

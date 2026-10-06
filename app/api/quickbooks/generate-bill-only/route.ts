@@ -268,6 +268,7 @@ export async function POST(request: NextRequest) {
       quickbooks_supplier_name: String(
         quickBooksBill.VendorRef?.name ?? supplierName,
       ),
+      quickbooks_memo: memo,
       quickbooks_overall_gst_override: billGstValue,
       quickbooks_attachment_files: savedAttachments,
     };
