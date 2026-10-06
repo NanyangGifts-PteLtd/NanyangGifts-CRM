@@ -808,6 +808,7 @@ export default function Page() {
               onOpenClientTimeline={openGanttClientTimeline}
               onUpdateSubitem={updateGanttSubitem}
               canEditSubitem={canEditGanttSubitem}
+              isLoading={!clientsLoaded}
             />
           </div>
         );

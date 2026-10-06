@@ -14,6 +14,7 @@ import {
   ChevronDown,
   ChevronRight,
   ListFilter,
+  LoaderCircle,
   Pin,
   PinOff,
   PanelLeftClose,
@@ -70,6 +71,7 @@ type Props = {
     updates: Partial<Subitem>,
   ) => void | Promise<void>;
   canEditSubitem: (clientId: string, subitemId: string) => boolean;
+  isLoading?: boolean;
 };
 type SchedulerItem = {
   id: string;
@@ -428,6 +430,7 @@ export default function GanttChart({
   onOpenClientTimeline,
   onUpdateSubitem,
   canEditSubitem,
+  isLoading = false,
 }: Props) {
   const [progressById, setProgressById] = useState<
     Map<
@@ -1568,6 +1571,17 @@ export default function GanttChart({
   // Keep our controlled toolbar mounted in the chart root in that state so the
   // existing query can always be edited or cleared.
   const toolbarHost = schedulerRootHost;
+
+  if (isLoading) {
+    return (
+      <div className="flex h-full min-h-0 w-full items-center justify-center rounded-xl border border-slate-200 bg-white text-sm text-slate-500">
+        <span className="inline-flex items-center gap-2">
+          <LoaderCircle size={18} className="animate-spin text-sky-600" />
+          Loading Gantt chart…
+        </span>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col overflow-hidden p-4">
