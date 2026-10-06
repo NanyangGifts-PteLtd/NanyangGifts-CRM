@@ -215,9 +215,29 @@ async function createSubitems(clientId: string, lead: NormalizedInboundLead) {
   const { data: lastSubitem, error: positionError } = await supabaseAdmin.from("subitems").select("position").eq("client_id", clientId).is("deleted_at", null).order("position", { ascending: false }).limit(1).maybeSingle();
   if (positionError) throw new InboundLeadError(positionError.message);
   const firstPosition = Number(lastSubitem?.position ?? -1) + 1;
+  const { data: currencyGroup, error: currencyGroupError } = await supabaseAdmin
+    .from("option_groups")
+    .select("id")
+    .eq("code", "currency")
+    .maybeSingle();
+  if (currencyGroupError) throw new InboundLeadError(currencyGroupError.message);
+  const { data: currencyOptions, error: currencyOptionsError } = currencyGroup
+    ? await supabaseAdmin
+        .from("option_values")
+        .select("id, value, system_key")
+        .eq("group_id", currencyGroup.id)
+    : { data: [], error: null };
+  if (currencyOptionsError)
+    throw new InboundLeadError(currencyOptionsError.message);
+  const normalizedCurrency = lead.currency.trim().toLocaleLowerCase();
+  const currencyOption = (currencyOptions ?? []).find(
+    (option) =>
+      option.system_key === `currency_${normalizedCurrency}` ||
+      option.value.trim().toLocaleLowerCase() === normalizedCurrency,
+  );
   const rows = lead.subitems.map((item, index) => ({
     position: firstPosition + index,
-    client_id: clientId, name: item.name, people: "", status: "", qty: item.qty, description: "", remarks: "", shipper: "", supplier: "", cost: "", ls: "", os: "", tc: "", uc: "", tc_sgd: "", price: "", up: "", owner: "", payment_status: "", manpower: "", ls_rmb: "", total_c: "", mode_of_payment: "", order_number: lead.orderNumber, quantity_produced: "", sample: "", qty_for: "", payment_amount: "", difference: "", local_overseas: "Local", num_of_cartons: "", payment_remarks: "", cn_tracking: "", sg_tracking: "", sample_order_status: "", sample_status: "", sample_type: "", timeline_rows: [], show_timeline: false, show_payments: false, sample_rows: [], show_sample: false, pl: null, sl: null, currency: lead.currency, c_sgd: null, manpower_rmb: null, total_uc: null, custom_fields: { inbound_source: lead.source, inbound_external_id: lead.externalId },
+    client_id: clientId, name: item.name, people: "", status: "", qty: item.qty, description: "", remarks: "", shipper: "", supplier: "", cost: "", ls: "", os: "", tc: "", uc: "", tc_sgd: "", price: "", up: "", owner: "", payment_status: "", manpower: "", ls_rmb: "", total_c: "", mode_of_payment: "", order_number: lead.orderNumber, quantity_produced: "", sample: "", qty_for: "", payment_amount: "", difference: "", local_overseas: "Local", num_of_cartons: "", payment_remarks: "", cn_tracking: "", sg_tracking: "", sample_order_status: "", sample_status: "", sample_type: "", timeline_rows: [], show_timeline: false, show_payments: false, sample_rows: [], show_sample: false, pl: null, sl: null, currency: currencyOption?.value ?? lead.currency, currency_option_id: currencyOption?.id ?? null, c_sgd: null, manpower_rmb: null, total_uc: null, custom_fields: { inbound_source: lead.source, inbound_external_id: lead.externalId },
   }));
   const { error } = await supabaseAdmin.from("subitems").insert(rows);
   if (error) throw new InboundLeadError(error.message);

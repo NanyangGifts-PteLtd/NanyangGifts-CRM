@@ -448,6 +448,7 @@ export async function POST(request: NextRequest) {
         ? "subitem_status_awarded"
         : "subitem_status_variation_cost_difference",
     );
+    const sgdCurrency = await getSystemLabel("currency", "currency_sgd");
     const attachmentErrors: string[] = [];
     const uploadedAttachments: Array<{
       name: string;
@@ -589,7 +590,8 @@ export async function POST(request: NextRequest) {
           status: linkedSubitemStatus.value,
           status_option_id: linkedSubitemStatus.id,
           qty: "1",
-          currency: "SGD",
+          currency: sgdCurrency.value,
+          currency_option_id: sgdCurrency.id,
           cost: String(cost),
           custom_fields: {
             additionalCostId: voucherRow.id,

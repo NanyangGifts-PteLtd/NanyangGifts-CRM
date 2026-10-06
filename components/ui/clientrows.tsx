@@ -819,7 +819,11 @@ export function ClientRow({
         const qty = quickBooksNumber(subitem.qty);
         const cost = quickBooksNumber(subitem.cost);
         const multiplier = sgdToCurrencyMultiplier(
-          currencySystemKey(subitem.currencyOptionId, currencyOptions),
+          currencySystemKey(
+            subitem.currencyOptionId,
+            currencyOptions,
+            subitem.currency,
+          ),
         );
         const totalCost =
           qty * cost +

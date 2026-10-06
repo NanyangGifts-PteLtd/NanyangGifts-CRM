@@ -1156,6 +1156,21 @@ export function CRMBoard({
     Boolean(
       closedClientStatus?.id && client.statusOptionId === closedClientStatus.id,
     );
+  const awardedSubitemStatus = useMemo(
+    () =>
+      subitemStatusEntries.find(
+        (option) => option.systemKey === "subitem_status_awarded",
+      ) ?? null,
+    [subitemStatusEntries],
+  );
+  const isAwardedSubitem = useCallback(
+    (subitem: Pick<Subitem, "statusOptionId">) =>
+      Boolean(
+        awardedSubitemStatus?.id &&
+          subitem.statusOptionId === awardedSubitemStatus.id,
+      ),
+    [awardedSubitemStatus?.id],
+  );
   const channelOptions = channelEntries.map((e) => e.value);
   const importanceOptions = importanceEntries.map((e) => e.value);
   const progressOptions = progressEntries.map((e) => e.value);
@@ -4601,9 +4616,7 @@ export function CRMBoard({
         }, 0);
       }
       if (key === "overallPaymentStatus") {
-        const awardedSubitems = client.subitems.filter(
-          (subitem) => subitem.status === "Awarded",
-        );
+        const awardedSubitems = client.subitems.filter(isAwardedSubitem);
         const paidAwardedSubitems = awardedSubitems.filter((subitem) =>
           isPaidOrResolvedPaymentStatus(subitem, paymentStatusEntries),
         );
@@ -4626,7 +4639,11 @@ export function CRMBoard({
       const cost = Number(subitem.cost || 0);
       const totalUc = quantity * cost;
       const currencyMultiplier = sgdToCurrencyMultiplier(
-        currencySystemKey(subitem.currencyOptionId, currencyEntries),
+        currencySystemKey(
+          subitem.currencyOptionId,
+          currencyEntries,
+          subitem.currency,
+        ),
       );
       const totalC =
         totalUc +
@@ -4837,11 +4854,11 @@ export function CRMBoard({
                 : key === "overallPaymentStatus"
                   ? calculateOverallPaymentStatus(
                       client.subitems.filter(
-                        (subitem) => subitem.status === "Awarded",
+                        isAwardedSubitem,
                       ).length,
                       client.subitems.filter(
                         (subitem) =>
-                          subitem.status === "Awarded" &&
+                          isAwardedSubitem(subitem) &&
                           isPaidOrResolvedPaymentStatus(
                             subitem,
                             paymentStatusEntries,
@@ -4884,7 +4901,11 @@ export function CRMBoard({
           const cost = Number(subitem.cost || 0);
           const totalUc = quantity * cost;
           const currencyMultiplier = sgdToCurrencyMultiplier(
-            currencySystemKey(subitem.currencyOptionId, currencyEntries),
+            currencySystemKey(
+              subitem.currencyOptionId,
+              currencyEntries,
+              subitem.currency,
+            ),
           );
           const totalC =
             totalUc +
@@ -4950,6 +4971,7 @@ export function CRMBoard({
       currencyEntries,
       peopleProfilesById,
       overallPaymentStatusEntries,
+      isAwardedSubitem,
       subitemAssignees,
     ],
   );
@@ -5025,11 +5047,11 @@ export function CRMBoard({
                           ? [
                               calculateOverallPaymentStatus(
                                 client.subitems.filter(
-                                  (subitem) => subitem.status === "Awarded",
+                                  isAwardedSubitem,
                                 ).length,
                                 client.subitems.filter(
                                   (subitem) =>
-                                    subitem.status === "Awarded" &&
+                                    isAwardedSubitem(subitem) &&
                                     isPaidOrResolvedPaymentStatus(
                                       subitem,
                                       paymentStatusEntries,
@@ -5117,6 +5139,7 @@ export function CRMBoard({
       clientPeopleIds,
       clientPmAssigneeIds,
       currencyEntries,
+      isAwardedSubitem,
       overallPaymentStatusEntries,
       peopleProfilesById,
       subitemAssignees,
@@ -5354,7 +5377,11 @@ export function CRMBoard({
     if (column === "totalC") {
       if (!subitem.currency) return "";
       const rate = sgdToCurrencyMultiplier(
-        currencySystemKey(subitem.currencyOptionId, currencyEntries),
+        currencySystemKey(
+          subitem.currencyOptionId,
+          currencyEntries,
+          subitem.currency,
+        ),
       );
       return (
         Number(subitem.cost || 0) * Number(subitem.qty || 0) +

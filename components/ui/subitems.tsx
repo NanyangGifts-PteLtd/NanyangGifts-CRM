@@ -617,7 +617,11 @@ export function SubitemsTable({
 
       const rows = paymentRowsBySubitemRef.current.get(subitemId) ?? [];
       const currencyMultiplier = sgdToCurrencyMultiplier(
-        currencySystemKey(subitem.currencyOptionId, currencyOptions),
+        currencySystemKey(
+          subitem.currencyOptionId,
+          currencyOptions,
+          subitem.currency,
+        ),
       );
       const totalUc = parseNumber(subitem.cost) * parseNumber(subitem.qty);
       const totalC =
@@ -2953,7 +2957,7 @@ export function SubitemsTable({
     const cost = parseNumber(sub.cost);
     const totalUc = cost * qty;
     const currencyMultiplier = sgdToCurrencyMultiplier(
-      currencySystemKey(sub.currencyOptionId, currencyOptions),
+      currencySystemKey(sub.currencyOptionId, currencyOptions, sub.currency),
     );
     const manpowerInCurrency = parseNumber(sub.manpower) * currencyMultiplier;
     const lsInCurrency = parseNumber(sub.ls) * currencyMultiplier;
