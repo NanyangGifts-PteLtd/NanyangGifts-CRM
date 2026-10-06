@@ -1334,9 +1334,10 @@ export async function updateClientRow(
     });
 }
 
-async function assertDeletionAllowed(
+async function assertCreatorActionAllowed(
   table: "clients" | "subitems",
   id: string,
+  action: "soft-delete" | "restore",
 ) {
   const {
     data: { user },
@@ -1360,25 +1361,29 @@ async function assertDeletionAllowed(
   if (itemError) throw itemError;
 
   const createdAt = item.created_at;
-  if (!createdAt)
+  const actionDescription =
+    action === "soft-delete" ? "moved to the Bin" : "restored";
+  if (action === "soft-delete" && !createdAt)
     throw new Error(
-      "This item has no creation date and cannot be deleted by this role.",
+      `This item has no creation date and cannot be ${actionDescription} by this role.`,
     );
-  const ageInHours = (Date.now() - new Date(createdAt).getTime()) / 3_600_000;
-  if (ageInHours >= 72)
+  const ageInHours = createdAt
+    ? (Date.now() - new Date(createdAt).getTime()) / 3_600_000
+    : null;
+  if (action === "soft-delete" && ageInHours !== null && ageInHours >= 72)
     throw new Error(
-      "This item is more than 72 hours old and can only be deleted by a director or dev.",
+      `This item is more than 72 hours old and can only be ${actionDescription} by a director or developer.`,
     );
 
   if (!item.deletion_owner_id || item.deletion_owner_id !== user.id) {
     throw new Error(
-      "You can only delete items created by you, unless you are a director or developer.",
+      `You can only ${action === "soft-delete" ? "move items created by you to the Bin" : "restore items created by you"}, unless you are a director or developer.`,
     );
   }
 }
 
 export async function deleteClientRow(clientId: string) {
-  await assertDeletionAllowed("clients", clientId);
+  await assertCreatorActionAllowed("clients", clientId, "soft-delete");
   const deletedAt = new Date().toISOString();
   const {
     data: { user },
@@ -1407,7 +1412,7 @@ export async function deleteClientRow(clientId: string) {
 }
 
 export async function restoreClientRow(clientId: string) {
-  await assertDeletionAllowed("clients", clientId);
+  await assertCreatorActionAllowed("clients", clientId, "restore");
   const { data: client, error: fetchError } = await supabase
     .from("clients")
     .select("id, deleted_at")
@@ -2462,7 +2467,7 @@ export async function moveSubitemRow(
 }
 
 export async function deleteSubitemRow(subitemId: string, deactivationReason?: string) {
-  await assertDeletionAllowed("subitems", subitemId);
+  await assertCreatorActionAllowed("subitems", subitemId, "soft-delete");
   const { data: existing, error: fetchError } = await supabase
     .from("subitems")
     .select("*")
@@ -2533,7 +2538,7 @@ export async function deleteSubitemRow(subitemId: string, deactivationReason?: s
 }
 
 export async function restoreSubitemRow(subitemId: string) {
-  await assertDeletionAllowed("subitems", subitemId);
+  await assertCreatorActionAllowed("subitems", subitemId, "restore");
   const { data: subitem, error: fetchError } = await supabase
     .from("subitems")
     .select("id, client_id, name, deleted_at, custom_fields")

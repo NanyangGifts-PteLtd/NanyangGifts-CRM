@@ -25,15 +25,18 @@ async function removeStoragePrefix(prefix: string) {
   return paths.length;
 }
 
-async function assertPurgeAllowed(userId: string, table: "clients" | "subitems", id: string) {
-  const { data: profile, error: profileError } = await supabaseAdmin.from("profiles").select("role").eq("id", userId).single();
+async function assertPurgeAllowed(userId: string) {
+  const { data: profile, error: profileError } = await supabaseAdmin
+    .from("profiles")
+    .select("role")
+    .eq("id", userId)
+    .single();
   if (profileError) throw profileError;
-  if (["director", "dev"].includes(String(profile?.role ?? "").toLowerCase())) return;
-  const { data: item, error } = await supabaseAdmin.from(table).select("created_at, deletion_owner_id").eq("id", id).single();
-  if (error) throw error;
-  if (!item.created_at || Date.now() - new Date(item.created_at).getTime() >= 72 * 3_600_000 || item.deletion_owner_id !== userId) {
-    throw new Error("You can only permanently delete items you created within 72 hours, unless you are a director or developer.");
-  }
+  if (["director", "dev"].includes(String(profile?.role ?? "").toLowerCase()))
+    return;
+  throw new Error(
+    "Only directors and developers can permanently delete CRM Bin items.",
+  );
 }
 
 async function audit(entry: { type: "client" | "subitem"; id: string; clientId?: string | null; name: string; deletedAt: string }) {
@@ -54,7 +57,7 @@ export async function POST(request: NextRequest) {
   if (!type || !id) return NextResponse.json({ error: "A Bin item is required." }, { status: 400 });
 
   try {
-    await assertPurgeAllowed(user.id, type === "client" ? "clients" : "subitems", id);
+    await assertPurgeAllowed(user.id);
     if (type === "client") {
       const { data: client, error } = await supabaseAdmin.from("clients").select("id, name, deleted_at, subitems!subitems_client_id_fkey(id)").eq("id", id).not("deleted_at", "is", null).single();
       if (error || !client) throw new Error("This client is no longer available in the Bin.");
@@ -74,6 +77,16 @@ export async function POST(request: NextRequest) {
     await audit({ type, id, clientId: subitem.client_id, name: subitem.name ?? "Unnamed subitem", deletedAt: subitem.deleted_at });
     return NextResponse.json({ ok: true, filesRemoved });
   } catch (error: any) {
-    return NextResponse.json({ error: error?.message || "Item could not be permanently deleted." }, { status: 400 });
+    const message = error?.message || "Item could not be permanently deleted.";
+    return NextResponse.json(
+      { error: message },
+      {
+        status:
+          message ===
+          "Only directors and developers can permanently delete CRM Bin items."
+            ? 403
+            : 400,
+      },
+    );
   }
 }

@@ -256,10 +256,17 @@ const restrictions: ReferenceItem[] = [
       "app/api/customer-profiles/route.ts; app/api/customer-profiles/remarks/route.ts",
   },
   {
+    title: "CRM soft deletion",
+    trigger: "Deleting a client or subitem from the CRM Board.",
+    behaviour:
+      "The creator may move their item to the Bin within 72 hours of creation; directors/developers may do so at any time.",
+    source: "lib/crm.ts",
+  },
+  {
     title: "CRM Bin permanent deletion",
     trigger: "Permanent delete from the Bin.",
     behaviour:
-      "The creator may permanently delete their item within 72 hours; directors/developers may do so at any time.",
+      "Only directors and developers can manually permanently delete Bin items. The automated 30-day retention purge remains separate.",
     source: "app/api/crm-bin/permanent-delete/route.ts",
   },
   {

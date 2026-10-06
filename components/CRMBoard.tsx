@@ -1065,6 +1065,11 @@ export function CRMBoard({
       .trim()
       .toLowerCase(),
   );
+  const canPermanentlyDeleteBinItems = ["director", "dev"].includes(
+    String(currentUserRole ?? "")
+      .trim()
+      .toLowerCase(),
+  );
   const selectedClientsHaveLockedSubitems = useMemo(
     () =>
       selectedIds.size > 0 &&
@@ -8131,19 +8136,21 @@ export function CRMBoard({
                     >
                       Restore selected
                     </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setPendingPermanentBinItems(
-                          binItems.filter((item) =>
-                            selectedBinItemKeys.has(`${item.type}:${item.id}`),
-                          ),
-                        )
-                      }
-                      className="rounded-md border border-red-200 px-2.5 py-1 text-xs font-medium text-red-700 hover:bg-red-50"
-                    >
-                      Permanently delete
-                    </button>
+                    {canPermanentlyDeleteBinItems && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setPendingPermanentBinItems(
+                            binItems.filter((item) =>
+                              selectedBinItemKeys.has(`${item.type}:${item.id}`),
+                            ),
+                          )
+                        }
+                        className="rounded-md border border-red-200 px-2.5 py-1 text-xs font-medium text-red-700 hover:bg-red-50"
+                      >
+                        Permanently delete
+                      </button>
+                    )}
                   </>
                 )}
               </div>
@@ -8222,13 +8229,15 @@ export function CRMBoard({
                           ? "Restoring…"
                           : "Restore"}
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => setPendingPermanentBinItems([item])}
-                        className="rounded-md border border-red-200 bg-white px-2.5 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50"
-                      >
-                        Permanently delete
-                      </button>
+                      {canPermanentlyDeleteBinItems && (
+                        <button
+                          type="button"
+                          onClick={() => setPendingPermanentBinItems([item])}
+                          className="rounded-md border border-red-200 bg-white px-2.5 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50"
+                        >
+                          Permanently delete
+                        </button>
+                      )}
                     </div>
                   );
                 })
