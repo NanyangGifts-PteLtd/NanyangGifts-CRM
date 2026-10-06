@@ -530,6 +530,8 @@ export function SpreadsheetPilot({
   const latestLoadRequest = useRef(0);
   const rowCopyShortcut = useRef<(operation: "copy" | "cut") => void>(() => {});
   const rowPasteShortcut = useRef<(targetRow: number) => void>(() => {});
+  const rowDeleteShortcut = useRef<() => void>(() => {});
+  const cellDeleteShortcut = useRef<() => void>(() => {});
   const rowClipboardActive = useRef(false);
   rowClipboardActive.current = copiedRows.length > 0 || cutRowIds.length > 0;
   const flushPendingSavesRef = useRef<() => Promise<void>>(async () => {});
@@ -1231,6 +1233,17 @@ export function SpreadsheetPilot({
           return;
         }
       }
+      if (event.key === "Delete" || event.key === "Backspace") {
+        event.cancel();
+        event.preventDefault();
+        event.stopPropagation();
+        if (selectedRows.length && mode !== "shipper") {
+          rowDeleteShortcut.current();
+        } else {
+          cellDeleteShortcut.current();
+        }
+        return;
+      }
       if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
       const current = gridSelection?.current;
       if (!current) return;
@@ -1263,7 +1276,7 @@ export function SpreadsheetPilot({
         rows: CompactSelection.empty(),
       });
     },
-    [gridSelection, rows],
+    [gridSelection, mode, rows],
   );
   const drawCenteredHeader = useCallback(
     (args: {
@@ -1338,6 +1351,13 @@ export function SpreadsheetPilot({
         const groupRows = rows.filter(
           (item) => item.shipment_group_id === record.shipment_group_id,
         );
+        if (groupRows.some((item) => item.is_locked)) {
+          toast.error("Merged cell is locked", {
+            description:
+              "Unlock every underlying row in this merged shipment before changing or clearing it.",
+          });
+          return;
+        }
         localEditRevision.current += 1;
         flushSync(() => {
           setRows((current) =>
@@ -1387,6 +1407,7 @@ export function SpreadsheetPilot({
         string,
         { location: Item; value: GridCell }
       >();
+      let blockedMergedCell = false;
       for (const {
         location: [col, row],
         value,
@@ -1418,6 +1439,16 @@ export function SpreadsheetPilot({
         )
           continue;
         if (record.shipment_group_id && shipmentInputFields.includes(key)) {
+          if (
+            rows.some(
+              (item) =>
+                item.shipment_group_id === record.shipment_group_id &&
+                item.is_locked,
+            )
+          ) {
+            blockedMergedCell = true;
+            continue;
+          }
           // Copy, cut, paste and Delete may contain one edit for every
           // physical row hidden beneath a merged shipment cell. Apply only
           // the first edit to that logical cell so a blank follower cannot
@@ -1482,6 +1513,12 @@ export function SpreadsheetPilot({
       sharedUpdates.forEach(({ location, value }) => {
         void onCellEdited(location, value);
       });
+      if (blockedMergedCell) {
+        toast.error("Merged cell is locked", {
+          description:
+            "Unlock every underlying row in this merged shipment before changing or clearing it.",
+        });
+      }
       if (newRowValues.size) {
         void (async () => {
           const createdRows: Row[] = [];
@@ -1775,18 +1812,41 @@ export function SpreadsheetPilot({
   };
   async function deleteRows(rowIds: string[]) {
     if (mode === "shipper" || !rowIds.length) return;
+    const requestedIds = new Set(rowIds);
+    const affectedGroupIds = new Set(
+      rows
+        .filter(
+          (row) => requestedIds.has(row.id) && row.shipment_group_id,
+        )
+        .map((row) => row.shipment_group_id!),
+    );
+    const expandedRowIds = rows
+      .filter(
+        (row) =>
+          requestedIds.has(row.id) ||
+          (row.shipment_group_id &&
+            affectedGroupIds.has(row.shipment_group_id)),
+      )
+      .map((row) => row.id);
+    const includesMergedRows = expandedRowIds.length > requestedIds.size;
     if (!(await confirm({
-      title: `Delete ${rowIds.length === 1 ? "spreadsheet row" : `${rowIds.length} spreadsheet rows`}?`,
-      description:
-        "The selected spreadsheet rows will be permanently deleted.",
-      confirmLabel: rowIds.length === 1 ? "Delete row" : "Delete rows",
+      title: `Delete ${expandedRowIds.length === 1 ? "spreadsheet row" : `${expandedRowIds.length} spreadsheet rows`}?`,
+      description: includesMergedRows
+        ? "The selection includes part of a merged shipment. Every underlying row in that merged block will be permanently deleted."
+        : "The selected spreadsheet rows will be permanently deleted.",
+      confirmLabel:
+        expandedRowIds.length === 1 ? "Delete row" : "Delete rows",
       destructive: true,
     }))) return;
     await flushPendingSaves();
     const response = await fetch("/api/shipper/spreadsheet", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ shipperId, operation: "delete-rows", rowIds }),
+      body: JSON.stringify({
+        shipperId,
+        operation: "delete-rows",
+        rowIds: expandedRowIds,
+      }),
     });
     const result = await response.json();
     if (!response.ok)
@@ -1796,9 +1856,20 @@ export function SpreadsheetPilot({
     setRows(result.rows ?? []);
     setGridSelection(undefined);
     setSelectedRowId(null);
-    if (cutRowIds.some((id) => rowIds.includes(id))) setCutRowIds([]);
-    toast.success(rowIds.length === 1 ? "Row deleted" : "Rows deleted");
+    if (cutRowIds.some((id) => expandedRowIds.includes(id))) setCutRowIds([]);
+    toast.success(
+      expandedRowIds.length === 1
+        ? "Row deleted"
+        : `${expandedRowIds.length} rows deleted`,
+    );
   }
+  rowDeleteShortcut.current = () => {
+    const selectedIds = (gridSelection?.rows.toArray() ?? [])
+      .map((rowIndex) => rows[rowIndex]?.id)
+      .filter((rowId): rowId is string => Boolean(rowId));
+    if (selectedIds.length) void deleteRows(selectedIds);
+  };
+  cellDeleteShortcut.current = () => clearSelectionContents();
   const deleteContextRow = async () => {
     if (mode === "shipper") return;
     const target = contextMenu ? rows[contextMenu.row] : undefined;
