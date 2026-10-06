@@ -164,7 +164,7 @@ export async function POST(request: NextRequest) {
       trailingBlankCount?: number;
       referenceRowId?: string;
       placement?: "above" | "below";
-      copiedRows?: Array<{ values: Record<string, unknown>; cellFills?: Record<string, string> }>;
+      copiedRows?: Array<{ values: Record<string, unknown>; cellFills?: Record<string, string>; shipmentGroupId?: string | null }>;
     };
     if (!body.shipperId) throw new Error("shipperId is required");
     const { userId, role, shipper } = await authorize(body.shipperId);
@@ -179,7 +179,7 @@ export async function POST(request: NextRequest) {
     const workbook = await getOrCreateShipperWorkbook(body.shipperId, shipper.name ?? "Shipper");
     const { data: existingRows, error: rowsError } = await supabaseAdmin
       .from("shipper_spreadsheet_rows")
-      .select("id, sort_key")
+      .select("id, sort_key, shipment_group_id")
       .eq("workbook_id", workbook.id);
     if (rowsError) throw rowsError;
     if (body.referenceRowId && body.placement) {
@@ -188,7 +188,18 @@ export async function POST(request: NextRequest) {
       ));
       const referenceIndex = ordered.findIndex((row) => row.id === body.referenceRowId);
       if (referenceIndex < 0) throw new Error("Spreadsheet row not found");
-      const insertionIndex = body.placement === "above" ? referenceIndex : referenceIndex + 1;
+      const referenceGroupId = ordered[referenceIndex]?.shipment_group_id;
+      const groupIndexes = referenceGroupId
+        ? ordered
+            .map((row, index) =>
+              row.shipment_group_id === referenceGroupId ? index : -1,
+            )
+            .filter((index) => index >= 0)
+        : [referenceIndex];
+      const insertionIndex =
+        body.placement === "above"
+          ? Math.min(...groupIndexes)
+          : Math.max(...groupIndexes) + 1;
       const before = ordered[insertionIndex - 1];
       const after = ordered[insertionIndex];
       const rowCount = Math.max(1, copiedRows.length);
@@ -204,14 +215,22 @@ export async function POST(request: NextRequest) {
         const sortStep = before && after
           ? (Number(after.sort_key) - Number(before.sort_key)) / (rowCount + 1)
           : 1000;
+        const copiedShipmentGroups = new Map<string, string>();
         const { data, error } = await supabaseAdmin
           .from("shipper_spreadsheet_rows")
           .insert(copiedRows.map((row, index) => {
             const values = calculateSpreadsheetFormulaValues(validateSpreadsheetValues(row.values ?? {}));
+            const sourceGroupId = String(row.shipmentGroupId ?? "").trim();
+            if (sourceGroupId && !copiedShipmentGroups.has(sourceGroupId)) {
+              copiedShipmentGroups.set(sourceGroupId, crypto.randomUUID());
+            }
             return {
               workbook_id: workbook.id,
               row_type: "item",
               source_type: "manual_draft",
+              shipment_group_id: sourceGroupId
+                ? copiedShipmentGroups.get(sourceGroupId)
+                : null,
               sort_key: firstSortKey + sortStep * index,
               values,
               auto_lock_at: autoLockAt(values),
@@ -222,7 +241,15 @@ export async function POST(request: NextRequest) {
           .select()
           .order("sort_key", { ascending: true });
         if (error) throw error;
-        return NextResponse.json({ row: data?.[0], rows: data ?? [] }, { status: 201 });
+        const snapshot = await getShipperSpreadsheetRows(
+          body.shipperId,
+          shipper.name ?? "Shipper",
+          workbook,
+        );
+        return NextResponse.json(
+          { row: data?.[0], insertedRows: data ?? [], rows: snapshot.rows },
+          { status: 201 },
+        );
       }
       const { data, error } = await supabaseAdmin
         .from("shipper_spreadsheet_rows")
@@ -230,7 +257,15 @@ export async function POST(request: NextRequest) {
         .select()
         .single();
       if (error) throw error;
-      return NextResponse.json({ row: data, rows: [data] }, { status: 201 });
+      const snapshot = await getShipperSpreadsheetRows(
+        body.shipperId,
+        shipper.name ?? "Shipper",
+        workbook,
+      );
+      return NextResponse.json(
+        { row: data, insertedRows: [data], rows: snapshot.rows },
+        { status: 201 },
+      );
     }
     const baseSortKey = Math.max(
       Date.now(),
@@ -270,7 +305,7 @@ export async function POST(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
-    const body = await request.json() as { shipperId?: string; rowId?: string; values?: Record<string, unknown>; cellFills?: Record<string, string>; replaceValues?: boolean; isLocked?: boolean; version?: number; operation?: "merge" | "unmerge" | "update-shared"; rowIds?: string[]; resolvedValues?: Record<string, unknown> };
+    const body = await request.json() as { shipperId?: string; rowId?: string; values?: Record<string, unknown>; cellFills?: Record<string, string>; replaceValues?: boolean; isLocked?: boolean; version?: number; operation?: "merge" | "unmerge" | "update-shared" | "move-rows" | "delete-rows"; rowIds?: string[]; resolvedValues?: Record<string, unknown>; referenceRowId?: string; placement?: "above" | "below" };
     if (!body.shipperId || (!body.rowId && !body.operation)) throw new Error("shipperId and rowId are required");
     const { role } = await authorize(body.shipperId);
     const workbook = await getOrCreateShipperWorkbook(body.shipperId, "Shipper");
@@ -280,10 +315,10 @@ export async function PATCH(request: NextRequest) {
       // grouping changes, ungrouping, and conflict resolution can rewrite
       // internal shipment fields, so they remain internal-staff actions.
       if (role === "shipper" && body.operation !== "update-shared") {
-        throw new Error("Only internal staff can merge or unmerge shipment rows");
+        throw new Error("Only internal staff can change spreadsheet row structure");
       }
       const rowIds = [...new Set(body.rowIds ?? [])];
-      if (rowIds.length < 2) throw new Error("Select at least two rows to change a shipment grouping");
+      if (!rowIds.length) throw new Error("Select at least one spreadsheet row");
       const { data: allRows, error: rowsError } = await supabaseAdmin
         .from("shipper_spreadsheet_rows")
         .select("id, values, is_locked, auto_lock_at, shipment_group_id, sort_key")
@@ -294,13 +329,73 @@ export async function PATCH(request: NextRequest) {
       const ordered = allRows ?? [];
       const selected = ordered.filter((row) => rowIds.includes(row.id));
       if (selected.length !== rowIds.length) throw new Error("One or more spreadsheet rows could not be found");
-      if (selected.some((row) => row.is_locked)) throw new Error("Unlock every selected row before changing its shipment grouping");
       const selectedIdSet = new Set(rowIds);
+      const existingGroupIds = new Set(selected.map((row) => row.shipment_group_id).filter((groupId): groupId is string => Boolean(groupId)));
+      if ([...existingGroupIds].some((groupId) => ordered.some((row) => row.shipment_group_id === groupId && !selectedIdSet.has(row.id)))) {
+        throw new Error("Select every row in a merged shipment before moving or deleting it");
+      }
+      if (body.operation === "move-rows") {
+        if (!body.referenceRowId || !body.placement) {
+          throw new Error("Choose where the selected rows should be moved");
+        }
+        if (selectedIdSet.has(body.referenceRowId)) {
+          throw new Error("Paste the rows beside a row outside the cut selection");
+        }
+        const remaining = ordered.filter((row) => !selectedIdSet.has(row.id));
+        const referenceIndex = remaining.findIndex(
+          (row) => row.id === body.referenceRowId,
+        );
+        if (referenceIndex < 0) throw new Error("Destination row not found");
+        const referenceGroupId = remaining[referenceIndex]?.shipment_group_id;
+        const groupIndexes = referenceGroupId
+          ? remaining
+              .map((row, index) =>
+                row.shipment_group_id === referenceGroupId ? index : -1,
+              )
+              .filter((index) => index >= 0)
+          : [referenceIndex];
+        const insertionIndex =
+          body.placement === "above"
+            ? Math.min(...groupIndexes)
+            : Math.max(...groupIndexes) + 1;
+        const reordered = [
+          ...remaining.slice(0, insertionIndex),
+          ...selected,
+          ...remaining.slice(insertionIndex),
+        ];
+        // Rebalance the complete order while moving. This avoids fractional
+        // sort keys collapsing after repeated cut/paste operations.
+        await Promise.all(
+          reordered.map(async (row, index) => {
+            const { error } = await supabaseAdmin
+              .from("shipper_spreadsheet_rows")
+              .update({ sort_key: (index + 1) * 1000 })
+              .eq("id", row.id)
+              .eq("workbook_id", workbook.id);
+            if (error) throw error;
+          }),
+        );
+        return NextResponse.json(
+          await getShipperSpreadsheetRows(body.shipperId, "Shipper", workbook),
+        );
+      }
+      if (body.operation === "delete-rows") {
+        const { error } = await supabaseAdmin
+          .from("shipper_spreadsheet_rows")
+          .delete()
+          .eq("workbook_id", workbook.id)
+          .in("id", rowIds);
+        if (error) throw error;
+        return NextResponse.json(
+          await getShipperSpreadsheetRows(body.shipperId, "Shipper", workbook),
+        );
+      }
+      if (rowIds.length < 2) throw new Error("Select at least two rows to change a shipment grouping");
+      if (selected.some((row) => row.is_locked)) throw new Error("Unlock every selected row before changing its shipment grouping");
       const selectedIndexes = ordered.map((row, index) => selectedIdSet.has(row.id) ? index : -1).filter((index) => index >= 0);
       if (selectedIndexes.some((index, position) => position > 0 && index !== selectedIndexes[position - 1] + 1)) {
         throw new Error("Shipment rows must be consecutive");
       }
-      const existingGroupIds = new Set(selected.map((row) => row.shipment_group_id).filter((groupId): groupId is string => Boolean(groupId)));
       if ([...existingGroupIds].some((groupId) => ordered.some((row) => row.shipment_group_id === groupId && !selectedIdSet.has(row.id)))) {
         throw new Error("Select every row in an existing shipment before changing its grouping");
       }

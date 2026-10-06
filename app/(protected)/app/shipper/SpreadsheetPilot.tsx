@@ -500,8 +500,10 @@ export function SpreadsheetPilot({
     Array<{
       values: Record<string, unknown>;
       cellFills: Record<string, string>;
+      shipmentGroupId: string | null;
     }>
   >([]);
+  const [cutRowIds, setCutRowIds] = useState<string[]>([]);
   const [mergeDialog, setMergeDialog] = useState<{
     rowIndexes: number[];
     conflicts: Array<{ field: string; options: string[] }>;
@@ -526,6 +528,11 @@ export function SpreadsheetPilot({
   const savesInFlight = useRef(0);
   const localEditRevision = useRef(0);
   const latestLoadRequest = useRef(0);
+  const rowCopyShortcut = useRef<(operation: "copy" | "cut") => void>(() => {});
+  const rowPasteShortcut = useRef<(targetRow: number) => void>(() => {});
+  const rowClipboardActive = useRef(false);
+  rowClipboardActive.current = copiedRows.length > 0 || cutRowIds.length > 0;
+  const flushPendingSavesRef = useRef<() => Promise<void>>(async () => {});
   const gridRef = useRef<DataEditorRef | null>(null);
   const gridContainerRef = useRef<HTMLDivElement | null>(null);
   const contextPointer = useRef<{ x: number; y: number } | null>(null);
@@ -663,6 +670,7 @@ export function SpreadsheetPilot({
   const toggleRowLock = useCallback(
     async (record: Row) => {
       if (!hasRowContent(record)) return;
+      await flushPendingSavesRef.current();
       const response = await fetch("/api/shipper/spreadsheet", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -749,6 +757,7 @@ export function SpreadsheetPilot({
       if (failed && pendingSaves.current.size === 0) void load();
     }
   }, [load, shipperId]);
+  flushPendingSavesRef.current = flushPendingSaves;
   const queueSave = useCallback(
     (rowId: string, values: Record<string, unknown>, replaceValues = false) => {
       const existing = pendingSaves.current.get(rowId);
@@ -1187,7 +1196,41 @@ export function SpreadsheetPilot({
     ).reduce((sum, height) => sum + height, 0);
   }, [gridSelection, rowHeightForIndex, rows]);
   const onGridKeyDown = useCallback(
-    (event: { key: string; cancel: () => void }) => {
+    (event: {
+      key: string;
+      ctrlKey: boolean;
+      metaKey: boolean;
+      cancel: () => void;
+      preventDefault: () => void;
+      stopPropagation: () => void;
+    }) => {
+      const shortcut = event.ctrlKey || event.metaKey;
+      const selectedRows = gridSelection?.rows.toArray() ?? [];
+      if (shortcut && selectedRows.length) {
+        const key = event.key.toLowerCase();
+        if (key === "c" || key === "x") {
+          event.cancel();
+          event.preventDefault();
+          event.stopPropagation();
+          rowCopyShortcut.current(key === "x" ? "cut" : "copy");
+          return;
+        }
+      }
+      if (
+        shortcut &&
+        event.key.toLowerCase() === "v" &&
+        rowClipboardActive.current
+      ) {
+        const destinationRow =
+          selectedRows[0] ?? gridSelection?.current?.cell[1];
+        if (destinationRow !== undefined) {
+          event.cancel();
+          event.preventDefault();
+          event.stopPropagation();
+          rowPasteShortcut.current(destinationRow);
+          return;
+        }
+      }
       if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
       const current = gridSelection?.current;
       if (!current) return;
@@ -1339,6 +1382,7 @@ export function SpreadsheetPilot({
   const onCellsEdited = useCallback(
     (edits: ReadonlyArray<{ location: Item; value: GridCell }>) => {
       const updates = new Map<string, Record<string, unknown>>();
+      const newRowValues = new Map<number, Record<string, unknown>>();
       const sharedUpdates = new Map<
         string,
         { location: Item; value: GridCell }
@@ -1357,7 +1401,15 @@ export function SpreadsheetPilot({
           continue;
         }
         if (!record) {
-          void onCellEdited([col, row], value);
+          if (
+            mode !== "shipper" ||
+            shipperEditableFields.has(key)
+          ) {
+            newRowValues.set(row, {
+              ...(newRowValues.get(row) ?? {}),
+              [key]: value.data,
+            });
+          }
           continue;
         }
         if (
@@ -1430,9 +1482,52 @@ export function SpreadsheetPilot({
       sharedUpdates.forEach(({ location, value }) => {
         void onCellEdited(location, value);
       });
+      if (newRowValues.size) {
+        void (async () => {
+          const createdRows: Row[] = [];
+          let materializedRowCount = rows.length;
+          for (const [targetRow, values] of [...newRowValues].sort(
+            ([left], [right]) => left - right,
+          )) {
+            const response = await fetch("/api/shipper/spreadsheet", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                shipperId,
+                rowType: "item",
+                values,
+                trailingBlankCount: Math.max(
+                  0,
+                  targetRow - materializedRowCount,
+                ),
+              }),
+            });
+            const result = await response.json();
+            if (!response.ok) {
+              setError(result.error ?? "Could not create pasted rows");
+              return;
+            }
+            const inserted = (result.rows ?? [result.row]).filter(Boolean) as Row[];
+            createdRows.push(...inserted);
+            materializedRowCount += inserted.length;
+          }
+          if (createdRows.length) {
+            localEditRevision.current += 1;
+            flushSync(() =>
+              setRows((current) =>
+                [...current, ...createdRows].sort(
+                  (left, right) =>
+                    Number(left.sort_key) - Number(right.sort_key) ||
+                    left.id.localeCompare(right.id),
+                ),
+              ),
+            );
+          }
+        })();
+      }
       return true;
     },
-    [mode, onCellEdited, queueSave, rows],
+    [mode, onCellEdited, queueSave, rows, shipperId],
   );
   const height = useMemo(
     () =>
@@ -1445,19 +1540,7 @@ export function SpreadsheetPilot({
   const selected = rows.find((row) => row.id === selectedRowId);
   const deleteRow = async () => {
     if (mode === "shipper" || !selected) return;
-    if (!(await confirm({
-      title: "Delete spreadsheet row?",
-      description: "The selected spreadsheet row will be permanently deleted.",
-      confirmLabel: "Delete row",
-      destructive: true,
-    }))) return;
-    const response = await fetch(
-      `/api/shipper/spreadsheet?shipperId=${shipperId}&rowId=${selected.id}`,
-      { method: "DELETE" },
-    );
-    if (!response.ok) return setError("Could not delete row");
-    setRows((current) => current.filter((row) => row.id !== selected.id));
-    setSelectedRowId(null);
+    await deleteRows([selected.id]);
   };
   const fillSelection = async (color: string | null) => {
     const range = gridSelection?.current?.range;
@@ -1590,6 +1673,7 @@ export function SpreadsheetPilot({
   const insertRow = async (placement: "above" | "below") => {
     const target = contextMenu ? rows[contextMenu.row] : undefined;
     if (!target) return;
+    await flushPendingSaves();
     const response = await fetch("/api/shipper/spreadsheet", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1597,69 +1681,129 @@ export function SpreadsheetPilot({
     });
     const result = await response.json();
     if (!response.ok) return setError(result.error ?? "Could not insert row");
-    const insertionIndex =
-      rows.findIndex((row) => row.id === target.id) +
-      (placement === "below" ? 1 : 0);
-    setRows((current) => [
-      ...current.slice(0, insertionIndex),
-      result.row,
-      ...current.slice(insertionIndex),
-    ]);
+    if (Array.isArray(result.rows)) setRows(result.rows);
+    else setRows((current) => [...current, result.row]);
   };
-  const copySelectedRows = () => {
+  const copySelectedRows = (operation: "copy" | "cut") => {
     const rowIndexes = gridSelection?.rows.toArray() ?? [];
-    const copies = rowIndexes
+    const selectedRows = rowIndexes
       .map((rowIndex) => rows[rowIndex])
-      .filter((row): row is Row => Boolean(row))
-      .map((row) => ({
+      .filter((row): row is Row => Boolean(row));
+    if (!selectedRows.length) return false;
+    const selectedIds = new Set(selectedRows.map((row) => row.id));
+    const hasPartialMerge = selectedRows.some(
+      (row) =>
+        row.shipment_group_id &&
+        rows.some(
+          (candidate) =>
+            candidate.shipment_group_id === row.shipment_group_id &&
+            !selectedIds.has(candidate.id),
+        ),
+    );
+    if (hasPartialMerge) {
+      toast.error("Select every row in the merged shipment first.");
+      return false;
+    }
+    if (operation === "cut") {
+      setCutRowIds(selectedRows.map((row) => row.id));
+      setCopiedRows([]);
+      toast.success(
+        `${selectedRows.length} row${selectedRows.length === 1 ? "" : "s"} ready to move`,
+      );
+      return true;
+    }
+    const copies = selectedRows.map((row) => ({
         values: Object.fromEntries(
           Object.entries(row.values).filter(
             ([field]) => !formulaFields.has(field),
           ),
         ),
         cellFills: { ...(row.cell_fills ?? {}) },
+        shipmentGroupId: row.shipment_group_id,
       }));
-    if (copies.length) setCopiedRows(copies);
+    setCopiedRows(copies);
+    setCutRowIds([]);
+    toast.success(
+      `${copies.length} row${copies.length === 1 ? "" : "s"} copied`,
+    );
+    return true;
   };
-  const insertCopiedRows = async () => {
-    const target = contextMenu ? rows[contextMenu.row] : undefined;
-    if (!target || !copiedRows.length) return;
+  const pasteRows = async (
+    placement: "above" | "below",
+    targetRowIndex = contextMenu?.row,
+  ) => {
+    const target =
+      targetRowIndex === undefined ? undefined : rows[targetRowIndex];
+    if (!target || (!copiedRows.length && !cutRowIds.length)) return;
+    await flushPendingSaves();
+    const moving = cutRowIds.length > 0;
     const response = await fetch("/api/shipper/spreadsheet", {
-      method: "POST",
+      method: moving ? "PATCH" : "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         shipperId,
         referenceRowId: target.id,
-        placement: "below",
-        copiedRows,
+        placement,
+        ...(moving
+          ? { operation: "move-rows", rowIds: cutRowIds }
+          : { copiedRows }),
       }),
     });
     const result = await response.json();
     if (!response.ok)
-      return setError(result.error ?? "Could not insert copied rows");
-    const insertionIndex = rows.findIndex((row) => row.id === target.id) + 1;
-    setRows((current) => [
-      ...current.slice(0, insertionIndex),
-      ...(result.rows ?? []),
-      ...current.slice(insertionIndex),
-    ]);
+      return toast.error(
+        moving ? "Rows could not be moved" : "Rows could not be pasted",
+        { description: result.error },
+      );
+    if (moving) {
+      setRows(result.rows ?? []);
+      setCutRowIds([]);
+      setGridSelection(undefined);
+      toast.success("Rows moved");
+      return;
+    }
+    setRows(result.rows ?? []);
+    toast.success("Rows pasted");
   };
+  rowCopyShortcut.current = (operation) => {
+    copySelectedRows(operation);
+  };
+  rowPasteShortcut.current = (targetRow) => {
+    if (copiedRows.length || cutRowIds.length) {
+      void pasteRows("above", targetRow);
+    }
+  };
+  async function deleteRows(rowIds: string[]) {
+    if (mode === "shipper" || !rowIds.length) return;
+    if (!(await confirm({
+      title: `Delete ${rowIds.length === 1 ? "spreadsheet row" : `${rowIds.length} spreadsheet rows`}?`,
+      description:
+        "The selected spreadsheet rows will be permanently deleted.",
+      confirmLabel: rowIds.length === 1 ? "Delete row" : "Delete rows",
+      destructive: true,
+    }))) return;
+    await flushPendingSaves();
+    const response = await fetch("/api/shipper/spreadsheet", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ shipperId, operation: "delete-rows", rowIds }),
+    });
+    const result = await response.json();
+    if (!response.ok)
+      return toast.error("Rows could not be deleted", {
+        description: result.error,
+      });
+    setRows(result.rows ?? []);
+    setGridSelection(undefined);
+    setSelectedRowId(null);
+    if (cutRowIds.some((id) => rowIds.includes(id))) setCutRowIds([]);
+    toast.success(rowIds.length === 1 ? "Row deleted" : "Rows deleted");
+  }
   const deleteContextRow = async () => {
     if (mode === "shipper") return;
     const target = contextMenu ? rows[contextMenu.row] : undefined;
     if (!target) return;
-    if (!(await confirm({
-      title: "Delete spreadsheet row?",
-      description: "This spreadsheet row will be permanently deleted.",
-      confirmLabel: "Delete row",
-      destructive: true,
-    }))) return;
-    const response = await fetch(
-      `/api/shipper/spreadsheet?shipperId=${shipperId}&rowId=${target.id}`,
-      { method: "DELETE" },
-    );
-    if (!response.ok) return setError("Could not delete row");
-    setRows((current) => current.filter((row) => row.id !== target.id));
+    await deleteRows([target.id]);
   };
   const openAttachmentPicker = (row: Row, field: string) => {
     if (
@@ -1765,6 +1909,7 @@ export function SpreadsheetPilot({
     const selectedRows = rowIndexes
       .map((index) => rows[index])
       .filter((row): row is Row => Boolean(row));
+    await flushPendingSaves();
     const response = await fetch("/api/shipper/spreadsheet", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -1864,6 +2009,7 @@ export function SpreadsheetPilot({
       toast.error("Select every row in this shipment before unmerging it.");
       return;
     }
+    await flushPendingSaves();
     const response = await fetch("/api/shipper/spreadsheet", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -1911,6 +2057,12 @@ export function SpreadsheetPilot({
       )
     );
   })();
+  const selectedMarkerRowIndexes = gridSelection?.rows.toArray() ?? [];
+  const selectedMarkerRowIds = selectedMarkerRowIndexes
+    .map((index) => rows[index]?.id)
+    .filter((id): id is string => Boolean(id));
+  const hasRowSelection = selectedMarkerRowIds.length > 0;
+  const hasRowClipboard = copiedRows.length > 0 || cutRowIds.length > 0;
   const contextRow = contextMenu ? rows[contextMenu.row] : undefined;
   const contextField = contextMenu
     ? String(columns[contextMenu.col]?.id ?? "")
@@ -2012,6 +2164,25 @@ export function SpreadsheetPilot({
             <PaintBucket size={15} />
             Fill colour
           </button>
+        )}
+        {mode !== "shipper" && hasRowClipboard && (
+          <div className="flex items-center gap-2 rounded border border-sky-200 bg-sky-50 px-2 py-1 text-xs text-sky-800">
+            <span>
+              {cutRowIds.length
+                ? `${cutRowIds.length} row${cutRowIds.length === 1 ? "" : "s"} ready to move`
+                : `${copiedRows.length} row${copiedRows.length === 1 ? "" : "s"} copied`}
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                setCutRowIds([]);
+                setCopiedRows([]);
+              }}
+              className="font-medium underline hover:text-sky-950"
+            >
+              Cancel
+            </button>
+          </div>
         )}
         {isSelectedRemarkCell && (
           <button
@@ -2241,41 +2412,66 @@ export function SpreadsheetPilot({
             className="absolute z-30 min-w-40 rounded-md border border-slate-200 bg-white py-1 shadow-lg"
             style={{ left: contextMenu.x, top: contextMenu.y }}
           >
-            <button
-              type="button"
-              onClick={() => {
-                copySelectedRows();
-                void gridRef.current?.emit("copy");
-                setContextMenu(null);
-              }}
-              className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-100"
-            >
-              Copy
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                void (async () => {
-                  copySelectedRows();
-                  await gridRef.current?.emit("copy");
-                  clearSelectionContents();
-                })();
-                setContextMenu(null);
-              }}
-              className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-100"
-            >
-              Cut
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                void pasteFromClipboard();
-                setContextMenu(null);
-              }}
-              className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-100"
-            >
-              Paste
-            </button>
+            {hasRowSelection && mode !== "shipper" ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    copySelectedRows("copy");
+                    setContextMenu(null);
+                  }}
+                  className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-100"
+                >
+                  Copy {selectedMarkerRowIds.length === 1 ? "row" : "rows"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    copySelectedRows("cut");
+                    setContextMenu(null);
+                  }}
+                  className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-100"
+                >
+                  Cut {selectedMarkerRowIds.length === 1 ? "row" : "rows"}
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void gridRef.current?.emit("copy");
+                    setContextMenu(null);
+                  }}
+                  className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-100"
+                >
+                  Copy cells
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void (async () => {
+                      await gridRef.current?.emit("copy");
+                      clearSelectionContents();
+                    })();
+                    setContextMenu(null);
+                  }}
+                  className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-100"
+                >
+                  Cut cells
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void pasteFromClipboard();
+                    setContextMenu(null);
+                  }}
+                  className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-100"
+                >
+                  Paste cells
+                </button>
+              </>
+            )}
             {mode !== "shipper" && (
               <>
                 <div className="my-1 border-t border-slate-200" />
@@ -2301,38 +2497,52 @@ export function SpreadsheetPilot({
                 </button>
                 <button
                   type="button"
-                  disabled={!copiedRows.length}
+                  disabled={!hasRowClipboard}
                   onClick={() => {
-                    void insertCopiedRows();
+                    void pasteRows("above");
                     setContextMenu(null);
                   }}
                   className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-100 disabled:text-slate-300"
                 >
-                  Insert copied
+                  Paste rows above
+                </button>
+                <button
+                  type="button"
+                  disabled={!hasRowClipboard}
+                  onClick={() => {
+                    void pasteRows("below");
+                    setContextMenu(null);
+                  }}
+                  className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-100 disabled:text-slate-300"
+                >
+                  Paste rows below
                 </button>
                 <button
                   type="button"
                   onClick={() => {
-                    void deleteContextRow();
+                    if (hasRowSelection) void deleteRows(selectedMarkerRowIds);
+                    else void deleteContextRow();
                     setContextMenu(null);
                   }}
                   className="block w-full px-3 py-1.5 text-left text-xs text-red-700 hover:bg-red-50"
                 >
-                  Delete row
+                  Delete {hasRowSelection && selectedMarkerRowIds.length > 1 ? "rows" : "row"}
                 </button>
               </>
             )}
-            <div className="my-1 border-t border-slate-200" />
-            <button
-              type="button"
-              onClick={() => {
-                clearSelectionContents();
-                setContextMenu(null);
-              }}
-              className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-100"
-            >
-              Clear contents
-            </button>
+            {!hasRowSelection && <div className="my-1 border-t border-slate-200" />}
+            {!hasRowSelection && (
+              <button
+                type="button"
+                onClick={() => {
+                  clearSelectionContents();
+                  setContextMenu(null);
+                }}
+                className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-100"
+              >
+                Clear contents
+              </button>
+            )}
             <button
               type="button"
               onClick={() => {
