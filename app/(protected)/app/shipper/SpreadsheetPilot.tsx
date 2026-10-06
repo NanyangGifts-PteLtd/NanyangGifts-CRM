@@ -30,6 +30,14 @@ type Row = {
   shipment_group_id: string | null;
 };
 type WorkbookSnapshot = { workbookId: string | null; rows: Row[] };
+type UndoEntry = {
+  label: string;
+  rows: Array<{
+    id: string;
+    values?: Record<string, unknown>;
+    cellFills?: Record<string, string>;
+  }>;
+};
 
 // Switching shipper tabs remounts the spreadsheet intentionally. Keep the
 // last known snapshot per workbook so a previously visited tab is visible at
@@ -532,6 +540,9 @@ export function SpreadsheetPilot({
   const rowPasteShortcut = useRef<(targetRow: number) => void>(() => {});
   const rowDeleteShortcut = useRef<() => void>(() => {});
   const cellDeleteShortcut = useRef<() => void>(() => {});
+  const undoShortcut = useRef<() => void>(() => {});
+  const undoHistory = useRef<UndoEntry[]>([]);
+  const undoInProgress = useRef(false);
   const rowClipboardActive = useRef(false);
   rowClipboardActive.current = copiedRows.length > 0 || cutRowIds.length > 0;
   const flushPendingSavesRef = useRef<() => Promise<void>>(async () => {});
@@ -561,11 +572,15 @@ export function SpreadsheetPilot({
     )
       return;
     setWorkbookId(result.workbook?.id ?? null);
-    setRows((current) =>
-      JSON.stringify(current) === JSON.stringify(result.rows ?? [])
-        ? current
-        : (result.rows ?? []),
-    );
+    setRows((current) => {
+      if (JSON.stringify(current) === JSON.stringify(result.rows ?? [])) {
+        return current;
+      }
+      // An external/realtime refresh makes older local snapshots unsafe to
+      // replay over another user's newer changes.
+      undoHistory.current = [];
+      return result.rows ?? [];
+    });
   }, [shipperId]);
   useEffect(() => {
     void load();
@@ -777,6 +792,90 @@ export function SpreadsheetPilot({
     },
     [flushPendingSaves],
   );
+  const rememberUndo = useCallback(
+    (
+      label: string,
+      affectedRows: Row[],
+      fields: { values?: boolean; cellFills?: boolean } = { values: true },
+    ) => {
+      if (undoInProgress.current || !affectedRows.length) return;
+      undoHistory.current.push({
+        label,
+        rows: affectedRows.map((row) => ({
+          id: row.id,
+          ...(fields.values
+            ? {
+                values: Object.fromEntries(
+                  Object.entries(row.values ?? {}).filter(
+                    ([field]) => !formulaFields.has(field),
+                  ),
+                ),
+              }
+            : {}),
+          ...(fields.cellFills
+            ? { cellFills: { ...(row.cell_fills ?? {}) } }
+            : {}),
+        })),
+      });
+      // Keep enough history for normal spreadsheet work without retaining an
+      // unbounded copy of the workbook in a long-running browser tab.
+      if (undoHistory.current.length > 100) undoHistory.current.shift();
+    },
+    [],
+  );
+  const undoLastChange = useCallback(async () => {
+    if (undoInProgress.current) return;
+    const entry = undoHistory.current.pop();
+    if (!entry) {
+      toast.info("Nothing to undo");
+      return;
+    }
+    undoInProgress.current = true;
+    await flushPendingSaves();
+    try {
+      const results = await Promise.all(
+        entry.rows.map(async (snapshot) => {
+          const response = await fetch("/api/shipper/spreadsheet", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              shipperId,
+              rowId: snapshot.id,
+              ...(snapshot.values
+                ? { values: snapshot.values, replaceValues: true }
+                : {}),
+              ...(snapshot.cellFills
+                ? { cellFills: snapshot.cellFills }
+                : {}),
+            }),
+          });
+          return { response, result: await response.json() };
+        }),
+      );
+      const failed = results.find(({ response }) => !response.ok);
+      if (failed) throw new Error(failed.result?.error ?? "Undo could not be saved");
+      const restored = new Map<string, Row>(
+        results.map(({ result }) => [result.row.id, result.row as Row]),
+      );
+      localEditRevision.current += 1;
+      setRows((current) =>
+        current.map((row) =>
+          restored.has(row.id) ? { ...row, ...restored.get(row.id)! } : row,
+        ),
+      );
+      toast.success(entry.label);
+    } catch (undoError) {
+      undoHistory.current.push(entry);
+      toast.error("Change could not be undone", {
+        description:
+          undoError instanceof Error ? undoError.message : "Please try again.",
+      });
+      void load();
+    } finally {
+      undoInProgress.current = false;
+    }
+  }, [flushPendingSaves, load, shipperId]);
+  undoShortcut.current = () => void undoLastChange();
   const getCellContent = useCallback(
     ([col, row]: Item): GridCell => {
       const record = rows[row];
@@ -1208,6 +1307,13 @@ export function SpreadsheetPilot({
     }) => {
       const shortcut = event.ctrlKey || event.metaKey;
       const selectedRows = gridSelection?.rows.toArray() ?? [];
+      if (shortcut && event.key.toLowerCase() === "z") {
+        event.cancel();
+        event.preventDefault();
+        event.stopPropagation();
+        undoShortcut.current();
+        return;
+      }
       if (shortcut && selectedRows.length) {
         const key = event.key.toLowerCase();
         if (key === "c" || key === "x") {
@@ -1312,7 +1418,7 @@ export function SpreadsheetPilot({
     [],
   );
   const onCellEdited = useCallback(
-    async ([col, row]: Item, cell: GridCell) => {
+    async ([col, row]: Item, cell: GridCell, recordUndo = true) => {
       if (cell.kind !== GridCellKind.Text) return;
       const record = rows[row];
       const key = String(columns[col].id);
@@ -1358,6 +1464,7 @@ export function SpreadsheetPilot({
           });
           return;
         }
+        if (recordUndo) rememberUndo("Merged cell edit undone", groupRows);
         localEditRevision.current += 1;
         flushSync(() => {
           setRows((current) =>
@@ -1385,6 +1492,7 @@ export function SpreadsheetPilot({
         }
         return;
       }
+      if (recordUndo) rememberUndo("Cell edit undone", [record]);
       localEditRevision.current += 1;
       flushSync(() => {
         setRows((current) =>
@@ -1397,7 +1505,7 @@ export function SpreadsheetPilot({
       });
       queueSave(record.id, { [key]: value });
     },
-    [load, mode, queueSave, rows, shipperId],
+    [load, mode, queueSave, rememberUndo, rows, shipperId],
   );
   const onCellsEdited = useCallback(
     (edits: ReadonlyArray<{ location: Item; value: GridCell }>) => {
@@ -1407,6 +1515,7 @@ export function SpreadsheetPilot({
         string,
         { location: Item; value: GridCell }
       >();
+      const undoRowIds = new Set<string>();
       let blockedMergedCell = false;
       for (const {
         location: [col, row],
@@ -1467,12 +1576,24 @@ export function SpreadsheetPilot({
               value,
             });
           }
+          rows.forEach((item) => {
+            if (item.shipment_group_id === record.shipment_group_id) {
+              undoRowIds.add(item.id);
+            }
+          });
           continue;
         }
+        undoRowIds.add(record.id);
         updates.set(record.id, {
           ...(updates.get(record.id) ?? {}),
           [key]: value.data,
         });
+      }
+      if (undoRowIds.size) {
+        rememberUndo(
+          "Cell changes undone",
+          rows.filter((row) => undoRowIds.has(row.id)),
+        );
       }
       if (updates.size) {
         const fullRowClears = new Set(
@@ -1511,7 +1632,7 @@ export function SpreadsheetPilot({
         );
       }
       sharedUpdates.forEach(({ location, value }) => {
-        void onCellEdited(location, value);
+        void onCellEdited(location, value, false);
       });
       if (blockedMergedCell) {
         toast.error("Merged cell is locked", {
@@ -1544,6 +1665,7 @@ export function SpreadsheetPilot({
               setError(result.error ?? "Could not create pasted rows");
               return;
             }
+            undoHistory.current = [];
             const inserted = (result.rows ?? [result.row]).filter(Boolean) as Row[];
             createdRows.push(...inserted);
             materializedRowCount += inserted.length;
@@ -1564,7 +1686,7 @@ export function SpreadsheetPilot({
       }
       return true;
     },
-    [mode, onCellEdited, queueSave, rows, shipperId],
+    [mode, onCellEdited, queueSave, rememberUndo, rows, shipperId],
   );
   const height = useMemo(
     () =>
@@ -1610,6 +1732,11 @@ export function SpreadsheetPilot({
       }
     }
     if (!fillsByRow.size) return;
+    rememberUndo(
+      "Cell colour change undone",
+      rows.filter((row) => fillsByRow.has(row.id)),
+      { cellFills: true },
+    );
     setIsFillPaletteOpen(false);
     flushSync(() =>
       setRows((current) =>
@@ -1718,6 +1845,7 @@ export function SpreadsheetPilot({
     });
     const result = await response.json();
     if (!response.ok) return setError(result.error ?? "Could not insert row");
+    undoHistory.current = [];
     if (Array.isArray(result.rows)) setRows(result.rows);
     else setRows((current) => [...current, result.row]);
   };
@@ -1792,6 +1920,7 @@ export function SpreadsheetPilot({
         moving ? "Rows could not be moved" : "Rows could not be pasted",
         { description: result.error },
       );
+    undoHistory.current = [];
     if (moving) {
       setRows(result.rows ?? []);
       setCutRowIds([]);
@@ -1853,6 +1982,7 @@ export function SpreadsheetPilot({
       return toast.error("Rows could not be deleted", {
         description: result.error,
       });
+    undoHistory.current = [];
     setRows(result.rows ?? []);
     setGridSelection(undefined);
     setSelectedRowId(null);
@@ -1996,6 +2126,7 @@ export function SpreadsheetPilot({
       setError(result.error ?? "Could not merge selected rows");
       return;
     }
+    undoHistory.current = [];
     const changed = new Map<string, Row>(
       (result.rows ?? []).map((row: Row) => [row.id, row]),
     );
@@ -2095,6 +2226,7 @@ export function SpreadsheetPilot({
       setError(result.error ?? "Could not unmerge shipment");
       return;
     }
+    undoHistory.current = [];
     const changed = new Map<string, Row>(
       (result.rows ?? []).map((row: Row) => [row.id, row]),
     );
