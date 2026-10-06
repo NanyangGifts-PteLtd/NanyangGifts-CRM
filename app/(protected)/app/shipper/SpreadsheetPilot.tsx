@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FocusEvent,
+} from "react";
 import { flushSync } from "react-dom";
 import {
   CompactSelection,
@@ -312,6 +319,18 @@ function movementAtTextEdge(
   return undefined;
 }
 
+function placeCaretAfterInitialValue(
+  event: FocusEvent<HTMLTextAreaElement>,
+) {
+  // When typing opens Glide's overlay, the first key is already present in
+  // the editor value. Browsers otherwise place the caret at offset zero,
+  // causing the next character to appear before that initial key. A mouse
+  // click still gets its normal position because the click is processed
+  // after this focus event.
+  const end = event.currentTarget.value.length;
+  event.currentTarget.setSelectionRange(end, end);
+}
+
 function DropdownEditor({
   value,
   onFinishedEditing,
@@ -402,6 +421,7 @@ function TextEditor({
     <textarea
       autoFocus
       defaultValue={value.data}
+      onFocus={placeCaretAfterInitialValue}
       onBlur={(event) =>
         onFinishedEditing({
           ...value,
@@ -460,6 +480,7 @@ function RemarksEditor({
     <textarea
       autoFocus
       defaultValue={text}
+      onFocus={placeCaretAfterInitialValue}
       onBlur={(event) => finish(event.currentTarget.value)}
       onKeyDown={(event) => {
         const next = movementAtTextEdge(event.currentTarget, event.key);
