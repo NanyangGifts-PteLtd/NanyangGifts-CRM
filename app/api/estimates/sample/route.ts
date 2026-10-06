@@ -189,7 +189,7 @@ async function makePdf({
     );
   };
   const money = (value: number) =>
-    `S$${value.toLocaleString("en-SG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    `$${value.toLocaleString("en-SG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const subtotal = rows.reduce((sum, row) => sum + row.amount, 0),
     gst = subtotal * 0.09,
     total = subtotal + gst;
@@ -232,12 +232,16 @@ async function makePdf({
     .forEach((item: string, index: number) =>
       text(item, 20, 147 + index * 13, 9),
     );
+  
+  // DATE and TOTAL header boxes
   box(394, 128, 87, 58, paleBlue, paleBlue, 0);
-  centeredText("DATE", 394, 152, 87, 9, true, navy);
-  centeredText(new Date().toLocaleDateString("en-GB"), 394, 170, 87, 9);
+  centeredText("DATE", 394, 143.5, 87, 9, true, navy);
+  centeredText(new Date().toLocaleDateString("en-GB"), 394, 161.5, 87, 9);
+  
   box(481, 128, 96, 58, navy, navy, 0);
-  centeredText("TOTAL", 481, 152, 96, 9, true, rgb(1, 1, 1));
-  centeredText(money(total), 481, 170, 96, 9, true, rgb(1, 1, 1));
+  centeredText("TOTAL", 481, 143.5, 96, 9, true, rgb(1, 1, 1));
+  centeredText(money(total), 481, 161.5, 96, 9, true, rgb(1, 1, 1));
+  
   text("SALESPERSON", 20, 202, 8, true);
   text(createdBy, 20, 217, 9);
 
@@ -246,15 +250,20 @@ async function makePdf({
   const drawTableHeader = (headerTop: number) => {
     box(18, headerTop, 559, 24, rgb(0.96, 0.97, 0.99), border, 0.3);
     ["ITEM NAME", "DESCRIPTION", "QTY", "RATE", "AMOUNT", "GST"].forEach(
-      (header, index) =>
-        centeredText(
-          header,
-          cols[index],
-          headerTop + 8,
-          cols[index + 1] - cols[index],
-          7.5,
-          true,
-        ),
+      (header, index) => {
+        if (header === "DESCRIPTION") {
+          text(header, cols[index] + 5, headerTop + 8, 7.5, true);
+        } else {
+          centeredText(
+            header,
+            cols[index],
+            headerTop + 8,
+            cols[index + 1] - cols[index],
+            7.5,
+            true,
+          );
+        }
+      }
     );
   };
   drawTableHeader(231);
@@ -344,14 +353,17 @@ async function makePdf({
   );
   line(350, summaryTop + 42, 577, rgb(0.68, 0.78, 0.96), 0.35);
   text("TOTAL", 350, summaryTop + 50, 11, false, navy);
+  
+  const totalWithCurrency = `SGD ${money(total)}`;
   text(
-    money(total),
-    565 - bold.widthOfTextAtSize(money(total), 15),
+    totalWithCurrency,
+    565 - bold.widthOfTextAtSize(totalWithCurrency, 15),
     summaryTop + 48,
     15,
     true,
     navy,
   );
+  
   line(350, summaryTop + 68, 577, rgb(0.38, 0.58, 0.96), 0.8);
   text(
     "Cancellation fee after order confirmation: 100% of grand total",
