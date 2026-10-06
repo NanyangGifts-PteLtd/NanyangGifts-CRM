@@ -710,6 +710,38 @@ export function ClientRow({
       .trim()
       .toLowerCase(),
   );
+  const canVerifyTrackingMatch = ["director", "dev"].includes(
+    String(currentUserRole ?? "").trim().toLowerCase(),
+  );
+  const [trackingMatchOverride, setTrackingMatchOverride] = useState<{
+    value: string;
+    optionId: string | null;
+  } | null>(null);
+  const trackingAmount = (value: number | null | undefined) =>
+    value == null
+      ? "—"
+      : Number(value).toLocaleString("en-SG", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        });
+  const setVerifiedTrackingMatch = async (value: string) => {
+    if (!canVerifyTrackingMatch) return;
+    const verified = trackingPriceInvoiceMatchLabelOptions.find(
+      (option) => option.systemKey === "tracking_price_invoice_match_verified",
+    );
+    if (!verified || value !== verified.value) return;
+    const response = await fetch("/api/quickbooks/tracking-client-match", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clientId: client.id }),
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result?.error ?? "Could not verify the match");
+    setTrackingMatchOverride({
+      value: result.value,
+      optionId: result.optionId ?? null,
+    });
+  };
   const canManagePaymentLabels = ["admin", "director", "dev"].includes(
     String(currentUserRole ?? "")
       .trim()
@@ -3258,6 +3290,53 @@ export function ClientRow({
               />
             </div>
             <div
+              data-client-column="trackingTotalPrice"
+              className="tracking-client-cell overflow-hidden border-r border-[#D0D4E4] bg-amber-50 py-1"
+              style={{
+                height: 30,
+                minWidth: colWidth.trackingTotalPrice,
+                width: colWidth.trackingTotalPrice,
+                order: columnOrderMap.trackingTotalPrice,
+              }}
+              title="Total Price from awarded and later CRM subitems"
+            >
+              <span className="block px-2 text-center text-[12.6px] font-medium text-amber-950">
+                {trackingAmount(client.trackingTotalPrice)}
+              </span>
+            </div>
+            <div
+              data-client-column="trackingQuoteSubtotal"
+              className="tracking-client-cell overflow-hidden border-r border-[#D0D4E4] py-1"
+              style={{ height: 30, minWidth: colWidth.trackingQuoteSubtotal, width: colWidth.trackingQuoteSubtotal, order: columnOrderMap.trackingQuoteSubtotal }}
+              title="Sum of all linked quote totals before GST"
+            >
+              <span className="block px-2 text-center text-[12.6px] font-medium text-slate-700">{trackingAmount(client.trackingQuoteSubtotal)}</span>
+            </div>
+            <div
+              data-client-column="trackingQuoteTotal"
+              className="tracking-client-cell overflow-hidden border-r border-[#D0D4E4] py-1"
+              style={{ height: 30, minWidth: colWidth.trackingQuoteTotal, width: colWidth.trackingQuoteTotal, order: columnOrderMap.trackingQuoteTotal }}
+              title="Sum of all linked quote totals"
+            >
+              <span className="block px-2 text-center text-[12.6px] font-medium text-slate-700">{trackingAmount(client.trackingQuoteTotal)}</span>
+            </div>
+            <div
+              data-client-column="trackingInvoiceSubtotal"
+              className="tracking-client-cell overflow-hidden border-r border-[#D0D4E4] py-1"
+              style={{ height: 30, minWidth: colWidth.trackingInvoiceSubtotal, width: colWidth.trackingInvoiceSubtotal, order: columnOrderMap.trackingInvoiceSubtotal }}
+              title="Sum of all linked invoice totals before GST"
+            >
+              <span className="block px-2 text-center text-[12.6px] font-medium text-slate-700">{trackingAmount(client.trackingInvoiceSubtotal)}</span>
+            </div>
+            <div
+              data-client-column="trackingInvoiceTotal"
+              className="tracking-client-cell overflow-hidden border-r border-[#D0D4E4] py-1"
+              style={{ height: 30, minWidth: colWidth.trackingInvoiceTotal, width: colWidth.trackingInvoiceTotal, order: columnOrderMap.trackingInvoiceTotal }}
+              title="Sum of all linked invoice totals"
+            >
+              <span className="block px-2 text-center text-[12.6px] font-medium text-slate-700">{trackingAmount(client.trackingInvoiceTotal)}</span>
+            </div>
+            <div
               data-client-column="trackingOverallPriceInvoiceMatch"
               className="tracking-client-cell overflow-hidden border-r border-[#D0D4E4] p-0"
               style={{
@@ -3269,11 +3348,15 @@ export function ClientRow({
               title="Calculated from all active quotes for this client"
             >
               <StatusBadge
-                value={client.trackingOverallPriceInvoiceMatch ?? ""}
-                onChange={() => undefined}
+                value={
+                  trackingMatchOverride?.value ??
+                  client.trackingOverallPriceInvoiceMatch ??
+                  ""
+                }
+                onChange={(value) => void setVerifiedTrackingMatch(value)}
                 options={trackingPriceInvoiceMatchLabelOptions}
-                readOnly
-                readOnlyReason="Calculated from all active quote matching checks"
+                readOnly={!canVerifyTrackingMatch}
+                readOnlyReason="Only directors and developers can verify this calculated match"
                 manageLabel="price and invoice match"
               />
             </div>
@@ -4776,7 +4859,6 @@ export function ClientRow({
               clientId={client.id}
               summaryOptions={trackingSummaryLabelOptions}
               paymentStatusOptions={trackingPaymentStatusLabelOptions}
-              matchOptions={trackingPriceInvoiceMatchLabelOptions}
               invoicePaymentStatusOptions={
                 trackingInvoicePaymentStatusLabelOptions
               }

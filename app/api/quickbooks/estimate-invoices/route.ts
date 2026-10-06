@@ -255,18 +255,6 @@ export async function POST(request: NextRequest) {
       (total, row) => total + (row.balance ?? 0),
       0,
     );
-    const priceInvoiceMatchLabel = !rows.length
-      ? null
-      : quoteSubtotal !== null &&
-          Math.abs(quoteSubtotal - invoiceSubtotal) < 0.005
-        ? await getSystemLabel(
-            "tracking_price_invoice_match",
-            "tracking_price_invoice_match_yes",
-          )
-        : await getSystemLabel(
-            "tracking_price_invoice_match",
-            "tracking_price_invoice_match_mismatch",
-          );
     const invoicePaymentLabel = !rows.length
       ? null
       : Math.abs(totalBalance) < 0.005
@@ -292,8 +280,6 @@ export async function POST(request: NextRequest) {
         invoice_total: invoiceTotal,
         invoice_subtotal: invoiceSubtotal,
         total_balance: totalBalance,
-        price_invoice_match: priceInvoiceMatchLabel?.value ?? "",
-        price_invoice_match_option_id: priceInvoiceMatchLabel?.id ?? null,
         ...(invoicePaymentLabel
           ? {
               invoice_payment_status: invoicePaymentLabel.value,

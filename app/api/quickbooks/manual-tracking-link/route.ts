@@ -267,9 +267,6 @@ export async function POST(request: NextRequest) {
     const invoiceTotal = invoices.reduce((sum, row) => sum + (numberOrNull(row.total) ?? 0), 0);
     const invoiceSubtotal = invoices.reduce((sum, row) => sum + (numberOrNull(row.subtotal) ?? 0), 0);
     const totalBalance = invoices.reduce((sum, row) => sum + (numberOrNull(row.balance) ?? 0), 0);
-    const match = generation.quote_subtotal != null && Math.abs(Number(generation.quote_subtotal) - invoiceSubtotal) < 0.005
-      ? await getSystemLabel("tracking_price_invoice_match", "tracking_price_invoice_match_yes")
-      : await getSystemLabel("tracking_price_invoice_match", "tracking_price_invoice_match_mismatch");
     const payment = Math.abs(totalBalance) < 0.005
       ? await getSystemLabel("tracking_invoice_payment_status", "tracking_invoice_payment_status_paid")
       : totalBalance < invoiceTotal
@@ -280,8 +277,6 @@ export async function POST(request: NextRequest) {
       invoice_total: invoiceTotal,
       invoice_subtotal: invoiceSubtotal,
       total_balance: totalBalance,
-      price_invoice_match: match?.value ?? "",
-      price_invoice_match_option_id: match?.id ?? null,
       ...(payment ? { invoice_payment_status: payment.value, invoice_payment_status_option_id: payment.id } : {}),
       last_invoice_synced_at: new Date().toISOString(),
     }).eq("id", generation.id);
@@ -372,19 +367,6 @@ export async function DELETE(request: NextRequest) {
     const invoiceTotal = remaining.reduce((sum, row) => sum + (numberOrNull(row.total) ?? 0), 0);
     const invoiceSubtotal = remaining.reduce((sum, row) => sum + (numberOrNull(row.subtotal) ?? 0), 0);
     const totalBalance = remaining.reduce((sum, row) => sum + (numberOrNull(row.balance) ?? 0), 0);
-    const { data: generation, error: generationError } = await supabaseAdmin
-      .from("estimate_generations")
-      .select("quote_subtotal")
-      .eq("id", estimateGenerationId)
-      .eq("client_id", clientId)
-      .maybeSingle();
-    if (generationError) throw generationError;
-    const match = !remaining.length
-      ? null
-      : generation?.quote_subtotal != null &&
-          Math.abs(Number(generation.quote_subtotal) - invoiceSubtotal) < 0.005
-        ? await getSystemLabel("tracking_price_invoice_match", "tracking_price_invoice_match_yes")
-        : await getSystemLabel("tracking_price_invoice_match", "tracking_price_invoice_match_mismatch");
     const payment = !remaining.length
       ? null
       : Math.abs(totalBalance) < 0.005
@@ -399,8 +381,6 @@ export async function DELETE(request: NextRequest) {
         invoice_total: invoiceTotal,
         invoice_subtotal: invoiceSubtotal,
         total_balance: totalBalance,
-        price_invoice_match: match?.value ?? "",
-        price_invoice_match_option_id: match?.id ?? null,
         invoice_payment_status: payment?.value ?? "",
         invoice_payment_status_option_id: payment?.id ?? null,
         last_invoice_synced_at: new Date().toISOString(),

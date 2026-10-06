@@ -279,6 +279,31 @@ const CLIENT_HEADER_COLS: HeaderCol[] = [
   { key: "progress", label: "Progress", width: 110, minWidth: 7 },
   { key: "trackingRemarks", label: "Remarks", width: 240, minWidth: 140 },
   {
+    key: "trackingTotalPrice",
+    label: "Total Price",
+    width: 130,
+    minWidth: 110,
+  },
+  {
+    key: "trackingQuoteSubtotal",
+    label: "Quote total before GST",
+    width: 190,
+    minWidth: 150,
+  },
+  { key: "trackingQuoteTotal", label: "Quote total", width: 130, minWidth: 110 },
+  {
+    key: "trackingInvoiceSubtotal",
+    label: "Invoice total before GST",
+    width: 195,
+    minWidth: 150,
+  },
+  {
+    key: "trackingInvoiceTotal",
+    label: "Invoice total",
+    width: 130,
+    minWidth: 110,
+  },
+  {
     key: "trackingOverallPriceInvoiceMatch",
     label: "Price and Invoice Match?",
     width: 210,
@@ -334,6 +359,31 @@ const TRACKING_HEADER_COLS: HeaderCol[] = [
   { key: "channel", label: "Channel", width: 110, minWidth: 7 },
   { key: "trackingRemarks", label: "Remarks", width: 240, minWidth: 140 },
   {
+    key: "trackingTotalPrice",
+    label: "Total Price",
+    width: 130,
+    minWidth: 110,
+  },
+  {
+    key: "trackingQuoteSubtotal",
+    label: "Quote total before GST",
+    width: 190,
+    minWidth: 150,
+  },
+  { key: "trackingQuoteTotal", label: "Quote total", width: 130, minWidth: 110 },
+  {
+    key: "trackingInvoiceSubtotal",
+    label: "Invoice total before GST",
+    width: 195,
+    minWidth: 150,
+  },
+  {
+    key: "trackingInvoiceTotal",
+    label: "Invoice total",
+    width: 130,
+    minWidth: 110,
+  },
+  {
     key: "trackingOverallPriceInvoiceMatch",
     label: "Price and Invoice Match?",
     width: 210,
@@ -358,6 +408,11 @@ const TRACKING_CLIENT_COLUMN_KEYS = new Set(
 );
 const TRACKING_ONLY_CLIENT_COLUMN_KEYS = new Set([
   "trackingRemarks",
+  "trackingTotalPrice",
+  "trackingQuoteSubtotal",
+  "trackingQuoteTotal",
+  "trackingInvoiceSubtotal",
+  "trackingInvoiceTotal",
   "trackingOverallPriceInvoiceMatch",
   "trackingOverallInvoicePaymentStatus",
   "trackingQuoteActions",
@@ -1919,15 +1974,19 @@ export function CRMBoard({
     ] as HeaderCol[];
     const trackingByKey = new Map(base.map((column) => [column.key, column]));
     const preferredOrder = trackingClientOrderKeys.length
-      ? trackingClientOrderKeys.includes("trackingRemarks")
+      ? trackingClientOrderKeys.includes("trackingTotalPrice")
         ? trackingClientOrderKeys
         : (() => {
             const next = [...trackingClientOrderKeys];
-            const channelIndex = next.indexOf("channel");
+            const anchorIndex = next.indexOf("trackingRemarks");
             next.splice(
-              channelIndex >= 0 ? channelIndex + 1 : next.length,
+              anchorIndex >= 0 ? anchorIndex + 1 : next.length,
               0,
-              "trackingRemarks",
+              "trackingTotalPrice",
+              "trackingQuoteSubtotal",
+              "trackingQuoteTotal",
+              "trackingInvoiceSubtotal",
+              "trackingInvoiceTotal",
             );
             return next;
           })()

@@ -26,7 +26,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
-export const TRACKING_QUOTE_TABLE_MIN_WIDTH = 2305;
+export const TRACKING_QUOTE_TABLE_MIN_WIDTH = 2095;
 export const TRACKING_VIEW_MIN_WIDTH = TRACKING_QUOTE_TABLE_MIN_WIDTH + 80;
 
 const QUOTE_COLUMN_DEFINITIONS = [
@@ -39,7 +39,6 @@ const QUOTE_COLUMN_DEFINITIONS = [
   { key: "invoiceSubtotal", width: 195, minWidth: 150 },
   { key: "invoiceTotal", width: 125, minWidth: 100 },
   { key: "invoices", width: 80, minWidth: 70 },
-  { key: "match", width: 210, minWidth: 160 },
   { key: "totalBalance", width: 125, minWidth: 105 },
   { key: "paymentStatus", width: 165, minWidth: 125 },
   { key: "actions", width: 300, minWidth: 270 },
@@ -127,8 +126,6 @@ type Quote = {
   invoice_subtotal: number | null;
   invoice_count: number;
   total_balance: number | null;
-  price_invoice_match: string | null;
-  price_invoice_match_option_id: string | null;
   payment_status: string | null;
   invoice_payment_status: string | null;
   invoice_payment_status_option_id: string | null;
@@ -143,8 +140,6 @@ type QuoteUpdates = {
   trackingSummary?: string;
   trackingRemarks?: string;
   paymentStatus?: string;
-  priceInvoiceMatch?: string;
-  priceInvoiceMatchOptionId?: string | null;
   invoicePaymentStatus?: string;
   invoicePaymentStatusOptionId?: string | null;
 };
@@ -154,7 +149,6 @@ type TrackingQuoteListProps = {
   canEdit: boolean;
   summaryOptions: BadgeOption[];
   paymentStatusOptions: BadgeOption[];
-  matchOptions: BadgeOption[];
   invoicePaymentStatusOptions: BadgeOption[];
   onAddOption?: (code: TrackingLabelCode, name: string) => void | Promise<void>;
   onDeleteOption?: (code: TrackingLabelCode, name: string) => void | Promise<void>;
@@ -191,7 +185,6 @@ export function TrackingQuoteList({
   canEdit,
   summaryOptions,
   paymentStatusOptions,
-  matchOptions,
   invoicePaymentStatusOptions,
   onAddOption,
   onDeleteOption,
@@ -434,9 +427,7 @@ export function TrackingQuoteList({
           ? "remarks"
           : updates.paymentStatus !== undefined
             ? "payment"
-            : updates.priceInvoiceMatch !== undefined
-              ? "match"
-              : "invoice-payment";
+            : "invoice-payment";
     const savingKey = `${quoteId}:${field}`;
     const requestId = (latestQuoteUpdate.current.get(savingKey) ?? 0) + 1;
     latestQuoteUpdate.current.set(savingKey, requestId);
@@ -453,12 +444,6 @@ export function TrackingQuoteList({
                 updates.trackingRemarks ?? quote.tracking_remarks ?? "",
               payment_status:
                 updates.paymentStatus ?? quote.payment_status ?? "",
-              price_invoice_match:
-                updates.priceInvoiceMatch ?? quote.price_invoice_match ?? "",
-              price_invoice_match_option_id:
-                updates.priceInvoiceMatch !== undefined
-                  ? (updates.priceInvoiceMatchOptionId ?? null)
-                  : quote.price_invoice_match_option_id,
               invoice_payment_status:
                 updates.invoicePaymentStatus ??
                 quote.invoice_payment_status ??
@@ -504,14 +489,6 @@ export function TrackingQuoteList({
                     updates.paymentStatus !== undefined
                       ? previousQuote.payment_status
                       : quote.payment_status,
-                  price_invoice_match:
-                    updates.priceInvoiceMatch !== undefined
-                      ? previousQuote.price_invoice_match
-                      : quote.price_invoice_match,
-                  price_invoice_match_option_id:
-                    updates.priceInvoiceMatch !== undefined
-                      ? previousQuote.price_invoice_match_option_id
-                      : quote.price_invoice_match_option_id,
                   invoice_payment_status:
                     updates.invoicePaymentStatus !== undefined
                       ? previousQuote.invoice_payment_status
@@ -587,7 +564,6 @@ export function TrackingQuoteList({
           "Invoice total before GST",
           "Invoice total",
           "Invoices",
-          "Price and Invoice Match?",
           "Total Balance",
           "Payment Status",
           "Invoice Actions",
@@ -598,7 +574,7 @@ export function TrackingQuoteList({
               key={column.key}
               className={`relative px-3 py-2 text-center ${
                 index > 0 ? "border-l border-[#d0d4e4]" : ""
-              } ${index === 4 || index === 6 || index === 9 || index === 12 ? "whitespace-nowrap" : ""}`}
+              } ${index === 4 || index === 6 || index === 11 ? "whitespace-nowrap" : ""}`}
             >
               {label}
               <ColumnResizeHandle
@@ -704,25 +680,6 @@ export function TrackingQuoteList({
               <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">
                 {quote.invoice_count}
               </span>
-              <div className="min-w-0 border-l border-[#d0d4e4] p-0">
-                <StatusBadge
-                  value={quote.price_invoice_match ?? ""}
-                  options={matchOptions}
-                  small
-                  readOnly={!canEdit}
-                  readOnlyReason="You can only edit items that are assigned to you"
-                  manageLabel="price and invoice match"
-                  onChange={(value) =>
-                    void updateQuote(quote.id, {
-                      priceInvoiceMatch: value,
-                      priceInvoiceMatchOptionId:
-                        matchOptions.find((option) => option.value === value)
-                          ?.id ?? null,
-                    })
-                  }
-                  {...labelManagementProps("tracking_price_invoice_match")}
-                />
-              </div>
               <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">
                 {amount(quote.total_balance)}
               </span>

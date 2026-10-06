@@ -258,6 +258,11 @@ type Clients = {
   progress_option_id?: string | null;
   tracking_overall_price_invoice_match?: string | null;
   tracking_overall_price_invoice_match_option_id?: string | null;
+  tracking_total_price?: number | null;
+  tracking_quote_subtotal?: number | null;
+  tracking_quote_total?: number | null;
+  tracking_invoice_subtotal?: number | null;
+  tracking_invoice_total?: number | null;
   tracking_overall_invoice_payment_status?: string | null;
   tracking_overall_invoice_payment_status_option_id?: string | null;
   company: string | null;
@@ -535,6 +540,11 @@ function mapClients(row: Clients): Client {
       row.tracking_overall_price_invoice_match ?? null,
     trackingOverallPriceInvoiceMatchOptionId:
       row.tracking_overall_price_invoice_match_option_id ?? null,
+    trackingTotalPrice: row.tracking_total_price ?? null,
+    trackingQuoteSubtotal: row.tracking_quote_subtotal ?? null,
+    trackingQuoteTotal: row.tracking_quote_total ?? null,
+    trackingInvoiceSubtotal: row.tracking_invoice_subtotal ?? null,
+    trackingInvoiceTotal: row.tracking_invoice_total ?? null,
     trackingOverallInvoicePaymentStatus:
       row.tracking_overall_invoice_payment_status ?? null,
     trackingOverallInvoicePaymentStatusOptionId:

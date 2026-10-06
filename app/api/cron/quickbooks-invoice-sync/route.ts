@@ -53,10 +53,8 @@ export async function GET(request: NextRequest) {
 
   let paidPaymentLabel;
   let partiallyPaidPaymentLabel;
-  let matchingLabel;
-  let mismatchLabel;
   try {
-    [paidPaymentLabel, partiallyPaidPaymentLabel, matchingLabel, mismatchLabel] = await Promise.all([
+    [paidPaymentLabel, partiallyPaidPaymentLabel] = await Promise.all([
       getSystemLabel(
         "tracking_invoice_payment_status",
         "tracking_invoice_payment_status_paid",
@@ -64,14 +62,6 @@ export async function GET(request: NextRequest) {
       getSystemLabel(
         "tracking_invoice_payment_status",
         "tracking_invoice_payment_status_partially_paid",
-      ),
-      getSystemLabel(
-        "tracking_price_invoice_match",
-        "tracking_price_invoice_match_yes",
-      ),
-      getSystemLabel(
-        "tracking_price_invoice_match",
-        "tracking_price_invoice_match_mismatch",
       ),
     ]);
   } catch (error) {
@@ -155,11 +145,6 @@ export async function GET(request: NextRequest) {
       const quoteTotal = numberOrNull(estimate?.TotalAmt);
       const quoteTaxTotal = numberOrNull(estimate?.TxnTaxDetail?.TotalTax) ?? 0;
       const quoteSubtotal = quoteTotal === null ? null : quoteTotal - quoteTaxTotal;
-      const priceInvoiceMatchLabel = !rows.length
-        ? null
-        : quoteSubtotal !== null && Math.abs(quoteSubtotal - invoiceSubtotal) < 0.005
-          ? matchingLabel
-          : mismatchLabel;
       const invoicePaymentLabel = !rows.length
         ? null
         : Math.abs(totalBalance) < 0.005
@@ -177,8 +162,6 @@ export async function GET(request: NextRequest) {
           invoice_total: invoiceTotal,
           invoice_subtotal: invoiceSubtotal,
           total_balance: totalBalance,
-          price_invoice_match: priceInvoiceMatchLabel?.value ?? "",
-          price_invoice_match_option_id: priceInvoiceMatchLabel?.id ?? null,
           ...(invoicePaymentLabel
             ? {
                 invoice_payment_status: invoicePaymentLabel.value,

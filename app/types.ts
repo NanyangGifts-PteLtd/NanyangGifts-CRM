@@ -234,6 +234,11 @@ export interface Client {
   progressOptionId?: string | null;
   trackingOverallPriceInvoiceMatch?: string | null;
   trackingOverallPriceInvoiceMatchOptionId?: string | null;
+  trackingTotalPrice?: number | null;
+  trackingQuoteSubtotal?: number | null;
+  trackingQuoteTotal?: number | null;
+  trackingInvoiceSubtotal?: number | null;
+  trackingInvoiceTotal?: number | null;
   trackingOverallInvoicePaymentStatus?: string | null;
   trackingOverallInvoicePaymentStatusOptionId?: string | null;
   company: string;

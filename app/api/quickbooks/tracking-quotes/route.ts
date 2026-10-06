@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
     const { data: generations, error: generationsError } = await supabase
       .from("estimate_generations")
       .select(
-        "id, title, quickbooks_estimate_doc_number, created_at, quote_total, quote_subtotal, invoice_total, invoice_subtotal, invoice_count, total_balance, price_invoice_match, price_invoice_match_option_id, payment_status, invoice_payment_status, invoice_payment_status_option_id, tracking_summary, tracking_remarks, last_invoice_synced_at, link_source",
+        "id, title, quickbooks_estimate_doc_number, created_at, quote_total, quote_subtotal, invoice_total, invoice_subtotal, invoice_count, total_balance, payment_status, invoice_payment_status, invoice_payment_status_option_id, tracking_summary, tracking_remarks, last_invoice_synced_at, link_source",
       )
       .eq("client_id", clientId)
       .is("archived_at", null)
