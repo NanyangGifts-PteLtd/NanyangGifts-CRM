@@ -756,6 +756,8 @@ export function CRMBoard({
     clientId: string;
     subitemId: string;
   } | null>(null);
+  const [paymentVoucherDeactivationReason, setPaymentVoucherDeactivationReason] =
+    useState("");
   const [pendingDeleteSelectedSubitems, setPendingDeleteSelectedSubitems] =
     useState<string[] | null>(null);
   const [selectedSubitemIds, setSelectedSubitemIds] = useState<string[]>([]);
@@ -7659,7 +7661,7 @@ export function CRMBoard({
   );
 
   const deleteSubitem = useCallback(
-    async (_clientId: string, subitemId: string) => {
+    async (_clientId: string, subitemId: string, deactivationReason?: string) => {
       if (!canEditSubitemRecord(_clientId, subitemId)) {
         showAssignmentPermissionError();
         return;
@@ -7674,10 +7676,12 @@ export function CRMBoard({
         })),
       );
       try {
-        await deleteSubitemRow(subitemId);
+        await deleteSubitemRow(subitemId, deactivationReason);
         notifyChange(
-          "Subitem deleted",
-          "The subitem was moved to the Bin and can be restored for 30 days.",
+          deactivationReason ? "Payment Voucher deactivated" : "Subitem deleted",
+          deactivationReason
+            ? "The voucher was permanently deactivated and its linked subitem was removed."
+            : "The subitem was moved to the Bin and can be restored for 30 days.",
         );
       } catch (error: any) {
         setClients(clients);
@@ -10113,7 +10117,7 @@ export function CRMBoard({
 
       <AlertDialog
         open={!!pendingDeleteSubitem}
-        onOpenChange={(open) => !open && setPendingDeleteSubitem(null)}
+        onOpenChange={(open) => { if (!open) { setPendingDeleteSubitem(null); setPaymentVoucherDeactivationReason(""); } }}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -10121,30 +10125,47 @@ export function CRMBoard({
             <AlertDialogDescription>
               {pendingSubitemToDelete?.isPaymentVoucher && (
                 <>
-                  This linked Payment Voucher will also be deleted.
+                  This will permanently deactivate the linked Payment Voucher and permanently delete this subitem.
                   <br />
                   <br />
                 </>
               )}
-              This will move{" "}
-              <span className="font-semibold text-gray-700">
-                {pendingSubitemToDelete?.subitemName ?? "this subitem"}
-              </span>{" "}
-              from{" "}
-              <span className="font-semibold text-gray-700">
-                {pendingSubitemToDelete?.clientName ?? "this client"}
-              </span>
-              . It can be restored from the Bin for 30 days.
+              {pendingSubitemToDelete?.isPaymentVoucher ? (
+                <>
+                  The linked subitem will be permanently removed and cannot be
+                  restored.
+                </>
+              ) : (
+                <>
+                  This will move{" "}
+                  <span className="font-semibold text-gray-700">
+                    {pendingSubitemToDelete?.subitemName ?? "this subitem"}
+                  </span>{" "}
+                  from{" "}
+                  <span className="font-semibold text-gray-700">
+                    {pendingSubitemToDelete?.clientName ?? "this client"}
+                  </span>
+                  . It can be restored from the Bin for 30 days.
+                </>
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {pendingSubitemToDelete?.isPaymentVoucher && (
+            <label className="space-y-2 text-sm font-medium text-slate-700">
+              Deactivation Reason <span className="text-red-500">*</span>
+              <textarea className="mt-2 min-h-24 w-full rounded-md border p-3 font-normal" value={paymentVoucherDeactivationReason} onChange={(event) => setPaymentVoucherDeactivationReason(event.target.value)} />
+            </label>
+          )}
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
+              disabled={Boolean(pendingSubitemToDelete?.isPaymentVoucher && !paymentVoucherDeactivationReason.trim())}
               onClick={async () => {
                 if (!pendingDeleteSubitem) return;
                 const { clientId, subitemId } = pendingDeleteSubitem;
                 setPendingDeleteSubitem(null);
-                await deleteSubitem(clientId, subitemId);
+                await deleteSubitem(clientId, subitemId, paymentVoucherDeactivationReason);
+                setPaymentVoucherDeactivationReason("");
               }}
             >
               Delete subitem

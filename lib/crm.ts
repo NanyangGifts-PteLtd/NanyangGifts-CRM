@@ -2461,7 +2461,7 @@ export async function moveSubitemRow(
   });
 }
 
-export async function deleteSubitemRow(subitemId: string) {
+export async function deleteSubitemRow(subitemId: string, deactivationReason?: string) {
   await assertDeletionAllowed("subitems", subitemId);
   const { data: existing, error: fetchError } = await supabase
     .from("subitems")
@@ -2472,8 +2472,10 @@ export async function deleteSubitemRow(subitemId: string) {
   if (fetchError) throw fetchError;
 
   if (existing.custom_fields?.additionalCostLinked === "true") {
+    if (!deactivationReason?.trim())
+      throw new Error("A Deactivation Reason is required for the linked Payment Voucher.");
     const response = await fetch(
-      `/api/additional-costs?subitemId=${encodeURIComponent(subitemId)}`,
+      `/api/additional-costs?subitemId=${encodeURIComponent(subitemId)}&reason=${encodeURIComponent(deactivationReason.trim())}`,
       { method: "DELETE" },
     );
     const result = await response.json();

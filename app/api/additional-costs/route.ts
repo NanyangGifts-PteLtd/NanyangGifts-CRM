@@ -358,6 +358,15 @@ export async function POST(request: NextRequest) {
       await supabaseAdmin.from("additional_costs").delete().eq("id", data.id);
       throw creationError;
     }
+    const { data: creator } = await supabaseAdmin
+      .from("profiles").select("full_name, email").eq("id", user.id).maybeSingle();
+    await supabaseAdmin.from("additional_cost_activity_log").insert({
+      additional_cost_id: data.id,
+      actor_id: user.id,
+      actor_name: creator?.full_name?.trim() || creator?.email || "Unknown user",
+      action: "created",
+      title: "created this Payment Voucher",
+    });
     return NextResponse.json({ row: data }, { status: 201 });
   } catch (error) {
     return failure(error);
@@ -390,6 +399,8 @@ export async function PATCH(request: NextRequest) {
       .eq("id", body.id)
       .maybeSingle();
     if (existingError || !existing) throw new Error("Additional cost not found.");
+    if (existing.deactivated_at)
+      throw new Error("A deactivated Payment Voucher cannot be updated.");
     if (
       existing.voucher_group === "quickbooks_bills_only" &&
       Object.prototype.hasOwnProperty.call(body.values, "cost")
@@ -564,6 +575,26 @@ export async function PATCH(request: NextRequest) {
       }
       throw error;
     }
+    const { data: editor } = await supabaseAdmin
+      .from("profiles").select("full_name, email").eq("id", user.id).maybeSingle();
+    const actorName = editor?.full_name?.trim() || editor?.email || "Unknown user";
+    const activityRows = Object.keys(values)
+      .filter((field) => JSON.stringify(existing[field]) !== JSON.stringify(data[field]))
+      .map((field) => ({
+        additional_cost_id: existing.id,
+        actor_id: user.id,
+        actor_name: actorName,
+        action: "field_changed",
+        field_name: field,
+        old_value: existing[field] === undefined ? null : existing[field],
+        new_value: data[field] === undefined ? null : data[field],
+        title: `changed ${field.replaceAll("_", " ")}`,
+      }));
+    if (activityRows.length) {
+      const { error: activityError } = await supabaseAdmin
+        .from("additional_cost_activity_log").insert(activityRows);
+      if (activityError) console.error("Payment Voucher activity log failed", activityError);
+    }
     return NextResponse.json({ row: data });
   } catch (error) {
     return failure(error);
@@ -575,7 +606,9 @@ export async function DELETE(request: NextRequest) {
     const { user, role } = await authorize();
     const id = request.nextUrl.searchParams.get("id");
     const subitemId = request.nextUrl.searchParams.get("subitemId");
+    const reason = request.nextUrl.searchParams.get("reason")?.trim();
     if (!id && !subitemId) throw new Error("An additional cost is required.");
+    if (!reason) throw new Error("A Deactivation Reason is required.");
     let linkedSubitem: {
       id: string;
       client_id: string;
@@ -597,11 +630,13 @@ export async function DELETE(request: NextRequest) {
     }
     const { data: record, error: recordError } = await supabaseAdmin
       .from("additional_costs")
-      .select("id, client_id, voucher_group")
+      .select("*")
       .eq("id", additionalCostId ?? "")
       .is("deleted_at", null)
       .maybeSingle();
     if (recordError || !record) throw new Error("Additional cost not found.");
+    if (record.deactivated_at)
+      throw new Error("This Payment Voucher has already been deactivated.");
     // Match the CRM Board's deletion rule: admins/directors can delete any
     // record; other internal staff must be assigned to its linked client as
     // either People or PM. Edit rules will be added separately.
@@ -635,39 +670,47 @@ export async function DELETE(request: NextRequest) {
       linkedSubitem = subitem;
     }
     const deletedAt = new Date().toISOString();
+    const { error } = await supabaseAdmin
+      .from("additional_costs")
+      .update({
+        deactivated_at: deletedAt,
+        deactivated_by: user.id,
+        deactivation_reason: reason,
+        deleted_at: null,
+        deleted_by: null,
+      })
+      .eq("id", record.id)
+      .is("deactivated_at", null);
+    if (error) {
+      throw error;
+    }
     if (linkedSubitem) {
       const { error: subitemDeleteError } = await supabaseAdmin
         .from("subitems")
-        .update({
-          deleted_at: deletedAt,
-          deleted_by: user.id,
-          deleted_with_client_id: null,
-        })
+        .delete()
         .eq("id", linkedSubitem.id);
-      if (subitemDeleteError) throw subitemDeleteError;
-      await addActivityLog({
-        clientId: linkedSubitem.client_id,
-        subitemId: null,
-        subitemName: linkedSubitem.name ?? "Additional Cost",
-        actorId: user.id,
-        action: "subitem_deleted",
-        title: "moved linked Additional Cost subitem to the Bin",
-      });
-    }
-    const { error } = await supabaseAdmin
-      .from("additional_costs")
-      .update({ deleted_at: deletedAt, deleted_by: user.id })
-      .eq("id", record.id)
-      .is("deleted_at", null);
-    if (error) {
-      if (linkedSubitem) {
+      if (subitemDeleteError) {
         await supabaseAdmin
-          .from("subitems")
-          .update({ deleted_at: null, deleted_by: null })
-          .eq("id", linkedSubitem.id);
+          .from("additional_costs")
+          .update({
+            deactivated_at: null,
+            deactivated_by: null,
+            deactivation_reason: null,
+          })
+          .eq("id", record.id);
+        throw subitemDeleteError;
       }
-      throw error;
     }
+    const { data: profile } = await supabaseAdmin
+      .from("profiles").select("full_name, email").eq("id", user.id).maybeSingle();
+    await supabaseAdmin.from("additional_cost_activity_log").insert({
+      additional_cost_id: record.id,
+      actor_id: user.id,
+      actor_name: profile?.full_name?.trim() || profile?.email || "Unknown user",
+      action: "deactivated",
+      title: "deactivated this Payment Voucher",
+      meta: { reason },
+    });
     return NextResponse.json({ ok: true });
   } catch (error) {
     return failure(error);

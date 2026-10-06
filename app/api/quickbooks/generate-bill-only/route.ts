@@ -281,6 +281,7 @@ export async function POST(request: NextRequest) {
         .eq("id", voucherId)
         .eq("voucher_group", "quickbooks_bills_only")
         .is("deleted_at", null)
+        .is("deactivated_at", null)
         .select("*")
         .single();
       row = result.data;

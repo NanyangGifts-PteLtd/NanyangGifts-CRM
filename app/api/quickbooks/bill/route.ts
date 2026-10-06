@@ -62,6 +62,8 @@ async function authorisedVoucher(voucherId: string) {
     !voucher.has_quickbooks_bill
   )
     throw new Error("This payment voucher does not have a QuickBooks Bill.");
+  if (voucher.deactivated_at)
+    throw new Error("A deactivated Payment Voucher cannot be updated.");
   if (!["admin", "director", "dev"].includes(role)) {
     const { data: assignment, error: assignmentError } = await supabaseAdmin
       .from("client_assignees")
@@ -107,6 +109,8 @@ async function authorisedLinkVoucher(voucherId: string) {
     .is("deleted_at", null)
     .maybeSingle();
   if (error || !voucher) throw new Error("Payment voucher not found.");
+  if (voucher.deactivated_at)
+    throw new Error("A deactivated Payment Voucher cannot be updated.");
   if (!["admin", "director", "dev"].includes(role)) {
     const { data: assignment } = await supabaseAdmin
       .from("client_assignees")

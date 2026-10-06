@@ -235,16 +235,19 @@ export async function POST(request: NextRequest) {
       courier_option_id: string | null;
       reason: string;
       has_quickbooks_bill: boolean | null;
+      deactivated_at: string | null;
     } | null = null;
     if (existingVoucherId) {
       const { data, error } = await supabaseAdmin
         .from("additional_costs")
-        .select("id, client_id, courier_option_id, reason, has_quickbooks_bill")
+        .select("id, client_id, courier_option_id, reason, has_quickbooks_bill, deactivated_at")
         .eq("id", existingVoucherId)
         .is("deleted_at", null)
         .maybeSingle();
       if (error || !data || data.client_id !== client.id)
         throw new Error("The payment voucher is no longer available.");
+      if (data.deactivated_at)
+        throw new Error("A deactivated Payment Voucher cannot be updated.");
       const [lalamoveCourier, easyparcelCourier] = await Promise.all([
         getSystemLabel(
           "additional_cost_courier",
