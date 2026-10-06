@@ -1954,6 +1954,40 @@ export function AdditionalCostsBoard({
       ]
       : []),
   ];
+  const openVoucherCreator = (groupId: (typeof voucherGroups)[number]["id"]) => {
+    setExpandedPickerGroups(new Set(clientSections.map((section) => section.id)));
+    setVoucherCreationGroup(groupId);
+    setQuickBooksBillOnlyMode(groupId === "quickbooks_bills_only");
+    setSelectedVoucherClientId(null);
+    setOtherBillChoice(groupId === "quickbooks_bills_only" ? "add" : null);
+    setBillTargetVoucher(null);
+    setEditingQuickBooksBill(false);
+    setBillDocumentPreview(null);
+    setPrefillFileSignature(null);
+    setVoucherDraft({
+      cost: "",
+      reason: "",
+      reasonOptionId: "",
+      relatedSubitemIds: [],
+      courier: "",
+      remarks: "",
+    });
+    const today = new Date().toISOString().slice(0, 10);
+    setBillDraft({
+      supplierId: "",
+      supplierName: "",
+      mailingAddress: "",
+      termId: "",
+      billDate: today,
+      dueDate: today,
+      billNumber: "",
+      memo: "",
+      overallGstAmount: "",
+      attachments: [],
+      lines: [{ categoryId: "", categoryName: "", description: "", amount: "", taxCodeId: "" }],
+    });
+    setPickerOpen(true);
+  };
   const renderVoucherGroup = (group: (typeof voucherGroups)[number]) => {
     const baseColumns =
       group.id === "courier"
@@ -1977,29 +2011,39 @@ export function AdditionalCostsBoard({
         key={group.id}
         className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm"
       >
-        <button
-          type="button"
-          onClick={() =>
-            setCollapsedVoucherGroups((current) => ({
-              ...current,
-              [group.id]: !current[group.id],
-            }))
-          }
-          className="flex w-full items-center gap-2 border-l-4 px-4 py-3 text-left hover:bg-slate-50"
-          style={{ borderLeftColor: group.accent }}
-        >
+      <div
+        className="flex w-full cursor-pointer items-center border-l-4 hover:bg-slate-50"
+        style={{ borderLeftColor: group.accent }}
+        onClick={() =>
+          setCollapsedVoucherGroups((current) => ({
+            ...current,
+            [group.id]: !current[group.id],
+          }))
+        }
+      >
+        <div className="flex min-w-0 items-center gap-2 px-4 py-3 text-left">
           {collapsedVoucherGroups[group.id] ? (
             <ChevronRight size={18} style={{ color: group.accent }} />
           ) : (
             <ChevronDown size={18} style={{ color: group.accent }} />
           )}
-          <span className="text-lg font-semibold text-slate-800">
-            {group.name}
-          </span>
-          <span className="text-sm text-slate-500">
-            {group.rows.length} vouchers
-          </span>
-        </button>
+          <span className="text-lg font-semibold text-slate-800">{group.name}</span>
+          <span className="text-sm text-slate-500">{group.rows.length} vouchers</span>
+        </div>
+
+        {group.id === "quickbooks_bills_only" && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              openVoucherCreator(group.id);
+            }}
+            className="ml-2 rounded border border-sky-300 bg-sky-50 px-3 py-1.5 text-sm font-medium text-sky-700 hover:bg-sky-100"
+          >
+            + Add QuickBooks Bill
+          </button>
+        )}
+      </div>
         {!collapsedVoucherGroups[group.id] && (
           <div className="overflow-x-auto">
             <table
@@ -2167,14 +2211,14 @@ export function AdditionalCostsBoard({
                             defaultValue={row.cost ?? ""}
                             disabled={
                               !canDelete(row) ||
-                              group.id === "quickbooks_bills_only"
+                              String(group.id) === "quickbooks_bills_only"
                             }
                             onBlur={(event) =>
                               event.target.value !== String(row.cost ?? "") &&
                               void update(row.id, { cost: event.target.value })
                             }
                             title={
-                              group.id === "quickbooks_bills_only"
+                              String(group.id) === "quickbooks_bills_only"
                                 ? "Calculated from the QuickBooks Bill expense-line total."
                                 : undefined
                             }
@@ -2530,10 +2574,10 @@ export function AdditionalCostsBoard({
                             onClick={() => setPendingDelete(row)}
                             title={
                               canDelete(row)
-                                ? group.id === "quickbooks_bills_only"
+                                ? String(group.id) === "quickbooks_bills_only"
                                   ? "Remove this row only; the QuickBooks Bill remains unchanged."
                                   : "Deactivate payment voucher and permanently remove linked subitem"
-                                : group.id === "quickbooks_bills_only"
+                                : String(group.id) === "quickbooks_bills_only"
                                   ? "Only admins, directors, and developers can delete QuickBooks-Bills-only rows."
                                   : "You can only edit payment vouchers for clients assigned to you"
                             }
@@ -2550,7 +2594,8 @@ export function AdditionalCostsBoard({
             </table>
           </div>
         )}
-        {!collapsedVoucherGroups[group.id] && (
+        {!collapsedVoucherGroups[group.id] &&
+          String(group.id) !== "quickbooks_bills_only" && (
           <div className="border-t border-slate-200 px-3 py-2">
             <button
               type="button"
