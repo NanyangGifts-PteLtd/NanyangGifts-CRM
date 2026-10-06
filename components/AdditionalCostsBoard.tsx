@@ -2249,7 +2249,7 @@ export function AdditionalCostsBoard({
                                 )
                               }
                               manageLabel="courier"
-                              sectionCount={4}
+                              sectionCount={1}
                             />
                           </td>
                         ) : (
