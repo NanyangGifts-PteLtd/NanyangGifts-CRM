@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { canEditClient } from "@/lib/client-access";
 
 export async function GET(request: NextRequest) {
   try {
@@ -14,13 +13,10 @@ export async function GET(request: NextRequest) {
     } = await supabase.auth.getUser();
     if (!user)
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    if (!(await canEditClient(supabase, clientId, user.id)))
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-
     const { data: generations, error: generationsError } = await supabase
       .from("estimate_generations")
       .select(
-        "id, title, quickbooks_estimate_doc_number, created_at, quote_total, quote_subtotal, invoice_total, invoice_subtotal, invoice_count, total_balance, price_invoice_match, price_invoice_match_option_id, payment_status, invoice_payment_status, invoice_payment_status_option_id, tracking_summary, last_invoice_synced_at",
+        "id, title, quickbooks_estimate_doc_number, created_at, quote_total, quote_subtotal, invoice_total, invoice_subtotal, invoice_count, total_balance, price_invoice_match, price_invoice_match_option_id, payment_status, invoice_payment_status, invoice_payment_status_option_id, tracking_summary, tracking_remarks, last_invoice_synced_at",
       )
       .eq("client_id", clientId)
       .is("archived_at", null)

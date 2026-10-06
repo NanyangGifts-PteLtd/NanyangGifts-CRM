@@ -277,6 +277,7 @@ const CLIENT_HEADER_COLS: HeaderCol[] = [
   { key: "totalPrice", label: "Total Price", width: 80, minWidth: 7 },
   { key: "totalMarkup", label: "Total Markup", width: 90, minWidth: 7 },
   { key: "progress", label: "Progress", width: 110, minWidth: 7 },
+  { key: "trackingRemarks", label: "Remarks", width: 240, minWidth: 140 },
   {
     key: "trackingOverallPriceInvoiceMatch",
     label: "Price and Invoice Match?",
@@ -331,6 +332,7 @@ const TRACKING_HEADER_COLS: HeaderCol[] = [
   { key: "client", label: "Client", width: 250, minWidth: 7 },
   { key: "people", label: "People", width: 90, minWidth: 7 },
   { key: "channel", label: "Channel", width: 110, minWidth: 7 },
+  { key: "trackingRemarks", label: "Remarks", width: 240, minWidth: 140 },
   {
     key: "trackingOverallPriceInvoiceMatch",
     label: "Price and Invoice Match?",
@@ -355,6 +357,7 @@ const TRACKING_CLIENT_COLUMN_KEYS = new Set(
   TRACKING_HEADER_COLS.map((column) => column.key),
 );
 const TRACKING_ONLY_CLIENT_COLUMN_KEYS = new Set([
+  "trackingRemarks",
   "trackingOverallPriceInvoiceMatch",
   "trackingOverallInvoicePaymentStatus",
   "trackingQuoteActions",
@@ -1910,11 +1913,25 @@ export function CRMBoard({
       ...candidates.filter((column) => column.key.startsWith("custom:")),
     ] as HeaderCol[];
     const trackingByKey = new Map(base.map((column) => [column.key, column]));
-    const ordered = trackingClientOrderKeys
+    const preferredOrder = trackingClientOrderKeys.length
+      ? trackingClientOrderKeys.includes("trackingRemarks")
+        ? trackingClientOrderKeys
+        : (() => {
+            const next = [...trackingClientOrderKeys];
+            const channelIndex = next.indexOf("channel");
+            next.splice(
+              channelIndex >= 0 ? channelIndex + 1 : next.length,
+              0,
+              "trackingRemarks",
+            );
+            return next;
+          })()
+      : base.map((column) => column.key);
+    const ordered = preferredOrder
       .map((key) => trackingByKey.get(key))
       .filter(Boolean) as HeaderCol[];
     const remaining = base.filter(
-      (column) => !trackingClientOrderKeys.includes(column.key),
+      (column) => !preferredOrder.includes(column.key),
     );
     return [...ordered, ...remaining].map((column) => ({
       ...column,

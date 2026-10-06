@@ -13,15 +13,17 @@ import {
   type BadgeOption,
   type BadgeOptionLayout,
 } from "@/components/ui/statusbadge";
+import { EditableCell } from "@/components/ui/editablecell";
 import { ManualTrackingLinkDialog } from "@/components/ManualTrackingLinkDialog";
 
-export const TRACKING_QUOTE_TABLE_MIN_WIDTH = 1975;
+export const TRACKING_QUOTE_TABLE_MIN_WIDTH = 2215;
 export const TRACKING_VIEW_MIN_WIDTH = TRACKING_QUOTE_TABLE_MIN_WIDTH + 80;
 
 const QUOTE_COLUMN_DEFINITIONS = [
   { key: "quote", width: 230, minWidth: 220 },
   { key: "summary", width: 140, minWidth: 100 },
   { key: "trackingStatus", width: 180, minWidth: 130 },
+  { key: "remarks", width: 240, minWidth: 140 },
   { key: "quoteSubtotal", width: 190, minWidth: 150 },
   { key: "quoteTotal", width: 125, minWidth: 100 },
   { key: "invoiceSubtotal", width: 195, minWidth: 150 },
@@ -119,12 +121,14 @@ type Quote = {
   invoice_payment_status: string | null;
   invoice_payment_status_option_id: string | null;
   tracking_summary: string | null;
+  tracking_remarks: string | null;
   last_invoice_synced_at: string | null;
   invoices: Invoice[];
 };
 
 type QuoteUpdates = {
   trackingSummary?: string;
+  trackingRemarks?: string;
   paymentStatus?: string;
   priceInvoiceMatch?: string;
   priceInvoiceMatchOptionId?: string | null;
@@ -134,6 +138,7 @@ type QuoteUpdates = {
 
 type TrackingQuoteListProps = {
   clientId: string;
+  canEdit: boolean;
   summaryOptions: BadgeOption[];
   paymentStatusOptions: BadgeOption[];
   matchOptions: BadgeOption[];
@@ -170,6 +175,7 @@ function amount(value: number | null) {
 
 export function TrackingQuoteList({
   clientId,
+  canEdit,
   summaryOptions,
   paymentStatusOptions,
   matchOptions,
@@ -341,6 +347,7 @@ export function TrackingQuoteList({
   }, [clientId, reloadVersion]);
 
   const syncQuoteInvoices = async (quoteId: string) => {
+    if (!canEdit) return;
     setSyncingQuoteId(quoteId);
     setError(null);
     try {
@@ -365,14 +372,17 @@ export function TrackingQuoteList({
   };
 
   const updateQuote = async (quoteId: string, updates: QuoteUpdates) => {
+    if (!canEdit) return;
     const field =
       updates.trackingSummary !== undefined
         ? "summary"
-        : updates.paymentStatus !== undefined
-          ? "payment"
-          : updates.priceInvoiceMatch !== undefined
-            ? "match"
-            : "invoice-payment";
+        : updates.trackingRemarks !== undefined
+          ? "remarks"
+          : updates.paymentStatus !== undefined
+            ? "payment"
+            : updates.priceInvoiceMatch !== undefined
+              ? "match"
+              : "invoice-payment";
     const savingKey = `${quoteId}:${field}`;
     const requestId = (latestQuoteUpdate.current.get(savingKey) ?? 0) + 1;
     latestQuoteUpdate.current.set(savingKey, requestId);
@@ -385,6 +395,8 @@ export function TrackingQuoteList({
               ...quote,
               tracking_summary:
                 updates.trackingSummary ?? quote.tracking_summary ?? "",
+              tracking_remarks:
+                updates.trackingRemarks ?? quote.tracking_remarks ?? "",
               payment_status:
                 updates.paymentStatus ?? quote.payment_status ?? "",
               price_invoice_match:
@@ -430,6 +442,10 @@ export function TrackingQuoteList({
                     updates.trackingSummary !== undefined
                       ? previousQuote.tracking_summary
                       : quote.tracking_summary,
+                  tracking_remarks:
+                    updates.trackingRemarks !== undefined
+                      ? previousQuote.tracking_remarks
+                      : quote.tracking_remarks,
                   payment_status:
                     updates.paymentStatus !== undefined
                       ? previousQuote.payment_status
@@ -511,6 +527,7 @@ export function TrackingQuoteList({
           "Quote",
           "Summary",
           "Tracking Status",
+          "Remarks",
           "Quote total before GST",
           "Quote total",
           "Invoice total before GST",
@@ -527,7 +544,7 @@ export function TrackingQuoteList({
               key={column.key}
               className={`relative px-3 py-2 text-center ${
                 index > 0 ? "border-l border-[#d0d4e4]" : ""
-              } ${index === 3 || index === 5 || index === 8 || index === 11 ? "whitespace-nowrap" : ""}`}
+              } ${index === 4 || index === 6 || index === 9 || index === 12 ? "whitespace-nowrap" : ""}`}
             >
               {label}
               <ColumnResizeHandle
@@ -581,6 +598,8 @@ export function TrackingQuoteList({
                   value={quote.tracking_summary ?? ""}
                   options={summaryOptions}
                   small
+                  readOnly={!canEdit}
+                  readOnlyReason="You can only edit items that are assigned to you"
                   manageLabel="quote summary"
                   onChange={(value) =>
                     void updateQuote(quote.id, { trackingSummary: value })
@@ -594,11 +613,26 @@ export function TrackingQuoteList({
                   options={paymentStatusOptions}
                   small
                   includeBlankOption={false}
+                  readOnly={!canEdit}
+                  readOnlyReason="You can only edit items that are assigned to you"
                   manageLabel="quote payment status"
                   onChange={(value) =>
                     void updateQuote(quote.id, { paymentStatus: value })
                   }
                   {...labelManagementProps("tracking_payment_status")}
+                />
+              </div>
+              <div className="relative min-w-0 overflow-visible border-l border-[#d0d4e4] p-0 focus-within:z-[80]">
+                <EditableCell
+                  value={quote.tracking_remarks ?? ""}
+                  onChange={(value) =>
+                    void updateQuote(quote.id, { trackingRemarks: value })
+                  }
+                  readOnly={!canEdit}
+                  readOnlyReason="You can only edit items that are assigned to you"
+                  multiline
+                  resizableMultiline
+                  className="!justify-start"
                 />
               </div>
               <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">
@@ -621,6 +655,8 @@ export function TrackingQuoteList({
                   value={quote.price_invoice_match ?? ""}
                   options={matchOptions}
                   small
+                  readOnly={!canEdit}
+                  readOnlyReason="You can only edit items that are assigned to you"
                   manageLabel="price and invoice match"
                   onChange={(value) =>
                     void updateQuote(quote.id, {
@@ -641,6 +677,8 @@ export function TrackingQuoteList({
                   value={quote.invoice_payment_status ?? ""}
                   options={invoicePaymentStatusOptions}
                   small
+                  readOnly={!canEdit}
+                  readOnlyReason="You can only edit items that are assigned to you"
                   manageLabel="invoice payment status"
                   onChange={(value) =>
                     void updateQuote(quote.id, {
@@ -657,15 +695,26 @@ export function TrackingQuoteList({
               <div className="flex items-center justify-center gap-1 border-l border-[#d0d4e4] px-1 whitespace-nowrap">
                 <button
                   type="button"
+                  disabled={!canEdit}
                   onClick={() => setLinkInvoiceQuoteId(quote.id)}
-                  className="rounded border border-emerald-300 bg-emerald-50 px-2 py-1 text-[12.6px] font-semibold text-emerald-700 hover:bg-emerald-100"
+                  title={
+                    canEdit
+                      ? "Link an invoice"
+                      : "You can only edit items that are assigned to you"
+                  }
+                  className="rounded border border-emerald-300 bg-emerald-50 px-2 py-1 text-[12.6px] font-semibold text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Link Invoice
                 </button>
                 <button
                   type="button"
                   onClick={() => void syncQuoteInvoices(quote.id)}
-                  disabled={syncingQuoteId === quote.id}
+                  disabled={!canEdit || syncingQuoteId === quote.id}
+                  title={
+                    canEdit
+                      ? "Synchronize linked invoices"
+                      : "You can only edit items that are assigned to you"
+                  }
                   className="rounded border border-sky-300 bg-sky-50 px-2 py-1 text-[12.6px] font-semibold text-sky-700 hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {syncingQuoteId === quote.id
@@ -753,7 +802,7 @@ export function TrackingQuoteList({
         );
       })}
       <ManualTrackingLinkDialog
-        open={Boolean(linkInvoiceQuoteId)}
+        open={canEdit && Boolean(linkInvoiceQuoteId)}
         onOpenChange={(open) => {
           if (!open) setLinkInvoiceQuoteId(null);
         }}

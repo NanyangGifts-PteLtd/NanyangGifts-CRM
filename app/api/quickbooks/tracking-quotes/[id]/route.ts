@@ -42,6 +42,8 @@ export async function PATCH(
       updates.tracking_summary = text(body.trackingSummary);
     if ("paymentStatus" in body)
       updates.payment_status = text(body.paymentStatus);
+    if ("trackingRemarks" in body)
+      updates.tracking_remarks = text(body.trackingRemarks, 5000);
     if ("priceInvoiceMatch" in body) {
       updates.price_invoice_match = text(body.priceInvoiceMatch);
       updates.price_invoice_match_option_id =
@@ -66,7 +68,7 @@ export async function PATCH(
       .update(updates)
       .eq("id", quoteId)
       .select(
-        "id, title, tracking_summary, payment_status, invoice_payment_status, invoice_payment_status_option_id, quickbooks_estimate_doc_number, created_at, quote_total, quote_subtotal, invoice_total, invoice_subtotal, invoice_count, total_balance, price_invoice_match, price_invoice_match_option_id, last_invoice_synced_at",
+        "id, title, tracking_summary, tracking_remarks, payment_status, invoice_payment_status, invoice_payment_status_option_id, quickbooks_estimate_doc_number, created_at, quote_total, quote_subtotal, invoice_total, invoice_subtotal, invoice_count, total_balance, price_invoice_match, price_invoice_match_option_id, last_invoice_synced_at",
       )
       .single();
     if (updateError) throw updateError;

@@ -25,6 +25,7 @@ export async function canEditClient(
       .select("user_id")
       .eq("client_id", clientId)
       .eq("user_id", userId)
+      .limit(1)
       .maybeSingle(),
     supabase
       .from("clients")

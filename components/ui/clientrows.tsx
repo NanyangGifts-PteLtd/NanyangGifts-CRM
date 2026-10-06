@@ -3207,17 +3207,12 @@ export function ClientRow({
             <button
               type="button"
               data-selection-control
-              disabled={!canManageClient}
               onClick={(event) => {
                 event.stopPropagation();
                 toggleTrackingInvoices();
               }}
-              title={
-                !canManageClient
-                  ? "You do not have permission to view this client's quote tracking"
-                  : "Show this client's quotes and linked invoices"
-              }
-              className="absolute left-[calc(50%+14px)] top-1/2 -translate-y-1/2 text-gray-400 transition-colors hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-40"
+              title="Show this client's quotes and linked invoices"
+              className="absolute left-[calc(50%+14px)] top-1/2 -translate-y-1/2 text-gray-400 transition-colors hover:text-gray-700"
             >
               {isTrackingInvoicesExpanded ? (
                 <ChevronDown
@@ -3235,6 +3230,33 @@ export function ClientRow({
         </div>
         {trackingMode && (
           <>
+            <div
+              data-client-column="trackingRemarks"
+              className="tracking-client-cell relative overflow-visible border-r border-[#D0D4E4] p-0 focus-within:z-[80]"
+              style={{
+                height: 30,
+                minWidth: colWidth.trackingRemarks,
+                width: colWidth.trackingRemarks,
+                order: columnOrderMap.trackingRemarks,
+              }}
+            >
+              <EditableCell
+                value={client.customFields?.trackingRemarks ?? ""}
+                onChange={(value) =>
+                  onUpdate({
+                    customFields: {
+                      ...(client.customFields ?? {}),
+                      trackingRemarks: value,
+                    },
+                  })
+                }
+                readOnly={!canEditClient}
+                readOnlyReason="You can only edit items that are assigned to you"
+                multiline
+                resizableMultiline
+                className="!justify-start"
+              />
+            </div>
             <div
               data-client-column="trackingOverallPriceInvoiceMatch"
               className="tracking-client-cell overflow-hidden border-r border-[#D0D4E4] p-0"
@@ -3287,8 +3309,13 @@ export function ClientRow({
             >
               <button
                 type="button"
-                disabled={!canManageClient}
+                disabled={!canEditClient}
                 onClick={() => setLinkQuoteDialogOpen(true)}
+                title={
+                  canEditClient
+                    ? "Link a quote"
+                    : "You can only edit items that are assigned to you"
+                }
                 className="whitespace-nowrap rounded border border-emerald-300 bg-emerald-50 px-2 py-1 text-[12.6px] font-semibold text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Link Quote
@@ -4753,6 +4780,7 @@ export function ClientRow({
               invoicePaymentStatusOptions={
                 trackingInvoicePaymentStatusLabelOptions
               }
+              canEdit={canEditClient}
               onAddOption={(code, name) => onAddTrackingOption?.(code, name)}
               onDeleteOption={(code, name) =>
                 onDeleteTrackingOption?.(code, name)
