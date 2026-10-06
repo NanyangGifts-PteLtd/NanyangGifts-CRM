@@ -1,7 +1,13 @@
 "use client";
 
 import { ChevronDown, ChevronRight, LoaderCircle } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import {
   StatusBadge,
   type BadgeOption,
@@ -12,8 +18,73 @@ import { ManualTrackingLinkDialog } from "@/components/ManualTrackingLinkDialog"
 export const TRACKING_QUOTE_TABLE_MIN_WIDTH = 1975;
 export const TRACKING_VIEW_MIN_WIDTH = TRACKING_QUOTE_TABLE_MIN_WIDTH + 80;
 
-const QUOTE_GRID_COLUMNS =
-  "minmax(220px, 2fr) 140px 180px 125px 190px 125px 195px 80px 210px 125px 165px 210px";
+const QUOTE_COLUMN_DEFINITIONS = [
+  { key: "quote", width: 230, minWidth: 220 },
+  { key: "summary", width: 140, minWidth: 100 },
+  { key: "trackingStatus", width: 180, minWidth: 130 },
+  { key: "quoteTotal", width: 125, minWidth: 100 },
+  { key: "quoteSubtotal", width: 190, minWidth: 150 },
+  { key: "invoiceTotal", width: 125, minWidth: 100 },
+  { key: "invoiceSubtotal", width: 195, minWidth: 150 },
+  { key: "invoices", width: 80, minWidth: 70 },
+  { key: "match", width: 210, minWidth: 160 },
+  { key: "totalBalance", width: 125, minWidth: 105 },
+  { key: "paymentStatus", width: 165, minWidth: 125 },
+  { key: "actions", width: 210, minWidth: 180 },
+] as const;
+
+const INVOICE_COLUMN_DEFINITIONS = [
+  { key: "number", width: 550, minWidth: 220 },
+  { key: "date", width: 275, minWidth: 120 },
+  { key: "dueDate", width: 275, minWidth: 120 },
+  { key: "total", width: 320, minWidth: 130 },
+  { key: "subtotal", width: 275, minWidth: 170 },
+  { key: "balance", width: 275, minWidth: 120 },
+] as const;
+
+type ResizableColumn = {
+  key: string;
+  width: number;
+  minWidth: number;
+};
+
+const defaultWidths = (columns: readonly ResizableColumn[]) =>
+  Object.fromEntries(columns.map((column) => [column.key, column.width]));
+
+const normalizedWidths = (
+  columns: readonly ResizableColumn[],
+  value: unknown,
+) => {
+  if (!value || typeof value !== "object") return defaultWidths(columns);
+  const saved = value as Record<string, unknown>;
+  return Object.fromEntries(
+    columns.map((column) => [
+      column.key,
+      typeof saved[column.key] === "number" &&
+      Number.isFinite(saved[column.key])
+        ? Math.max(column.minWidth, saved[column.key] as number)
+        : column.width,
+    ]),
+  );
+};
+
+function ColumnResizeHandle({
+  label,
+  onPointerDown,
+}: {
+  label: string;
+  onPointerDown: (event: ReactPointerEvent<HTMLSpanElement>) => void;
+}) {
+  return (
+    <span
+      role="separator"
+      aria-label={`Resize ${label} column`}
+      onPointerDown={onPointerDown}
+      onDragStart={(event) => event.preventDefault()}
+      className="absolute -right-1 top-0 z-20 h-full w-2 cursor-col-resize border-l border-transparent hover:border-sky-400"
+    />
+  );
+}
 
 type TrackingLabelCode =
   | "tracking_summary"
@@ -117,7 +188,130 @@ export function TrackingQuoteList({
   const [reloadVersion, setReloadVersion] = useState(0);
   const [syncingQuoteId, setSyncingQuoteId] = useState<string | null>(null);
   const [linkInvoiceQuoteId, setLinkInvoiceQuoteId] = useState<string | null>(null);
+  const [quoteColumnWidths, setQuoteColumnWidths] = useState<
+    Record<string, number>
+  >(() => defaultWidths(QUOTE_COLUMN_DEFINITIONS));
+  const [invoiceColumnWidths, setInvoiceColumnWidths] = useState<
+    Record<string, number>
+  >(() => defaultWidths(INVOICE_COLUMN_DEFINITIONS));
   const latestQuoteUpdate = useRef(new Map<string, number>());
+
+  const quoteGridColumns = useMemo(
+    () =>
+      QUOTE_COLUMN_DEFINITIONS.map(
+        (column) => `${quoteColumnWidths[column.key] ?? column.width}px`,
+      ).join(" "),
+    [quoteColumnWidths],
+  );
+  const quoteTableWidth = useMemo(
+    () =>
+      QUOTE_COLUMN_DEFINITIONS.reduce(
+        (total, column) =>
+          total + (quoteColumnWidths[column.key] ?? column.width),
+        0,
+      ),
+    [quoteColumnWidths],
+  );
+  const invoiceGridColumns = useMemo(
+    () =>
+      INVOICE_COLUMN_DEFINITIONS.map(
+        (column) => `${invoiceColumnWidths[column.key] ?? column.width}px`,
+      ).join(" "),
+    [invoiceColumnWidths],
+  );
+  const invoiceTableWidth = useMemo(
+    () =>
+      INVOICE_COLUMN_DEFINITIONS.reduce(
+        (total, column) =>
+          total + (invoiceColumnWidths[column.key] ?? column.width),
+        0,
+      ),
+    [invoiceColumnWidths],
+  );
+
+  useEffect(() => {
+    const loadWidths = async () => {
+      try {
+        const localQuote = JSON.parse(
+          window.localStorage.getItem("colWidths:tracking-quotes:local") ??
+            "null",
+        );
+        const localInvoice = JSON.parse(
+          window.localStorage.getItem("colWidths:tracking-invoices:local") ??
+            "null",
+        );
+        setQuoteColumnWidths(
+          normalizedWidths(QUOTE_COLUMN_DEFINITIONS, localQuote),
+        );
+        setInvoiceColumnWidths(
+          normalizedWidths(INVOICE_COLUMN_DEFINITIONS, localInvoice),
+        );
+      } catch {
+        // Invalid browser storage should not stop the Tracking View loading.
+      }
+
+      try {
+        const { loadUserSetting } = await import("@/lib/user-settings");
+        const [savedQuote, savedInvoice] = await Promise.all([
+          loadUserSetting("colWidths:tracking-quotes"),
+          loadUserSetting("colWidths:tracking-invoices"),
+        ]);
+        if (savedQuote && typeof savedQuote === "object") {
+          setQuoteColumnWidths(
+            normalizedWidths(QUOTE_COLUMN_DEFINITIONS, savedQuote),
+          );
+        }
+        if (savedInvoice && typeof savedInvoice === "object") {
+          setInvoiceColumnWidths(
+            normalizedWidths(INVOICE_COLUMN_DEFINITIONS, savedInvoice),
+          );
+        }
+      } catch (loadError) {
+        console.warn("Failed to load Tracking table column widths", loadError);
+      }
+    };
+    void loadWidths();
+  }, []);
+
+  const resizeColumn = (
+    table: "quote" | "invoice",
+    column: ResizableColumn,
+    startX: number,
+  ) => {
+    const setWidths =
+      table === "quote" ? setQuoteColumnWidths : setInvoiceColumnWidths;
+    const storageKey =
+      table === "quote"
+        ? "colWidths:tracking-quotes"
+        : "colWidths:tracking-invoices";
+    const initialWidths =
+      table === "quote" ? quoteColumnWidths : invoiceColumnWidths;
+    const startWidth = initialWidths[column.key] ?? column.width;
+
+    const onMove = (event: PointerEvent) => {
+      const width = Math.max(column.minWidth, startWidth + event.clientX - startX);
+      setWidths((current) => ({ ...current, [column.key]: width }));
+    };
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      setWidths((current) => {
+        try {
+          window.localStorage.setItem(`${storageKey}:local`, JSON.stringify(current));
+        } catch {
+          // Server persistence below still gives signed-in users a fallback.
+        }
+        void import("@/lib/user-settings")
+          .then(({ saveUserSetting }) => saveUserSetting(storageKey, current))
+          .catch((saveError) =>
+            console.warn("Failed to save Tracking table column widths", saveError),
+          );
+        return current;
+      });
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  };
 
   useEffect(() => {
     let active = true;
@@ -305,23 +499,48 @@ export function TrackingQuoteList({
     );
 
   return (
-    <div className="min-w-[1975px] overflow-visible border border-[#d0d4e4] bg-white text-[12.6px]">
+    <div
+      className="overflow-visible border border-[#d0d4e4] bg-white text-[12.6px]"
+      style={{ minWidth: quoteTableWidth }}
+    >
       <div
         className="grid border-b border-[#d0d4e4] bg-white text-[12.6px] font-medium text-slate-600"
-        style={{ gridTemplateColumns: QUOTE_GRID_COLUMNS }}
+        style={{ gridTemplateColumns: quoteGridColumns }}
       >
-        <span className="px-3 py-2 text-center">Quote</span>
-        <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">Summary</span>
-        <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">Tracking Status</span>
-        <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">Quote total</span>
-        <span className="whitespace-nowrap border-l border-[#d0d4e4] px-3 py-2 text-center">Quote total before GST</span>
-        <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">Invoice total</span>
-        <span className="whitespace-nowrap border-l border-[#d0d4e4] px-3 py-2 text-center">Invoice total before GST</span>
-        <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">Invoices</span>
-        <span className="whitespace-nowrap border-l border-[#d0d4e4] px-3 py-2 text-center">Price and Invoice Match?</span>
-        <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">Total Balance</span>
-        <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">Payment Status</span>
-        <span className="whitespace-nowrap border-l border-[#d0d4e4] px-3 py-2 text-center">Invoice Actions</span>
+        {[
+          "Quote",
+          "Summary",
+          "Tracking Status",
+          "Quote total",
+          "Quote total before GST",
+          "Invoice total",
+          "Invoice total before GST",
+          "Invoices",
+          "Price and Invoice Match?",
+          "Total Balance",
+          "Payment Status",
+          "Invoice Actions",
+        ].map((label, index) => {
+          const column = QUOTE_COLUMN_DEFINITIONS[index];
+          return (
+            <span
+              key={column.key}
+              className={`relative px-3 py-2 text-center ${
+                index > 0 ? "border-l border-[#d0d4e4]" : ""
+              } ${index === 4 || index === 6 || index === 8 || index === 11 ? "whitespace-nowrap" : ""}`}
+            >
+              {label}
+              <ColumnResizeHandle
+                label={label}
+                onPointerDown={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  resizeColumn("quote", column, event.clientX);
+                }}
+              />
+            </span>
+          );
+        })}
       </div>
 
       {quotes.map((quote) => {
@@ -335,7 +554,7 @@ export function TrackingQuoteList({
           <div key={quote.id} className="border-b border-[#d0d4e4] last:border-b-0">
             <div
               className="grid min-h-[36px] text-slate-700"
-              style={{ gridTemplateColumns: QUOTE_GRID_COLUMNS }}
+              style={{ gridTemplateColumns: quoteGridColumns }}
             >
               <button
                 type="button"
@@ -459,19 +678,48 @@ export function TrackingQuoteList({
             {open && (
               <div className="border-t border-[#d0d4e4] bg-[#f7fbfc] p-3">
                 {quote.invoices.length ? (
-                  <div className="overflow-hidden border border-[#d0d4e4] bg-white">
-                    <div className="grid grid-cols-[2fr_1fr_1fr_1.15fr_1fr_1fr] border-b border-[#d0d4e4] bg-white text-[12.6px] font-medium text-slate-600">
-                      <span className="px-3 py-2 text-center">Invoice number</span>
-                      <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">Invoice date</span>
-                      <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">Due date</span>
-                      <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">Invoice total</span>
-                      <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">Invoice total before GST</span>
-                      <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">Balance</span>
+                  <div
+                    className="inline-block overflow-hidden border border-[#d0d4e4] bg-white align-top"
+                    style={{ minWidth: invoiceTableWidth }}
+                  >
+                    <div
+                      className="grid border-b border-[#d0d4e4] bg-white text-[12.6px] font-medium text-slate-600"
+                      style={{ gridTemplateColumns: invoiceGridColumns }}
+                    >
+                      {[
+                        "Invoice number",
+                        "Invoice date",
+                        "Due date",
+                        "Invoice total",
+                        "Invoice total before GST",
+                        "Balance",
+                      ].map((label, index) => {
+                        const column = INVOICE_COLUMN_DEFINITIONS[index];
+                        return (
+                          <span
+                            key={column.key}
+                            className={`relative px-3 py-2 text-center ${
+                              index > 0 ? "border-l border-[#d0d4e4]" : ""
+                            } ${index === 4 ? "whitespace-nowrap" : ""}`}
+                          >
+                            {label}
+                            <ColumnResizeHandle
+                              label={label}
+                              onPointerDown={(event) => {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                resizeColumn("invoice", column, event.clientX);
+                              }}
+                            />
+                          </span>
+                        );
+                      })}
                     </div>
                     {quote.invoices.map((invoice) => (
                       <div
                         key={invoice.id}
-                        className="grid min-h-[36px] grid-cols-[2fr_1fr_1fr_1.15fr_1fr_1fr] border-b border-[#d0d4e4] text-slate-700 last:border-b-0"
+                        className="grid min-h-[36px] border-b border-[#d0d4e4] text-slate-700 last:border-b-0"
+                        style={{ gridTemplateColumns: invoiceGridColumns }}
                       >
                         <span className="px-3 py-2 text-center font-medium">
                           {invoice.quickbooks_invoice_doc_number || "—"}
