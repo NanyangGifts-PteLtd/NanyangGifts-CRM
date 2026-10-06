@@ -390,7 +390,9 @@ export async function PATCH(request: NextRequest) {
     if (existingError || !existing) throw new Error("Spreadsheet row not found");
     const lockedValueFields = body.values ? Object.keys(body.values) : [];
     const canEditLockedValues = lockedValueFields.length > 0 && lockedValueFields.every((field) => ALWAYS_EDITABLE_AFTER_LOCK_FIELDS.has(field));
-    if (existing.is_locked && ((body.values && !canEditLockedValues) || body.cellFills)) throw new Error("This spreadsheet row is locked");
+    // Locking protects the shipment data, not visual formatting. This lets
+    // staff keep using manual fills to flag a completed shipment.
+    if (existing.is_locked && body.values && !canEditLockedValues) throw new Error("This spreadsheet row is locked");
     if (body.values) {
       const fields = Object.keys(body.values);
       if (fields.some((field) => FORMULA_FIELDS.has(field))) throw new Error("Formula cells cannot be edited directly");

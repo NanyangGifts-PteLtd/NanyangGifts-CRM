@@ -834,7 +834,10 @@ export function SpreadsheetPilot({
         (mode === "shipper" && !shipperEditableFields.has(key));
       return {
         kind: GridCellKind.Text,
-        data: value,
+        // A vertical merge is simulated with one leader and blank followers.
+        // Keeping follower clipboard data blank prevents copy/cut from
+        // duplicating the shared shipment value once per physical row.
+        data: isMergedFollower ? "" : value,
         displayData: isMergedFollower ? "" : formattedValue(key, rawValue),
         allowOverlay: !readOnly,
         readonly: readOnly,
@@ -1027,10 +1030,13 @@ export function SpreadsheetPilot({
       const groupIsLocked = rows
         .slice(first, last + 1)
         .some((row) => row.is_locked);
-      const fill = groupIsLocked
-        ? "#f1f5f9"
-        : (leader.cell_fills?.[key] ??
-          (formulaFields.has(key) ? "#fff7d6" : args.theme.bgCell));
+      const fill =
+        leader.cell_fills?.[key] ??
+        (groupIsLocked
+          ? "#f1f5f9"
+          : formulaFields.has(key)
+            ? "#fff7d6"
+            : args.theme.bgCell);
       const height = Array.from({ length: last - first + 1 }, (_, index) =>
         rowHeightForIndex(first + index),
       ).reduce((sum, rowHeight) => sum + rowHeight, 0);
@@ -1072,13 +1078,16 @@ export function SpreadsheetPilot({
           ctx.fillText(line, x, firstLineY + index * lineHeight, maxWidth),
         );
       }
-      if (
+      const mergedIsSelected = Boolean(
         selection &&
-        selection.cell[0] === args.col &&
-        selection.range.x === args.col &&
-        selection.range.y === first &&
-        selection.range.height === last - first + 1
-      ) {
+          args.col >= selection.range.x &&
+          args.col < selection.range.x + selection.range.width &&
+          selection.range.y <= last &&
+          selection.range.y + selection.range.height - 1 >= first,
+      );
+      if (mergedIsSelected) {
+        ctx.fillStyle = "rgba(79, 108, 255, 0.10)";
+        ctx.fillRect(args.rect.x + 1, top + 1, args.rect.width - 2, height - 2);
         ctx.strokeStyle = "#4f6cff";
         ctx.lineWidth = 2;
         ctx.strokeRect(
@@ -1107,35 +1116,58 @@ export function SpreadsheetPilot({
   const onGridSelectionChange = useCallback(
     (next: GridSelection) => {
       const current = next.current;
-      if (!current || current.range.width !== 1 || current.range.height !== 1) {
+      if (!current) {
         setGridSelection(next);
         return;
       }
-      const [col, row] = current.cell;
-      const record = rows[row];
-      const key = String(columns[col]?.id ?? "");
-      if (!record?.shipment_group_id || !shipmentFields.has(key)) {
-        setGridSelection(next);
-        return;
+      const range = current.range;
+      let first = range.y;
+      let last = range.y + range.height - 1;
+      // Any rectangular selection touching a simulated vertical merge must
+      // include that entire merge, just as a native spreadsheet would.
+      for (
+        let col = range.x;
+        col < range.x + range.width && col < columns.length;
+        col += 1
+      ) {
+        const key = String(columns[col]?.id ?? "");
+        if (!shipmentFields.has(key)) continue;
+        for (let row = first; row <= last && row < rows.length; row += 1) {
+          const groupId = rows[row]?.shipment_group_id;
+          if (!groupId) continue;
+          let groupFirst = row;
+          let groupLast = row;
+          while (
+            groupFirst > 0 &&
+            rows[groupFirst - 1]?.shipment_group_id === groupId
+          )
+            groupFirst -= 1;
+          while (
+            groupLast + 1 < rows.length &&
+            rows[groupLast + 1]?.shipment_group_id === groupId
+          )
+            groupLast += 1;
+          first = Math.min(first, groupFirst);
+          last = Math.max(last, groupLast);
+        }
       }
-      let first = row;
-      let last = row;
-      while (
-        first > 0 &&
-        rows[first - 1]?.shipment_group_id === record.shipment_group_id
-      )
-        first -= 1;
-      while (
-        last + 1 < rows.length &&
-        rows[last + 1]?.shipment_group_id === record.shipment_group_id
-      )
-        last += 1;
+      const [activeCol, activeRow] = current.cell;
+      const activeKey = String(columns[activeCol]?.id ?? "");
+      const activeGroupId = rows[activeRow]?.shipment_group_id;
+      let activeLeader = activeRow;
+      if (activeGroupId && shipmentFields.has(activeKey)) {
+        while (
+          activeLeader > 0 &&
+          rows[activeLeader - 1]?.shipment_group_id === activeGroupId
+        )
+          activeLeader -= 1;
+      }
       setGridSelection({
         ...next,
         current: {
           ...current,
-          cell: [col, first],
-          range: { ...current.range, y: first, height: last - first + 1 },
+          cell: [activeCol, activeLeader],
+          range: { ...range, y: first, height: last - first + 1 },
         },
       });
     },
@@ -1232,7 +1264,6 @@ export function SpreadsheetPilot({
       const value = cell.data;
       const validationError = validationMessage(key, value);
       if (validationError) {
-        setError(validationError);
         toast.error("Invalid cell value", { description: validationError });
         return;
       }
@@ -1308,6 +1339,10 @@ export function SpreadsheetPilot({
   const onCellsEdited = useCallback(
     (edits: ReadonlyArray<{ location: Item; value: GridCell }>) => {
       const updates = new Map<string, Record<string, unknown>>();
+      const sharedUpdates = new Map<
+        string,
+        { location: Item; value: GridCell }
+      >();
       for (const {
         location: [col, row],
         value,
@@ -1318,7 +1353,6 @@ export function SpreadsheetPilot({
         if (key === "__lock" || formulaFields.has(key)) continue;
         const validationError = validationMessage(key, value.data);
         if (validationError) {
-          setError(validationError);
           toast.error("Invalid cell value", { description: validationError });
           continue;
         }
@@ -1332,7 +1366,24 @@ export function SpreadsheetPilot({
         )
           continue;
         if (record.shipment_group_id && shipmentInputFields.includes(key)) {
-          void onCellEdited([col, row], value);
+          // Copy, cut, paste and Delete may contain one edit for every
+          // physical row hidden beneath a merged shipment cell. Apply only
+          // the first edit to that logical cell so a blank follower cannot
+          // overwrite the leader's clipboard value.
+          const logicalCell = `${record.shipment_group_id}:${key}`;
+          if (!sharedUpdates.has(logicalCell)) {
+            let leaderRow = row;
+            while (
+              leaderRow > 0 &&
+              rows[leaderRow - 1]?.shipment_group_id ===
+                record.shipment_group_id
+            )
+              leaderRow -= 1;
+            sharedUpdates.set(logicalCell, {
+              location: [col, leaderRow],
+              value,
+            });
+          }
           continue;
         }
         updates.set(record.id, {
@@ -1376,6 +1427,9 @@ export function SpreadsheetPilot({
           ),
         );
       }
+      sharedUpdates.forEach(({ location, value }) => {
+        void onCellEdited(location, value);
+      });
       return true;
     },
     [mode, onCellEdited, queueSave, rows],
@@ -1418,7 +1472,9 @@ export function SpreadsheetPilot({
       : Array.from({ length: range!.width }, (_, index) => range!.x + index);
     for (const rowIndex of rowIndexes) {
       const row = rows[rowIndex];
-      if (!row || row.is_locked) continue;
+      // Filling is presentation-only. It remains available after a row is
+      // locked, while all value-editing paths continue to respect the lock.
+      if (!row) continue;
       for (const colIndex of columnIndexes) {
         const field = String(columns[colIndex]?.id ?? "");
         if (
