@@ -556,6 +556,7 @@ export function SpreadsheetPilot({
   const saveTimer = useRef<number | null>(null);
   const savesInFlight = useRef(0);
   const localEditRevision = useRef(0);
+  const lastLocalMutationAt = useRef(0);
   const latestLoadRequest = useRef(0);
   const rowCopyShortcut = useRef<(operation: "copy" | "cut") => void>(() => {});
   const rowPasteShortcut = useRef<(targetRow: number) => void>(() => {});
@@ -573,6 +574,10 @@ export function SpreadsheetPilot({
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
   const imageCache = useRef(new Map<string, HTMLImageElement>());
   const [, setImageRevision] = useState(0);
+  const markLocalMutation = useCallback(() => {
+    localEditRevision.current += 1;
+    lastLocalMutationAt.current = Date.now();
+  }, []);
   const load = useCallback(async () => {
     if (pendingSaves.current.size || savesInFlight.current) return;
     const requestId = ++latestLoadRequest.current;
@@ -615,12 +620,30 @@ export function SpreadsheetPilot({
     let refreshTimer: number | null = null;
     let disposed = false;
     const scheduleRefresh = () => {
-      if (pendingSaves.current.size || savesInFlight.current) return;
       if (refreshTimer !== null) window.clearTimeout(refreshTimer);
-      refreshTimer = window.setTimeout(() => {
+      const refreshWhenStable = () => {
         refreshTimer = null;
+        if (disposed) return;
+        const quietTimeRemaining = Math.max(
+          0,
+          1200 - (Date.now() - lastLocalMutationAt.current),
+        );
+        if (
+          pendingSaves.current.size ||
+          savesInFlight.current ||
+          quietTimeRemaining > 0
+        ) {
+          // Do not discard a realtime event received during an optimistic
+          // save. Retry after the logical mutation has settled instead.
+          refreshTimer = window.setTimeout(
+            refreshWhenStable,
+            Math.max(200, quietTimeRemaining),
+          );
+          return;
+        }
         void load();
-      }, 200);
+      };
+      refreshTimer = window.setTimeout(refreshWhenStable, 200);
     };
     let channel: ReturnType<typeof supabase.channel> | null = null;
     const startSubscription = async () => {
@@ -644,7 +667,11 @@ export function SpreadsheetPilot({
           },
           scheduleRefresh,
         )
-        .subscribe();
+        .subscribe((status) => {
+          // Reconcile after the initial subscription and every reconnect so
+          // changes missed while the socket was unavailable are recovered.
+          if (status === "SUBSCRIBED") scheduleRefresh();
+        });
     };
     void startSubscription();
     return () => {
@@ -674,6 +701,7 @@ export function SpreadsheetPilot({
       new Date(nextDue.auto_lock_at).getTime() - Date.now(),
     );
     const timer = window.setTimeout(async () => {
+      markLocalMutation();
       const response = await fetch("/api/shipper/spreadsheet", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -698,7 +726,7 @@ export function SpreadsheetPilot({
       );
     }, delay + 50);
     return () => window.clearTimeout(timer);
-  }, [load, rows, shipperId]);
+  }, [load, markLocalMutation, rows, shipperId]);
   useEffect(() => {
     const updateViewportHeight = () => setViewportHeight(window.innerHeight);
     updateViewportHeight();
@@ -709,6 +737,7 @@ export function SpreadsheetPilot({
     async (record: Row) => {
       if (!hasRowContent(record)) return;
       await flushPendingSavesRef.current();
+      markLocalMutation();
       const response = await fetch("/api/shipper/spreadsheet", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -736,7 +765,7 @@ export function SpreadsheetPilot({
         ),
       );
     },
-    [shipperId],
+    [markLocalMutation, shipperId],
   );
   const flushPendingSaves = useCallback(async () => {
     saveTimer.current = null;
@@ -854,6 +883,7 @@ export function SpreadsheetPilot({
     undoInProgress.current = true;
     await flushPendingSaves();
     try {
+      markLocalMutation();
       const results = await Promise.all(
         entry.rows.map(async (snapshot) => {
           const response = await fetch("/api/shipper/spreadsheet", {
@@ -878,7 +908,7 @@ export function SpreadsheetPilot({
       const restored = new Map<string, Row>(
         results.map(({ result }) => [result.row.id, result.row as Row]),
       );
-      localEditRevision.current += 1;
+      markLocalMutation();
       setRows((current) =>
         current.map((row) =>
           restored.has(row.id) ? { ...row, ...restored.get(row.id)! } : row,
@@ -895,7 +925,7 @@ export function SpreadsheetPilot({
     } finally {
       undoInProgress.current = false;
     }
-  }, [flushPendingSaves, load, shipperId]);
+  }, [flushPendingSaves, load, markLocalMutation, shipperId]);
   undoShortcut.current = () => void undoLastChange();
   const getCellContent = useCallback(
     ([col, row]: Item): GridCell => {
@@ -1456,6 +1486,7 @@ export function SpreadsheetPilot({
           (mode === "shipper" && !shipperEditableFields.has(key))
         )
           return;
+        markLocalMutation();
         const response = await fetch("/api/shipper/spreadsheet", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1486,7 +1517,7 @@ export function SpreadsheetPilot({
           return;
         }
         if (recordUndo) rememberUndo("Merged cell edit undone", groupRows);
-        localEditRevision.current += 1;
+        markLocalMutation();
         flushSync(() => {
           setRows((current) =>
             current.map((item) =>
@@ -1514,7 +1545,7 @@ export function SpreadsheetPilot({
         return;
       }
       if (recordUndo) rememberUndo("Cell edit undone", [record]);
-      localEditRevision.current += 1;
+      markLocalMutation();
       flushSync(() => {
         setRows((current) =>
           current.map((item) =>
@@ -1526,7 +1557,7 @@ export function SpreadsheetPilot({
       });
       queueSave(record.id, { [key]: value });
     },
-    [load, mode, queueSave, rememberUndo, rows, shipperId],
+    [load, markLocalMutation, mode, queueSave, rememberUndo, rows, shipperId],
   );
   const onCellsEdited = useCallback(
     (edits: ReadonlyArray<{ location: Item; value: GridCell }>) => {
@@ -1629,7 +1660,7 @@ export function SpreadsheetPilot({
         );
         // Glide asks for the cell again as the overlay closes. Commit before it
         // redraws so that request sees this edit rather than the old cell value.
-        localEditRevision.current += 1;
+        markLocalMutation();
         flushSync(() => {
           setRows((current) =>
             current.map((row) =>
@@ -1668,6 +1699,7 @@ export function SpreadsheetPilot({
           for (const [targetRow, values] of [...newRowValues].sort(
             ([left], [right]) => left - right,
           )) {
+            markLocalMutation();
             const response = await fetch("/api/shipper/spreadsheet", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
@@ -1692,7 +1724,7 @@ export function SpreadsheetPilot({
             materializedRowCount += inserted.length;
           }
           if (createdRows.length) {
-            localEditRevision.current += 1;
+            markLocalMutation();
             flushSync(() =>
               setRows((current) =>
                 [...current, ...createdRows].sort(
@@ -1707,7 +1739,7 @@ export function SpreadsheetPilot({
       }
       return true;
     },
-    [mode, onCellEdited, queueSave, rememberUndo, rows, shipperId],
+    [markLocalMutation, mode, onCellEdited, queueSave, rememberUndo, rows, shipperId],
   );
   const height = useMemo(
     () =>
@@ -1758,6 +1790,7 @@ export function SpreadsheetPilot({
       rows.filter((row) => fillsByRow.has(row.id)),
       { cellFills: true },
     );
+    markLocalMutation();
     setIsFillPaletteOpen(false);
     flushSync(() =>
       setRows((current) =>
@@ -1859,6 +1892,7 @@ export function SpreadsheetPilot({
     const target = contextMenu ? rows[contextMenu.row] : undefined;
     if (!target) return;
     await flushPendingSaves();
+    markLocalMutation();
     const response = await fetch("/api/shipper/spreadsheet", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1922,6 +1956,7 @@ export function SpreadsheetPilot({
       targetRowIndex === undefined ? undefined : rows[targetRowIndex];
     if (!target || (!copiedRows.length && !cutRowIds.length)) return;
     await flushPendingSaves();
+    markLocalMutation();
     const moving = cutRowIds.length > 0;
     const response = await fetch("/api/shipper/spreadsheet", {
       method: moving ? "PATCH" : "POST",
@@ -1989,6 +2024,7 @@ export function SpreadsheetPilot({
       destructive: true,
     }))) return;
     await flushPendingSaves();
+    markLocalMutation();
     const response = await fetch("/api/shipper/spreadsheet", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -2064,7 +2100,7 @@ export function SpreadsheetPilot({
         throw new Error(result.error ?? "Could not upload image");
       const current = String(row.values[target.field] ?? "").trim();
       const next = `${current}${current ? "\n\n" : ""}[[shipper-image:${result.url}]]`;
-      localEditRevision.current += 1;
+      markLocalMutation();
       flushSync(() =>
         setRows((currentRows) =>
           currentRows.map((item) =>
@@ -2098,7 +2134,7 @@ export function SpreadsheetPilot({
       .replace(marker, "")
       .replace(/\n{3,}/g, "\n\n")
       .trim();
-    localEditRevision.current += 1;
+    markLocalMutation();
     flushSync(() =>
       setRows((currentRows) =>
         currentRows.map((item) =>
@@ -2132,6 +2168,7 @@ export function SpreadsheetPilot({
       .map((index) => rows[index])
       .filter((row): row is Row => Boolean(row));
     await flushPendingSaves();
+    markLocalMutation();
     const response = await fetch("/api/shipper/spreadsheet", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -2233,6 +2270,7 @@ export function SpreadsheetPilot({
       return;
     }
     await flushPendingSaves();
+    markLocalMutation();
     const response = await fetch("/api/shipper/spreadsheet", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
