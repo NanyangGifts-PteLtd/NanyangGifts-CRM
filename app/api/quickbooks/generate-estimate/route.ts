@@ -5,6 +5,7 @@ import { getSystemLabel } from "@/lib/system-labels";
 import { canEditClient } from "@/lib/client-access";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { refreshClientTrackingRollups } from "@/lib/quickbooks/tracking-rollups";
+import { archiveQuickBooksEstimatePdf } from "@/lib/quickbooks/estimate-pdf";
 
 const ELIGIBLE_STATUS_KEYS = [
   "subitem_status_quoted",
@@ -346,6 +347,22 @@ export async function POST(req: NextRequest) {
       );
     if (snapshotError) throw snapshotError;
 
+    const quotePdfResult = await archiveQuickBooksEstimatePdf({
+      clientId: client.id,
+      estimateId: String(estimate?.Id ?? ""),
+      docNumber: estimate?.DocNumber,
+      actorName,
+    })
+      .then((quotePdf) => ({ quotePdf, quotePdfError: null }))
+      .catch((pdfError) => {
+        console.error("Could not archive QuickBooks quote PDF", pdfError);
+        return {
+          quotePdf: null,
+          quotePdfError:
+            "The quote was created, but its PDF could not be saved to this client's Files.",
+        };
+      });
+
     const { error: activityError } = await supabase
       .from("activity_log")
       .insert({
@@ -382,6 +399,7 @@ export async function POST(req: NextRequest) {
       estimateGenerationId: generation.id,
       estimateId: estimate?.Id ?? null,
       docNumber: estimate?.DocNumber ?? null,
+      ...quotePdfResult,
     });
   } catch (error: any) {
     console.error("Generate quote failed:", error);

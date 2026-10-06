@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { qboQuery, qboRequest } from "@/lib/quickbooks/api";
 import { getSystemLabel } from "@/lib/system-labels";
 import { refreshClientTrackingRollups } from "@/lib/quickbooks/tracking-rollups";
+import { archiveQuickBooksEstimatePdf } from "@/lib/quickbooks/estimate-pdf";
 
 const ELIGIBLE_STATUS_KEYS = [
   "subitem_status_quoted",
@@ -404,6 +405,21 @@ export async function POST(request: NextRequest) {
       }),
     });
     const updated = updatedResult.Estimate;
+    const quotePdfResult = await archiveQuickBooksEstimatePdf({
+      clientId: client.id,
+      estimateId: String(updated?.Id ?? current.Id),
+      docNumber: updated?.DocNumber ?? current.DocNumber,
+      actorName: salesperson,
+    })
+      .then((quotePdf) => ({ quotePdf, quotePdfError: null }))
+      .catch((pdfError) => {
+        console.error("Could not archive QuickBooks quote PDF", pdfError);
+        return {
+          quotePdf: null,
+          quotePdfError:
+            "The quote was updated, but its PDF could not be saved to this client's Files.",
+        };
+      });
     await supabase.from("activity_log").insert({
       client_id: client.id,
       subitem_id: null,
@@ -419,7 +435,12 @@ export async function POST(request: NextRequest) {
       meta: { kind: "quickbooks", estimateGenerationId, quickbooksEstimateId: current.Id },
       created_at: new Date().toISOString(),
     });
-    return NextResponse.json({ success: true, estimateId: updated?.Id, docNumber: updated?.DocNumber ?? current.DocNumber });
+    return NextResponse.json({
+      success: true,
+      estimateId: updated?.Id,
+      docNumber: updated?.DocNumber ?? current.DocNumber,
+      ...quotePdfResult,
+    });
   } catch (error: any) {
     console.error("QuickBooks quote update failed", error);
     return NextResponse.json({ error: quickBooksErrorMessage(error) }, { status: 500 });

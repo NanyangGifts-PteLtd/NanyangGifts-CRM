@@ -964,6 +964,7 @@ export function ClientRow({
   const [isUpdatingEstimate, setIsUpdatingEstimate] = useState(false);
   const [updateEstimateResult, setUpdateEstimateResult] = useState<{
     docNumber?: string | null;
+    quotePdfError?: string | null;
   } | null>(null);
   const [quickBooksDefaults, setQuickBooksDefaults] = useState<{
     salesperson: string;
@@ -983,6 +984,7 @@ export function ClientRow({
   const [estimateResult, setEstimateResult] = useState<{
     estimateId?: string | null;
     docNumber?: string | null;
+    quotePdfError?: string | null;
   } | null>(null);
   const [sampleEstimate, setSampleEstimate] = useState<{
     filename: string;
@@ -2215,6 +2217,11 @@ export function ClientRow({
                       </>
                     ) : null}{" "}
                     was updated with the current CRM subitem details.
+                    {updateEstimateResult.quotePdfError ? (
+                      <span className="mt-2 block text-amber-700">
+                        {updateEstimateResult.quotePdfError}
+                      </span>
+                    ) : null}
                   </>
                 ) : updateEstimateError ? (
                   "The selected quote could not be loaded or updated. You can choose a different quote or try again."
@@ -2235,6 +2242,11 @@ export function ClientRow({
                     ""
                   )}
                   .
+                  {estimateResult.quotePdfError ? (
+                    <span className="mt-2 block text-amber-700">
+                      {estimateResult.quotePdfError}
+                    </span>
+                  ) : null}
                 </>
               ) : estimateError ? (
                 estimateError

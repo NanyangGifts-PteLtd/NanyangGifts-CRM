@@ -37,6 +37,34 @@ export async function qboRequest(path: string, init?: RequestInit) {
   return json;
 }
 
+/** Downloads a binary document from QuickBooks, such as an Estimate PDF. */
+export async function qboDownload(path: string) {
+  const conn = await getValidQuickBooksConnection();
+  const baseUrl =
+    conn.environment === "production"
+      ? "https://quickbooks.api.intuit.com"
+      : "https://sandbox-quickbooks.api.intuit.com";
+  const separator = path.includes("?") ? "&" : "?";
+  const response = await fetch(
+    `${baseUrl}/v3/company/${conn.realm_id}${path}${separator}minorversion=75`,
+    {
+      headers: {
+        Accept: "application/pdf",
+        Authorization: `Bearer ${conn.access_token}`,
+      },
+      cache: "no-store",
+    },
+  );
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(error || `QuickBooks download failed (${response.status})`);
+  }
+  return {
+    bytes: Buffer.from(await response.arrayBuffer()),
+    contentType: response.headers.get("content-type") || "application/pdf",
+  };
+}
+
 export async function qboQuery(query: string) {
   const encoded = encodeURIComponent(query);
   return qboRequest(`/query?query=${encoded}`, { method: 'GET' });
