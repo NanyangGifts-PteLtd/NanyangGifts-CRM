@@ -310,16 +310,16 @@ export function TrackingQuoteList({
         className="grid border-b border-[#d0d4e4] bg-white text-[12.6px] font-medium text-slate-600"
         style={{ gridTemplateColumns: QUOTE_GRID_COLUMNS }}
       >
-        <span className="px-3 py-2">Quote</span>
+        <span className="px-3 py-2 text-center">Quote</span>
         <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">Summary</span>
         <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">Tracking Status</span>
-        <span className="border-l border-[#d0d4e4] px-3 py-2 text-right">Quote total</span>
-        <span className="whitespace-nowrap border-l border-[#d0d4e4] px-3 py-2 text-right">Quote total before GST</span>
-        <span className="border-l border-[#d0d4e4] px-3 py-2 text-right">Invoice total</span>
-        <span className="whitespace-nowrap border-l border-[#d0d4e4] px-3 py-2 text-right">Invoice total before GST</span>
+        <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">Quote total</span>
+        <span className="whitespace-nowrap border-l border-[#d0d4e4] px-3 py-2 text-center">Quote total before GST</span>
+        <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">Invoice total</span>
+        <span className="whitespace-nowrap border-l border-[#d0d4e4] px-3 py-2 text-center">Invoice total before GST</span>
         <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">Invoices</span>
         <span className="whitespace-nowrap border-l border-[#d0d4e4] px-3 py-2 text-center">Price and Invoice Match?</span>
-        <span className="border-l border-[#d0d4e4] px-3 py-2 text-right">Total Balance</span>
+        <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">Total Balance</span>
         <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">Payment Status</span>
         <span className="whitespace-nowrap border-l border-[#d0d4e4] px-3 py-2 text-center">Invoice Actions</span>
       </div>
@@ -382,16 +382,16 @@ export function TrackingQuoteList({
                   {...labelManagementProps("tracking_payment_status")}
                 />
               </div>
-              <span className="border-l border-[#d0d4e4] px-3 py-2 text-right">
+              <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">
                 {amount(quote.quote_total)}
               </span>
-              <span className="border-l border-[#d0d4e4] px-3 py-2 text-right">
+              <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">
                 {amount(quote.quote_subtotal)}
               </span>
-              <span className="border-l border-[#d0d4e4] px-3 py-2 text-right">
+              <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">
                 {amount(quote.invoice_total)}
               </span>
-              <span className="border-l border-[#d0d4e4] px-3 py-2 text-right">
+              <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">
                 {amount(quote.invoice_subtotal)}
               </span>
               <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">
@@ -414,7 +414,7 @@ export function TrackingQuoteList({
                   {...labelManagementProps("tracking_price_invoice_match")}
                 />
               </div>
-              <span className="border-l border-[#d0d4e4] px-3 py-2 text-right">
+              <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">
                 {amount(quote.total_balance)}
               </span>
               <div className="min-w-0 border-l border-[#d0d4e4] p-0">
@@ -461,34 +461,34 @@ export function TrackingQuoteList({
                 {quote.invoices.length ? (
                   <div className="overflow-hidden border border-[#d0d4e4] bg-white">
                     <div className="grid grid-cols-[2fr_1fr_1fr_1.15fr_1fr_1fr] border-b border-[#d0d4e4] bg-white text-[12.6px] font-medium text-slate-600">
-                      <span className="px-3 py-2">Invoice number</span>
-                      <span className="border-l border-[#d0d4e4] px-3 py-2">Invoice date</span>
-                      <span className="border-l border-[#d0d4e4] px-3 py-2">Due date</span>
-                      <span className="border-l border-[#d0d4e4] px-3 py-2 text-right">Invoice total</span>
-                      <span className="border-l border-[#d0d4e4] px-3 py-2 text-right">Invoice total before GST</span>
-                      <span className="border-l border-[#d0d4e4] px-3 py-2 text-right">Balance</span>
+                      <span className="px-3 py-2 text-center">Invoice number</span>
+                      <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">Invoice date</span>
+                      <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">Due date</span>
+                      <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">Invoice total</span>
+                      <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">Invoice total before GST</span>
+                      <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">Balance</span>
                     </div>
                     {quote.invoices.map((invoice) => (
                       <div
                         key={invoice.id}
                         className="grid min-h-[36px] grid-cols-[2fr_1fr_1fr_1.15fr_1fr_1fr] border-b border-[#d0d4e4] text-slate-700 last:border-b-0"
                       >
-                        <span className="px-3 py-2 font-medium">
+                        <span className="px-3 py-2 text-center font-medium">
                           {invoice.quickbooks_invoice_doc_number || "—"}
                         </span>
-                        <span className="border-l border-[#d0d4e4] px-3 py-2">
+                        <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">
                           {invoice.invoice_date || "—"}
                         </span>
-                        <span className="border-l border-[#d0d4e4] px-3 py-2">
+                        <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">
                           {invoice.due_date || "—"}
                         </span>
-                        <span className="border-l border-[#d0d4e4] px-3 py-2 text-right">
+                        <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">
                           {amount(invoice.total)}
                         </span>
-                        <span className="border-l border-[#d0d4e4] px-3 py-2 text-right">
+                        <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">
                           {amount(invoice.subtotal)}
                         </span>
-                        <span className="border-l border-[#d0d4e4] px-3 py-2 text-right">
+                        <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">
                           {amount(invoice.balance)}
                         </span>
                       </div>
