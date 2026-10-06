@@ -15,8 +15,18 @@ import {
 } from "@/components/ui/statusbadge";
 import { EditableCell } from "@/components/ui/editablecell";
 import { ManualTrackingLinkDialog } from "@/components/ManualTrackingLinkDialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
-export const TRACKING_QUOTE_TABLE_MIN_WIDTH = 2215;
+export const TRACKING_QUOTE_TABLE_MIN_WIDTH = 2305;
 export const TRACKING_VIEW_MIN_WIDTH = TRACKING_QUOTE_TABLE_MIN_WIDTH + 80;
 
 const QUOTE_COLUMN_DEFINITIONS = [
@@ -32,7 +42,7 @@ const QUOTE_COLUMN_DEFINITIONS = [
   { key: "match", width: 210, minWidth: 160 },
   { key: "totalBalance", width: 125, minWidth: 105 },
   { key: "paymentStatus", width: 165, minWidth: 125 },
-  { key: "actions", width: 210, minWidth: 180 },
+  { key: "actions", width: 300, minWidth: 270 },
 ] as const;
 
 const INVOICE_COLUMN_DEFINITIONS = [
@@ -42,6 +52,7 @@ const INVOICE_COLUMN_DEFINITIONS = [
   { key: "subtotal", width: 275, minWidth: 170 },
   { key: "total", width: 320, minWidth: 130 },
   { key: "balance", width: 275, minWidth: 120 },
+  { key: "actions", width: 135, minWidth: 115 },
 ] as const;
 
 type ResizableColumn = {
@@ -102,6 +113,7 @@ type Invoice = {
   subtotal: number | null;
   total: number | null;
   balance: number | null;
+  link_source: "quickbooks" | "manual" | null;
 };
 
 type Quote = {
@@ -123,6 +135,7 @@ type Quote = {
   tracking_summary: string | null;
   tracking_remarks: string | null;
   last_invoice_synced_at: string | null;
+  link_source: "quickbooks" | "manual" | null;
   invoices: Invoice[];
 };
 
@@ -194,6 +207,12 @@ export function TrackingQuoteList({
   const [reloadVersion, setReloadVersion] = useState(0);
   const [syncingQuoteId, setSyncingQuoteId] = useState<string | null>(null);
   const [linkInvoiceQuoteId, setLinkInvoiceQuoteId] = useState<string | null>(null);
+  const [unlinkTarget, setUnlinkTarget] = useState<
+    | { kind: "quote"; quoteId: string; label: string }
+    | { kind: "invoice"; quoteId: string; invoiceId: string; label: string }
+    | null
+  >(null);
+  const [unlinking, setUnlinking] = useState(false);
   const [quoteColumnWidths, setQuoteColumnWidths] = useState<
     Record<string, number>
   >(() => defaultWidths(QUOTE_COLUMN_DEFINITIONS));
@@ -368,6 +387,41 @@ export function TrackingQuoteList({
       );
     } finally {
       setSyncingQuoteId(null);
+    }
+  };
+
+  const unlink = async () => {
+    if (!unlinkTarget || !canEdit) return;
+    setUnlinking(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/quickbooks/manual-tracking-link", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          kind: unlinkTarget.kind,
+          clientId,
+          estimateGenerationId: unlinkTarget.quoteId,
+          ...(unlinkTarget.kind === "invoice"
+            ? { invoiceId: unlinkTarget.invoiceId }
+            : {}),
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result?.error ?? "Could not unlink the QuickBooks record");
+      }
+      setUnlinkTarget(null);
+      setReloadVersion((version) => version + 1);
+      onQuotesChanged?.();
+    } catch (unlinkError) {
+      setError(
+        unlinkError instanceof Error
+          ? unlinkError.message
+          : "Could not unlink the QuickBooks record",
+      );
+    } finally {
+      setUnlinking(false);
     }
   };
 
@@ -721,6 +775,27 @@ export function TrackingQuoteList({
                     ? "Synchronizing…"
                     : "Sync invoices"}
                 </button>
+                {quote.link_source === "manual" && (
+                  <button
+                    type="button"
+                    disabled={!canEdit}
+                    onClick={() =>
+                      setUnlinkTarget({
+                        kind: "quote",
+                        quoteId: quote.id,
+                        label: quoteLabel,
+                      })
+                    }
+                    title={
+                      canEdit
+                        ? "Unlink this manually linked quote"
+                        : "You can only edit items that are assigned to you"
+                    }
+                    className="rounded border border-red-300 bg-red-50 px-2 py-1 text-[12.6px] font-semibold text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Unlink Quote
+                  </button>
+                )}
               </div>
             </div>
 
@@ -742,6 +817,7 @@ export function TrackingQuoteList({
                         "Invoice total before GST",
                         "Invoice total",
                         "Balance",
+                        "Actions",
                       ].map((label, index) => {
                         const column = INVOICE_COLUMN_DEFINITIONS[index];
                         return (
@@ -788,6 +864,32 @@ export function TrackingQuoteList({
                         <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">
                           {amount(invoice.balance)}
                         </span>
+                        <div className="flex items-center justify-center border-l border-[#d0d4e4] px-2">
+                          {invoice.link_source === "manual" && (
+                            <button
+                              type="button"
+                              disabled={!canEdit}
+                              onClick={() =>
+                                setUnlinkTarget({
+                                  kind: "invoice",
+                                  quoteId: quote.id,
+                                  invoiceId: invoice.id,
+                                  label:
+                                    invoice.quickbooks_invoice_doc_number ??
+                                    "this invoice",
+                                })
+                              }
+                              title={
+                                canEdit
+                                  ? "Unlink this manually linked invoice"
+                                  : "You can only edit items that are assigned to you"
+                              }
+                              className="rounded border border-red-300 bg-red-50 px-2 py-1 text-[12.6px] font-semibold text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              Unlink
+                            </button>
+                          )}
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -814,6 +916,38 @@ export function TrackingQuoteList({
           onQuotesChanged?.();
         }}
       />
+      <AlertDialog
+        open={Boolean(unlinkTarget)}
+        onOpenChange={(open) => {
+          if (!open && !unlinking) setUnlinkTarget(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Unlink {unlinkTarget?.kind === "quote" ? "quote" : "invoice"}?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              This will remove {unlinkTarget?.label ?? "this record"} from this
+              client&apos;s Tracking View. It will not delete the record in
+              QuickBooks or change any links between records in QuickBooks.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={unlinking}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={unlinking}
+              onClick={(event) => {
+                event.preventDefault();
+                void unlink();
+              }}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {unlinking ? "Unlinking…" : "Unlink"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
