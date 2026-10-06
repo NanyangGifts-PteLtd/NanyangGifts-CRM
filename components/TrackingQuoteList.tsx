@@ -22,10 +22,10 @@ const QUOTE_COLUMN_DEFINITIONS = [
   { key: "quote", width: 230, minWidth: 220 },
   { key: "summary", width: 140, minWidth: 100 },
   { key: "trackingStatus", width: 180, minWidth: 130 },
-  { key: "quoteTotal", width: 125, minWidth: 100 },
   { key: "quoteSubtotal", width: 190, minWidth: 150 },
-  { key: "invoiceTotal", width: 125, minWidth: 100 },
+  { key: "quoteTotal", width: 125, minWidth: 100 },
   { key: "invoiceSubtotal", width: 195, minWidth: 150 },
+  { key: "invoiceTotal", width: 125, minWidth: 100 },
   { key: "invoices", width: 80, minWidth: 70 },
   { key: "match", width: 210, minWidth: 160 },
   { key: "totalBalance", width: 125, minWidth: 105 },
@@ -37,8 +37,8 @@ const INVOICE_COLUMN_DEFINITIONS = [
   { key: "number", width: 550, minWidth: 220 },
   { key: "date", width: 275, minWidth: 120 },
   { key: "dueDate", width: 275, minWidth: 120 },
-  { key: "total", width: 320, minWidth: 130 },
   { key: "subtotal", width: 275, minWidth: 170 },
+  { key: "total", width: 320, minWidth: 130 },
   { key: "balance", width: 275, minWidth: 120 },
 ] as const;
 
@@ -511,10 +511,10 @@ export function TrackingQuoteList({
           "Quote",
           "Summary",
           "Tracking Status",
-          "Quote total",
           "Quote total before GST",
-          "Invoice total",
+          "Quote total",
           "Invoice total before GST",
+          "Invoice total",
           "Invoices",
           "Price and Invoice Match?",
           "Total Balance",
@@ -527,7 +527,7 @@ export function TrackingQuoteList({
               key={column.key}
               className={`relative px-3 py-2 text-center ${
                 index > 0 ? "border-l border-[#d0d4e4]" : ""
-              } ${index === 4 || index === 6 || index === 8 || index === 11 ? "whitespace-nowrap" : ""}`}
+              } ${index === 3 || index === 5 || index === 8 || index === 11 ? "whitespace-nowrap" : ""}`}
             >
               {label}
               <ColumnResizeHandle
@@ -602,16 +602,16 @@ export function TrackingQuoteList({
                 />
               </div>
               <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">
-                {amount(quote.quote_total)}
-              </span>
-              <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">
                 {amount(quote.quote_subtotal)}
               </span>
               <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">
-                {amount(quote.invoice_total)}
+                {amount(quote.quote_total)}
               </span>
               <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">
                 {amount(quote.invoice_subtotal)}
+              </span>
+              <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">
+                {amount(quote.invoice_total)}
               </span>
               <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">
                 {quote.invoice_count}
@@ -690,8 +690,8 @@ export function TrackingQuoteList({
                         "Invoice number",
                         "Invoice date",
                         "Due date",
-                        "Invoice total",
                         "Invoice total before GST",
+                        "Invoice total",
                         "Balance",
                       ].map((label, index) => {
                         const column = INVOICE_COLUMN_DEFINITIONS[index];
@@ -700,7 +700,7 @@ export function TrackingQuoteList({
                             key={column.key}
                             className={`relative px-3 py-2 text-center ${
                               index > 0 ? "border-l border-[#d0d4e4]" : ""
-                            } ${index === 4 ? "whitespace-nowrap" : ""}`}
+                            } ${index === 3 ? "whitespace-nowrap" : ""}`}
                           >
                             {label}
                             <ColumnResizeHandle
@@ -731,10 +731,10 @@ export function TrackingQuoteList({
                           {invoice.due_date || "—"}
                         </span>
                         <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">
-                          {amount(invoice.total)}
+                          {amount(invoice.subtotal)}
                         </span>
                         <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">
-                          {amount(invoice.subtotal)}
+                          {amount(invoice.total)}
                         </span>
                         <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">
                           {amount(invoice.balance)}
