@@ -2665,9 +2665,11 @@ export function SubitemsTable({
       case "remarks":
         return (
           <EditableCell
+            className="!justify-start"
             value={sub.remarks}
             onChange={(v) => onUpdateSubitem(sub.id, { remarks: v })}
             multiline
+            resizableMultiline
           />
         );
       case "shipper":
@@ -3412,9 +3414,11 @@ export function SubitemsTable({
       case "paymentRemarks":
         return (
           <EditableCell
+            className="!justify-start"
             value={sub.paymentRemarks ?? ""}
             onChange={(v) => onUpdateSubitem(sub.id, { paymentRemarks: v })}
             multiline
+            resizableMultiline
           />
         );
       default:
@@ -4378,7 +4382,13 @@ export function SubitemsTable({
                     <td
                       key={col.key}
                       className={`align-middle border-r border-[#D0D4E4] p-0 ${
-                        ["name", "description", "supplier"].includes(col.key)
+                        [
+                          "name",
+                          "description",
+                          "remarks",
+                          "paymentRemarks",
+                          "supplier",
+                        ].includes(col.key)
                           ? "overflow-visible relative z-20 focus-within:z-[80]"
                           : "overflow-hidden"
                       } ${
