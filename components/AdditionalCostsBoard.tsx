@@ -3631,28 +3631,28 @@ export function AdditionalCostsBoard({
                                 </table>
                               </div>
                             </div>
-                            <div className="grid grid-cols-1 gap-2 rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm sm:grid-cols-3">
-                              <div>
+                            <div className="ml-auto w-full max-w-sm rounded border border-slate-200 bg-slate-50 text-sm">
+                              <div className="flex items-center justify-between gap-6 border-b border-slate-200 px-3 py-2">
                                 <span className="font-medium text-slate-700">
                                   Expense Total
                                 </span>
-                                <span className="float-right font-semibold text-slate-900">
+                                <span className="font-semibold tabular-nums text-slate-900">
                                   {billExpenseTotal.toFixed(2)}
                                 </span>
                               </div>
-                              <div>
+                              <div className="flex items-center justify-between gap-6 border-b border-slate-200 px-3 py-2">
                                 <span className="font-medium text-slate-700">
                                   GST Amount
                                 </span>
-                                <span className="float-right font-semibold text-slate-900">
+                                <span className="font-semibold tabular-nums text-slate-900">
                                   {(Number.parseFloat(billDraft.overallGstAmount) || 0).toFixed(2)}
                                 </span>
                               </div>
-                              <div>
+                              <div className="flex items-center justify-between gap-6 px-3 py-2">
                                 <span className="font-semibold text-slate-900">
                                   Grand Total
                                 </span>
-                                <span className="float-right font-bold text-slate-900">
+                                <span className="font-bold tabular-nums text-slate-900">
                                   {billGrandTotal.toFixed(2)}
                                 </span>
                               </div>
