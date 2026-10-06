@@ -5,7 +5,24 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 type Field = "phone" | "company";
 
 const normalizePhone = (value: string) => value.replace(/\D/g, "");
-const normalizeCompany = (value: string) => value.trim().toLocaleLowerCase().replace(/\s+/g, " ");
+const COMPANY_SUGGESTION_MIN_SIMILARITY = 0.65;
+
+const normalizeCompany = (value: string) => {
+  const normalized = value
+    .trim()
+    .toLocaleLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  // Legal endings are extremely common and do not identify a company. In
+  // particular, treating “PTE LTD” as part of the name made unrelated
+  // Singapore companies look similar.
+  const withoutLegalSuffix = normalized
+    .replace(/\b(?:pte|private)\s+(?:ltd|limited)$/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return withoutLegalSuffix || normalized;
+};
 
 function levenshtein(left: string, right: string) {
   const previous = Array.from({ length: right.length + 1 }, (_, index) => index);
@@ -115,7 +132,23 @@ export async function POST(request: NextRequest) {
     if (field === "company" && !exactProfileId) {
       const needle = normalizeCompany(value);
       const { data } = await supabaseAdmin.from("customer_company_profiles").select("id, name");
-      suggestions = (data ?? []).map((profile) => ({ ...profile, similarity: 1 - levenshtein(needle, normalizeCompany(profile.name)) / Math.max(needle.length, normalizeCompany(profile.name).length, 1) })).filter((profile) => profile.similarity >= 0.3).sort((a, b) => b.similarity - a.similarity).slice(0, 5);
+      suggestions = (data ?? [])
+        .map((profile) => {
+          const candidate = normalizeCompany(profile.name);
+          return {
+            ...profile,
+            similarity:
+              1 -
+              levenshtein(needle, candidate) /
+                Math.max(needle.length, candidate.length, 1),
+          };
+        })
+        .filter(
+          (profile) =>
+            profile.similarity >= COMPANY_SUGGESTION_MIN_SIMILARITY,
+        )
+        .sort((a, b) => b.similarity - a.similarity)
+        .slice(0, 5);
     }
     return NextResponse.json({ linkedProfileId, exactProfileId, exactProfile, suggestions });
   }
