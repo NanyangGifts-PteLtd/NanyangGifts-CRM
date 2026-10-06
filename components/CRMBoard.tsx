@@ -9747,13 +9747,10 @@ export function CRMBoard({
               {customerMatchPending.oldValue && (
                 <div className="rounded-xl border border-sky-200 bg-sky-50/50 p-4 text-center">
                   <p className="text-sm font-semibold text-sky-900">
-                    This is the same customer
+                    Same customer
                   </p>
                   <div className="mt-3 grid gap-2 text-sm">
                     <div className="rounded-md border border-sky-100 bg-white px-3 py-2 text-center">
-                      <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                        Old {customerMatchPending.field === "phone" ? "phone number" : "company name"}
-                      </span>
                       <span className="mt-0.5 block font-medium text-slate-700">
                         {customerMatchPending.oldValue}
                       </span>
@@ -9762,9 +9759,6 @@ export function CRMBoard({
                       <ArrowDown size={18} aria-hidden="true" />
                     </div>
                     <div className="rounded-md border border-sky-200 bg-white px-3 py-2 text-center">
-                      <span className="block text-[11px] font-semibold uppercase tracking-wide text-sky-700">
-                        New {customerMatchPending.field === "phone" ? "phone number" : "company name"}
-                      </span>
                       <span className="mt-0.5 block font-semibold text-sky-950">
                         {customerMatchPending.value}
                       </span>
@@ -9813,7 +9807,7 @@ export function CRMBoard({
                       }
                       className="rounded-md border border-sky-300 bg-white px-3 py-2 text-xs font-semibold text-sky-800 hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      Correct the existing{" "}
+                      Correct the{" "}
                       {customerMatchPending.field === "phone"
                         ? "number"
                         : "company name"}
@@ -9823,9 +9817,7 @@ export function CRMBoard({
               )}
               <div className="flex flex-col items-center justify-center rounded-xl border border-slate-200 bg-slate-50 p-4 text-center">
                 <p className="text-sm font-semibold text-slate-800">
-                  {customerMatchPending.oldValue
-                    ? "This is a different customer"
-                    : "Create a new profile"}
+                  New customer
                 </p>
                 <button
                   type="button"
@@ -9841,9 +9833,7 @@ export function CRMBoard({
                     ? "Saving..."
                     : customerMatchPending.exactProfile
                       ? `Link to ${customerMatchPending.exactProfile.name}`
-                      : customerMatchPending.oldValue
-                        ? "Use as a different customer"
-                        : "Create new profile"}
+                      : "Create new customer"}
                 </button>
               </div>
             </div>
