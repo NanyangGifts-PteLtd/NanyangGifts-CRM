@@ -1,10 +1,29 @@
-export type CurrencyOption = { id?: string; systemKey?: string | null };
+export type CurrencyOption = {
+  id?: string;
+  systemKey?: string | null;
+  value?: string;
+};
 
 export function currencySystemKey(
   optionId: string | null | undefined,
   options: CurrencyOption[],
+  legacyValue?: string | null,
 ) {
-  return options.find((option) => option.id === optionId)?.systemKey ?? null;
+  const byId = options.find((option) => option.id === optionId);
+  if (byId) return byId.systemKey ?? null;
+
+  // Older rows (including Payment Vouchers created before the ID was saved)
+  // may only contain the rendered label text. Use it strictly as a read
+  // fallback; new writes always store the stable option ID.
+  const normalizedLegacyValue = legacyValue?.trim().toLocaleLowerCase();
+  return (
+    options.find(
+      (option) =>
+        !optionId &&
+        Boolean(normalizedLegacyValue) &&
+        option.value?.trim().toLocaleLowerCase() === normalizedLegacyValue,
+    )?.systemKey ?? null
+  );
 }
 
 export function currencyToSgdRate(systemKey: string | null | undefined) {

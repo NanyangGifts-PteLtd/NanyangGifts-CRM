@@ -270,6 +270,11 @@ export async function POST(request: NextRequest) {
       }
     }
     const createdAt = new Date().toISOString();
+    // The financial formula columns resolve exchange rates from the stable
+    // currency label ID. Saving only the rendered "SGD" text left a newly
+    // created Payment Voucher without a usable currency until its cell was
+    // edited manually on the CRM Board.
+    const sgdCurrency = await getSystemLabel("currency", "currency_sgd");
     const status = isOtherVoucher && reason.id === shippingUpsReason.id
       ? await getSystemLabel("subitem_status", "subitem_status_awarded")
       : await ensureAdditionalCostStatus();
@@ -322,7 +327,8 @@ export async function POST(request: NextRequest) {
           status: status.value,
           status_option_id: status.id,
           qty: "1",
-          currency: "SGD",
+          currency: sgdCurrency.value,
+          currency_option_id: sgdCurrency.id,
           cost: String(cost),
           custom_fields: {
             additionalCostId: data.id,
