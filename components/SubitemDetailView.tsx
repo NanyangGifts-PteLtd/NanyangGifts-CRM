@@ -21,7 +21,7 @@ import { EditableCell } from "./ui/editablecell";
 import { StatusBadge, type BadgeOption } from "./ui/statusbadge";
 import { toast } from "sonner";
 import { SubitemActionsMenu } from "./SubitemActionsMenu";
-import { FileDropTarget } from "./ui/file-drop-target";
+import { EmptyFileDropPrompt, FileDropTarget } from "./ui/file-drop-target";
 import { uploadCrmFiles } from "@/lib/crm-files";
 import { FilePreview } from "./ui/file-preview";
 import { calculateSubitemFinancials } from "@/lib/subitem-calculations";
@@ -860,7 +860,7 @@ export function SubitemDetailView({
                     <h2 className="font-semibold text-slate-800">
                       Other files / images
                     </h2>
-                    {canEdit && (
+                    {files.length > 0 && canEdit && (
                       <label className="cursor-pointer rounded border px-3 py-1.5 text-xs text-sky-700">
                         <Paperclip size={13} className="mr-1 inline" />
                         Add file
@@ -925,7 +925,19 @@ export function SubitemDetailView({
                       ))}
                     </div>
                   ) : (
-                    <p className="text-sm text-slate-400">No files attached.</p>
+                    canEdit ? (
+                      <EmptyFileDropPrompt
+                        onFiles={(dropped) => {
+                          void uploadCrmFiles(
+                            dropped,
+                            `subitems/${subitem.id}/files`,
+                            { clientId, subitemId: subitem.id },
+                          ).then((next) => saveFiles([...files, ...next]));
+                        }}
+                      />
+                    ) : (
+                      <p className="text-sm text-slate-400">No files attached.</p>
+                    )
                   )}
                 </section>
               </FileDropTarget>

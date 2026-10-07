@@ -20,7 +20,7 @@ import { AssigneeMultiSelect, gradientForId } from "./ui/assignee-multiselect";
 import { StatusBadge, type BadgeOption } from "./ui/statusbadge";
 import { EditableCell } from "./ui/editablecell";
 import { ClientActionsMenu } from "./ClientActionsMenu";
-import { FileDropTarget } from "./ui/file-drop-target";
+import { EmptyFileDropPrompt, FileDropTarget } from "./ui/file-drop-target";
 import { uploadCrmFiles } from "@/lib/crm-files";
 import { FilePreview } from "./ui/file-preview";
 import type { CustomColumn } from "@/lib/custom-columns";
@@ -938,7 +938,7 @@ export function ClientDetailView({
                 <section className="mb-5 rounded-xl border border-slate-200 bg-white p-5">
                   <div className="mb-3 flex items-center justify-between">
                     <h2 className="font-semibold text-slate-800">{label}</h2>
-                    {canEdit && field !== "ocfFiles" && (
+                    {items.length > 0 && canEdit && field !== "ocfFiles" && (
                       <label className="cursor-pointer rounded border px-3 py-1.5 text-xs text-sky-700">
                         <Paperclip size={13} className="mr-1 inline" />
                         Add file
@@ -1023,7 +1023,17 @@ export function ClientDetailView({
                       ))}
                     </div>
                   ) : (
-                    <p className="text-sm text-slate-400">No files attached.</p>
+                    canEdit && field !== "ocfFiles" ? (
+                      <EmptyFileDropPrompt
+                        onFiles={(files) => {
+                          void attachmentsFromFiles(files, client.id).then(
+                            (next) => saveFiles(field, [...items, ...next]),
+                          );
+                        }}
+                      />
+                    ) : (
+                      <p className="text-sm text-slate-400">No files attached.</p>
+                    )
                   )}
                 </section>
               </FileDropTarget>
