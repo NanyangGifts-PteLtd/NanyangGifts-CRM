@@ -3199,7 +3199,7 @@ export function ClientRow({
             }
             align="left"
             className="absolute -left-12 top-1/2 z-30 -translate-y-1/2"
-            triggerClassName="opacity-0 transition-opacity group-hover/client-actions:opacity-100"
+            triggerClassName="opacity-0 transition-opacity group-hover:opacity-100"
           />
           {subitemsLocked && (
             <LockKeyhole
