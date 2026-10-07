@@ -8,6 +8,7 @@ import type { OptionEntry } from "@/lib/board-labels";
 import {
   calculateSubitemFinancials,
   parseSubitemNumber,
+  roundUnitPrice,
 } from "@/lib/subitem-calculations";
 
 type Record = {
@@ -137,12 +138,19 @@ export function PriceCalculatorDialog(props: Props) {
     value: string,
   ) => onUpdate({ [key]: value } as Partial<Subitem>);
   const values = (amount: number) => {
-    const price = financials.tc + amount;
+    const unroundedPrice = financials.tc + amount;
+    const up = financials.quantity
+      ? roundUnitPrice(unroundedPrice / financials.quantity)
+      : null;
+    // Price must always be derived from the same two-decimal unit price the
+    // user sees and sends to the CRM, never from a hidden higher-precision
+    // intermediate value.
+    const price = up == null ? unroundedPrice : up * financials.quantity;
     return {
       markup: amount,
       price,
       percent: financials.tc ? (amount / financials.tc) * 100 : null,
-      up: financials.quantity ? price / financials.quantity : null,
+      up,
     };
   };
   const setTypedMarkup = (candidate: number) => {
@@ -150,9 +158,7 @@ export function PriceCalculatorDialog(props: Props) {
   };
   const useUp = (up: number | null) => {
     if (up != null) {
-      // Do not round before saving: at quantity, a two-decimal unit-price
-      // rounding can turn into a visible total-price mismatch on the board.
-      onUpdate({ up: String(up) });
+      onUpdate({ up: String(roundUnitPrice(up)) });
       onClose();
     }
   };

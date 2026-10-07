@@ -8,13 +8,18 @@ function parseNumericValue(value: string | number | undefined | null) {
     return Number.isFinite(parsed) ? parsed : 0;
 }
 
+/** Unit prices are a two-decimal commercial value throughout the CRM. */
+export function roundUnitPrice(value: number) {
+    return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
 export function calculateSubitemFinancials(subitem: Subitem, currencyOptions: CurrencyOption[] = []) {
     const quantity = parseNumericValue(subitem.qty);
     const cost = parseNumericValue(subitem.cost);
     const manpower = parseNumericValue(subitem.manpower);
     const localShipping = parseNumericValue(subitem.ls);
     const overseasShipping = parseNumericValue(subitem.os);
-    const unitPrice = parseNumericValue(subitem.up);
+    const unitPrice = roundUnitPrice(parseNumericValue(subitem.up));
     // A missing currency must never silently be treated as RMB.
     const currencyRate = currencyToSgdRate(
         currencySystemKey(
