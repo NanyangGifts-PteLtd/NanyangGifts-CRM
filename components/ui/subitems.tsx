@@ -341,6 +341,10 @@ type SubitemProps = {
     status: string,
     statusOptionId: string | null,
   ) => void | Promise<void>;
+  onApplySelectedSubitemField?: (
+    field: "qty" | "description" | "remarks" | "supplier" | "idealMarkup",
+    value: string,
+  ) => void | Promise<void>;
   onAddSubitem: (name: string) => void | Promise<void>;
   onDeleteSubitem: (id: string) => void;
   selectedSubitemIds: string[];
@@ -497,6 +501,7 @@ export function SubitemsTable({
   clientColor,
   onUpdateSubitem,
   onApplySelectedSubitemStatus,
+  onApplySelectedSubitemField,
   onAddSubitem,
   onDeleteSubitem,
   selectedSubitemIds,
@@ -2536,6 +2541,21 @@ export function SubitemsTable({
     const idealMarkup = parseNumber(sub.customFields?.idealMarkup);
     const priceToSet =
       qty > 0 ? (idealMarkup != 0 ? (idealMarkup + tc) / qty : null) : null;
+    const updateSelectedField = (
+      field: "qty" | "description" | "remarks" | "supplier" | "idealMarkup",
+      value: string,
+      update: Partial<Subitem>,
+    ) => {
+      if (
+        selectedSubitemIds.includes(sub.id) &&
+        selectedSubitemIds.length > 1 &&
+        onApplySelectedSubitemField
+      ) {
+        void onApplySelectedSubitemField(field, value);
+        return;
+      }
+      onUpdateSubitem(sub.id, update);
+    };
 
     switch (key) {
       case "name":
@@ -2642,7 +2662,7 @@ export function SubitemsTable({
         return (
           <EditableCell
             value={sub.qty}
-            onChange={(v) => onUpdateSubitem(sub.id, { qty: v })}
+            onChange={(v) => updateSelectedField("qty", v, { qty: v })}
             type="number"
             readOnly={costLocked || additionalCostLinked}
             readOnlyReason={
@@ -2657,7 +2677,9 @@ export function SubitemsTable({
           <EditableCell
             className="!justify-start"
             value={sub.description}
-            onChange={(v) => onUpdateSubitem(sub.id, { description: v })}
+            onChange={(v) =>
+              updateSelectedField("description", v, { description: v })
+            }
             multiline
             resizableMultiline
           />
@@ -2667,7 +2689,9 @@ export function SubitemsTable({
           <EditableCell
             className="!justify-start"
             value={sub.remarks}
-            onChange={(v) => onUpdateSubitem(sub.id, { remarks: v })}
+            onChange={(v) =>
+              updateSelectedField("remarks", v, { remarks: v })
+            }
             multiline
             resizableMultiline
           />
@@ -2718,7 +2742,9 @@ export function SubitemsTable({
           >
             <EditableCell
               value={sub.supplier}
-              onChange={(v) => onUpdateSubitem(sub.id, { supplier: v })}
+            onChange={(v) =>
+              updateSelectedField("supplier", v, { supplier: v })
+            }
               multiline
               resizableMultiline
               recommendations={supplierNames}
@@ -2900,7 +2926,7 @@ export function SubitemsTable({
           <EditableCell
             value={sub.customFields?.idealMarkup ?? ""}
             onChange={(value) =>
-              onUpdateSubitem(sub.id, {
+              updateSelectedField("idealMarkup", value, {
                 customFields: {
                   ...(sub.customFields ?? {}),
                   idealMarkup: value,

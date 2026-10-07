@@ -375,6 +375,10 @@ export type ClientRowProps = {
     status: string,
     statusOptionId: string | null,
   ) => void | Promise<void>;
+  onApplySelectedSubitemField?: (
+    field: "qty" | "description" | "remarks" | "supplier" | "idealMarkup",
+    value: string,
+  ) => void | Promise<void>;
   onAddSubitem: (name: string) => void | Promise<void>;
   onDeleteSubitem: (id: string) => void;
   selectedSubitemIds: string[];
@@ -551,6 +555,7 @@ export function ClientRow({
   onUpdate,
   onUpdateSubitem,
   onApplySelectedSubitemStatus,
+  onApplySelectedSubitemField,
   onAddSubitem,
   onDeleteSubitem,
   selectedSubitemIds,
@@ -4955,6 +4960,7 @@ export function ClientRow({
           clientColor={groupAccentColor}
           onUpdateSubitem={onUpdateSubitem}
           onApplySelectedSubitemStatus={onApplySelectedSubitemStatus}
+          onApplySelectedSubitemField={onApplySelectedSubitemField}
           onAddSubitem={onAddSubitem}
           onDeleteSubitem={onDeleteSubitem}
           selectedSubitemIds={selectedSubitemIds}

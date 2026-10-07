@@ -8140,7 +8140,10 @@ export function CRMBoard({
 
   const updateSelectedSubitemStatus = useCallback(
     async (status: string, statusOptionId: string | null) => {
-      if (!canEditSelectedSubitems) return;
+      if (!canEditSelectedSubitems) {
+        showAssignmentPermissionError();
+        return;
+      }
       await Promise.all(
         selectedSubitemIds.map((subitemId) => {
           const owner = clients.find((client) =>
@@ -8155,7 +8158,53 @@ export function CRMBoard({
         }),
       );
     },
-    [canEditSelectedSubitems, clients, selectedSubitemIds, updateSubitem],
+    [
+      canEditSelectedSubitems,
+      clients,
+      selectedSubitemIds,
+      showAssignmentPermissionError,
+      updateSubitem,
+    ],
+  );
+
+  const updateSelectedSubitemField = useCallback(
+    async (
+      field: "qty" | "description" | "remarks" | "supplier" | "idealMarkup",
+      value: string,
+    ) => {
+      if (!canEditSelectedSubitems) {
+        showAssignmentPermissionError();
+        return;
+      }
+      await Promise.all(
+        selectedSubitemIds.map((subitemId) => {
+          const owner = clients.find((client) =>
+            client.subitems.some((subitem) => subitem.id === subitemId),
+          );
+          const subitem = owner?.subitems.find(
+            (item) => item.id === subitemId,
+          );
+          if (!owner || !subitem) return Promise.resolve();
+          const updates: Partial<Subitem> =
+            field === "idealMarkup"
+              ? {
+                  customFields: {
+                    ...(subitem.customFields ?? {}),
+                    idealMarkup: value,
+                  },
+                }
+              : { [field]: value };
+          return updateSubitem(owner.id, subitemId, updates);
+        }),
+      );
+    },
+    [
+      canEditSelectedSubitems,
+      clients,
+      selectedSubitemIds,
+      showAssignmentPermissionError,
+      updateSubitem,
+    ],
   );
 
   const toggleMoveMenu = (
@@ -11589,6 +11638,9 @@ export function CRMBoard({
                           }
                           onApplySelectedSubitemStatus={
                             updateSelectedSubitemStatus
+                          }
+                          onApplySelectedSubitemField={
+                            updateSelectedSubitemField
                           }
                           onAddSubitem={(name) => addSubitem(client.id, name)}
                           onDeleteSubitem={(subitemId) =>
