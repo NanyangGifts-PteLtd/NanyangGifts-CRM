@@ -6567,6 +6567,35 @@ export function CRMBoard({
               : client,
           ),
         );
+        // A first value has no prior customer identity to confirm. Persist it
+        // straight away so that a later staged replacement can safely be
+        // cancelled back to this value, even if the initial profile lookup is
+        // superseded before it finishes.
+        if (!oldValue) {
+          void enqueueBoardWrite("client", clientId, () =>
+            updateClientRow(clientId, {
+              [customerField]: value,
+            } as Partial<Client>),
+          ).catch((saveError) => {
+            if (
+              customerMatchRevisionRef.current.get(revisionKey) !== revision
+            )
+              return;
+            setClients((current) =>
+              current.map((client) =>
+                client.id === clientId && client[customerField] === value
+                  ? { ...client, [customerField]: oldValue }
+                  : client,
+              ),
+            );
+            toast.error("Customer information was not saved", {
+              description:
+                saveError instanceof Error
+                  ? saveError.message
+                  : "The field could not be saved.",
+            });
+          });
+        }
         const pendingBase: CustomerMatchPending = {
           clientId,
           clientName: existingClient.name,
