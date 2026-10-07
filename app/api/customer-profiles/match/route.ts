@@ -43,7 +43,10 @@ async function auth() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
   const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
-  return ["sales", "pm", "admin", "director", "dev"].includes(profile?.role?.toLowerCase() ?? "") ? user : null;
+  const role = profile?.role?.toLowerCase() ?? "";
+  return ["sales", "pm", "admin", "director", "dev"].includes(role)
+    ? { user, role }
+    : null;
 }
 
 async function currentLink(clientId: string, field: Field, oldValue: string) {
@@ -104,8 +107,9 @@ async function createAndLink(clientId: string, field: Field, value: string, clie
 }
 
 export async function POST(request: NextRequest) {
-  const user = await auth();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const authResult = await auth();
+  if (!authResult) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const { user, role } = authResult;
   const body = await request.json() as Record<string, unknown>;
   const clientId = String(body.clientId ?? "");
   const field = String(body.field ?? "") as Field;
@@ -113,11 +117,13 @@ export async function POST(request: NextRequest) {
   const oldValue = String(body.oldValue ?? "").trim();
   if (!clientId || !["phone", "company"].includes(field) || !value || (field === "phone" && !normalizePhone(value))) return NextResponse.json({ error: "A valid client, field, and value are required." }, { status: 400 });
 
-  const [{ data: client }, { data: assignment }] = await Promise.all([
+  const [{ data: client }, { data: assignments, error: assignmentError }] = await Promise.all([
     supabaseAdmin.from("clients").select("id").eq("id", clientId).maybeSingle(),
-    supabaseAdmin.from("client_assignees").select("client_id").eq("client_id", clientId).eq("user_id", user.id).in("assignment_type", ["people", "pm"]).maybeSingle(),
+    supabaseAdmin.from("client_assignees").select("client_id").eq("client_id", clientId).eq("user_id", user.id).in("assignment_type", ["people", "pm"]).limit(1),
   ]);
-  if (!client || !assignment) return NextResponse.json({ error: "You can only edit items that are assigned to you." }, { status: 403 });
+  if (assignmentError) throw assignmentError;
+  const hasBypass = ["admin", "director", "dev"].includes(role);
+  if (!client || (!hasBypass && !(assignments?.length))) return NextResponse.json({ error: "You can only edit items that are assigned to you." }, { status: 403 });
 
   const linkedProfileId = await currentLink(clientId, field, oldValue);
   const exactProfileId = await exactMatch(field, value);

@@ -342,6 +342,16 @@ export function ClientDetailView({
           "file_removed",
         ].includes(entry.action),
     )
+    .filter(
+      (entry) =>
+        ![
+          "replyStatusOptionId",
+          "statusOptionId",
+          "channelOptionId",
+          "importanceOptionId",
+          "progressOptionId",
+        ].includes(entry.fieldName ?? ""),
+    )
     .sort(
       (a, b) =>
         new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),

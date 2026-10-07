@@ -3587,6 +3587,16 @@ export function ClientRow({
                         )
                         .filter(
                           (entry) =>
+                            ![
+                              "replyStatusOptionId",
+                              "statusOptionId",
+                              "channelOptionId",
+                              "importanceOptionId",
+                              "progressOptionId",
+                            ].includes(entry.fieldName ?? ""),
+                        )
+                        .filter(
+                          (entry) =>
                             !showOnlyAttachedActivities || Boolean(entry.link),
                         )
                         .sort(

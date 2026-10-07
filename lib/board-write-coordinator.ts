@@ -39,6 +39,28 @@ export function boardProtectionDelay() {
   return delay;
 }
 
+/**
+ * Keep an optimistic UI-only edit authoritative until it is either confirmed
+ * or cancelled. Unlike enqueueBoardWrite this does not write anything.
+ */
+export function holdBoardRecordProtection(kind: RecordKind, id: string) {
+  const key = recordKey(kind, id);
+  const pending = pendingWrites.get(key) ?? { count: 0, protectUntil: 0 };
+  pending.count += 1;
+  pending.protectUntil = Number.POSITIVE_INFINITY;
+  pendingWrites.set(key, pending);
+
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    const current = pendingWrites.get(key);
+    if (!current) return;
+    current.count = Math.max(0, current.count - 1);
+    if (current.count === 0) current.protectUntil = Date.now() + SETTLE_GRACE_MS;
+  };
+}
+
 /** Monotonic marker used to reject refreshes that began before a newer edit. */
 export function getBoardWriteRevision() {
   return writeRevision;

@@ -28,6 +28,13 @@ const CLIENT_LOG_IGNORE_FIELDS = new Set<keyof Client>([
   "color",
   "subitems",
   "customFields",
+  // These are implementation IDs for the label columns. The corresponding
+  // human-readable fields (status, channel, etc.) are logged separately.
+  "replyStatusOptionId",
+  "statusOptionId",
+  "channelOptionId",
+  "importanceOptionId",
+  "progressOptionId",
 ]);
 
 const SUBITEM_LOG_IGNORE_FIELDS = new Set<keyof Subitem>([

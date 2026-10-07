@@ -92,7 +92,10 @@ import {
   type CustomColumn,
 } from "@/lib/custom-columns";
 import { toast } from "sonner";
-import { enqueueBoardWrite } from "@/lib/board-write-coordinator";
+import {
+  enqueueBoardWrite,
+  holdBoardRecordProtection,
+} from "@/lib/board-write-coordinator";
 import { capitaliseFirstCharacter } from "@/lib/text-format";
 import type { SearchResult } from "../app/types";
 import {
@@ -196,6 +199,7 @@ type CustomerMatchPending = {
   exactProfile: { id: string; name: string } | null;
   suggestions: Array<{ id: string; name: string; similarity: number }>;
   isLoading: boolean;
+  revision: number;
 };
 type ColumnScope = "client" | "subitem" | "all";
 type BoardSortSetting = {
@@ -727,6 +731,10 @@ export function CRMBoard({
   const [customerMatchPending, setCustomerMatchPending] =
     useState<CustomerMatchPending | null>(null);
   const [savingCustomerMatch, setSavingCustomerMatch] = useState(false);
+  const customerMatchRevisionRef = useRef(new Map<string, number>());
+  const customerMatchProtectionRef = useRef<
+    Map<string, { revision: number; release: () => void }>
+  >(new Map());
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [collapsedGroups, setCollapsedGroups] = useState<
     Record<string, boolean>
@@ -6353,6 +6361,17 @@ export function CRMBoard({
     [groups],
   );
 
+  const releaseCustomerMatchProtection = useCallback(
+    (clientId: string, field: CustomerMatchPending["field"], revision: number) => {
+      const key = `${clientId}:${field}`;
+      const protectedEdit = customerMatchProtectionRef.current.get(key);
+      if (!protectedEdit || protectedEdit.revision !== revision) return;
+      protectedEdit.release();
+      customerMatchProtectionRef.current.delete(key);
+    },
+    [],
+  );
+
   const commitCustomerMatch = useCallback(
     async (
       pending: CustomerMatchPending,
@@ -6361,6 +6380,18 @@ export function CRMBoard({
     ) => {
       setSavingCustomerMatch(true);
       try {
+        const revisionKey = `${pending.clientId}:${pending.field}`;
+        if (
+          customerMatchRevisionRef.current.get(revisionKey) !== pending.revision
+        ) {
+          releaseCustomerMatchProtection(
+            pending.clientId,
+            pending.field,
+            pending.revision,
+          );
+          setCustomerMatchPending(null);
+          return;
+        }
         const response = await fetch("/api/customer-profiles/match", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -6376,25 +6407,45 @@ export function CRMBoard({
           throw new Error(
             result.error || "Unable to match this customer profile.",
           );
-        const matchedCompanyName =
-          pending.field === "company" &&
-          action === "link" &&
-          typeof result.companyName === "string"
-            ? result.companyName
-            : pending.value;
-        const update = {
-          [pending.field]: matchedCompanyName,
-        } as Partial<Client>;
+        // The user may have cancelled while the profile request was in
+        // flight. Never commit the staged field after that cancellation.
+        if (
+          customerMatchRevisionRef.current.get(revisionKey) !== pending.revision
+        ) {
+          releaseCustomerMatchProtection(
+            pending.clientId,
+            pending.field,
+            pending.revision,
+          );
+          setCustomerMatchPending(null);
+          return;
+        }
         setClients((current) =>
           current.map((client) =>
-            client.id === pending.clientId ? { ...client, ...update } : client,
+            client.id === pending.clientId
+              ? { ...client, [pending.field]: pending.value }
+              : client,
           ),
         );
-        await enqueueBoardWrite("client", pending.clientId, () =>
-          updateClientRow(pending.clientId, update, {
-            customerProfileAction: action,
-          }),
-        );
+        try {
+          await enqueueBoardWrite("client", pending.clientId, () =>
+            updateClientRow(
+              pending.clientId,
+              { [pending.field]: pending.value } as Partial<Client>,
+              { customerProfileAction: action },
+            ),
+          );
+        } catch (saveError) {
+          setClients((current) =>
+            current.map((client) =>
+              client.id === pending.clientId &&
+              client[pending.field] === pending.value
+                ? { ...client, [pending.field]: pending.oldValue }
+                : client,
+            ),
+          );
+          throw saveError;
+        }
         setCustomerMatchPending(null);
         toast.success(
           action === "different"
@@ -6411,10 +6462,43 @@ export function CRMBoard({
               : "The customer profile could not be updated.",
         });
       } finally {
+        releaseCustomerMatchProtection(
+          pending.clientId,
+          pending.field,
+          pending.revision,
+        );
         setSavingCustomerMatch(false);
       }
     },
-    [setClients],
+    [releaseCustomerMatchProtection, setClients],
+  );
+
+  const cancelCustomerMatch = useCallback(
+    async (pending: CustomerMatchPending) => {
+      const revisionKey = `${pending.clientId}:${pending.field}`;
+      if (
+        customerMatchRevisionRef.current.get(revisionKey) !== pending.revision
+      ) {
+        setCustomerMatchPending(null);
+        return;
+      }
+      customerMatchRevisionRef.current.set(revisionKey, pending.revision + 1);
+      releaseCustomerMatchProtection(
+        pending.clientId,
+        pending.field,
+        pending.revision,
+      );
+      setCustomerMatchPending(null);
+      setClients((current) =>
+        current.map((client) =>
+          client.id === pending.clientId &&
+          client[pending.field] === pending.value
+            ? { ...client, [pending.field]: pending.oldValue }
+            : client,
+        ),
+      );
+    },
+    [releaseCustomerMatchProtection, setClients],
   );
 
   const updateClient = useCallback(
@@ -6449,9 +6533,22 @@ export function CRMBoard({
             ? "company"
             : null;
       if (existingClient && customerField) {
+        const revisionKey = `${clientId}:${customerField}`;
+        const revision =
+          (customerMatchRevisionRef.current.get(revisionKey) ?? 0) + 1;
+        customerMatchRevisionRef.current.set(revisionKey, revision);
+        const earlierProtectedEdit = customerMatchProtectionRef.current.get(
+          revisionKey,
+        );
+        earlierProtectedEdit?.release();
+        customerMatchProtectionRef.current.set(revisionKey, {
+          revision,
+          release: holdBoardRecordProtection("client", clientId),
+        });
         const value = String(updates[customerField] ?? "").trim();
         const oldValue = String(existingClient[customerField] ?? "").trim();
         if (!value) {
+          releaseCustomerMatchProtection(clientId, customerField, revision);
           toast.error(
             `${customerField === "phone" ? "Phone number" : "Company name"} cannot be blank`,
             {
@@ -6461,6 +6558,15 @@ export function CRMBoard({
           );
           return;
         }
+        // Show the user's staged edit immediately in the board. This is local
+        // UI state only; the database is updated only after confirmation.
+        setClients((current) =>
+          current.map((client) =>
+            client.id === clientId
+              ? { ...client, [customerField]: value }
+              : client,
+          ),
+        );
         const pendingBase: CustomerMatchPending = {
           clientId,
           clientName: existingClient.name,
@@ -6471,9 +6577,11 @@ export function CRMBoard({
           exactProfile: null,
           suggestions: [],
           isLoading: true,
+          revision,
         };
-        // Open immediately so the edit does not look as though it was simply
-        // reverted while the profile lookup is in flight.
+        // Existing customer values need an immediate confirmation dialog while
+        // the lookup runs. For a first entry, wait until the lookup proves
+        // that there is an existing/similar profile worth asking about.
         if (oldValue) setCustomerMatchPending(pendingBase);
         try {
           const response = await fetch("/api/customer-profiles/match", {
@@ -6500,21 +6608,25 @@ export function CRMBoard({
             suggestions: preview.suggestions ?? [],
             isLoading: false,
           };
-          if (oldValue || pending.suggestions.length) {
-            setCustomerMatchPending((current) =>
-              current?.clientId === clientId &&
-              current.field === customerField &&
-              current.value === value
-                ? pending
-                : current,
-            );
+          if (
+            customerMatchRevisionRef.current.get(revisionKey) !== revision
+          ) {
+            releaseCustomerMatchProtection(clientId, customerField, revision);
             return;
           }
-          await commitCustomerMatch(
-            pending,
-            preview.exactProfileId ? "link" : "different",
-            preview.exactProfileId ?? undefined,
-          );
+          // A brand-new value with no exact or similar profile has no
+          // meaningful "same customer" decision to ask the user about.
+          // Create/link it in the background; reserve the dialog for cases
+          // where the user needs to choose between an existing possibility.
+          if (
+            !oldValue &&
+            !preview.exactProfileId &&
+            !pending.suggestions.length
+          ) {
+            await commitCustomerMatch(pending, "different");
+            return;
+          }
+          setCustomerMatchPending(pending);
         } catch (error) {
           setCustomerMatchPending((current) =>
             current?.clientId === clientId &&
@@ -6523,11 +6635,19 @@ export function CRMBoard({
               ? null
               : current,
           );
-          toast.error("Customer matching failed", {
+          setClients((current) =>
+            current.map((client) =>
+              client.id === clientId && client[customerField] === value
+                ? { ...client, [customerField]: oldValue }
+                : client,
+            ),
+          );
+          releaseCustomerMatchProtection(clientId, customerField, revision);
+          toast.error("Customer profile matching failed", {
             description:
               error instanceof Error
                 ? error.message
-                : "The field was not changed.",
+                : "The customer information was not changed.",
           });
         }
         return;
@@ -6719,6 +6839,7 @@ export function CRMBoard({
       reloadClients,
       setClients,
       showAssignmentPermissionError,
+      releaseCustomerMatchProtection,
     ],
   );
 
@@ -9718,7 +9839,9 @@ export function CRMBoard({
       <AlertDialog
         open={!!customerMatchPending}
         onOpenChange={(open) => {
-          if (!open && !savingCustomerMatch) setCustomerMatchPending(null);
+          if (!open && !savingCustomerMatch && customerMatchPending) {
+            void cancelCustomerMatch(customerMatchPending);
+          }
         }}
       >
         <AlertDialogContent
@@ -9729,9 +9852,7 @@ export function CRMBoard({
         >
           <AlertDialogHeader className="items-center text-center">
             <AlertDialogTitle>
-              {customerMatchPending?.oldValue
-                ? "Is this the same customer?"
-                : "Match this customer profile"}
+              Is this the same customer?
             </AlertDialogTitle>
             <AlertDialogDescription className="sr-only">
               Choose an existing customer profile, update the current customer
