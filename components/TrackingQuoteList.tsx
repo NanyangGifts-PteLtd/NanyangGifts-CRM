@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, ChevronRight, LoaderCircle } from "lucide-react";
+import { LoaderCircle } from "lucide-react";
 import {
   useEffect,
   useMemo,
@@ -169,6 +169,7 @@ type TrackingQuoteListProps = {
     layout: BadgeOptionLayout[],
   ) => void | Promise<void>;
   onQuotesChanged?: () => void;
+  expandAllInvoices?: boolean;
 };
 
 function amount(value: number | null) {
@@ -192,6 +193,7 @@ export function TrackingQuoteList({
   onRenameOption,
   onReorderOptions,
   onQuotesChanged,
+  expandAllInvoices = false,
 }: TrackingQuoteListProps) {
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [openQuoteIds, setOpenQuoteIds] = useState<Set<string>>(new Set());
@@ -213,6 +215,14 @@ export function TrackingQuoteList({
     Record<string, number>
   >(() => defaultWidths(INVOICE_COLUMN_DEFINITIONS));
   const latestQuoteUpdate = useRef(new Map<string, number>());
+
+  useEffect(() => {
+    if (!expandAllInvoices) {
+      setOpenQuoteIds(new Set());
+      return;
+    }
+    setOpenQuoteIds(new Set(quotes.map((quote) => quote.id)));
+  }, [expandAllInvoices, quotes]);
 
   const quoteGridColumns = useMemo(
     () =>
@@ -603,26 +613,35 @@ export function TrackingQuoteList({
               className="grid min-h-[36px] text-slate-700"
               style={{ gridTemplateColumns: quoteGridColumns }}
             >
-              <button
-                type="button"
-                onClick={() =>
-                  setOpenQuoteIds((current) => {
-                    const next = new Set(current);
-                    if (next.has(quote.id)) next.delete(quote.id);
-                    else next.add(quote.id);
-                    return next;
-                  })
-                }
-                className="flex min-w-0 items-center gap-2 px-3 py-2 text-left font-medium hover:bg-sky-50"
-              >
-                {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                <span className="truncate">{quoteLabel}</span>
-                <span className="shrink-0 text-[12.6px] font-normal text-slate-400">
-                  {quote.created_at
-                    ? new Date(quote.created_at).toLocaleDateString("en-GB")
-                    : ""}
-                </span>
-              </button>
+              <div className="flex min-w-0 items-center gap-2 px-3 py-2 font-medium">
+                <div className="flex min-w-0 flex-1 items-center gap-2 text-left">
+                  <span className="min-w-0 truncate">{quoteLabel}</span>
+                  <span className="shrink-0 text-[12.6px] font-normal text-slate-400">
+                    {quote.created_at
+                      ? new Date(quote.created_at).toLocaleDateString("en-GB")
+                      : ""}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setOpenQuoteIds((current) => {
+                      const next = new Set(current);
+                      if (next.has(quote.id)) next.delete(quote.id);
+                      else next.add(quote.id);
+                      return next;
+                    })
+                  }
+                  title={open ? "Hide linked invoices" : "Show linked invoices"}
+                  className={`shrink-0 whitespace-nowrap rounded border px-2 py-1 text-[10px] font-semibold transition-colors ${
+                    open
+                      ? "border-sky-300 bg-sky-100 text-sky-700 hover:bg-sky-200"
+                      : "border-slate-200 bg-white text-slate-600 hover:border-sky-300 hover:bg-sky-50 hover:text-sky-700"
+                  }`}
+                >
+                  Invoice
+                </button>
+              </div>
               <div className="min-w-0 border-l border-[#d0d4e4] p-0">
                 <StatusBadge
                   value={quote.tracking_summary ?? ""}

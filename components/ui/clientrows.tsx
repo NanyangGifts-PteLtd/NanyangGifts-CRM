@@ -3240,30 +3240,6 @@ export function ClientRow({
               )}
             </button>
           )}
-          {trackingMode && (
-            <button
-              type="button"
-              data-selection-control
-              onClick={(event) => {
-                event.stopPropagation();
-                toggleTrackingInvoices();
-              }}
-              title="Show this client's quotes and linked invoices"
-              className="absolute left-[calc(50%+14px)] top-1/2 -translate-y-1/2 text-gray-400 transition-colors hover:text-gray-700"
-            >
-              {isTrackingInvoicesExpanded ? (
-                <ChevronDown
-                  size={14}
-                  className="transition transform active:scale-150 duration-100"
-                />
-              ) : (
-                <ChevronRight
-                  size={14}
-                  className="transition transform active:scale-150 duration-100"
-                />
-              )}
-            </button>
-          )}
         </div>
         {trackingMode && (
           <>
@@ -3453,6 +3429,28 @@ export function ClientRow({
             />
           </div>
           <div className="ml-auto flex items-center justify-start gap-1 flex-shrink-0">
+            {trackingMode && (
+              <button
+                type="button"
+                data-view-action
+                onClick={(event) => {
+                  event.stopPropagation();
+                  toggleTrackingInvoices();
+                }}
+                title={
+                  isTrackingInvoicesExpanded
+                    ? "Hide this client's quotes and linked invoices"
+                    : "Show this client's quotes and linked invoices"
+                }
+                className={`whitespace-nowrap rounded border px-2 py-1 text-[10px] font-semibold transition-colors ${
+                  isTrackingInvoicesExpanded
+                    ? "border-sky-300 bg-sky-100 text-sky-700 hover:bg-sky-200"
+                    : "border-slate-200 bg-white text-slate-600 hover:border-sky-300 hover:bg-sky-50 hover:text-sky-700"
+                }`}
+              >
+                Quotes
+              </button>
+            )}
             {/* Invoice synchronization is now quote-specific. The legacy
                 client-level button remains disabled until its replacement is
                 added to each quote row in the next stage. */}
@@ -4892,6 +4890,7 @@ export function ClientRow({
                 onReorderOptions?.(code, layout)
               }
               onQuotesChanged={() => setIsTrackingInvoicesExpanded(true)}
+              expandAllInvoices={isTrackingInvoicesExpanded}
             />
           </div>
           <div className="hidden max-w-[650px] overflow-hidden rounded border border-[#c8dce2] bg-white text-[12px] shadow-sm">
