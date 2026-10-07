@@ -56,6 +56,9 @@ type GenerateOcfModalProps = {
     clientUrl: string;
   }) => void;
   onSaveFinalArtwork?: (subitemId: string, file: File) => void | Promise<void>;
+  onRequestCompanyChange?: (
+    companyName: string,
+  ) => Promise<{ confirmed: boolean; value: string }>;
 };
 function toLeadTimeNumber(value: string | number | null | undefined) {
   const num = Number(value);
@@ -130,6 +133,7 @@ export function GenerateOcfModal({
   onClose,
   onCreated,
   onSaveFinalArtwork,
+  onRequestCompanyChange,
 }: GenerateOcfModalProps) {
   const [awardedSubitems, setAwardedSubitems] = useState<AwardedSubitem[]>([]);
   const [rows, setRows] = useState<UploadRow[]>([]);
@@ -462,6 +466,19 @@ export function GenerateOcfModal({
         "Set a Need by Date (NBD), or select ASAP, for every included subitem.",
       );
       return;
+    }
+
+    const originalCompanyName = client?.company ?? "";
+    if (
+      companyName.trim() !== originalCompanyName.trim() &&
+      onRequestCompanyChange
+    ) {
+      const outcome = await onRequestCompanyChange(companyName.trim());
+      if (!outcome.confirmed) {
+        setCompanyName(outcome.value);
+        return;
+      }
+      setCompanyName(outcome.value);
     }
 
     // Reserve the tab while this click still counts as a direct user gesture.

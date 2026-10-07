@@ -200,6 +200,11 @@ type CustomerMatchPending = {
   suggestions: Array<{ id: string; name: string; similarity: number }>;
   isLoading: boolean;
   revision: number;
+  requireConfirmation?: boolean;
+  onResolved?: (outcome: {
+    confirmed: boolean;
+    value: string;
+  }) => void;
 };
 type ColumnScope = "client" | "subitem" | "all";
 type BoardSortSetting = {
@@ -6447,6 +6452,7 @@ export function CRMBoard({
           throw saveError;
         }
         setCustomerMatchPending(null);
+        pending.onResolved?.({ confirmed: true, value: pending.value });
         toast.success(
           action === "different"
             ? "Customer profile linked"
@@ -6455,6 +6461,7 @@ export function CRMBoard({
               : "Customer profile updated",
         );
       } catch (error) {
+        pending.onResolved?.({ confirmed: false, value: pending.oldValue });
         toast.error("Customer information was not changed", {
           description:
             error instanceof Error
@@ -6497,6 +6504,7 @@ export function CRMBoard({
             : client,
         ),
       );
+      pending.onResolved?.({ confirmed: false, value: pending.oldValue });
     },
     [releaseCustomerMatchProtection, setClients],
   );
@@ -6508,6 +6516,10 @@ export function CRMBoard({
       closeRequirementsApproved = false,
       unqualifiedReasonApproved = false,
       closingEvidenceDate?: string,
+      customerMatchOptions?: Pick<
+        CustomerMatchPending,
+        "requireConfirmation" | "onResolved"
+      >,
     ) => {
       const existingClient = clients.find((client) => client.id === clientId);
       if (updates.name !== undefined || updates.company !== undefined) {
@@ -6571,7 +6583,7 @@ export function CRMBoard({
         // straight away so that a later staged replacement can safely be
         // cancelled back to this value, even if the initial profile lookup is
         // superseded before it finishes.
-        if (!oldValue) {
+        if (!oldValue && !customerMatchOptions?.requireConfirmation) {
           void enqueueBoardWrite("client", clientId, () =>
             updateClientRow(clientId, {
               [customerField]: value,
@@ -6607,11 +6619,13 @@ export function CRMBoard({
           suggestions: [],
           isLoading: true,
           revision,
+          ...customerMatchOptions,
         };
         // Existing customer values need an immediate confirmation dialog while
         // the lookup runs. For a first entry, wait until the lookup proves
         // that there is an existing/similar profile worth asking about.
-        if (oldValue) setCustomerMatchPending(pendingBase);
+        if (oldValue || customerMatchOptions?.requireConfirmation)
+          setCustomerMatchPending(pendingBase);
         try {
           const response = await fetch("/api/customer-profiles/match", {
             method: "POST",
@@ -6648,6 +6662,7 @@ export function CRMBoard({
           // Create/link it in the background; reserve the dialog for cases
           // where the user needs to choose between an existing possibility.
           if (
+            !customerMatchOptions?.requireConfirmation &&
             !oldValue &&
             !preview.exactProfileId &&
             !pending.suggestions.length
@@ -6672,6 +6687,10 @@ export function CRMBoard({
             ),
           );
           releaseCustomerMatchProtection(clientId, customerField, revision);
+          pendingBase.onResolved?.({
+            confirmed: false,
+            value: pendingBase.oldValue,
+          });
           toast.error("Customer profile matching failed", {
             description:
               error instanceof Error
@@ -6869,6 +6888,37 @@ export function CRMBoard({
       setClients,
       showAssignmentPermissionError,
       releaseCustomerMatchProtection,
+    ],
+  );
+
+  const requestOcfCompanyChange = useCallback(
+    (companyName: string) =>
+      new Promise<{ confirmed: boolean; value: string }>((resolve) => {
+        if (!ocfClient || !canEditClientRecord(ocfClient.id)) {
+          showAssignmentPermissionError();
+          resolve({
+            confirmed: false,
+            value: ocfClient?.company ?? "",
+          });
+          return;
+        }
+        void updateClient(
+          ocfClient.id,
+          { company: companyName },
+          false,
+          false,
+          undefined,
+          {
+            requireConfirmation: true,
+            onResolved: resolve,
+          },
+        );
+      }),
+    [
+      canEditClientRecord,
+      ocfClient,
+      showAssignmentPermissionError,
+      updateClient,
     ],
   );
 
@@ -11970,6 +12020,7 @@ export function CRMBoard({
         client={ocfClient}
         subitemStatusOptions={subitemStatusEntries}
         onClose={handleCloseOcfModal}
+        onRequestCompanyChange={requestOcfCompanyChange}
         onSaveFinalArtwork={async (subitemId, file) => {
           if (!ocfClient) return;
           const [artwork] = await uploadCrmFiles(
