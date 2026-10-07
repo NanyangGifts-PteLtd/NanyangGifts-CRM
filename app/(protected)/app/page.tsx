@@ -944,7 +944,7 @@ export default function Page() {
           onSelectSearchResult={selectSearchResult}
         />
 
-        <main className="min-h-0 flex-1 overflow-auto pl-10">
+        <main className="min-h-0 flex-1 overflow-auto">
           {renderPanel()}
         </main>
       </div>

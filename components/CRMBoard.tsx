@@ -8137,7 +8137,7 @@ export function CRMBoard({
   };
 
   return (
-    <div className="crm-board flex flex-col h-full bg-white">
+    <div className="crm-board box-border flex h-full flex-col bg-white pl-14">
       {detailSubitem &&
         (() => {
           const owner = clients.find(
