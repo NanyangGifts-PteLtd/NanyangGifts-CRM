@@ -313,6 +313,12 @@ const CLIENT_HEADER_COLS: HeaderCol[] = [
     minWidth: 110,
   },
   {
+    key: "trackingInvoiceNumbers",
+    label: "Invoices",
+    width: 180,
+    minWidth: 130,
+  },
+  {
     key: "trackingOverallPriceInvoiceMatch",
     label: "Price and Invoice Match?",
     width: 210,
@@ -393,6 +399,12 @@ const TRACKING_HEADER_COLS: HeaderCol[] = [
     minWidth: 110,
   },
   {
+    key: "trackingInvoiceNumbers",
+    label: "Invoices",
+    width: 180,
+    minWidth: 130,
+  },
+  {
     key: "trackingOverallPriceInvoiceMatch",
     label: "Price and Invoice Match?",
     width: 210,
@@ -422,6 +434,7 @@ const TRACKING_ONLY_CLIENT_COLUMN_KEYS = new Set([
   "trackingQuoteTotal",
   "trackingInvoiceSubtotal",
   "trackingInvoiceTotal",
+  "trackingInvoiceNumbers",
   "trackingOverallPriceInvoiceMatch",
   "trackingOverallInvoicePaymentStatus",
   "trackingQuoteActions",
@@ -2000,6 +2013,7 @@ export function CRMBoard({
               "trackingQuoteTotal",
               "trackingInvoiceSubtotal",
               "trackingInvoiceTotal",
+              "trackingInvoiceNumbers",
             );
             return next;
           })()

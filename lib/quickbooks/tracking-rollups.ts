@@ -25,7 +25,7 @@ export async function refreshClientTrackingRollups(clientId: string) {
   const [{ data: quotes, error: quotesError }, labels] = await Promise.all([
     supabaseAdmin
       .from("estimate_generations")
-      .select("invoice_payment_status_option_id")
+      .select("id, invoice_payment_status_option_id")
       .eq("client_id", clientId)
       .is("archived_at", null),
     trackingLabels(),
@@ -33,6 +33,24 @@ export async function refreshClientTrackingRollups(clientId: string) {
   if (quotesError) throw quotesError;
 
   const activeQuotes = quotes ?? [];
+
+  const quoteIds = activeQuotes.map((quote) => quote.id);
+  const { data: invoices, error: invoicesError } = quoteIds.length
+    ? await supabaseAdmin
+        .from("quickbooks_estimate_invoices")
+        .select("quickbooks_invoice_doc_number, invoice_date")
+        .in("estimate_generation_id", quoteIds)
+        .order("invoice_date", { ascending: false })
+    : { data: [], error: null };
+  if (invoicesError) throw invoicesError;
+  const invoiceNumbers = Array.from(
+    new Set(
+      (invoices ?? [])
+        .map((invoice) => invoice.quickbooks_invoice_doc_number?.trim())
+        .filter((number): number is string => Boolean(number)),
+    ),
+  ).join(", ");
+
   const paymentIds = activeQuotes.map((quote) =>
     String(quote.invoice_payment_status_option_id ?? "") || null,
   );
@@ -58,6 +76,7 @@ export async function refreshClientTrackingRollups(clientId: string) {
     .update({
       tracking_overall_invoice_payment_status: payment.value,
       tracking_overall_invoice_payment_status_option_id: payment.optionId,
+      tracking_invoice_numbers: invoiceNumbers,
     })
     .eq("id", clientId);
   if (updateError) throw updateError;

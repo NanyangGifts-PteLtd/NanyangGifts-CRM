@@ -239,6 +239,7 @@ export interface Client {
   trackingQuoteTotal?: number | null;
   trackingInvoiceSubtotal?: number | null;
   trackingInvoiceTotal?: number | null;
+  trackingInvoiceNumbers?: string;
   trackingOverallInvoicePaymentStatus?: string | null;
   trackingOverallInvoicePaymentStatusOptionId?: string | null;
   company: string;

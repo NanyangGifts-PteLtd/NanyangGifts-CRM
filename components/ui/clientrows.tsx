@@ -3318,6 +3318,21 @@ export function ClientRow({
               <span className="block px-2 text-center text-[12.6px] font-medium text-slate-700">{trackingAmount(client.trackingInvoiceTotal)}</span>
             </div>
             <div
+              data-client-column="trackingInvoiceNumbers"
+              className="tracking-client-cell overflow-hidden border-r border-[#D0D4E4] py-1"
+              style={{
+                height: 30,
+                minWidth: colWidth.trackingInvoiceNumbers,
+                width: colWidth.trackingInvoiceNumbers,
+                order: columnOrderMap.trackingInvoiceNumbers,
+              }}
+              title="Invoice numbers linked to this client's quotes"
+            >
+              <span className="block truncate px-2 text-center text-[12.6px] font-medium text-slate-700">
+                {client.trackingInvoiceNumbers || "—"}
+              </span>
+            </div>
+            <div
               data-client-column="trackingOverallPriceInvoiceMatch"
               className="tracking-client-cell overflow-hidden border-r border-[#D0D4E4] p-0"
               style={{

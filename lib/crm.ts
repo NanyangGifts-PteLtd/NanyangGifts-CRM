@@ -270,6 +270,7 @@ type Clients = {
   tracking_quote_total?: number | null;
   tracking_invoice_subtotal?: number | null;
   tracking_invoice_total?: number | null;
+  tracking_invoice_numbers?: string | null;
   tracking_overall_invoice_payment_status?: string | null;
   tracking_overall_invoice_payment_status_option_id?: string | null;
   company: string | null;
@@ -552,6 +553,7 @@ function mapClients(row: Clients): Client {
     trackingQuoteTotal: row.tracking_quote_total ?? null,
     trackingInvoiceSubtotal: row.tracking_invoice_subtotal ?? null,
     trackingInvoiceTotal: row.tracking_invoice_total ?? null,
+    trackingInvoiceNumbers: row.tracking_invoice_numbers ?? "",
     trackingOverallInvoicePaymentStatus:
       row.tracking_overall_invoice_payment_status ?? null,
     trackingOverallInvoicePaymentStatusOptionId:
