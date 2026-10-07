@@ -6,6 +6,7 @@ import SignatureForm from "./signature-form";
 import logo from "./nanyanggifts-gifts-and-merch.png";
 import { DEFAULT_IMPORTANT_NOTES } from "@/components/Important-Notes";
 import OcfImportantNotes from "@/components/OcfImportantNotes";
+import { OcfFloatingInstruction } from "@/components/OcfFloatingInstruction";
 
 type OcfItem = {
   id: string;
@@ -278,7 +279,14 @@ export default function ClientOcfView({ ocf }: { ocf: Ocf }) {
           </table>
         </div>
 
-        <table className="w-full table-fixed border border-black text-sm">
+        <div className="relative">
+          <OcfFloatingInstruction side="left" step={1} className="top-16">
+            Please check and verify the Item Artwork(s). Click the image to enlarge
+          </OcfFloatingInstruction>
+          <OcfFloatingInstruction side="right" step={2} className="top-16">
+            Please fill in your Delivery Information
+          </OcfFloatingInstruction>
+          <table className="w-full table-fixed border border-black text-sm">
           <thead>
             <tr className="bg-gray-100 text-left">
               <th className="w-[20%] border border-black px-2 py-2 font-semibold">
@@ -460,7 +468,8 @@ export default function ClientOcfView({ ocf }: { ocf: Ocf }) {
               );
             })}
           </tbody>
-        </table>
+          </table>
+        </div>
 
         <table className="mt-4 w-full border border-black text-sm">
           <tbody>
@@ -482,7 +491,10 @@ export default function ClientOcfView({ ocf }: { ocf: Ocf }) {
           </tbody>
         </table>
 
-        <div className="mt-4 border border-gray-300 text-sm">
+        <div className="relative mt-4 border border-gray-300 text-sm">
+          <OcfFloatingInstruction side="right" step={3} className="top-1/2">
+            Please tick here if you have a strict Need By Date
+          </OcfFloatingInstruction>
           <label
             className={`flex w-full cursor-pointer items-center justify-center gap-3 px-4 py-3 font-semibold text-black ${isLocked ? "cursor-default bg-gray-100" : "bg-[#eef2ff] hover:bg-[#e4eaff]"}`}
           >
@@ -504,7 +516,7 @@ export default function ClientOcfView({ ocf }: { ocf: Ocf }) {
           ) : null}
         </div>
 
-        <div className="mt-10 break-before-page print:break-before-page max-w-5xl">
+        <div className="relative mt-10 break-before-page print:break-before-page max-w-5xl">
           <span className="flex bg-[#eef2ff] px-1 rounded-sm py-3 text-black items-center justify-center text-[15px]">
             𝐈𝐦𝐩𝐨𝐫𝐭𝐚𝐧𝐭 𝐧𝐨𝐭𝐞𝐬, 𝐩𝐥𝐞𝐚𝐬𝐞 𝐫𝐞𝐚𝐝 𝐜𝐚𝐫𝐞𝐟𝐮𝐥𝐥𝐲:{" "}
           </span>
@@ -514,7 +526,10 @@ export default function ClientOcfView({ ocf }: { ocf: Ocf }) {
             className="py-2 text-[13px]"
           />
 
-          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="relative mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <OcfFloatingInstruction side="left" step={4} className="top-1/2">
+              Please read the above terms and confirm here
+            </OcfFloatingInstruction>
             <label
               className={`flex min-h-12 w-full items-center justify-center gap-3 rounded border px-4 py-3 text-sm font-semibold ${isLocked ? "cursor-default bg-gray-100" : "cursor-pointer bg-[#eef2ff] hover:bg-[#e4eaff]"}`}
             >
@@ -545,7 +560,10 @@ export default function ClientOcfView({ ocf }: { ocf: Ocf }) {
           </div>
         </div>
 
-        <div className="mt-6">
+        <div className="relative mt-6">
+          <OcfFloatingInstruction side="right" step={5} className="top-1/2">
+            Please sign and submit here
+          </OcfFloatingInstruction>
           {isLocked ? (
             <div className="space-y-2 text-sm text-gray-700">
               <p>This form has already been submitted.</p>
