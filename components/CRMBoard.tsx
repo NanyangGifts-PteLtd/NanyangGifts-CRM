@@ -75,6 +75,7 @@ import {
   reorderSubitemRows,
   duplicateSubitemRow,
   duplicateClientRow,
+  mapSubitems,
   fetchClientActivityLog,
   fetchDeletedBinItems,
   restoreClientRow,
@@ -585,6 +586,36 @@ export async function fetchAllSubitemAssignees(): Promise<SubitemAssigneeMap> {
     acc[row.subitem_id] = [...(acc[row.subitem_id] ?? []), row.user_id];
     return acc;
   }, {} as SubitemAssigneeMap);
+}
+
+type DuplicatedClientPayload = {
+  id: string;
+  display_id?: string | null;
+  name?: string | null;
+  status?: string | null;
+  status_option_id?: string | null;
+  group_id?: string | null;
+  created_at?: string | null;
+};
+
+function localClientDuplicate(
+  source: Client,
+  duplicate: DuplicatedClientPayload,
+): Client {
+  return {
+    ...source,
+    id: duplicate.id,
+    displayId: duplicate.display_id ?? "",
+    name: duplicate.name ?? source.name,
+    status: (duplicate.status as ClientStatus) ?? source.status,
+    statusOptionId: duplicate.status_option_id ?? null,
+    groupId: duplicate.group_id ?? source.groupId,
+    createdAt: duplicate.created_at ?? source.createdAt,
+    // Child rows are filled by reconciliation. Reusing the source IDs here
+    // would make immediate edits target the wrong records.
+    subitems: [],
+    activityLog: [],
+  };
 }
 
 function groupAccentColor(group: CRMGroup) {
@@ -7494,10 +7525,14 @@ export function CRMBoard({
     async (groupId?: string | null, name?: string) => {
       try {
         const defaultGroupId = groupId ?? groups[0]?.id ?? null;
-        const createdClient = await createClientRow(
+        const { client: createdClient, setup } = await createClientRow(
           currentUserId ?? null,
           defaultGroupId,
           name,
+        );
+        const releaseClientProtection = holdBoardRecordProtection(
+          "client",
+          createdClient.id,
         );
         const newClient: Client = {
           id: createdClient.id,
@@ -7555,12 +7590,27 @@ export function CRMBoard({
           "Client added",
           `${newClient.name} was added to the board.`,
         );
-        fetchClientAssignmentMaps()
-          .then((maps) => {
-            setClientAssignees(maps.people);
-            setClientPmAssignees(maps.pm);
+        void setup
+          .catch((error) => {
+            console.error("Failed to finish new client setup", error);
+            toast.error("Client setup needs attention", {
+              description:
+                "The client was created, but its assignment or activity record could not be completed. Please refresh and try again.",
+            });
           })
-          .catch((e) => console.error("Failed to refresh assignees", e));
+          .finally(() => {
+            releaseClientProtection();
+            // Do this after the assignment write has settled; fetching earlier
+            // could replace the optimistic creator assignment with stale data.
+            void fetchClientAssignmentMaps()
+              .then((maps) => {
+                setClientAssignees(maps.people);
+                setClientPmAssignees(maps.pm);
+              })
+              .catch((refreshError) =>
+                console.error("Failed to refresh client assignments", refreshError),
+              );
+          });
         return true;
       } catch (error: any) {
         console.error("Failed to add client", error);
@@ -7613,6 +7663,10 @@ export function CRMBoard({
         showAssignmentPermissionError();
         return;
       }
+      const releaseClientProtection = holdBoardRecordProtection(
+        "client",
+        clientId,
+      );
       setClients((prev) => prev.filter((c) => c.id !== clientId));
       setSelectedIds((prev) => {
         const next = new Set(prev);
@@ -7631,6 +7685,8 @@ export function CRMBoard({
         toast.error("Client could not be deleted", {
           description: error?.message || "The client was not deleted.",
         });
+      } finally {
+        releaseClientProtection();
       }
     },
     [
@@ -7668,6 +7724,9 @@ export function CRMBoard({
       showAssignmentPermissionError();
       return;
     }
+    const releaseClientProtections = ids.map((id) =>
+      holdBoardRecordProtection("client", id),
+    );
     setClients((prev) => prev.filter((c) => !selectedIds.has(c.id)));
     setSelectedIds(new Set());
     try {
@@ -7680,8 +7739,10 @@ export function CRMBoard({
       setClients(clients);
       console.error("Failed to delete selected", error);
       toast.error("Selected clients could not be deleted", {
-        description: error?.message || "The selected clients were not deleted.",
-      });
+          description: error?.message || "The selected clients were not deleted.",
+        });
+    } finally {
+      releaseClientProtections.forEach((release) => release());
     }
   }, [
     canEditClientRecord,
@@ -7700,20 +7761,48 @@ export function CRMBoard({
       }
       setIsDuplicatingClients(true);
       try {
-        await Promise.all(
-          [...selectedIds].map((clientId) =>
-            duplicateClientRow(clientId, includeSubitems),
-          ),
+        const duplicated = await Promise.all(
+          [...selectedIds].map(async (clientId) => ({
+            sourceId: clientId,
+            duplicate: (await duplicateClientRow(
+              clientId,
+              includeSubitems,
+            )) as DuplicatedClientPayload,
+          })),
         );
-        await reloadClients();
-        const [nextClientAssignmentMaps, nextSubitemAssignees] =
-          await Promise.all([
-            fetchClientAssignmentMaps(),
-            fetchAllSubitemAssignees(),
-          ]);
-        setClientAssignees(nextClientAssignmentMaps.people);
-        setClientPmAssignees(nextClientAssignmentMaps.pm);
-        setSubitemAssignees(nextSubitemAssignees);
+        const sources = new Map(clients.map((client) => [client.id, client]));
+        const localDuplicates = duplicated.flatMap(({ sourceId, duplicate }) => {
+          const source = sources.get(sourceId);
+          return source ? [localClientDuplicate(source, duplicate)] : [];
+        });
+        const releaseDuplicateProtections = localDuplicates.map((client) =>
+          holdBoardRecordProtection("client", client.id),
+        );
+        setClients((previous) => [...localDuplicates, ...previous]);
+        if (currentUserId) {
+          setClientAssignees((previous) => ({
+            ...previous,
+            ...Object.fromEntries(
+              localDuplicates.map((client) => [client.id, [currentUserId]]),
+            ),
+          }));
+        }
+        void Promise.all([
+          reloadClients(),
+          fetchClientAssignmentMaps(),
+          fetchAllSubitemAssignees(),
+        ])
+          .then(([, nextClientAssignmentMaps, nextSubitemAssignees]) => {
+            setClientAssignees(nextClientAssignmentMaps.people);
+            setClientPmAssignees(nextClientAssignmentMaps.pm);
+            setSubitemAssignees(nextSubitemAssignees);
+          })
+          .catch((error) =>
+            console.error("Failed to reconcile duplicated clients", error),
+          )
+          .finally(() =>
+            releaseDuplicateProtections.forEach((release) => release()),
+          );
         toast.success("Clients duplicated", {
           description: `${selectedIds.size} selected client${selectedIds.size === 1 ? "" : "s"} were copied ${includeSubitems ? "with" : "without"} their subitems.`,
         });
@@ -7732,10 +7821,13 @@ export function CRMBoard({
     },
     [
       canEditClientRecord,
+      clients,
+      currentUserId,
       reloadClients,
       selectedIds,
       setClientAssignees,
       setClientPmAssignees,
+      setClients,
       setSubitemAssignees,
       showAssignmentPermissionError,
     ],
@@ -7747,18 +7839,42 @@ export function CRMBoard({
         showAssignmentPermissionError();
         return;
       }
+      const source = clients.find((client) => client.id === clientId);
+      if (!source) return;
       setIsDuplicatingClients(true);
       try {
-        await duplicateClientRow(clientId, includeSubitems);
-        await reloadClients();
-        const [nextClientAssignmentMaps, nextSubitemAssignees] =
-          await Promise.all([
-            fetchClientAssignmentMaps(),
-            fetchAllSubitemAssignees(),
-          ]);
-        setClientAssignees(nextClientAssignmentMaps.people);
-        setClientPmAssignees(nextClientAssignmentMaps.pm);
-        setSubitemAssignees(nextSubitemAssignees);
+        const duplicate = (await duplicateClientRow(
+          clientId,
+          includeSubitems,
+        )) as DuplicatedClientPayload;
+        const releaseDuplicateProtection = holdBoardRecordProtection(
+          "client",
+          duplicate.id,
+        );
+        setClients((previous) => [
+          localClientDuplicate(source, duplicate),
+          ...previous,
+        ]);
+        if (currentUserId) {
+          setClientAssignees((previous) => ({
+            ...previous,
+            [duplicate.id]: [currentUserId],
+          }));
+        }
+        void Promise.all([
+          reloadClients(),
+          fetchClientAssignmentMaps(),
+          fetchAllSubitemAssignees(),
+        ])
+          .then(([, nextClientAssignmentMaps, nextSubitemAssignees]) => {
+            setClientAssignees(nextClientAssignmentMaps.people);
+            setClientPmAssignees(nextClientAssignmentMaps.pm);
+            setSubitemAssignees(nextSubitemAssignees);
+          })
+          .catch((error) =>
+            console.error("Failed to reconcile duplicated client", error),
+          )
+          .finally(releaseDuplicateProtection);
         toast.success("Client duplicated", {
           description: `The client was copied ${includeSubitems ? "with" : "without"} its subitems.`,
         });
@@ -7772,9 +7888,12 @@ export function CRMBoard({
     },
     [
       canEditClientRecord,
+      clients,
+      currentUserId,
       reloadClients,
       setClientAssignees,
       setClientPmAssignees,
+      setClients,
       setSubitemAssignees,
       showAssignmentPermissionError,
     ],
@@ -7916,10 +8035,14 @@ export function CRMBoard({
         throw new Error("You can only edit items that are assigned to you");
       }
       try {
-        const createdSubitem = await createSubitemRow(
+        const { subitem: createdSubitem, setup } = await createSubitemRow(
           clientId,
           trimmedName,
           currentUserId,
+        );
+        const releaseSubitemProtection = holdBoardRecordProtection(
+          "subitem",
+          createdSubitem.id,
         );
         setClients((previous) =>
           previous.map((client) =>
@@ -7937,6 +8060,51 @@ export function CRMBoard({
           "Subitem added",
           `${trimmedName} is now available under the client.`,
         );
+        void setup
+          .then((paymentRow) => {
+            setClients((previous) =>
+              previous.map((client) =>
+                client.id !== clientId
+                  ? client
+                  : {
+                      ...client,
+                      subitems: client.subitems.map((subitem) =>
+                        subitem.id !== createdSubitem.id
+                          ? subitem
+                          : {
+                              ...subitem,
+                              paymentRows: [
+                                {
+                                  id: paymentRow.id,
+                                  position: paymentRow.position ?? 0,
+                                  amount: paymentRow.amount ?? "",
+                                  orderNumber: paymentRow.order_number ?? "",
+                                  paymentReceived:
+                                    paymentRow.payment_received ?? null,
+                                  paymentReceivedLabel:
+                                    paymentRow.payment_received_label ?? "",
+                                  paymentReceivedOptionId:
+                                    paymentRow.payment_received_option_id ?? null,
+                                  modeOfPayment:
+                                    paymentRow.mode_of_payment ?? "",
+                                  modeOfPaymentOptionId:
+                                    paymentRow.mode_of_payment_option_id ?? null,
+                                },
+                              ],
+                            },
+                      ),
+                    },
+              ),
+            );
+          })
+          .catch((error) => {
+            console.error("Failed to finish new subitem setup", error);
+            toast.error("Subitem setup needs attention", {
+              description:
+                "The subitem was created, but its supporting records could not be completed. Please refresh and try again.",
+            });
+          })
+          .finally(releaseSubitemProtection);
       } catch (error: any) {
         console.error("Failed to add subitem", error);
         toast.error("Subitem could not be added", {
@@ -7961,6 +8129,10 @@ export function CRMBoard({
         showAssignmentPermissionError();
         return;
       }
+      const releaseSubitemProtection = holdBoardRecordProtection(
+        "subitem",
+        subitemId,
+      );
       setSelectedSubitemIds((previous) =>
         previous.filter((id) => id !== subitemId),
       );
@@ -7984,6 +8156,8 @@ export function CRMBoard({
         toast.error("Subitem could not be deleted", {
           description: error?.message || "The subitem was not deleted.",
         });
+      } finally {
+        releaseSubitemProtection();
       }
     },
     [
@@ -8056,8 +8230,44 @@ export function CRMBoard({
       const orderedIds = clients
         .flatMap((client) => client.subitems.map((subitem) => subitem.id))
         .filter((id) => selectedSubitemIds.includes(id));
-      for (const subitemId of orderedIds) await duplicateSubitemRow(subitemId);
-      await reloadClients();
+      const sourceClientBySubitemId = new Map(
+        clients.flatMap((client) =>
+          client.subitems.map((subitem) => [subitem.id, client.id] as const),
+        ),
+      );
+      for (const subitemId of orderedIds) {
+        const { subitem, setup } = await duplicateSubitemRow(subitemId);
+        const clientId = sourceClientBySubitemId.get(subitemId);
+        const releaseDuplicateProtection = holdBoardRecordProtection(
+          "subitem",
+          subitem.id,
+        );
+        if (clientId) {
+          const mappedDuplicate = mapSubitems(subitem);
+          setClients((previous) =>
+            previous.map((client) =>
+              client.id !== clientId
+                ? client
+                : {
+                    ...client,
+                    subitems: [...client.subitems, mappedDuplicate].sort(
+                      (first, second) => first.position - second.position,
+                    ),
+                  },
+            ),
+          );
+        }
+        // Wait for this reorder before inserting the next duplicate. The row
+        // above is already visible and editable while this finishes.
+        try {
+          await setup();
+        } finally {
+          releaseDuplicateProtection();
+        }
+      }
+      void reloadClients().catch((error) =>
+        console.error("Failed to reconcile duplicated subitems", error),
+      );
       toast.success("Subitems duplicated", {
         description: `${selectedSubitemIds.length} subitem${selectedSubitemIds.length === 1 ? "" : "s"} duplicated.`,
       });
@@ -8091,8 +8301,36 @@ export function CRMBoard({
         return;
       }
       try {
-        await duplicateSubitemRow(subitemId);
-        await reloadClients();
+        const { subitem: duplicate, setup } = await duplicateSubitemRow(
+          subitemId,
+        );
+        const releaseDuplicateProtection = holdBoardRecordProtection(
+          "subitem",
+          duplicate.id,
+        );
+        const mappedDuplicate = mapSubitems(duplicate);
+        setClients((previous) =>
+          previous.map((client) =>
+            client.id !== owner.id
+              ? client
+              : {
+                  ...client,
+                  subitems: [...client.subitems, mappedDuplicate].sort(
+                    (first, second) => first.position - second.position,
+                  ),
+                },
+          ),
+        );
+        void setup()
+          .then(() => reloadClients())
+          .catch((error) => {
+            console.error("Failed to finish duplicated subitem setup", error);
+            toast.error("Subitem setup needs attention", {
+              description:
+                "The duplicate was created, but its supporting records could not be completed. Please refresh and try again.",
+            });
+          })
+          .finally(releaseDuplicateProtection);
         toast.success("Subitem duplicated");
       } catch (error: any) {
         toast.error("Subitem could not be duplicated", {

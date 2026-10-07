@@ -427,7 +427,7 @@ function mapActivityEntry(row: ActivityLogRow): ActivityEntry {
     meta: row.meta ?? null,
   };
 }
-function mapSubitems(row: Subitems): Subitem {
+export function mapSubitems(row: Subitems): Subitem {
   return {
     id: row.id,
     displayId: row.display_id ?? "",
@@ -1069,17 +1069,20 @@ export async function createClientRow(
 
   if (error) throw error;
 
-  if (currentUserId) {
-    await addClientAssignee(data.id, currentUserId, currentUserId);
-  }
+  // The client row is durable at this point. Keep its auxiliary setup out of
+  // the critical path so the user can start working immediately.
+  const setup = Promise.all([
+    currentUserId
+      ? addClientAssignee(data.id, currentUserId, currentUserId)
+      : Promise.resolve(),
+    insertActivityLog({
+      clientId: data.id,
+      action: "client_added",
+      title: "created this client",
+    }),
+  ]).then(() => undefined);
 
-  await insertActivityLog({
-    clientId: data.id,
-    action: "client_added",
-    title: "created this client",
-  });
-
-  return data;
+  return { client: data, setup };
 }
 
 async function resolveSystemOption(groupCode: string, systemKey: string) {
@@ -1473,18 +1476,13 @@ export async function createSubitemRow(
   const { data: existingSubitems, error: existingSubitemsError } =
     await supabase
       .from("subitems")
-      .select("id, position, custom_fields")
+      .select("position")
       .eq("client_id", clientId)
       .is("deleted_at", null)
-      .order("position", { ascending: true });
+      .order("position", { ascending: false })
+      .limit(1);
   if (existingSubitemsError) throw existingSubitemsError;
-  const position =
-    Math.max(
-      -1,
-      ...(existingSubitems ?? []).map((subitem) =>
-        Number(subitem.position ?? -1),
-      ),
-    ) + 1;
+  const position = Number(existingSubitems?.[0]?.position ?? -1) + 1;
   const timelineRows = [
     {
       id: crypto.randomUUID(),
@@ -1637,61 +1635,60 @@ export async function createSubitemRow(
 
   if (error) throw error;
 
-  const { data: initialPaymentRow, error: initialPaymentRowError } =
-    await supabase
-      .from("subitem_payment_rows")
-      .insert({
-        subitem_id: data.id,
-        position: 0,
-        amount: "",
-        order_number: "",
-        payment_received: null,
-        payment_received_label: "",
-        payment_received_option_id: null,
-        mode_of_payment: "",
-        mode_of_payment_option_id: null,
-      })
-      .select(
-        "id, position, amount, order_number, payment_received, payment_received_label, payment_received_option_id, mode_of_payment, mode_of_payment_option_id",
-      )
-      .single();
-  if (initialPaymentRowError) throw initialPaymentRowError;
+  const initialPaymentRow = supabase
+    .from("subitem_payment_rows")
+    .insert({
+      subitem_id: data.id,
+      position: 0,
+      amount: "",
+      order_number: "",
+      payment_received: null,
+      payment_received_label: "",
+      payment_received_option_id: null,
+      mode_of_payment: "",
+      mode_of_payment_option_id: null,
+    })
+    .select(
+      "id, position, amount, order_number, payment_received, payment_received_label, payment_received_option_id, mode_of_payment, mode_of_payment_option_id",
+    )
+    .single();
 
-  if (currentUserId) {
-    const { error: assigneeError } = await supabase
-      .from("subitem_assignees")
-      .insert({
-        subitem_id: data.id,
-        user_id: currentUserId,
-        assigned_by: currentUserId,
-      });
-    if (assigneeError) throw assigneeError;
-  }
-
-  await insertActivityLog({
-    clientId,
-    subitemId: data.id,
-    subitemName: data.name,
-    action: "subitem_added",
-  });
+  // The row can be displayed as soon as its primary insert succeeds. These
+  // independent writes do not affect its editable CRM fields, so run them in
+  // parallel after returning the durable row to the Board.
+  const setup = Promise.all([
+    initialPaymentRow.then(({ data: paymentRow, error: paymentRowError }) => {
+      if (paymentRowError || !paymentRow) {
+        throw paymentRowError ?? new Error("Could not create the initial payment row.");
+      }
+      return paymentRow;
+    }),
+    currentUserId
+      ? supabase
+          .from("subitem_assignees")
+          .insert({
+            subitem_id: data.id,
+            user_id: currentUserId,
+            assigned_by: currentUserId,
+          })
+          .then(({ error: assigneeError }) => {
+            if (assigneeError) throw assigneeError;
+          })
+      : Promise.resolve(),
+    insertActivityLog({
+      clientId,
+      subitemId: data.id,
+      subitemName: data.name,
+      action: "subitem_added",
+    }),
+  ]).then(([paymentRow]) => paymentRow);
 
   return {
-    ...mapSubitems(data as Subitems),
-    paymentRows: [
-      {
-        id: initialPaymentRow.id,
-        position: initialPaymentRow.position ?? 0,
-        amount: initialPaymentRow.amount ?? "",
-        orderNumber: initialPaymentRow.order_number ?? "",
-        paymentReceived: initialPaymentRow.payment_received ?? null,
-        paymentReceivedLabel: initialPaymentRow.payment_received_label ?? "",
-        paymentReceivedOptionId:
-          initialPaymentRow.payment_received_option_id ?? null,
-        modeOfPayment: initialPaymentRow.mode_of_payment ?? "",
-        modeOfPaymentOptionId:
-          initialPaymentRow.mode_of_payment_option_id ?? null,
-      },
-    ],
+    subitem: {
+      ...mapSubitems(data as Subitems),
+      paymentRows: [],
+    },
+    setup,
   };
 }
 
@@ -1789,53 +1786,58 @@ export async function duplicateSubitemRow(subitemId: string) {
     .single();
   if (duplicateError) throw duplicateError;
 
-  const { error: initialPaymentRowError } = await supabase
-    .from("subitem_payment_rows")
-    .insert({
-      subitem_id: duplicate.id,
-      position: 0,
-      amount: "",
-      order_number: "",
-      payment_received: null,
-      payment_received_label: "",
-      payment_received_option_id: null,
-      mode_of_payment: "",
-      mode_of_payment_option_id: null,
-    });
-  if (initialPaymentRowError) throw initialPaymentRowError;
-
-  const { data: assignees, error: assigneeFetchError } = await supabase
-    .from("subitem_assignees")
-    .select("user_id")
-    .eq("subitem_id", subitemId);
-  if (assigneeFetchError) throw assigneeFetchError;
-
-  if (assignees?.length) {
-    const { error: assigneeCopyError } = await supabase
-      .from("subitem_assignees")
-      .insert(
-        assignees.map((assignee) => ({
-          subitem_id: duplicate.id,
-          user_id: assignee.user_id,
-          assigned_by: null,
-        })),
-      );
-    if (assigneeCopyError) throw assigneeCopyError;
-  }
-
   const nextOrder = [...orderedSiblingIds];
   nextOrder.splice(sourceIndex + 1, 0, duplicate.id);
-  await reorderSubitemRows(existing.client_id, nextOrder);
+  // The duplicate itself is committed. Keeping its supplementary records and
+  // sibling reordering out of the foreground makes duplication responsive
+  // without exposing an unsaved row.
+  const setup = () =>
+    Promise.all([
+      supabase
+        .from("subitem_payment_rows")
+        .insert({
+          subitem_id: duplicate.id,
+          position: 0,
+          amount: "",
+          order_number: "",
+          payment_received: null,
+          payment_received_label: "",
+          payment_received_option_id: null,
+          mode_of_payment: "",
+          mode_of_payment_option_id: null,
+        })
+        .then(({ error: initialPaymentRowError }) => {
+          if (initialPaymentRowError) throw initialPaymentRowError;
+        }),
+      (async () => {
+        const { data: assignees, error: assigneeFetchError } = await supabase
+          .from("subitem_assignees")
+          .select("user_id")
+          .eq("subitem_id", subitemId);
+        if (assigneeFetchError) throw assigneeFetchError;
+        if (!assignees?.length) return;
+        const { error: assigneeCopyError } = await supabase
+          .from("subitem_assignees")
+          .insert(
+            assignees.map((assignee) => ({
+              subitem_id: duplicate.id,
+              user_id: assignee.user_id,
+              assigned_by: null,
+            })),
+          );
+        if (assigneeCopyError) throw assigneeCopyError;
+      })(),
+      reorderSubitemRows(existing.client_id, nextOrder),
+      insertActivityLog({
+        clientId: duplicate.client_id,
+        subitemId: duplicate.id,
+        subitemName: duplicate.name,
+        action: "subitem_added",
+        title: "duplicated this subitem",
+      }),
+    ]).then(() => undefined);
 
-  await insertActivityLog({
-    clientId: duplicate.client_id,
-    subitemId: duplicate.id,
-    subitemName: duplicate.name,
-    action: "subitem_added",
-    title: "duplicated this subitem",
-  });
-
-  return duplicate;
+  return { subitem: duplicate, setup };
 }
 
 export async function fetchOptionsByGroupCode(

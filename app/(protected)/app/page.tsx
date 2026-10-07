@@ -423,28 +423,44 @@ export default function Page() {
         const currentClients = new Map(
           current.map((client) => [client.id, client]),
         );
-        return rows.map((incomingClient) => {
+        const incomingClientIds = new Set(rows.map((client) => client.id));
+        const reconciledClients = rows.flatMap((incomingClient) => {
           const localClient = currentClients.get(incomingClient.id);
-          if (!localClient) return incomingClient;
+          // A stale snapshot can contain a record that was just removed from
+          // local state. Do not resurrect it while its delete is settling.
+          if (!localClient && isBoardRecordProtected("client", incomingClient.id)) {
+            return [];
+          }
+          if (!localClient) return [incomingClient];
 
           const localSubitems = new Map(
             localClient.subitems.map((item) => [item.id, item]),
           );
-          const mergedSubitems = incomingClient.subitems.map(
+          const mergedSubitems = incomingClient.subitems.flatMap(
             (incomingSubitem) => {
               if (!isBoardRecordProtected("subitem", incomingSubitem.id))
-                return incomingSubitem;
+                return [incomingSubitem];
               const localSubitem = localSubitems.get(incomingSubitem.id);
-              if (!localSubitem) return incomingSubitem;
-              return localSubitem;
+              // This is the subitem equivalent of the client guard above.
+              if (!localSubitem) return [];
+              return [localSubitem];
             },
           );
 
           if (isBoardRecordProtected("client", incomingClient.id)) {
-            return { ...localClient, subitems: mergedSubitems };
+            return [{ ...localClient, subitems: mergedSubitems }];
           }
-          return { ...incomingClient, subitems: mergedSubitems };
+          return [{ ...incomingClient, subitems: mergedSubitems }];
         });
+        // New rows can be visible locally before a fetch which started just
+        // before their insert completes. Retain those protected local rows
+        // until the next settled reconciliation observes them remotely.
+        const protectedLocalOnly = current.filter(
+          (client) =>
+            !incomingClientIds.has(client.id) &&
+            isBoardRecordProtected("client", client.id),
+        );
+        return [...reconciledClients, ...protectedLocalOnly];
       });
       setClientAssignees((current) => {
         const next = { ...clientAssignmentMaps.people };

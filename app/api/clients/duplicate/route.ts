@@ -121,7 +121,10 @@ export async function POST(request: NextRequest) {
         custom_fields: withoutFileCustomFields(sourceClientResult.data.custom_fields),
         activity_log: [],
       })
-      .select("id, name")
+      // Return the persisted row so the board can show the duplicate before
+      // its eventual background reconciliation, rather than reloading every
+      // client merely to obtain it.
+      .select("*")
       .single();
     if (duplicateError || !duplicate) throw duplicateError ?? new Error("Could not create duplicate client");
     duplicateId = duplicate.id;
