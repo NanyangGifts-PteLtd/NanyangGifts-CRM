@@ -7522,7 +7522,11 @@ export function CRMBoard({
   }, [binItems, restoreBinItem, selectedBinItemKeys]);
 
   const addClient = useCallback(
-    async (groupId?: string | null, name?: string) => {
+    async (
+      groupId?: string | null,
+      name?: string,
+      autoFocusName = true,
+    ) => {
       try {
         const defaultGroupId = groupId ?? groups[0]?.id ?? null;
         const { client: createdClient, setup } = await createClientRow(
@@ -7576,7 +7580,7 @@ export function CRMBoard({
               : current,
           );
         }
-        setAutoEditClientNameId(newClient.id);
+        if (autoFocusName) setAutoEditClientNameId(newClient.id);
         window.setTimeout(() => {
           document
             .querySelector<HTMLElement>(`[data-client-id="${newClient.id}"]`)
@@ -7637,7 +7641,7 @@ export function CRMBoard({
       if (!name) return false;
       // Inline name rows do not share the toolbar's single-save guard. Each
       // row can persist a client while the user continues entering another.
-      return addClient(groupId, name);
+      return addClient(groupId, name, false);
     },
     [addClient],
   );
