@@ -307,13 +307,6 @@ function buildSchedulerData(
   >,
 ): SchedulerResource[] {
   const groupMap = new Map(groups.map((group) => [group.id, group]));
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const completedSystemKeys = new Set([
-    "subitem_subprogress_done",
-    "subitem_subprogress_delivered",
-    "subitem_subprogress_shipped_out",
-  ]);
   return clients
     .filter(
       (client): client is Client => !!client && typeof client === "object",
@@ -348,11 +341,6 @@ function buildSchedulerData(
           const start = parseDate(row?.timelineStart);
           const explicitEnd = parseDate(row?.timelineEnd);
           const end = start ? (explicitEnd ?? addOneDay(start)) : null;
-          const isOverdue = Boolean(
-            explicitEnd &&
-            explicitEnd < today &&
-            !completedSystemKeys.has(progress?.systemKey ?? ""),
-          );
           if (!start || !end) return [];
           return [
             {
@@ -363,21 +351,18 @@ function buildSchedulerData(
                 progress?.systemKey === "subitem_subprogress_done"
                   ? 100
                   : progress?.systemKey === "subitem_subprogress_started"
-                    ? 60
+                  ? 60
                     : 20,
               title: row.name || "Untitled Process",
-              subtitle: isOverdue ? `Overdue - ${subitemName}` : subitemName,
-              description:
-                [
-                  isOverdue ? "Overdue" : "",
-                  row.person ? `Owner: ${row.person}` : "",
-                  row.remarks ? `Remarks: ${row.remarks}` : "",
-                ]
-                  .filter(Boolean)
-                  .join(" - "),
-              bgColor: isOverdue ? "#dc2626" : getColor(progress?.systemKey),
+              // The scheduler places title and subtitle side-by-side. Use
+              // those slots for the process and its optional remarks only;
+              // the subitem title and overdue state do not belong in a
+              // process block.
+              subtitle: row.remarks?.trim() || "",
+              description: undefined,
+              bgColor: getColor(progress?.systemKey),
               processStatus: row.subProgress || "No status",
-              isOverdue,
+              isOverdue: false,
               timelineId: timeline.id,
             },
           ];
@@ -1629,6 +1614,62 @@ export default function GanttChart({
           });
         }}
       >
+        <style>{`
+          #reactSchedulerCanvasWrapper button[style*="background-color"] {
+            text-align: center !important;
+            overflow: hidden !important;
+          }
+          #reactSchedulerCanvasWrapper button[style*="background-color"] > div {
+            display: flex !important;
+            height: 100% !important;
+            width: 100% !important;
+            margin: 0 !important;
+            align-items: center !important;
+            justify-content: center !important;
+          }
+          #reactSchedulerCanvasWrapper button[style*="background-color"] > div > div {
+            /* The scheduler makes this wrapper sticky against the timeline
+               viewport. Process labels must instead stay inside their own
+               tile so the combined name + remarks can be centered. */
+            position: static !important;
+            display: flex !important;
+            width: 100% !important;
+            min-width: 0 !important;
+            align-items: center !important;
+            justify-content: center !important;
+            gap: 0.5rem !important;
+            overflow: hidden !important;
+          }
+          #reactSchedulerCanvasWrapper button[style*="background-color"] p {
+            margin: 0 !important;
+            font-size: 14px !important;
+            line-height: 1.25 !important;
+            letter-spacing: 0 !important;
+          }
+          #reactSchedulerCanvasWrapper button[style*="background-color"] p:first-child {
+            font-weight: 700 !important;
+            white-space: nowrap !important;
+            min-width: 0 !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+          }
+          #reactSchedulerCanvasWrapper button[style*="background-color"] p:first-child::after {
+            content: none !important;
+            margin: 0 !important;
+          }
+          #reactSchedulerCanvasWrapper button[style*="background-color"] p:nth-child(2) {
+            flex: 0 1 auto !important;
+            min-width: 0 !important;
+            max-width: 45% !important;
+            opacity: 0.9;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+            white-space: nowrap !important;
+          }
+          #reactSchedulerCanvasWrapper button[style*="background-color"] p:nth-child(3) {
+            display: none !important;
+          }
+        `}</style>
         <Scheduler
           data={data}
           onRangeChange={handleRangeChange}

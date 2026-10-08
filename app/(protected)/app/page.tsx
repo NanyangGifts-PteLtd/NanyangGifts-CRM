@@ -120,6 +120,17 @@ function canViewPanel(panel: SidePanel, role: string | null) {
 export default function Page() {
   const searchParams = useSearchParams();
   const [clients, setClients] = useState<Client[]>([]);
+  // The CRM Board intentionally retains only its loaded pages. The Gantt
+  // chart, however, must be able to draw every timeline in its visible
+  // groups, so it owns a separate, panel-scoped hydrated snapshot.
+  const [ganttClients, setGanttClients] = useState<Client[]>([]);
+  const [ganttClientAssignees, setGanttClientAssignees] =
+    useState<ClientAssigneeMap>({});
+  const [ganttClientPmAssignees, setGanttClientPmAssignees] =
+    useState<ClientAssigneeMap>({});
+  const [ganttSubitemAssignees, setGanttSubitemAssignees] =
+    useState<SubitemAssigneeMap>({});
+  const [ganttClientsLoading, setGanttClientsLoading] = useState(false);
   const [search, setSearch] = useState("");
   const [user, setUser] = useState<User | null>(null);
   const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
@@ -155,6 +166,7 @@ export default function Page() {
   const searchViewportAnchorClientIdRef = useRef<string | null>(null);
   const reconciliationTimer = useRef<number | null>(null);
   const recordsRefreshSequence = useRef(0);
+  const ganttRefreshSequence = useRef(0);
   const boardQueryKeyRef = useRef(JSON.stringify({}));
   // The requested query can change while rows from the previous query remain
   // visible. Track their ownership separately so an in-flight transition can
@@ -497,8 +509,13 @@ export default function Page() {
       setExpandedClientIds((current) =>
         current.includes(clientId) ? current : [...current, clientId],
       );
-      setClients((current) =>
-        current.map((client) =>
+      const ganttClient = ganttClients.find((client) => client.id === clientId);
+      setClients((current) => {
+        const source =
+          current.some((client) => client.id === clientId) || !ganttClient
+            ? current
+            : [...current, ganttClient];
+        return source.map((client) =>
           client.id !== clientId
             ? client
             : {
@@ -514,8 +531,8 @@ export default function Page() {
                       },
                 ),
               },
-        ),
-      );
+        );
+      });
       setSearchTarget({
         id: `gantt-timeline-${clientId}-${subitemId ?? "all"}-${Date.now()}`,
         clientId,
@@ -528,30 +545,72 @@ export default function Page() {
         query: "",
       });
     },
-    [openCrmRecord],
+    [ganttClients, openCrmRecord],
   );
   const canEditGanttSubitem = useCallback(
     (clientId: string, subitemId: string) => {
       if (!user?.id) return false;
       const role = String(currentUserRole ?? "").trim().toLowerCase();
       if (["admin", "director", "dev"].includes(role)) return true;
-      const client = clients.find((candidate) => candidate.id === clientId);
+      const client = ganttClients.find((candidate) => candidate.id === clientId);
       return Boolean(
         client &&
-          ((clientAssignees[clientId] ?? []).includes(user.id) ||
-            (clientPmAssignees[clientId] ?? []).includes(user.id) ||
-            (subitemAssignees[subitemId] ?? []).includes(user.id)),
+          ((ganttClientAssignees[clientId] ?? []).includes(user.id) ||
+            (ganttClientPmAssignees[clientId] ?? []).includes(user.id) ||
+            (ganttSubitemAssignees[subitemId] ?? []).includes(user.id)),
       );
     },
     [
-      clientAssignees,
-      clientPmAssignees,
-      clients,
       currentUserRole,
-      subitemAssignees,
+      ganttClientAssignees,
+      ganttClientPmAssignees,
+      ganttClients,
+      ganttSubitemAssignees,
       user?.id,
     ],
   );
+  const reloadGanttClients = useCallback(async () => {
+    // Keep this scope aligned with GanttChart's `orderedGroups` selection.
+    // Fetching it separately preserves CRM Board pagination while ensuring
+    // chart timelines are never limited to the Board's initial page.
+    const ganttGroups = groups.filter((group) =>
+      /^closed leads\b/i.test(group.name.trim()),
+    );
+    if (ganttGroups.length === 0) return;
+
+    const refreshSequence = ++ganttRefreshSequence.current;
+    setGanttClientsLoading(true);
+    try {
+      const clientPages = await Promise.all(
+        ganttGroups.map((group) => fetchClientsWithSubitems({ groupId: group.id })),
+      );
+      const nextClients = clientPages.flat();
+      const [assignmentMaps, nextSubitemAssignees] = await Promise.all([
+        fetchClientAssignmentMaps(nextClients.map((client) => client.id)),
+        fetchAllSubitemAssignees(
+          nextClients.flatMap((client) =>
+            client.subitems.map((subitem) => subitem.id),
+          ),
+        ),
+      ]);
+      if (refreshSequence !== ganttRefreshSequence.current) return;
+
+      setGanttClients(nextClients);
+      setGanttClientAssignees(assignmentMaps.people);
+      setGanttClientPmAssignees(assignmentMaps.pm);
+      setGanttSubitemAssignees(nextSubitemAssignees);
+    } catch (error) {
+      if (refreshSequence === ganttRefreshSequence.current) {
+        console.error("Failed to load Gantt chart clients", error);
+        toast.error("Could not load the Gantt chart", {
+          description: "Please try opening the chart again.",
+        });
+      }
+    } finally {
+      if (refreshSequence === ganttRefreshSequence.current)
+        setGanttClientsLoading(false);
+    }
+  }, [groups]);
   const openPaymentVoucherProject = useCallback(
     (clientId: string) => {
       openCrmRecord(clientId);
@@ -1012,14 +1071,14 @@ export default function Page() {
         toast.error("You can only edit items that are assigned to you");
         return;
       }
-      const client = clients.find((candidate) => candidate.id === clientId);
+      const client = ganttClients.find((candidate) => candidate.id === clientId);
       if (client?.customFields?.subitemsLocked === "true") {
         toast.error(
           "This client's subitems are locked. Check with the director if there are any changes",
         );
         return;
       }
-      setClients((current) =>
+      const applySubitemUpdate = (current: Client[]) =>
         current.map((candidate) =>
           candidate.id !== clientId
             ? candidate
@@ -1031,20 +1090,28 @@ export default function Page() {
                     : subitem,
                 ),
               },
-        ),
-      );
+        );
+      // Keep both panel snapshots consistent when the same client happens
+      // to be loaded by the CRM Board as well.
+      setGanttClients(applySubitemUpdate);
+      setClients(applySubitemUpdate);
       try {
         await updateSubitemRow(subitemId, updates);
       } catch (error) {
-        await reloadClients();
+        await reloadGanttClients();
         toast.error("Could not save the timeline update", {
           description:
             error instanceof Error ? error.message : "Please try again.",
         });
       }
     },
-    [canEditGanttSubitem, clients, reloadClients],
+    [canEditGanttSubitem, ganttClients, reloadGanttClients],
   );
+
+  useEffect(() => {
+    if (activePanel !== "ganttchart") return;
+    void reloadGanttClients();
+  }, [activePanel, reloadGanttClients]);
 
   useEffect(() => {
     const queryKey = JSON.stringify(boardQuery);
@@ -1338,16 +1405,16 @@ export default function Page() {
         return (
           <div className="h-full min-h-0 w-full text-sm text-gray-500">
             <GanttChart
-              clients={clients}
+              clients={ganttClients}
               groups={groups}
               profiles={profiles}
-              clientAssignees={clientAssignees}
-              clientPmAssignees={clientPmAssignees}
-              subitemAssignees={subitemAssignees}
+              clientAssignees={ganttClientAssignees}
+              clientPmAssignees={ganttClientPmAssignees}
+              subitemAssignees={ganttSubitemAssignees}
               onOpenClientTimeline={openGanttClientTimeline}
               onUpdateSubitem={updateGanttSubitem}
               canEditSubitem={canEditGanttSubitem}
-              isLoading={!clientsLoaded}
+              isLoading={ganttClientsLoading || groups.length === 0}
             />
           </div>
         );
