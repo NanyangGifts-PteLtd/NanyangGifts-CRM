@@ -540,7 +540,7 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
 
         <div className="relative mt-4 border border-gray-300 text-[11px]">
           <OcfFloatingInstruction side="right" step={3} className="top-1/2">
-            Please tick here if you have a strict Need By Date
+            [Optional] Please tick here if you have a strict Need By Date
           </OcfFloatingInstruction>
           <label className="flex w-full items-center justify-center gap-3 bg-[#eef2ff] px-4 py-3 font-semibold text-black">
             <input

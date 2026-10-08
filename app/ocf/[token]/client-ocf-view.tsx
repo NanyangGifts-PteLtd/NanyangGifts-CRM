@@ -493,7 +493,7 @@ export default function ClientOcfView({ ocf }: { ocf: Ocf }) {
 
         <div className="relative mt-4 border border-gray-300 text-sm">
           <OcfFloatingInstruction side="right" step={3} className="top-1/2">
-            Please tick here if you have a strict Need By Date
+            [Optional] Please tick here if you have a strict Need By Date
           </OcfFloatingInstruction>
           <label
             className={`flex w-full cursor-pointer items-center justify-center gap-3 px-4 py-3 font-semibold text-black ${isLocked ? "cursor-default bg-gray-100" : "bg-[#eef2ff] hover:bg-[#e4eaff]"}`}
