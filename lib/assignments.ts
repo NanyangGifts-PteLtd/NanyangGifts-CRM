@@ -148,10 +148,13 @@ async function logSubitemAssignmentChange(params: {
     if (error) throw error;
 }
 
-export async function fetchClientAssignmentMaps(): Promise<ClientAssignmentMaps> {
-    const { data, error } = await supabase
+export async function fetchClientAssignmentMaps(clientIds?: string[]): Promise<ClientAssignmentMaps> {
+    if (clientIds && clientIds.length === 0) return { people: {}, pm: {} };
+    let query = supabase
         .from('client_assignees')
         .select('client_id, user_id, assignment_type');
+    if (clientIds) query = query.in('client_id', clientIds);
+    const { data, error } = await query;
 
     if (error) throw error;
 

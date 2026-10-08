@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown, Plus, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronRight, Plus, Trash2 } from "lucide-react";
 
 export type AdvancedFilterCondition =
   | "is"
@@ -10,7 +10,11 @@ export type AdvancedFilterCondition =
   | "text is not"
   | "contains"
   | "does not contain"
-  | "starts with";
+  | "starts with"
+  | "is greater than"
+  | "is greater than or equal to"
+  | "is less than"
+  | "is less than or equal to";
 export type AdvancedFilterRule = {
   id: string;
   column: string;
@@ -23,9 +27,10 @@ export type AdvancedFilterColumn = {
   category:
     "Client" | "Subitem" | "Payment" | "Subpayment" | "Timeline" | "Sample";
   values: string[];
+  valueType?: "text" | "number" | "date";
   labelColors?: Record<string, string>;
 };
-const conditions: AdvancedFilterCondition[] = [
+const textConditions: AdvancedFilterCondition[] = [
   "is",
   "is not",
   "text is",
@@ -33,6 +38,14 @@ const conditions: AdvancedFilterCondition[] = [
   "contains",
   "does not contain",
   "starts with",
+];
+const numericConditions: AdvancedFilterCondition[] = [
+  "is",
+  "is not",
+  "is greater than",
+  "is greater than or equal to",
+  "is less than",
+  "is less than or equal to",
 ];
 
 function Combo({
@@ -42,6 +55,7 @@ function Combo({
   groups,
   disabled,
   labelColors,
+  inputMode,
   onChange,
 }: {
   value: string;
@@ -50,16 +64,53 @@ function Combo({
   groups?: boolean;
   disabled?: boolean;
   labelColors?: Record<string, string>;
+  inputMode?: "text" | "numeric";
   onChange: (value: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [typing, setTyping] = useState(false);
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
+    new Set(),
+  );
   const filtered = typing
     ? options.filter((option) =>
         option.label.toLowerCase().includes(value.toLowerCase()),
       )
     : options;
   const selectedLabelColor = labelColors?.[value];
+  const groupedOptions = Array.from(
+    filtered.reduce((groupMap, option) => {
+      const group = option.value.split(":")[0];
+      const entries = groupMap.get(group) ?? [];
+      entries.push(option);
+      groupMap.set(group, entries);
+      return groupMap;
+    }, new Map<string, typeof filtered>()),
+  );
+  const optionButton = (option: (typeof filtered)[number]) => (
+    <button
+      key={option.value}
+      type="button"
+      onMouseDown={(event) => event.preventDefault()}
+      onClick={() => {
+        setTyping(false);
+        onChange(option.value);
+        setOpen(false);
+      }}
+      className="block w-full rounded px-2 py-2 text-left text-sm text-slate-700 hover:bg-sky-50"
+    >
+      {labelColors?.[option.value] ? (
+        <span
+          className="inline-flex min-h-6 items-center rounded px-2 text-xs font-semibold text-white"
+          style={{ backgroundColor: labelColors[option.value] }}
+        >
+          {option.label}
+        </span>
+      ) : (
+        option.label
+      )}
+    </button>
+  );
   return (
     <div className="relative min-w-0 flex-1">
       <div
@@ -76,6 +127,7 @@ function Combo({
         <input
           disabled={disabled}
           value={value}
+          inputMode={inputMode}
           onFocus={() => {
             setTyping(false);
             setOpen(true);
@@ -106,39 +158,39 @@ function Combo({
       </div>
       {open && !disabled && (
         <div className="absolute left-0 top-full z-menu mt-1 max-h-64 w-full min-w-56 overflow-auto rounded-md border border-slate-200 bg-white p-1 shadow-xl">
-          {filtered.map((option, index) => (
-            <div key={option.value}>
-              {groups &&
-                (index === 0 ||
-                  option.value.split(":")[0] !==
-                    filtered[index - 1].value.split(":")[0]) && (
-                  <div className="px-2 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-                    {option.value.split(":")[0]}
+          {groups
+            ? groupedOptions.map(([group, groupOptions]) => {
+                const collapsed = collapsedGroups.has(group);
+                return (
+                  <div key={group}>
+                    <button
+                      type="button"
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() =>
+                        setCollapsedGroups((current) => {
+                          const next = new Set(current);
+                          if (next.has(group)) next.delete(group);
+                          else next.add(group);
+                          return next;
+                        })
+                      }
+                      className="mt-1 flex w-full items-center gap-2 border-t border-slate-100 px-2 py-2.5 text-left text-sm font-semibold uppercase tracking-wide text-slate-600 hover:bg-slate-50"
+                    >
+                      {collapsed ? (
+                        <ChevronRight size={15} />
+                      ) : (
+                        <ChevronDown size={15} />
+                      )}
+                      <span className="flex-1">{group}</span>
+                      <span className="text-xs font-normal text-slate-400">
+                        {groupOptions.length}
+                      </span>
+                    </button>
+                    {!collapsed && groupOptions.map(optionButton)}
                   </div>
-                )}
-              <button
-                type="button"
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={() => {
-                  setTyping(false);
-                  onChange(option.value);
-                  setOpen(false);
-                }}
-                className="block w-full rounded px-2 py-2 text-left text-sm text-slate-700 hover:bg-sky-50"
-              >
-                {labelColors?.[option.value] ? (
-                  <span
-                    className="inline-flex min-h-6 items-center rounded px-2 text-xs font-semibold text-white"
-                    style={{ backgroundColor: labelColors[option.value] }}
-                  >
-                    {option.label}
-                  </span>
-                ) : (
-                  option.label
-                )}
-              </button>
-            </div>
-          ))}
+                );
+              })
+            : filtered.map(optionButton)}
           {!filtered.length && (
             <p className="px-3 py-4 text-center text-xs text-slate-400">
               No matching options
@@ -198,6 +250,10 @@ export function AdvancedFilters({
           const selected = columns.find((column) => column.key === rule.column);
           const usesExactLabelMatch =
             rule.condition === "is" || rule.condition === "is not";
+          const isNumeric = selected?.valueType === "number";
+          const conditionOptions = isNumeric
+            ? numericConditions
+            : textConditions;
           return (
             <div key={rule.id} className="flex items-center gap-2">
               <div className="w-20 text-center text-sm text-slate-600">
@@ -237,7 +293,7 @@ export function AdvancedFilters({
                 disabled={!selected}
                 value={rule.condition}
                 placeholder="Condition"
-                options={conditions.map((condition) => ({
+                options={conditionOptions.map((condition) => ({
                   value: condition,
                   label: condition,
                 }))}
@@ -258,6 +314,7 @@ export function AdvancedFilters({
                 labelColors={
                   usesExactLabelMatch ? selected?.labelColors : undefined
                 }
+                inputMode={isNumeric ? "numeric" : "text"}
                 onChange={(value) => update(rule.id, { value })}
               />
               <button

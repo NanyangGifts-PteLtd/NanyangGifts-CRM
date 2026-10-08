@@ -12,7 +12,16 @@ import type {
   SearchResult,
   CRMGroup,
 } from "../../types";
-import { fetchClientsWithSubitems, updateSubitemRow } from "@/lib/crm";
+import {
+  fetchClientGroupPage,
+  fetchClientGroupCounts,
+  fetchCrmBoardQuickFilterCounts,
+  fetchClientsWithSubitems,
+  searchCrmClients,
+  type CrmBoardQuery,
+  type CrmQuickFilterCounts,
+  updateSubitemRow,
+} from "@/lib/crm";
 import { toast } from "sonner";
 import { CRMBoard } from "@/components/CRMBoard";
 import Sidebar, { type SidePanel } from "../../../components/Sidebar";
@@ -53,6 +62,42 @@ const PANEL_IDS: SidePanel[] = [
   "useradmin",
 ];
 
+type GroupPageState = Record<
+  string,
+  {
+    total: number;
+    hasMore: boolean;
+    loading: boolean;
+    loaded: boolean;
+    // This intentionally counts only rows received through the paged RPC.
+    // A client injected for universal-search navigation must not advance the
+    // next offset and cause a normal row to be skipped.
+    loadedCount: number;
+  }
+>;
+
+type BoardQuerySnapshot = {
+  clients: Client[];
+  groupPageState: GroupPageState;
+  quickFilterCounts: CrmQuickFilterCounts;
+  cachedAt: number;
+};
+
+const BOARD_QUERY_CACHE_TTL_MS = 2 * 60 * 1000;
+const BOARD_QUERY_CACHE_LIMIT = 12;
+const QUICK_FILTER_COUNTS_CACHE_TTL_MS = 60 * 1000;
+
+type QuickFilterCountsCache = {
+  data: CrmQuickFilterCounts;
+  cachedAt: number;
+};
+
+type SearchViewportAnchor = {
+  clientId: string;
+  top: number;
+  scrollTop: number;
+};
+
 function panelFromSearchParam(value: string | null): SidePanel | null {
   return PANEL_IDS.includes(value as SidePanel) ? (value as SidePanel) : null;
 }
@@ -76,6 +121,14 @@ export default function Page() {
   const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
   const [roleLoaded, setRoleLoaded] = useState(false);
   const [clientsLoaded, setClientsLoaded] = useState(false);
+  const [hasLoadedInitialClients, setHasLoadedInitialClients] =
+    useState(false);
+  const [boardQuery, setBoardQuery] = useState<CrmBoardQuery>({});
+  const [groupPageState, setGroupPageState] = useState<GroupPageState>({});
+  const [quickFilterCounts, setQuickFilterCounts] =
+    useState<CrmQuickFilterCounts>({});
+  const [quickFilterCountsLoading, setQuickFilterCountsLoading] =
+    useState(false);
   const [activePanel, setActivePanel] = useState<SidePanel>("crm");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [expandedClientIds, setExpandedClientIds] = useState<string[]>([]);
@@ -94,8 +147,103 @@ export default function Page() {
   const [labelOptionsVersion, setLabelOptionsVersion] = useState(0);
   const [groupVersion, setGroupVersion] = useState(0);
   const [roundRobinVersion, setRoundRobinVersion] = useState(0);
+  const mainScrollRef = useRef<HTMLElement | null>(null);
+  const searchViewportAnchorClientIdRef = useRef<string | null>(null);
   const reconciliationTimer = useRef<number | null>(null);
   const recordsRefreshSequence = useRef(0);
+  const boardQueryKeyRef = useRef(JSON.stringify({}));
+  // The requested query can change while rows from the previous query remain
+  // visible. Track their ownership separately so an in-flight transition can
+  // never cache those rows under the newly requested filter key.
+  const displayedBoardQueryKeyRef = useRef(JSON.stringify({}));
+  const boardQueryCacheRef = useRef(new Map<string, BoardQuerySnapshot>());
+  const skipBoardReloadForQueryKeyRef = useRef<string | null>(null);
+  // Quick-filter totals deliberately describe the whole board, not the
+  // current query. Keep their cache independent from the per-query board
+  // snapshots so changing a filter neither clears nor re-fetches them.
+  const quickFilterCountsCacheRef = useRef<QuickFilterCountsCache | null>(null);
+  const quickFilterCountsRequestRef = useRef<Promise<CrmQuickFilterCounts> | null>(
+    null,
+  );
+
+  const captureSearchViewportAnchor = useCallback((): SearchViewportAnchor | null => {
+    const clientId = searchViewportAnchorClientIdRef.current;
+    const scrollContainer = mainScrollRef.current;
+    if (!clientId || !scrollContainer) return null;
+
+    const target = document.querySelector<HTMLElement>(
+      `[data-client-id="${clientId}"]`,
+    );
+    if (!target) return null;
+
+    const targetRect = target.getBoundingClientRect();
+    const containerRect = scrollContainer.getBoundingClientRect();
+    // Do not pull a user back to a result they deliberately scrolled away
+    // from. Anchoring is only active while the result remains on screen.
+    if (
+      targetRect.bottom <= containerRect.top ||
+      targetRect.top >= containerRect.bottom
+    ) {
+      return null;
+    }
+
+    return {
+      clientId,
+      top: targetRect.top,
+      scrollTop: scrollContainer.scrollTop,
+    };
+  }, []);
+
+  const restoreSearchViewportAnchor = useCallback(
+    (anchor: SearchViewportAnchor | null) => {
+      if (!anchor) return;
+      window.requestAnimationFrame(() => {
+        const scrollContainer = mainScrollRef.current;
+        if (
+          !scrollContainer ||
+          searchViewportAnchorClientIdRef.current !== anchor.clientId ||
+          // A user scroll during the render window always wins over automatic
+          // viewport compensation.
+          Math.abs(scrollContainer.scrollTop - anchor.scrollTop) > 2
+        ) {
+          return;
+        }
+        const target = document.querySelector<HTMLElement>(
+          `[data-client-id="${anchor.clientId}"]`,
+        );
+        if (!target) return;
+        const displacement = target.getBoundingClientRect().top - anchor.top;
+        if (Math.abs(displacement) > 0.5) {
+          scrollContainer.scrollTop += displacement;
+        }
+      });
+    },
+    [],
+  );
+
+  const cacheBoardQuerySnapshot = useCallback(
+    (queryKey: string, snapshot: Omit<BoardQuerySnapshot, "cachedAt">) => {
+      const cache = boardQueryCacheRef.current;
+      const settledGroupPageState = Object.fromEntries(
+        Object.entries(snapshot.groupPageState).map(([groupId, state]) => [
+          groupId,
+          { ...state, loading: false },
+        ]),
+      );
+      cache.delete(queryKey);
+      cache.set(queryKey, {
+        ...snapshot,
+        groupPageState: settledGroupPageState,
+        cachedAt: Date.now(),
+      });
+      while (cache.size > BOARD_QUERY_CACHE_LIMIT) {
+        const oldestKey = cache.keys().next().value as string | undefined;
+        if (!oldestKey) break;
+        cache.delete(oldestKey);
+      }
+    },
+    [],
+  );
 
   const pushAppUrl = useCallback((params: URLSearchParams) => {
     const query = params.toString();
@@ -295,10 +443,33 @@ export default function Page() {
   );
 
   const selectSearchResult = useCallback(
-    (result: SearchResult) => {
+    async (result: SearchResult) => {
       // currently setting to CRM panel since only CRM panel has search results, change in the future when other panels have search results
+      // Retain this independently from the brief highlight state. It lets
+      // paged rows insert in their real order without moving a visible search
+      // result out from under a person who is editing it.
+      searchViewportAnchorClientIdRef.current = result.clientId;
       openCrmRecord(result.clientId, result.subitemId);
-      const client = clients.find((item) => item.id === result.clientId);
+      let client = clients.find((item) => item.id === result.clientId);
+      if (!client) {
+        try {
+          const [hydratedClient] = await fetchClientsWithSubitems({
+            clientIds: [result.clientId],
+          });
+          if (hydratedClient) {
+            client = hydratedClient;
+            setClients((current) =>
+              current.some((item) => item.id === hydratedClient.id)
+                ? current
+                : [...current, hydratedClient],
+            );
+          }
+        } catch (error) {
+          console.error("Failed to load universal-search result", error);
+          toast.error("Could not load the selected search result");
+          return;
+        }
+      }
       if (
         client &&
         result.subitemId &&
@@ -309,6 +480,11 @@ export default function Page() {
       setSearchTarget(result);
     },
     [clients, expandedClientIds, openCrmRecord],
+  );
+
+  const searchAllCrmRecords = useCallback(
+    (query: string) => searchCrmClients(query),
+    [],
   );
 
   const openGanttClientTimeline = useCallback(
@@ -393,12 +569,63 @@ export default function Page() {
     const refreshSequence = ++recordsRefreshSequence.current;
     const writeRevisionAtStart = getBoardWriteRevision();
     try {
-      const [rows, clientAssignmentMaps, subitemAssigneeMap] =
-        await Promise.all([
-          fetchClientsWithSubitems(),
-          fetchClientAssignmentMaps(),
-          fetchAllSubitemAssignees(),
+      // Quick-filter badges are intentionally global reference totals. They
+      // do not change with the active search/filter context.
+      const cachedQuickFilterCounts = quickFilterCountsCacheRef.current;
+      const hasFreshQuickFilterCounts =
+        cachedQuickFilterCounts !== null &&
+        Date.now() - cachedQuickFilterCounts.cachedAt <
+          QUICK_FILTER_COUNTS_CACHE_TTL_MS;
+      const quickFilterCountsForSnapshot = cachedQuickFilterCounts?.data ?? {};
+
+      if (cachedQuickFilterCounts) {
+        setQuickFilterCounts(cachedQuickFilterCounts.data);
+      }
+      // Keep existing totals visible while a background refresh is underway.
+      // The indicator is only useful before the first global result exists.
+      setQuickFilterCountsLoading(!cachedQuickFilterCounts);
+
+      const quickFilterCountsPromise = hasFreshQuickFilterCounts
+        ? Promise.resolve(cachedQuickFilterCounts.data)
+        : (quickFilterCountsRequestRef.current ??
+          (() => {
+            const request = fetchCrmBoardQuickFilterCounts()
+              .then((counts) => {
+                quickFilterCountsCacheRef.current = {
+                  data: counts,
+                  cachedAt: Date.now(),
+                };
+                return counts;
+              })
+              .catch((error) => {
+                console.warn("Could not load full CRM quick-filter counts", error);
+                return quickFilterCountsCacheRef.current?.data ?? {};
+              })
+              .finally(() => {
+                quickFilterCountsRequestRef.current = null;
+              });
+            quickFilterCountsRequestRef.current = request;
+            return request;
+          })());
+      const [initialPage, groupCounts] = await Promise.all([
+          Object.keys(boardQuery).length
+            ? fetchClientGroupPage(null, 0, 30, boardQuery)
+            : fetchClientsWithSubitems({
+                limit: 30,
+                excludeGroupNames: ["Failed", "Unqualified Lead", "To Delete"],
+              }).then((clients) => ({ clients })),
+          fetchClientGroupCounts(boardQuery),
         ]);
+      const rows = initialPage.clients;
+      // Only hydrate assignment data used by this result page. Fetching every
+      // client/subitem assignment on each query made board searches feel like
+      // full-board refreshes.
+      const [clientAssignmentMaps, subitemAssigneeMap] = await Promise.all([
+        fetchClientAssignmentMaps(rows.map((client) => client.id)),
+        fetchAllSubitemAssignees(
+          rows.flatMap((client) => client.subitems.map((subitem) => subitem.id)),
+        ),
+      ]);
 
       // Never allow an older or edit-stale request to install its snapshot.
       // A fresh reconciliation will pick up both the latest local write and
@@ -463,28 +690,85 @@ export default function Page() {
         return [...reconciledClients, ...protectedLocalOnly];
       });
       setClientAssignees((current) => {
-        const next = { ...clientAssignmentMaps.people };
+        const next = { ...current, ...clientAssignmentMaps.people };
+        const loadedClientIds = new Set(rows.map((client) => client.id));
+        for (const clientId of loadedClientIds) {
+          if (clientAssignmentMaps.people[clientId])
+            next[clientId] = clientAssignmentMaps.people[clientId];
+          else delete next[clientId];
+        }
         for (const [clientId, ids] of Object.entries(current)) {
           if (isBoardRecordProtected("client", clientId)) next[clientId] = ids;
         }
         return next;
       });
       setClientPmAssignees((current) => {
-        const next = { ...clientAssignmentMaps.pm };
+        const next = { ...current, ...clientAssignmentMaps.pm };
+        const loadedClientIds = new Set(rows.map((client) => client.id));
+        for (const clientId of loadedClientIds) {
+          if (clientAssignmentMaps.pm[clientId])
+            next[clientId] = clientAssignmentMaps.pm[clientId];
+          else delete next[clientId];
+        }
         for (const [clientId, ids] of Object.entries(current)) {
           if (isBoardRecordProtected("client", clientId)) next[clientId] = ids;
         }
         return next;
       });
       setSubitemAssignees((current) => {
-        const next = { ...subitemAssigneeMap };
+        const next = { ...current, ...subitemAssigneeMap };
+        const loadedSubitemIds = new Set(
+          rows.flatMap((client) => client.subitems.map((subitem) => subitem.id)),
+        );
+        for (const subitemId of loadedSubitemIds) {
+          if (subitemAssigneeMap[subitemId])
+            next[subitemId] = subitemAssigneeMap[subitemId];
+          else delete next[subitemId];
+        }
         for (const [subitemId, ids] of Object.entries(current)) {
           if (isBoardRecordProtected("subitem", subitemId))
             next[subitemId] = ids;
         }
         return next;
       });
+      const nextGroupPageState: GroupPageState = Object.fromEntries(
+        Object.entries(groupCounts).map(([groupId, total]) => [
+          groupId,
+          {
+            total,
+            hasMore:
+              rows.filter((client) => client.groupId === groupId).length <
+              total,
+            loading: false,
+            loaded: false,
+            loadedCount: 0,
+          },
+        ]),
+      );
       setClientsLoaded(true);
+      setHasLoadedInitialClients(true);
+      setGroupPageState(nextGroupPageState);
+      const resolvedQueryKey = JSON.stringify(boardQuery);
+      displayedBoardQueryKeyRef.current = resolvedQueryKey;
+      cacheBoardQuerySnapshot(resolvedQueryKey, {
+        clients: rows,
+        groupPageState: nextGroupPageState,
+        quickFilterCounts: quickFilterCountsForSnapshot,
+      });
+      void quickFilterCountsPromise.then((nextQuickFilterCounts) => {
+        if (
+          refreshSequence !== recordsRefreshSequence.current ||
+          displayedBoardQueryKeyRef.current !== resolvedQueryKey
+        )
+          return;
+        setQuickFilterCounts(nextQuickFilterCounts);
+        setQuickFilterCountsLoading(false);
+        cacheBoardQuerySnapshot(resolvedQueryKey, {
+          clients: rows,
+          groupPageState: nextGroupPageState,
+          quickFilterCounts: nextQuickFilterCounts,
+        });
+      });
       if (protectionDelay > 0) {
         if (reconciliationTimer.current !== null)
           window.clearTimeout(reconciliationTimer.current);
@@ -497,9 +781,209 @@ export default function Page() {
         );
       }
     } catch (error) {
+      setQuickFilterCountsLoading(false);
       console.error("Failed to load clients", error);
     }
-  }, []);
+  }, [boardQuery, cacheBoardQuerySnapshot]);
+
+  const handleServerQueryChange = useCallback(
+    (query: CrmBoardQuery) => {
+      const queryKey = JSON.stringify(query);
+      if (boardQueryKeyRef.current === queryKey) return;
+
+      if (clientsLoaded) {
+        cacheBoardQuerySnapshot(displayedBoardQueryKeyRef.current, {
+          clients,
+          groupPageState,
+          quickFilterCounts,
+        });
+      }
+
+      const cached = boardQueryCacheRef.current.get(queryKey);
+      const cacheIsFresh =
+        cached && Date.now() - cached.cachedAt < BOARD_QUERY_CACHE_TTL_MS;
+      boardQueryKeyRef.current = queryKey;
+      if (cacheIsFresh) {
+        skipBoardReloadForQueryKeyRef.current = queryKey;
+        displayedBoardQueryKeyRef.current = queryKey;
+        setClients(cached.clients);
+        setGroupPageState(cached.groupPageState);
+        // Per-query snapshots created before the first facet response may
+        // contain an empty placeholder. Prefer the independent global cache
+        // when restoring a board context so these totals never flicker to 0.
+        setQuickFilterCounts(
+          quickFilterCountsCacheRef.current?.data ?? cached.quickFilterCounts,
+        );
+        setQuickFilterCountsLoading(false);
+        setClientsLoaded(true);
+      } else {
+        setClientsLoaded(false);
+        // Keep the current snapshot visible while the first request for this
+        // query runs. Clearing this state made every group count flash to zero.
+      }
+      setExpandedClientIds([]);
+      setBoardQuery(query);
+    },
+    [
+      cacheBoardQuerySnapshot,
+      clients,
+      clientsLoaded,
+      groupPageState,
+      quickFilterCounts,
+    ],
+  );
+
+  const mergeAssignmentDataForClients = useCallback(
+    async (rows: Client[]) => {
+      const [assignmentMaps, nextSubitemAssignees] = await Promise.all([
+        fetchClientAssignmentMaps(rows.map((client) => client.id)),
+        fetchAllSubitemAssignees(
+          rows.flatMap((client) =>
+            client.subitems.map((subitem) => subitem.id),
+          ),
+        ),
+      ]);
+      setClientAssignees((current) => {
+        const next = { ...current };
+        for (const client of rows) {
+          if (assignmentMaps.people[client.id])
+            next[client.id] = assignmentMaps.people[client.id];
+          else delete next[client.id];
+        }
+        return next;
+      });
+      setClientPmAssignees((current) => {
+        const next = { ...current };
+        for (const client of rows) {
+          if (assignmentMaps.pm[client.id])
+            next[client.id] = assignmentMaps.pm[client.id];
+          else delete next[client.id];
+        }
+        return next;
+      });
+      setSubitemAssignees((current) => {
+        const next = { ...current };
+        for (const client of rows) {
+          for (const subitem of client.subitems) {
+            if (nextSubitemAssignees[subitem.id])
+              next[subitem.id] = nextSubitemAssignees[subitem.id];
+            else delete next[subitem.id];
+          }
+        }
+        return next;
+      });
+    },
+    [],
+  );
+
+  const loadMoreClientsForGroup = useCallback(async (groupId: string) => {
+    if (groupPageState[groupId]?.loading || groupPageState[groupId]?.hasMore === false)
+      return;
+    const offset = groupPageState[groupId]?.loaded
+      ? groupPageState[groupId]?.loadedCount ?? 0
+      : 0;
+    setGroupPageState((current) => ({
+      ...current,
+      [groupId]: {
+        total: current[groupId]?.total ?? 0,
+        hasMore: current[groupId]?.hasMore ?? true,
+        loading: true,
+        loaded: current[groupId]?.loaded ?? false,
+        loadedCount: current[groupId]?.loadedCount ?? 0,
+      },
+    }));
+    try {
+      const page = await fetchClientGroupPage(groupId, offset, 30, boardQuery);
+      await mergeAssignmentDataForClients(page.clients);
+      const viewportAnchor = captureSearchViewportAnchor();
+      setClients((current) => {
+        const knownIds = new Set(current.map((client) => client.id));
+        return [...current, ...page.clients.filter((client) => !knownIds.has(client.id))];
+      });
+      restoreSearchViewportAnchor(viewportAnchor);
+      setGroupPageState((current) => ({
+        ...current,
+        [groupId]: {
+          total: page.total,
+          hasMore: page.hasMore,
+          loading: false,
+          loaded: true,
+          loadedCount: page.nextOffset,
+        },
+      }));
+    } catch (error) {
+      console.error("Failed to load more CRM clients", error);
+      setGroupPageState((current) => ({
+        ...current,
+        [groupId]: { ...current[groupId], loading: false },
+      }));
+    }
+  }, [
+    boardQuery,
+    captureSearchViewportAnchor,
+    groupPageState,
+    mergeAssignmentDataForClients,
+    restoreSearchViewportAnchor,
+  ]);
+
+  const primeClientPagesForGroup = useCallback(async (groupId: string) => {
+    if (groupPageState[groupId]?.loading || groupPageState[groupId]?.hasMore === false)
+      return;
+    let offset = groupPageState[groupId]?.loaded
+      ? groupPageState[groupId]?.loadedCount ?? 0
+      : 0;
+    setGroupPageState((current) => ({
+      ...current,
+      [groupId]: {
+        total: current[groupId]?.total ?? 0,
+        hasMore: current[groupId]?.hasMore ?? true,
+        loading: true,
+        loaded: current[groupId]?.loaded ?? false,
+        loadedCount: current[groupId]?.loadedCount ?? 0,
+      },
+    }));
+    try {
+      // On first expansion load the visible page plus two pages ahead. Once
+      // a group is already active, replenish two pages ahead of the scroll
+      // position whenever its sentinel becomes visible.
+      const pagesToFetch = groupPageState[groupId]?.loaded ? 2 : 3;
+      for (let pageNumber = 0; pageNumber < pagesToFetch; pageNumber += 1) {
+        const page = await fetchClientGroupPage(groupId, offset, 30, boardQuery);
+        await mergeAssignmentDataForClients(page.clients);
+        const viewportAnchor = captureSearchViewportAnchor();
+        setClients((current) => {
+          const knownIds = new Set(current.map((client) => client.id));
+          return [...current, ...page.clients.filter((client) => !knownIds.has(client.id))];
+        });
+        restoreSearchViewportAnchor(viewportAnchor);
+        offset = page.nextOffset;
+        setGroupPageState((current) => ({
+          ...current,
+          [groupId]: {
+            total: page.total,
+            hasMore: page.hasMore,
+            loading: page.hasMore && pageNumber < pagesToFetch - 1,
+            loaded: true,
+            loadedCount: page.nextOffset,
+          },
+        }));
+        if (!page.hasMore) break;
+      }
+    } catch (error) {
+      console.error("Failed to prefetch CRM group pages", error);
+    } finally {
+      setGroupPageState((current) => ({
+        ...current,
+        [groupId]: { ...current[groupId], loading: false },
+      }));
+    }
+  }, [
+    boardQuery,
+    captureSearchViewportAnchor,
+    groupPageState,
+    mergeAssignmentDataForClients,
+    restoreSearchViewportAnchor,
+  ]);
 
   const updateGanttSubitem = useCallback(
     async (clientId: string, subitemId: string, updates: Partial<Subitem>) => {
@@ -542,8 +1026,13 @@ export default function Page() {
   );
 
   useEffect(() => {
+    const queryKey = JSON.stringify(boardQuery);
+    if (skipBoardReloadForQueryKeyRef.current === queryKey) {
+      skipBoardReloadForQueryKeyRef.current = null;
+      return;
+    }
     void reloadClients();
-  }, [reloadClients]);
+  }, [boardQuery, reloadClients]);
 
   useEffect(() => {
     if (searchParams.get("panel") !== "crm" || !clientsLoaded) return;
@@ -793,7 +1282,20 @@ export default function Page() {
             setExpandedIds={setExpandedClientIds}
             setClients={setClients}
             reloadClients={reloadClients}
-            clientsLoaded={clientsLoaded}
+            // Group headers should only show their large loading treatment on
+            // the first-ever board load. Subsequent filter/search queries use
+            // the compact search-control indicator instead.
+            clientsLoaded={clientsLoaded || hasLoadedInitialClients}
+            boardQueryLoading={!clientsLoaded}
+            hasMoreBoardQueryResults={Object.values(groupPageState).some(
+              (state) => state.hasMore || state.loading,
+            )}
+            groupPageState={groupPageState}
+            quickFilterCounts={quickFilterCounts}
+            quickFilterCountsLoading={quickFilterCountsLoading}
+            onLoadMoreGroup={loadMoreClientsForGroup}
+            onPrimeGroup={primeClientPagesForGroup}
+            onServerQueryChange={handleServerQueryChange}
             search={search}
             currentUserRole={currentUserRole}
             clientAssignees={clientAssignees}
@@ -957,10 +1459,11 @@ export default function Page() {
           clientPmAssignees={clientPmAssignees}
           subitemAssignees={subitemAssignees}
           profiles={profiles}
+          searchClients={searchAllCrmRecords}
           onSelectSearchResult={selectSearchResult}
         />
 
-        <main className="min-h-0 flex-1 overflow-auto">
+        <main ref={mainScrollRef} className="min-h-0 flex-1 overflow-auto">
           {renderPanel()}
         </main>
       </div>

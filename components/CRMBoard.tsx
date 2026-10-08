@@ -81,6 +81,8 @@ import {
   restoreClientRow,
   restoreSubitemRow,
   type DeletedBinItem,
+  type CrmBoardQuery,
+  type CrmQuickFilterCounts,
 } from "@/lib/crm";
 import { fetchClientAssignmentMaps } from "@/lib/assignments";
 import { GenerateOcfModal } from "./Generate-OCF-Modal";
@@ -448,6 +450,23 @@ interface CRMBoardProps {
   setClients: React.Dispatch<React.SetStateAction<Client[]>>;
   reloadClients: () => Promise<void>;
   clientsLoaded?: boolean;
+  boardQueryLoading?: boolean;
+  hasMoreBoardQueryResults?: boolean;
+  groupPageState?: Record<
+    string,
+    {
+      total: number;
+      hasMore: boolean;
+      loading: boolean;
+      loaded: boolean;
+      loadedCount: number;
+    }
+  >;
+  quickFilterCounts?: CrmQuickFilterCounts;
+  quickFilterCountsLoading?: boolean;
+  onLoadMoreGroup?: (groupId: string) => Promise<void> | void;
+  onPrimeGroup?: (groupId: string) => Promise<void> | void;
+  onServerQueryChange?: (query: CrmBoardQuery) => void;
   search?: string;
   currentUserRole?: string | null;
   clientAssignees: ClientAssigneeMap;
@@ -577,11 +596,16 @@ const AddClientInput = React.memo(function AddClientInput({
   );
 });
 
-export async function fetchAllSubitemAssignees(): Promise<SubitemAssigneeMap> {
+export async function fetchAllSubitemAssignees(
+  subitemIds?: string[],
+): Promise<SubitemAssigneeMap> {
+  if (subitemIds && subitemIds.length === 0) return {};
   const supabase = createSupabaseClient();
-  const { data } = await supabase
+  let query = supabase
     .from("subitem_assignees")
     .select("subitem_id, user_id");
+  if (subitemIds) query = query.in("subitem_id", subitemIds);
+  const { data } = await query;
   return (data ?? []).reduce((acc, row) => {
     acc[row.subitem_id] = [...(acc[row.subitem_id] ?? []), row.user_id];
     return acc;
@@ -618,6 +642,47 @@ function localClientDuplicate(
   };
 }
 
+function GroupPageSentinel({
+  loading,
+  onVisible,
+  minWidth,
+}: {
+  loading: boolean;
+  onVisible: () => void;
+  minWidth: number;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const element = ref.current;
+    if (!element || loading) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting) onVisible();
+      },
+      { rootMargin: "180px 0px" },
+    );
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [loading, onVisible]);
+  return (
+    <div
+      ref={ref}
+      role="status"
+      className="flex items-start justify-start border-b border-[#D0D4E4] bg-white p-4 text-xs text-slate-500"
+      style={{ minWidth, minHeight: "calc(100vh - 180px)" }}
+    >
+      {loading ? (
+        <span className="inline-flex items-center gap-2">
+          <LoaderCircle size={14} className="animate-spin" />
+          Loading more clients…
+        </span>
+      ) : (
+        "Loading more clients…"
+      )}
+    </div>
+  );
+}
+
 function groupAccentColor(group: CRMGroup) {
   const name = group.name.trim().toLowerCase();
   if (name.startsWith("closed leads")) return "#ef3f5a";
@@ -636,6 +701,14 @@ export function CRMBoard({
   setClients,
   reloadClients,
   clientsLoaded = true,
+  boardQueryLoading = false,
+  hasMoreBoardQueryResults = false,
+  groupPageState = {},
+  quickFilterCounts = {},
+  quickFilterCountsLoading = false,
+  onLoadMoreGroup,
+  onPrimeGroup,
+  onServerQueryChange,
   search = "",
   currentUserRole,
   clientAssignees,
@@ -674,11 +747,17 @@ export function CRMBoard({
   const [boardSearchColumns, setBoardSearchColumns] = useState<Set<string>>(
     new Set(),
   );
+  const [collapsedSearchColumnGroups, setCollapsedSearchColumnGroups] =
+    useState<Set<string>>(new Set());
   const [boardSearchColumnQuery, setBoardSearchColumnQuery] = useState("");
   const searchCollapsedGroupsRef = useRef<Record<string, boolean> | null>(null);
   const boardSearchRef = useRef<HTMLDivElement>(null);
   const boardSearchInputRef = useRef<HTMLInputElement>(null);
   const boardSearchDebounceRef = useRef<number | null>(null);
+  const lastServerQueryRef = useRef<string>("");
+  const pendingBoardQuerySourceRef = useRef<
+    "person" | "filter" | "other"
+  >("other");
   const [showPeopleFilter, setShowPeopleFilter] = useState(false);
   const [peopleFilterSearch, setPeopleFilterSearch] = useState("");
   const [filterImportance, setFilterImportance] = useState("All");
@@ -4738,6 +4817,40 @@ export function CRMBoard({
         return labelColors(paymentReceivedEntries);
       return undefined;
     };
+    const numericClientKeys = new Set(["totalPrice", "totalMarkup"]);
+    const numericSubitemKeys = new Set([
+      "qty", "cost", "cSgd", "tcSgd", "manpower", "ls", "os", "tc",
+      "uc", "pl", "sl", "leadTime", "price", "up", "markup",
+      "percentMarkup", "idealMarkup", "priceToSet", "totalUc", "totalC",
+      "quantityProduced", "qtyFree", "qtyTotal", "qtyWeKeep", "qtyFor",
+      "sample", "totalToPay", "paymentAmount", "difference",
+    ]);
+    const dateKeys = new Set([
+      "dateCreated", "followUp", "nbd", "closedDate", "timelineStart",
+      "timelineEnd", "returnByDate", "returnedDate", "sentDate",
+    ]);
+    const valueTypeFor = (
+      category: string,
+      key: string,
+      fieldType?: "text" | "number" | "date",
+    ): AdvancedFilterColumn["valueType"] => {
+      if (fieldType) return fieldType;
+      if (dateKeys.has(key)) return "date";
+      if (
+        numericClientKeys.has(key) ||
+        numericSubitemKeys.has(key) ||
+        (category === "subpayment" && key === "amount") ||
+        (category === "timeline" && key === "duration")
+      )
+        return "number";
+      return "text";
+    };
+    const customColumnValueType = (
+      value: unknown,
+    ): AdvancedFilterColumn["valueType"] =>
+      value === "text" || value === "number" || value === "date"
+        ? value
+        : undefined;
     const clientValue = (client: Client, key: string): unknown => {
       if (key === "client") return client.name;
       if (key === "people") return clientPeopleIds(client).map(profileName);
@@ -4827,6 +4940,7 @@ export function CRMBoard({
           clients.map((client) => clientValue(client, column.key)),
         ),
         labelColors: labelColorsFor("client", column.key),
+        valueType: valueTypeFor("client", column.key, column.field_type),
       }));
     // Display IDs are intentionally separate search/filter fields. Unlike
     // database UUIDs, they are staff-facing values and must remain available
@@ -4837,6 +4951,7 @@ export function CRMBoard({
         label: "Client ID",
         category: "Client",
         values: unique(clients.map((client) => client.displayId)),
+        valueType: "text" as const,
       },
       {
         key: "subitem:displayId",
@@ -4847,6 +4962,7 @@ export function CRMBoard({
             client.subitems.map((subitem) => subitem.displayId),
           ),
         ),
+        valueType: "text" as const,
       },
     ];
     const allSubitemColumns = [
@@ -4856,6 +4972,7 @@ export function CRMBoard({
         label: column.name,
         width: 120,
         minWidth: 80,
+        field_type: column.field_type,
       })),
     ];
     const subitemColumns = allSubitemColumns.map((column) => ({
@@ -4868,6 +4985,13 @@ export function CRMBoard({
         ),
       ),
       labelColors: labelColorsFor("subitem", column.key),
+      valueType: valueTypeFor(
+        "subitem",
+        column.key,
+        customColumnValueType(
+          "field_type" in column ? column.field_type : undefined,
+        ),
+      ),
     }));
     const paymentColumns = PAYMENT_COLS.map((column) => ({
       key: `payment:${column.key}`,
@@ -4879,6 +5003,7 @@ export function CRMBoard({
         ),
       ),
       labelColors: labelColorsFor("payment", column.key),
+      valueType: valueTypeFor("payment", column.key),
     }));
     const subpaymentColumns = SUBPAYMENT_SEARCH_COLS.map((column) => ({
       key: `subpayment:${column.key}`,
@@ -4907,6 +5032,7 @@ export function CRMBoard({
         ),
       ),
       labelColors: labelColorsFor("subpayment", column.key),
+      valueType: valueTypeFor("subpayment", column.key),
     }));
     const timelineColumns = TIMELINE_SEARCH_COLS.map((column) => ({
       key: `timeline:${column.key}`,
@@ -4923,6 +5049,7 @@ export function CRMBoard({
           ),
         ),
       ),
+      valueType: valueTypeFor("timeline", column.key),
     }));
     const sampleColumns = SAMPLE_SEARCH_COLS.map((column) => ({
       key: `sample:${column.key}`,
@@ -4939,6 +5066,7 @@ export function CRMBoard({
           ),
         ),
       ),
+      valueType: valueTypeFor("sample", column.key),
     }));
     return [
       ...clientColumns,
@@ -5095,6 +5223,37 @@ export function CRMBoard({
       }
       const query = rule.value.trim().toLowerCase();
       const tests = values.map((value) => String(value ?? "").toLowerCase());
+      const numericQuery = Number(rule.value.replace(/,/g, "").trim());
+      const numericTests = values
+        .map((value) => String(value ?? "").replace(/,/g, "").trim())
+        .filter((value) => value !== "")
+        .map(Number)
+        .filter((value) => Number.isFinite(value));
+      const isNumericRule =
+        advancedColumns.find((column) => column.key === rule.column)
+          ?.valueType === "number";
+      if (!Number.isFinite(numericQuery) &&
+        [
+          "is greater than",
+          "is greater than or equal to",
+          "is less than",
+          "is less than or equal to",
+        ].includes(rule.condition))
+        return false;
+      if (rule.condition === "is greater than")
+        return numericTests.some((value) => value > numericQuery);
+      if (rule.condition === "is greater than or equal to")
+        return numericTests.some((value) => value >= numericQuery);
+      if (rule.condition === "is less than")
+        return numericTests.some((value) => value < numericQuery);
+      if (rule.condition === "is less than or equal to")
+        return numericTests.some((value) => value <= numericQuery);
+      if (isNumericRule && rule.condition === "is")
+        return Number.isFinite(numericQuery) &&
+          numericTests.some((value) => value === numericQuery);
+      if (isNumericRule && rule.condition === "is not")
+        return Number.isFinite(numericQuery) &&
+          numericTests.every((value) => value !== numericQuery);
       if (rule.condition === "is" || rule.condition === "text is")
         return tests.some((value) => value === query);
       if (rule.condition === "is not" || rule.condition === "text is not")
@@ -5291,6 +5450,9 @@ export function CRMBoard({
   const optionIdForValue = (options: OptionEntry[], value: string) =>
     options.find((option) => option.value === value)?.id ?? null;
   const displayedClients = clients.filter((client) => {
+    // A universal-search selection must remain navigable even when the board
+    // is currently narrowed by an unrelated board search or quick filter.
+    if (searchTarget?.clientId === client.id) return true;
     const matchesStatus =
       filterStatus === "All" ||
       client.statusOptionId ===
@@ -5395,6 +5557,192 @@ export function CRMBoard({
   )
     ? boardSort
     : DEFAULT_BOARD_SORT;
+  const activeBoardSortFieldType = (() => {
+    const definition = selectedSortColumns.find(
+      (column) => column.key === activeBoardSort.column,
+    );
+    return definition && "field_type" in definition
+      ? definition.field_type
+      : undefined;
+  })();
+
+  // Keep pagination authoritative for search, filters and client ordering.
+  // Nested subitem/payment ordering still happens after hydration because it
+  // orders rows within each returned client rather than the client page.
+  useEffect(() => {
+    if (!onServerQueryChange) return;
+    const populatedRules = advancedRules
+      .filter((rule) => rule.column && rule.condition && rule.value.trim())
+      .map(({ column, condition, value }) => ({
+        column,
+        condition,
+        value: value.trim(),
+        valueType:
+          advancedColumns.find((definition) => definition.key === column)
+            ?.valueType ?? "text",
+      }));
+    const selectedSearchColumns = boardSearchAllColumns
+      ? []
+      : [
+          ...selectedBoardSearchColumns(
+            false,
+            boardSearchColumns,
+            advancedColumns,
+          ),
+        ].sort();
+    const sortValueType: CrmBoardQuery["sortValueType"] = [
+      "totalPrice",
+      "totalMarkup",
+    ].includes(activeBoardSort.column)
+      ? "number"
+      : ["dateCreated", "followUp", "nbd", "closedDate"].includes(
+            activeBoardSort.column,
+          ) || activeBoardSortFieldType === "date"
+        ? "date"
+        : activeBoardSortFieldType === "number"
+          ? "number"
+          : "text";
+    const query: CrmBoardQuery = {
+      ...(boardSearchTerm.trim()
+        ? {
+            search: boardSearchTerm.trim(),
+            searchColumns: selectedSearchColumns,
+          }
+        : {}),
+      ...(activeBoardSort.category !== DEFAULT_BOARD_SORT.category ||
+      activeBoardSort.column !== DEFAULT_BOARD_SORT.column ||
+      activeBoardSort.direction !== DEFAULT_BOARD_SORT.direction
+        ? {
+            sortCategory: activeBoardSort.category,
+            sortColumn: activeBoardSort.column,
+            sortValueType,
+            sortDirection: activeBoardSort.direction,
+          }
+        : {}),
+      ...(populatedRules.length
+        ? { advancedRules: populatedRules, advancedJoin }
+        : {}),
+      ...(filterStatus === "All"
+        ? {}
+        : {
+            statusOptionId: optionIdForValue(
+              clientStatusEntries,
+              filterStatus,
+            ),
+          }),
+      ...(filterImportance === "All"
+        ? {}
+        : {
+            importanceOptionId: optionIdForValue(
+              importanceEntries,
+              filterImportance,
+            ),
+          }),
+      ...(filterReplyStatus === "All"
+        ? {}
+        : {
+            replyStatusOptionId: optionIdForValue(
+              replyStatusEntries,
+              filterReplyStatus,
+            ),
+          }),
+      ...(filterChannel === "All"
+        ? {}
+        : {
+            channelOptionId: optionIdForValue(channelEntries, filterChannel),
+          }),
+      ...(filterSubitemStatus === "All"
+        ? {}
+        : {
+            subitemStatusOptionId: optionIdForValue(
+              subitemStatusEntries,
+              filterSubitemStatus,
+            ),
+          }),
+      ...(filterPayment === "All"
+        ? {}
+        : {
+            paymentOptionId: optionIdForValue(paymentEntries, filterPayment),
+          }),
+      ...(filterPaymentStatus === "All"
+        ? {}
+        : {
+            paymentStatusOptionId: optionIdForValue(
+              paymentStatusEntries,
+              filterPaymentStatus,
+            ),
+          }),
+      ...(filterSubprogress === "All"
+        ? {}
+        : {
+            subprogressOptionId: optionIdForValue(
+              subitemSubprogressEntries,
+              filterSubprogress,
+            ),
+          }),
+      ...(filterPeople === "All" ? {} : { personId: filterPeople }),
+    };
+    const serializedQuery = JSON.stringify(query);
+    if (lastServerQueryRef.current === serializedQuery) return;
+
+    const timer = window.setTimeout(() => {
+      let previousQuery: CrmBoardQuery = {};
+      try {
+        previousQuery = lastServerQueryRef.current
+          ? (JSON.parse(lastServerQueryRef.current) as CrmBoardQuery)
+          : {};
+      } catch {}
+      const filterShape = (value: CrmBoardQuery) => ({
+        advancedRules: value.advancedRules,
+        advancedJoin: value.advancedJoin,
+        statusOptionId: value.statusOptionId,
+        importanceOptionId: value.importanceOptionId,
+        replyStatusOptionId: value.replyStatusOptionId,
+        channelOptionId: value.channelOptionId,
+        subitemStatusOptionId: value.subitemStatusOptionId,
+        paymentOptionId: value.paymentOptionId,
+        paymentStatusOptionId: value.paymentStatusOptionId,
+        subprogressOptionId: value.subprogressOptionId,
+      });
+      pendingBoardQuerySourceRef.current =
+        previousQuery.personId !== query.personId
+          ? "person"
+          : JSON.stringify(filterShape(previousQuery)) !==
+              JSON.stringify(filterShape(query))
+            ? "filter"
+            : "other";
+      lastServerQueryRef.current = serializedQuery;
+      onServerQueryChange(query);
+    }, boardSearchTerm.trim() ? 250 : 0);
+    return () => window.clearTimeout(timer);
+  }, [
+    activeBoardSort,
+    activeBoardSortFieldType,
+    advancedColumns,
+    advancedJoin,
+    advancedRules,
+    boardSearchAllColumns,
+    boardSearchColumns,
+    boardSearchTerm,
+    channelEntries,
+    clientStatusEntries,
+    filterChannel,
+    filterImportance,
+    filterPayment,
+    filterPaymentStatus,
+    filterPeople,
+    filterReplyStatus,
+    filterStatus,
+    filterSubprogress,
+    filterSubitemStatus,
+    importanceEntries,
+    onServerQueryChange,
+    paymentEntries,
+    paymentStatusEntries,
+    replyStatusEntries,
+    subitemStatusEntries,
+    subitemSubprogressEntries,
+  ]);
   const clientSortValue = (client: Client, column: string): string | number => {
     if (column === "client") return client.name ?? "";
     if (column === "people")
@@ -5621,6 +5969,11 @@ export function CRMBoard({
   const resultGroupIds = groupedClients
     .filter(({ clients: groupClients }) => groupClients.length > 0)
     .map(({ group }) => group.id);
+  const searchResultGroupIds = boardSearchActive
+    ? groups
+        .filter((group) => (groupPageState[group.id]?.total ?? 0) > 0)
+        .map((group) => group.id)
+    : resultGroupIds;
 
   useEffect(() => {
     if (!shouldExpandGroupsForResults) {
@@ -5633,18 +5986,24 @@ export function CRMBoard({
     if (!searchCollapsedGroupsRef.current)
       searchCollapsedGroupsRef.current = collapsedGroups;
     setCollapsedGroups((current) =>
-      expandedGroupsForSearch(resultGroupIds, current),
+      expandedGroupsForSearch(searchResultGroupIds, current),
     );
-  }, [collapsedGroups, resultGroupIds, shouldExpandGroupsForResults]);
+  }, [
+    collapsedGroups,
+    searchResultGroupIds,
+    shouldExpandGroupsForResults,
+  ]);
 
-  const boardVisibleGroups = visibleSearchGroups(
-    trackingView
-      ? groupedClients.filter(({ group }) =>
-          /^closed leads\s*-/i.test(group.name),
-        )
-      : groupedClients,
-    boardSearchActive,
-  );
+  const searchScopedGroups = trackingView
+    ? groupedClients.filter(({ group }) => /^closed leads\s*-/i.test(group.name))
+    : groupedClients;
+  const boardVisibleGroups = boardSearchActive
+    ? searchScopedGroups.filter(
+        ({ group, clients: groupClients }) =>
+          groupClients.length > 0 ||
+          (groupPageState[group.id]?.total ?? 0) > 0,
+      )
+    : visibleSearchGroups(searchScopedGroups, false);
   const noBoardSearchResults =
     boardSearchActive && boardVisibleGroups.length === 0;
 
@@ -6097,7 +6456,17 @@ export function CRMBoard({
                 />
               )}
               <span className="flex-1 truncate">{optionLabel}</span>
-              <span className="text-gray-400">{countFor(optionValue)}</span>
+              <span className="min-w-4 text-right text-gray-400">
+                {quickFilterCountsLoading ? (
+                  <LoaderCircle
+                    size={12}
+                    className="inline animate-spin"
+                    aria-label="Loading filter count"
+                  />
+                ) : (
+                  countFor(optionValue)
+                )}
+              </span>
               {value === optionValue && (
                 <span className="text-blue-500">✓</span>
               )}
@@ -6107,6 +6476,16 @@ export function CRMBoard({
       </div>
     </div>
   );
+
+  const fullQuickFilterCount = (
+    filterKey: string,
+    optionId: string | null,
+    fallback: () => number,
+  ) => {
+    if (!optionId) return 0;
+    const facet = quickFilterCounts[filterKey];
+    return facet ? (facet[optionId] ?? 0) : fallback();
+  };
 
   // --- Selection ---
   const toggleExpandAll = useCallback(() => {
@@ -6140,6 +6519,7 @@ export function CRMBoard({
       // large client/subitem tree, including after the board itself is loaded.
       pendingGroupExpansionIdsRef.current.add(id);
       setPendingGroupContentIds((current) => new Set(current).add(id));
+      void (onPrimeGroup ?? onLoadMoreGroup)?.(id);
       requestAnimationFrame(() => {
         if (!pendingGroupExpansionIdsRef.current.has(id)) return;
         setCollapsedGroups((current) => ({ ...current, [id]: false }));
@@ -6154,7 +6534,7 @@ export function CRMBoard({
         }, 160);
       });
     },
-    [collapsedGroups],
+    [collapsedGroups, onLoadMoreGroup, onPrimeGroup],
   );
 
   useEffect(() => {
@@ -8491,6 +8871,21 @@ export function CRMBoard({
     }
   };
 
+  const boardSearchColumnGroups = Array.from(
+    advancedColumns
+      .filter((column) =>
+        column.label
+          .toLowerCase()
+          .includes(boardSearchColumnQuery.toLowerCase()),
+      )
+      .reduce((groupMap, column) => {
+        const entries = groupMap.get(column.category) ?? [];
+        entries.push(column);
+        groupMap.set(column.category, entries);
+        return groupMap;
+      }, new Map<AdvancedFilterColumn["category"], AdvancedFilterColumn[]>()),
+  );
+
   return (
     <div className="crm-board box-border flex h-full flex-col bg-white pl-14">
       {detailSubitem &&
@@ -9395,6 +9790,27 @@ export function CRMBoard({
                   <X size={15} />
                 </button>
               )}
+              {boardSearchTerm &&
+                (boardQueryLoading || hasMoreBoardQueryResults) && (
+                  <span
+                    className="inline-flex shrink-0 items-center px-1.5 text-sky-600"
+                    title={
+                      boardQueryLoading
+                        ? "Searching the CRM Board…"
+                        : "More matching records load as you scroll"
+                    }
+                    aria-label={
+                      boardQueryLoading
+                        ? "Searching the CRM Board"
+                        : "More matching records are available"
+                    }
+                  >
+                    <LoaderCircle
+                      size={15}
+                      className={boardQueryLoading ? "animate-spin" : ""}
+                    />
+                  </span>
+                )}
               <button
                 type="button"
                 onClick={() => setShowBoardSearchOptions((open) => !open)}
@@ -9446,85 +9862,97 @@ export function CRMBoard({
                 All columns
               </label>
               <div className="max-h-64 overflow-y-auto pt-1">
-                {advancedColumns
-                  .filter((column) =>
-                    column.label
-                      .toLowerCase()
-                      .includes(boardSearchColumnQuery.toLowerCase()),
-                  )
-                  .map((column, index, columns) => (
-                    <React.Fragment key={column.key}>
-                      {index === 0 ||
-                      columns[index - 1].category !== column.category ? (
-                        <label className="mt-1 flex cursor-pointer items-center gap-2 border-t border-slate-100 py-2 text-sm font-medium text-slate-500">
+                {boardSearchColumnGroups.map(([category, columns]) => {
+                  const collapsed = collapsedSearchColumnGroups.has(category);
+                  return (
+                    <div key={category}>
+                      <div className="mt-1 flex items-center gap-2 border-t border-slate-100 py-2.5 text-sm font-semibold text-slate-600">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setCollapsedSearchColumnGroups((current) => {
+                              const next = new Set(current);
+                              if (next.has(category)) next.delete(category);
+                              else next.add(category);
+                              return next;
+                            })
+                          }
+                          className="flex min-w-0 flex-1 items-center gap-2 text-left hover:text-sky-700"
+                        >
+                          {collapsed ? (
+                            <ChevronRight size={15} />
+                          ) : (
+                            <ChevronDown size={15} />
+                          )}
+                          <span className="truncate">{category} columns</span>
+                        </button>
+                        <label className="flex cursor-pointer items-center gap-1.5 text-xs font-medium text-slate-500">
                           <input
                             type="checkbox"
-                            checked={columns
-                              .filter(
-                                (item) => item.category === column.category,
-                              )
-                              .every(
-                                (item) =>
-                                  boardSearchAllColumns ||
-                                  boardSearchColumns.has(item.key),
-                              )}
+                            checked={columns.every(
+                              (item) =>
+                                boardSearchAllColumns ||
+                                boardSearchColumns.has(item.key),
+                            )}
                             onChange={(event) => {
                               const shouldSelect = event.target.checked;
-                              const categoryColumns = columns.filter(
-                                (item) => item.category === column.category,
-                              );
                               setBoardSearchAllColumns(false);
-                              setBoardSearchColumns((current) => {
-                                return setSearchColumnsSelection(
+                              setBoardSearchColumns((current) =>
+                                setSearchColumnsSelection(
                                   {
                                     allColumnsSelected: boardSearchAllColumns,
                                     selectedColumns: current,
                                   },
-                                  categoryColumns.map((item) => item.key),
+                                  columns.map((item) => item.key),
                                   shouldSelect,
                                   advancedColumns.map((item) => item.key),
-                                ).selectedColumns;
-                              });
+                                ).selectedColumns,
+                              );
                             }}
                             className="h-4 w-4 accent-[#0f8da8]"
                           />
-                          {column.category} columns
+                          All
                         </label>
-                      ) : null}
-                      <label
-                        key={column.key}
-                        className="ml-4 flex cursor-pointer items-center gap-2 border-l border-slate-100 py-1.5 pl-3 text-sm text-slate-700 hover:bg-slate-50"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={
-                            boardSearchAllColumns ||
-                            boardSearchColumns.has(column.key)
-                          }
-                          onChange={(event) => {
-                            const shouldSelect = event.target.checked;
-                            setBoardSearchAllColumns(false);
-                            setBoardSearchColumns((current) => {
-                              return setSearchColumnsSelection(
-                                {
-                                  allColumnsSelected: boardSearchAllColumns,
-                                  selectedColumns: current,
-                                },
-                                [column.key],
-                                shouldSelect,
-                                advancedColumns.map((item) => item.key),
-                              ).selectedColumns;
-                            });
-                          }}
-                          className="h-4 w-4 accent-[#0f8da8]"
-                        />
-                        <span className="sr-only">
-                          {column.category} · {column.label}
-                        </span>
-                        <span className="truncate">{column.label}</span>
-                      </label>
-                    </React.Fragment>
-                  ))}
+                      </div>
+                      {!collapsed &&
+                        columns.map((column) => (
+                          <label
+                            key={column.key}
+                            className="ml-4 flex cursor-pointer items-center gap-2 border-l border-slate-100 py-1.5 pl-3 text-sm text-slate-700 hover:bg-slate-50"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={
+                                boardSearchAllColumns ||
+                                boardSearchColumns.has(column.key)
+                              }
+                              onChange={(event) => {
+                                const shouldSelect = event.target.checked;
+                                setBoardSearchAllColumns(false);
+                                setBoardSearchColumns((current) =>
+                                  setSearchColumnsSelection(
+                                    {
+                                      allColumnsSelected:
+                                        boardSearchAllColumns,
+                                      selectedColumns: current,
+                                    },
+                                    [column.key],
+                                    shouldSelect,
+                                    advancedColumns.map((item) => item.key),
+                                  ).selectedColumns,
+                                );
+                              }}
+                              className="h-4 w-4 accent-[#0f8da8]"
+                            />
+                            <span className="sr-only">
+                              {column.category} · {column.label}
+                            </span>
+                            <span className="truncate">{column.label}</span>
+                          </label>
+                        ))}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -9566,6 +9994,14 @@ export function CRMBoard({
               <UserRound size={17} className="text-slate-600" />
             )}
             Person
+            {boardQueryLoading &&
+              pendingBoardQuerySourceRef.current === "person" && (
+                <LoaderCircle
+                  size={14}
+                  className="animate-spin"
+                  aria-label="Loading person filter"
+                />
+              )}
             {selectedPeopleProfile && (
               <span
                 role="button"
@@ -9659,6 +10095,14 @@ export function CRMBoard({
             >
               <Filter size={12} />
               Filter
+              {boardQueryLoading &&
+                pendingBoardQuerySourceRef.current === "filter" && (
+                  <LoaderCircle
+                    size={13}
+                    className="animate-spin"
+                    aria-label="Loading filters"
+                  />
+                )}
               {activeFilterCount > 0 && (
                 <span className="rounded-full bg-slate-200 px-1.5 text-xs">
                   {activeFilterCount}
@@ -9747,12 +10191,15 @@ export function CRMBoard({
                   value: filterStatus,
                   options: clientStatuses,
                   onChange: setFilterStatus,
-                  countFor: (value) =>
-                    clients.filter(
+                  countFor: (value) => {
+                    const optionId = optionIdForValue(clientStatusEntries, value);
+                    return fullQuickFilterCount("status", optionId, () =>
+                      clients.filter(
                       (client) =>
-                        client.statusOptionId ===
-                        optionIdForValue(clientStatusEntries, value),
-                    ).length,
+                          client.statusOptionId === optionId,
+                      ).length,
+                    );
+                  },
                   colors: statusColors,
                 })}
                 {renderFilterColumn({
@@ -9760,14 +10207,18 @@ export function CRMBoard({
                   value: filterSubprogress,
                   options: subprogressOptions,
                   onChange: setFilterSubprogress,
-                  countFor: (value) =>
-                    clients.filter((client) =>
+                  countFor: (value) => {
+                    const optionId = optionIdForValue(subitemSubprogressEntries, value);
+                    return fullQuickFilterCount("subprogress", optionId, () =>
+                      clients.filter((client) =>
                       client.subitems.some((subitem) =>
                         (subitem.timelineRows ?? []).some(
                           (row) => (row.subProgress ?? "") === value,
                         ),
                       ),
-                    ).length,
+                      ).length,
+                    );
+                  },
                   colors: subProgressColors,
                 })}
                 {renderFilterColumn({
@@ -9775,14 +10226,17 @@ export function CRMBoard({
                   value: filterSubitemStatus,
                   options: subitemStatusOptionsForFilter,
                   onChange: setFilterSubitemStatus,
-                  countFor: (value) =>
-                    clients.filter((client) =>
+                  countFor: (value) => {
+                    const optionId = optionIdForValue(subitemStatusEntries, value);
+                    return fullQuickFilterCount("subitemStatus", optionId, () =>
+                      clients.filter((client) =>
                       client.subitems.some(
                         (subitem) =>
-                          subitem.statusOptionId ===
-                          optionIdForValue(subitemStatusEntries, value),
+                            subitem.statusOptionId === optionId,
                       ),
-                    ).length,
+                      ).length,
+                    );
+                  },
                   colors: subitemStatusColors,
                 })}
                 {renderFilterColumn({
@@ -9790,14 +10244,17 @@ export function CRMBoard({
                   value: filterPayment,
                   options: paymentOptionsForFilter,
                   onChange: setFilterPayment,
-                  countFor: (value) =>
-                    clients.filter((client) =>
+                  countFor: (value) => {
+                    const optionId = optionIdForValue(paymentEntries, value);
+                    return fullQuickFilterCount("payment", optionId, () =>
+                      clients.filter((client) =>
                       client.subitems.some(
                         (subitem) =>
-                          subitem.paymentOptionId ===
-                          optionIdForValue(paymentEntries, value),
+                            subitem.paymentOptionId === optionId,
                       ),
-                    ).length,
+                      ).length,
+                    );
+                  },
                   colors: paymentColors,
                 })}
                 {renderFilterColumn({
@@ -9805,14 +10262,17 @@ export function CRMBoard({
                   value: filterPaymentStatus,
                   options: paymentStatusOptionsForFilter,
                   onChange: setFilterPaymentStatus,
-                  countFor: (value) =>
-                    clients.filter((client) =>
+                  countFor: (value) => {
+                    const optionId = optionIdForValue(paymentStatusEntries, value);
+                    return fullQuickFilterCount("paymentStatus", optionId, () =>
+                      clients.filter((client) =>
                       client.subitems.some(
                         (subitem) =>
-                          subitem.paymentStatusOptionId ===
-                          optionIdForValue(paymentStatusEntries, value),
+                            subitem.paymentStatusOptionId === optionId,
                       ),
-                    ).length,
+                      ).length,
+                    );
+                  },
                   colors: paymentStatusColors,
                 })}
                 {renderFilterColumn({
@@ -9821,13 +10281,15 @@ export function CRMBoard({
                   options: peopleOptions,
                   onChange: setFilterPeople,
                   countFor: (value) =>
-                    clients.filter(
+                    fullQuickFilterCount("people", value, () =>
+                      clients.filter(
                       (client) =>
                         clientPeopleIds(client).includes(value) ||
                         client.subitems.some((subitem) =>
                           (subitemAssignees[subitem.id] ?? []).includes(value),
                         ),
-                    ).length,
+                      ).length,
+                    ),
                   renderOption: (value, label) => {
                     const profile = peopleProfilesById[value];
                     const displayLabel =
@@ -9857,12 +10319,15 @@ export function CRMBoard({
                   value: filterImportance,
                   options: importanceOptions,
                   onChange: setFilterImportance,
-                  countFor: (value) =>
-                    clients.filter(
+                  countFor: (value) => {
+                    const optionId = optionIdForValue(importanceEntries, value);
+                    return fullQuickFilterCount("importance", optionId, () =>
+                      clients.filter(
                       (client) =>
-                        client.importanceOptionId ===
-                        optionIdForValue(importanceEntries, value),
-                    ).length,
+                          client.importanceOptionId === optionId,
+                      ).length,
+                    );
+                  },
                   colors: importanceColors,
                 })}
                 {renderFilterColumn({
@@ -9870,12 +10335,15 @@ export function CRMBoard({
                   value: filterReplyStatus,
                   options: replyStatuses,
                   onChange: setFilterReplyStatus,
-                  countFor: (value) =>
-                    clients.filter(
+                  countFor: (value) => {
+                    const optionId = optionIdForValue(replyStatusEntries, value);
+                    return fullQuickFilterCount("replyStatus", optionId, () =>
+                      clients.filter(
                       (client) =>
-                        client.replyStatusOptionId ===
-                        optionIdForValue(replyStatusEntries, value),
-                    ).length,
+                          client.replyStatusOptionId === optionId,
+                      ).length,
+                    );
+                  },
                   colors: replyStatusColors,
                 })}
                 {renderFilterColumn({
@@ -9883,12 +10351,15 @@ export function CRMBoard({
                   value: filterChannel,
                   options: channelOptions,
                   onChange: setFilterChannel,
-                  countFor: (value) =>
-                    clients.filter(
+                  countFor: (value) => {
+                    const optionId = optionIdForValue(channelEntries, value);
+                    return fullQuickFilterCount("channel", optionId, () =>
+                      clients.filter(
                       (client) =>
-                        client.channelOptionId ===
-                        optionIdForValue(channelEntries, value),
-                    ).length,
+                          client.channelOptionId === optionId,
+                      ).length,
+                    );
+                  },
                   colors: channelColors,
                 })}
               </div>
@@ -11420,8 +11891,10 @@ export function CRMBoard({
                       >
                         {clientsLoaded ? (
                           <>
-                            {groupClients.length}{" "}
-                            {groupClients.length === 1 ? "Client" : "Clients"}
+                            {groupPageState[group.id]?.total ?? groupClients.length}{" "}
+                            {(groupPageState[group.id]?.total ?? groupClients.length) === 1
+                              ? "Client"
+                              : "Clients"}
                           </>
                         ) : (
                           <span className="inline-flex items-center gap-1">
@@ -12133,6 +12606,16 @@ export function CRMBoard({
                           }
                         />
                       ))}
+                      {(groupPageState[group.id]?.hasMore ||
+                        groupPageState[group.id]?.loading) && (
+                        <GroupPageSentinel
+                          loading={Boolean(groupPageState[group.id]?.loading)}
+                          onVisible={() =>
+                            void (onPrimeGroup ?? onLoadMoreGroup)?.(group.id)
+                          }
+                          minWidth={groupTotalMinWidth}
+                        />
+                      )}
                       <AddClientInput
                         groupId={group.id}
                         groupName={group.name}

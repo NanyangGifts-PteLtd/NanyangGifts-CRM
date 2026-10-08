@@ -825,19 +825,90 @@ export async function logOcfCreated(params: {
   });
 }
 
-export async function fetchClientsWithSubitems() {
-  const { data: clientsData, error: clientsError } = await supabase
+export async function fetchClientsWithSubitems(params?: {
+  clientIds?: string[];
+  groupId?: string;
+  offset?: number;
+  limit?: number;
+  excludeGroupNames?: string[];
+}) {
+  // Keep the board payload intentional. These are the fields consumed by
+  // `mapClients` and the board's calculated/search columns; avoid transferring
+  // unrelated columns as the clients table grows.
+  const clientBoardSelect = [
+    "id", "display_id", "name", "people", "reply_status",
+    "reply_status_option_id", "follow_up", "status", "status_option_id",
+    "channel", "channel_option_id", "importance", "importance_option_id",
+    "progress", "progress_option_id", "tracking_overall_price_invoice_match",
+    "tracking_overall_price_invoice_match_option_id", "tracking_total_price",
+    "tracking_quote_subtotal", "tracking_quote_total", "tracking_invoice_subtotal",
+    "tracking_invoice_total", "tracking_invoice_numbers",
+    "tracking_overall_invoice_payment_status",
+    "tracking_overall_invoice_payment_status_option_id", "company", "email",
+    "phone", "requirements", "unqualified_reason", "nbd",
+    "total_price", "billing_address", "created_at", "waiting_started_at",
+    "group_id", "expanded", "color", "custom_fields", "deleted_at",
+    "deleted_by",
+  ].join(", ");
+  const subitemBoardSelect = [
+    "id", "display_id", "client_id", "position", "created_at", "name",
+    "people", "status", "status_option_id",
+    "local_overseas", "local_overseas_option_id", "qty", "description",
+    "remarks", "shipper", "shipper_option_id", "supplier", "cost",
+    "manpower", "manpower_rmb", "ls", "os", "currency",
+    "currency_option_id", "c_sgd", "tc", "uc", "tc_sgd", "price", "up",
+    "num_of_cartons", "cn_tracking", "sg_tracking", "pl", "sl", "owner",
+    "payment", "payment_option_id", "payment_status", "payment_status_option_id",
+    "total_uc", "ls_rmb", "total_c", "mode_of_payment",
+    "mode_of_payment_option_id", "order_number", "quantity_produced",
+    "qty_free", "sample", "qty_total", "qty_we_keep", "qty_for",
+    "payment_amount", "difference", "payment_remarks", "timeline_rows",
+    "timeline_groups", "show_timeline", "show_payments", "show_sample",
+    "sample_rows", "sample_order_status", "sample_status", "sample_type",
+    "custom_fields", "shipper_id", "deleted_at", "deleted_by",
+    "deleted_with_client_id",
+  ].join(", ");
+  const paymentRowSelect = [
+    "id", "subitem_id", "position", "amount", "order_number",
+    "payment_received", "payment_received_label", "payment_received_option_id",
+    "mode_of_payment", "mode_of_payment_option_id",
+  ].join(", ");
+  let excludedGroupIds: string[] = [];
+  if (params?.excludeGroupNames?.length) {
+    const normalizedNames = params.excludeGroupNames.map((name) =>
+      name.trim(),
+    );
+    const { data: groups, error: groupsError } = await supabase
+      .from("crm_groups")
+      .select("id")
+      .in("name", normalizedNames);
+    if (groupsError) throw groupsError;
+    excludedGroupIds = (groups ?? []).map((group) => String(group.id));
+  }
+  let clientsQuery = supabase
     .from("clients")
-    .select("*")
+    .select(clientBoardSelect)
     .is("deleted_at", null)
-    .order("created_at", { ascending: true });
+    // Match CRM Board's default "Date created: newest first" ordering so a
+    // page always starts at the visible top of a group.
+    .order("created_at", { ascending: false });
+  if (params?.clientIds) clientsQuery = clientsQuery.in("id", params.clientIds);
+  if (params?.groupId) clientsQuery = clientsQuery.eq("group_id", params.groupId);
+  if (excludedGroupIds.length)
+    clientsQuery = clientsQuery.not("group_id", "in", `(${excludedGroupIds.join(",")})`);
+  if (params?.limit !== undefined) {
+    const offset = params.offset ?? 0;
+    clientsQuery = clientsQuery.range(offset, offset + params.limit - 1);
+  }
+  const { data: clientsData, error: clientsError } = await clientsQuery;
 
   if (clientsError) {
     console.error("fetchClientsWithSubitems clients error:", clientsError);
     throw clientsError;
   }
 
-  const activeClientIds = (clientsData ?? []).map((row) => String(row.id));
+  const typedClientsData = (clientsData ?? []) as unknown as Clients[];
+  const activeClientIds = typedClientsData.map((row) => String(row.id));
   const clientIdChunks = Array.from(
     { length: Math.ceil(activeClientIds.length / 200) },
     (_, index) => activeClientIds.slice(index * 200, (index + 1) * 200),
@@ -846,7 +917,7 @@ export async function fetchClientsWithSubitems() {
     clientIdChunks.map((clientIds) =>
       supabase
         .from("subitems")
-        .select("*")
+        .select(subitemBoardSelect)
         .in("client_id", clientIds)
         .is("deleted_at", null),
     ),
@@ -856,7 +927,9 @@ export async function fetchClientsWithSubitems() {
     console.error("fetchClientsWithSubitems subitems error:", subitemsError);
     throw subitemsError;
   }
-  const subitemsData = subitemResults.flatMap((result) => result.data ?? []);
+  const subitemsData = subitemResults.flatMap(
+    (result) => (result.data ?? []) as unknown as Subitems[],
+  );
   const activeSubitemIds = subitemsData.map((row) => String(row.id));
   const subitemIdChunks = Array.from(
     { length: Math.ceil(activeSubitemIds.length / 200) },
@@ -866,7 +939,7 @@ export async function fetchClientsWithSubitems() {
     subitemIdChunks.map((subitemIds) =>
       supabase
         .from("subitem_payment_rows")
-        .select("*")
+        .select(paymentRowSelect)
         .in("subitem_id", subitemIds),
     ),
   );
@@ -885,7 +958,10 @@ export async function fetchClientsWithSubitems() {
     NonNullable<Subitems["payment_rows"]>
   >();
   for (const paymentRow of paymentRowResults.flatMap(
-    (result) => result.data ?? [],
+    (result) =>
+      (result.data ?? []) as unknown as Array<
+        NonNullable<Subitems["payment_rows"]>[number] & { subitem_id: string }
+      >,
   )) {
     const subitemId = String(paymentRow.subitem_id);
     const rows = paymentRowsBySubitemId.get(subitemId) ?? [];
@@ -936,7 +1012,7 @@ export async function fetchClientsWithSubitems() {
       ocfStatusByClientId.set(ocf.client_id, current);
     }
   }
-  return (clientsData ?? []).map((row) =>
+  return typedClientsData.map((row) =>
     mapClients({
       ...(row as Clients),
       subitems: subitemsByClientId.get(String(row.id)) ?? [],
@@ -950,6 +1026,188 @@ export async function fetchClientsWithSubitems() {
           }),
     }),
   );
+}
+
+export type CrmBoardQuery = {
+  search?: string;
+  searchColumns?: string[];
+  sortCategory?: "client" | "subitem" | "payment";
+  sortColumn?: string;
+  sortValueType?: "text" | "number" | "date";
+  sortDirection?: "asc" | "desc";
+  advancedRules?: Array<{
+    column: string;
+    condition: string;
+    value: string;
+    valueType?: "text" | "number" | "date";
+  }>;
+  advancedJoin?: "and" | "or";
+  statusOptionId?: string | null;
+  importanceOptionId?: string | null;
+  replyStatusOptionId?: string | null;
+  channelOptionId?: string | null;
+  subitemStatusOptionId?: string | null;
+  paymentOptionId?: string | null;
+  paymentStatusOptionId?: string | null;
+  subprogressOptionId?: string | null;
+  personId?: string | null;
+};
+
+export type CrmQuickFilterCounts = Record<string, Record<string, number>>;
+
+export async function fetchCrmBoardQuickFilterCounts(
+  query: CrmBoardQuery = {},
+): Promise<CrmQuickFilterCounts> {
+  const { data, error } = await supabase.rpc(
+    "crm_board_quick_filter_counts_v2",
+    {
+      p_search: query.search?.trim() || null,
+      p_search_columns: query.searchColumns ?? null,
+      p_advanced_rules: query.advancedRules ?? [],
+      p_advanced_join: query.advancedJoin ?? "and",
+      p_status_option_id: query.statusOptionId ?? null,
+      p_importance_option_id: query.importanceOptionId ?? null,
+      p_reply_status_option_id: query.replyStatusOptionId ?? null,
+      p_channel_option_id: query.channelOptionId ?? null,
+      p_subitem_status_option_id: query.subitemStatusOptionId ?? null,
+      p_payment_option_id: query.paymentOptionId ?? null,
+      p_payment_status_option_id: query.paymentStatusOptionId ?? null,
+      p_subprogress_option_id: query.subprogressOptionId ?? null,
+      p_person_id: query.personId ?? null,
+    },
+  );
+  if (error) throw error;
+  const counts: CrmQuickFilterCounts = {};
+  for (const row of data ?? []) {
+    const filterKey = String(row.filter_key);
+    const optionId = String(row.option_id);
+    counts[filterKey] ??= {};
+    counts[filterKey][optionId] = Number(row.total_count ?? 0);
+  }
+  return counts;
+}
+
+export async function fetchClientGroupPage(
+  groupId: string | null,
+  offset = 0,
+  limit = 30,
+  query: CrmBoardQuery = {},
+) {
+  const { data, error } = await supabase.rpc("crm_board_client_page_v2", {
+    p_group_id: groupId,
+    p_limit: limit,
+    p_offset: offset,
+    p_search: query.search?.trim() || null,
+    p_search_columns: query.searchColumns ?? null,
+    p_sort_category: query.sortCategory ?? "client",
+    p_sort_column: query.sortColumn ?? "dateCreated",
+    p_sort_value_type: query.sortValueType ?? "date",
+    p_sort_direction: query.sortDirection ?? "desc",
+    p_advanced_rules: query.advancedRules ?? [],
+    p_advanced_join: query.advancedJoin ?? "and",
+    p_status_option_id: query.statusOptionId ?? null,
+    p_importance_option_id: query.importanceOptionId ?? null,
+    p_reply_status_option_id: query.replyStatusOptionId ?? null,
+    p_channel_option_id: query.channelOptionId ?? null,
+    p_subitem_status_option_id: query.subitemStatusOptionId ?? null,
+    p_payment_option_id: query.paymentOptionId ?? null,
+    p_payment_status_option_id: query.paymentStatusOptionId ?? null,
+    p_subprogress_option_id: query.subprogressOptionId ?? null,
+    p_person_id: query.personId ?? null,
+  });
+  if (error) throw error;
+  const clientIds: string[] = (data ?? []).map((row: { client_id: string }) =>
+    String(row.client_id),
+  );
+  const total = Number(data?.[0]?.total_count ?? 0);
+  const hydratedClients: Client[] = clientIds.length
+    ? await fetchClientsWithSubitems({ clientIds })
+    : [];
+  // `in(id, …)` has no ordering contract. Restore the RPC order so a
+  // name/company/follow-up sort does not silently revert to created_at when
+  // the records are hydrated with subitems.
+  const clientsById = new Map(
+    hydratedClients.map((client) => [client.id, client]),
+  );
+  const clients = clientIds.flatMap((clientId) => {
+    const client = clientsById.get(clientId);
+    return client ? [client] : [];
+  });
+  return {
+    clients,
+    total,
+    hasMore: offset + clientIds.length < total,
+    nextOffset: offset + clientIds.length,
+  };
+}
+
+/** Finds CRM records globally for the universal search overlay. */
+export async function searchCrmClients(query: string, limit = 40) {
+  const trimmedQuery = query.trim();
+  if (!trimmedQuery) return [] as Client[];
+  const { data, error } = await supabase.rpc("crm_universal_search_clients", {
+    p_search: trimmedQuery,
+    p_limit: limit,
+  });
+  if (error) throw error;
+  const clientIds: string[] = (data ?? []).map((row: { client_id: string }) =>
+    String(row.client_id),
+  );
+  if (!clientIds.length) return [];
+  const hydratedClients: Client[] = await fetchClientsWithSubitems({
+    clientIds,
+  });
+  const clientsById = new Map(
+    hydratedClients.map((client) => [client.id, client]),
+  );
+  return clientIds.flatMap((clientId) => {
+    const client = clientsById.get(clientId);
+    return client ? [client] : [];
+  });
+}
+
+/** Lightweight metadata for collapsed CRM group headers. */
+export async function fetchClientGroupCounts(query: CrmBoardQuery = {}) {
+  if (Object.keys(query).length) {
+    const { data, error } = await supabase.rpc(
+      "crm_board_client_group_counts_v2",
+      {
+        p_search: query.search?.trim() || null,
+        p_search_columns: query.searchColumns ?? null,
+        p_advanced_rules: query.advancedRules ?? [],
+        p_advanced_join: query.advancedJoin ?? "and",
+        p_status_option_id: query.statusOptionId ?? null,
+        p_importance_option_id: query.importanceOptionId ?? null,
+        p_reply_status_option_id: query.replyStatusOptionId ?? null,
+        p_channel_option_id: query.channelOptionId ?? null,
+        p_subitem_status_option_id: query.subitemStatusOptionId ?? null,
+        p_payment_option_id: query.paymentOptionId ?? null,
+        p_payment_status_option_id: query.paymentStatusOptionId ?? null,
+        p_subprogress_option_id: query.subprogressOptionId ?? null,
+        p_person_id: query.personId ?? null,
+      },
+    );
+    if (error) throw error;
+    const rows = (data ?? []) as Array<{
+      group_id: string | null;
+      total_count: number | string | null;
+    }>;
+    return rows.reduce<Record<string, number>>((counts, row) => {
+      const groupId = String(row.group_id ?? "");
+      if (groupId) counts[groupId] = Number(row.total_count ?? 0);
+      return counts;
+    }, {});
+  }
+  const { data, error } = await supabase
+    .from("clients")
+    .select("group_id")
+    .is("deleted_at", null);
+  if (error) throw error;
+  return (data ?? []).reduce<Record<string, number>>((counts, row) => {
+    const groupId = String(row.group_id ?? "");
+    if (groupId) counts[groupId] = (counts[groupId] ?? 0) + 1;
+    return counts;
+  }, {});
 }
 
 /** Loads a single client's history only when the user needs to see it. */

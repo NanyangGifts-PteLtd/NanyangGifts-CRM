@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import {
   Bell,
@@ -13,6 +13,7 @@ import {
   XCircle,
   X,
   Trash2,
+  LoaderCircle,
 } from "lucide-react";
 import { Notification } from "../app/types";
 import { LogoutButton } from "./logout-button";
@@ -43,6 +44,7 @@ interface TopBarProps {
   clientPmAssignees: ClientAssigneeMap;
   subitemAssignees: SubitemAssigneeMap;
   profiles: Profile[];
+  searchClients?: (query: string) => Promise<Client[]>;
   onSelectSearchResult?: (result: SearchResult) => void;
 }
 
@@ -486,6 +488,7 @@ export default function TopBar({
   clientPmAssignees,
   subitemAssignees,
   profiles,
+  searchClients,
   onSelectSearchResult,
 }: TopBarProps) {
   const [showNotifs, setShowNotifs] = useState(false);
@@ -499,8 +502,18 @@ export default function TopBar({
     useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [hasNewNotification, setHasNewNotification] = useState(false);
+  const [serverSearchClients, setServerSearchClients] = useState<Client[]>([]);
+  const [serverSearchLoading, setServerSearchLoading] = useState(false);
+  const searchRequestRef = useRef(0);
+  const searchableClients = useMemo(() => {
+    const byId = new Map<string, Client>();
+    for (const client of [...serverSearchClients, ...clients]) {
+      if (!byId.has(client.id)) byId.set(client.id, client);
+    }
+    return [...byId.values()];
+  }, [clients, serverSearchClients]);
   const results = searchResults(
-    clients,
+    searchableClients,
     value,
     clientAssignees,
     clientPmAssignees,
@@ -510,7 +523,34 @@ export default function TopBar({
   const [showSearchResults, setShowSearchResults] = useState(false);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const searchRef = useRef<HTMLDivElement>(null);
+  const searchOverlayRef = useRef<HTMLElement>(null);
   const searchOverlayInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!searchClients || !value.trim()) {
+      setServerSearchClients([]);
+      setServerSearchLoading(false);
+      return;
+    }
+    const request = ++searchRequestRef.current;
+    const timer = window.setTimeout(() => {
+      setServerSearchLoading(true);
+      void searchClients(value)
+        .then((nextClients) => {
+          if (request === searchRequestRef.current)
+            setServerSearchClients(nextClients);
+        })
+        .catch((error) => {
+          console.error("Universal CRM search failed", error);
+          if (request === searchRequestRef.current) setServerSearchClients([]);
+        })
+        .finally(() => {
+          if (request === searchRequestRef.current)
+            setServerSearchLoading(false);
+        });
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [searchClients, value]);
 
   useEffect(() => {
     try {
@@ -608,7 +648,15 @@ export default function TopBar({
       ) {
         setShowSettings(false);
       }
-      if (searchRef.current && !searchRef.current.contains(e.target as Node))
+      // The search results live in a portal, so they are not descendants of
+      // searchRef. Treat that portal as part of the same interactive surface;
+      // otherwise its result buttons are closed on mouse-down before their
+      // click handler can select and navigate to a result.
+      if (
+        searchRef.current &&
+        !searchRef.current.contains(e.target as Node) &&
+        !searchOverlayRef.current?.contains(e.target as Node)
+      )
         setShowSearchResults(false);
     };
     document.addEventListener("mousedown", handler);
@@ -644,7 +692,10 @@ export default function TopBar({
                 setShowSearchResults(false);
             }}
           >
-            <section className="mx-auto flex h-full max-w-[1500px] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl">
+            <section
+              ref={searchOverlayRef}
+              className="mx-auto flex h-full max-w-[1500px] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl"
+            >
               <header className="flex items-center gap-3 border-b border-slate-200 px-5 py-4 sm:px-8">
                 <Search size={24} className="shrink-0 text-slate-400" />
                 <input
@@ -753,8 +804,19 @@ export default function TopBar({
                           people matching “{value.trim()}”.
                         </p>
                       </div>
-                      <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
-                        {results.length}
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                        {serverSearchLoading ? (
+                          <>
+                            <LoaderCircle
+                              size={13}
+                              className="animate-spin"
+                              aria-hidden="true"
+                            />
+                            Searching…
+                          </>
+                        ) : (
+                          results.length
+                        )}
                       </span>
                     </div>
                     <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
