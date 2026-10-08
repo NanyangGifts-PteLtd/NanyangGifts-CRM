@@ -12,6 +12,7 @@ export function EditableCell({
   multiline = false,
   resizableMultiline = false,
   autoEdit = false,
+  fitContent = false,
   onAutoEditStarted,
   onEditingChange,
   recommendations = [],
@@ -33,6 +34,7 @@ export function EditableCell({
   multiline?: boolean;
   resizableMultiline?: boolean;
   autoEdit?: boolean;
+  fitContent?: boolean;
   onAutoEditStarted?: () => void;
   onEditingChange?: (editing: boolean) => void;
   recommendations?: string[];
@@ -43,6 +45,7 @@ export function EditableCell({
   const inputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const savedRef = useRef(false);
+  const contentWidth = `${Math.min(Math.max((local || placeholder).length + 1, 4), 48)}ch`;
 
   useEffect(() => {
     // Realtime snapshots must never replace the user's active draft. Once
@@ -218,8 +221,8 @@ export function EditableCell({
             setEditing(false);
           }
         }}
-        className={`w-full px-1 py-0.5 text-xs border border-blue-400 rounded outline-none bg-white ${className}`}
-        style={{ minWidth: 40 }}
+        className={`${fitContent ? "w-fit max-w-full" : "w-full"} px-1 py-0.5 text-xs border border-blue-400 rounded outline-none bg-white ${className}`}
+        style={{ minWidth: 40, ...(fitContent ? { width: contentWidth } : {}) }}
       />
     );
   }
@@ -233,7 +236,7 @@ export function EditableCell({
         setEditing(true);
       }}
       title={readOnlyReason ?? value}
-      className={`flex w-15 justify-center py-0.5 text-xs ${readOnly ? "cursor-default" : "cursor-text hover:bg-blue-50"} rounded min-h-[22px] items-center ${
+      className={`flex ${fitContent ? "w-fit max-w-full" : "w-15"} justify-center py-0.5 text-xs ${readOnly ? "cursor-default" : "cursor-text hover:bg-blue-50"} rounded min-h-[22px] items-center ${
         multiline
           ? "whitespace-nowrap overflow-hidden text-ellipsis"
           : "truncate"

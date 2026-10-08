@@ -3433,12 +3433,13 @@ export function ClientRow({
             order: columnOrderMap.client ?? 1,
           }}
         >
-          <div className="min-w-0 flex-1 overflow-hidden">
+          <div className="min-w-0 max-w-full overflow-hidden">
             <EditableCell
               value={client.name}
               onChange={(v) => onUpdate({ name: v })}
               placeholder="Client name"
               autoEdit={autoEditName}
+              fitContent
               onAutoEditStarted={onAutoEditNameStarted}
               onEditingChange={setIsNameEditing}
               className={`!justify-start select-text text-left font-semibold ${isBlacklisted ? "!bg-transparent !text-white !hover:bg-red-800" : "text-gray-800"}`}
