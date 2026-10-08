@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
+  type WheelEvent as ReactWheelEvent,
 } from "react";
 import { createPortal } from "react-dom";
 import dynamic from "next/dynamic";
@@ -44,6 +45,10 @@ import type {
   TimelineRow,
 } from "../app/types";
 import { createClient as createSupabaseClient } from "@/lib/supabase/client";
+import {
+  fetchGanttClientFilterOptions,
+  type GanttServerQuery,
+} from "@/lib/crm";
 
 const Scheduler = dynamic(
   () => import("@bitnoi.se/react-scheduler").then((mod) => mod.Scheduler),
@@ -72,6 +77,13 @@ type Props = {
   ) => void | Promise<void>;
   canEditSubitem: (clientId: string, subitemId: string) => boolean;
   isLoading?: boolean;
+  resourceIds?: string[];
+  totalResourceCount?: number;
+  hasMoreResources?: boolean;
+  isLoadingMore?: boolean;
+  onServerQueryChange?: (query: GanttServerQuery) => void;
+  onLoadMoreResources?: () => void;
+  loadedQueryKey?: string;
 };
 type SchedulerItem = {
   id: string;
@@ -305,6 +317,7 @@ function buildSchedulerData(
       section?: number;
     }
   >,
+  allowedResourceIds?: Set<string>,
 ): SchedulerResource[] {
   const groupMap = new Map(groups.map((group) => [group.id, group]));
   return clients
@@ -331,7 +344,7 @@ function buildSchedulerData(
         const timelines = Array.isArray(subitem.timelineGroups) && subitem.timelineGroups.length
           ? subitem.timelineGroups
           : [{ id: "default", rows: subitem.timelineRows ?? [] }];
-        return timelines.map((timeline, timelineIndex) => {
+        return timelines.flatMap((timeline, timelineIndex) => {
         const timelineRows = (timeline.rows ?? []).filter(
           (row): row is TimelineRow => !!row && typeof row === "object",
         );
@@ -371,7 +384,7 @@ function buildSchedulerData(
         const processNames = timelineRows.map(
           (row) => row.name || "Untitled Process",
         );
-        return {
+        const resource = {
           id: resourceId,
           label: {
             title: `${groupName} ${clientName} ${subitemName} Timeline ${timelineIndex + 1} ${processNames.join(" ")}`,
@@ -400,6 +413,9 @@ function buildSchedulerData(
             ]),
           ),
         };
+        return !allowedResourceIds || allowedResourceIds.has(resourceId)
+          ? [resource]
+          : [];
         });
       });
     });
@@ -416,6 +432,13 @@ export default function GanttChart({
   onUpdateSubitem,
   canEditSubitem,
   isLoading = false,
+  resourceIds,
+  totalResourceCount,
+  hasMoreResources = false,
+  isLoadingMore = false,
+  onServerQueryChange,
+  onLoadMoreResources,
+  loadedQueryKey = "",
 }: Props) {
   const [progressById, setProgressById] = useState<
     Map<
@@ -727,6 +750,10 @@ export default function GanttChart({
     new Set(),
   );
   const [labelHosts, setLabelHosts] = useState<LabelHost[]>([]);
+  const labelHostKey = useMemo(
+    () => labelHosts.map((host) => `${host.resource.id}:${host.element}`).join("|"),
+    [labelHosts],
+  );
   const [schedulerRootHost, setSchedulerRootHost] =
     useState<HTMLDivElement | null>(null);
   const setSchedulerRootRef = useCallback((node: HTMLDivElement | null) => {
@@ -749,6 +776,9 @@ export default function GanttChart({
   const [searchScope, setSearchScope] = useState<SearchScope>("all");
   const [filters, setFilters] = useState<GanttFilters>(EMPTY_FILTERS);
   const [filterMenu, setFilterMenu] = useState<FilterMenu | null>(null);
+  const [serverClientOptions, setServerClientOptions] = useState<FilterOption[]>(
+    [],
+  );
   const [collapsedGroupIds, setCollapsedGroupIds] = useState<Set<string>>(
     new Set(),
   );
@@ -780,6 +810,20 @@ export default function GanttChart({
             ? error.message
             : "Unable to load pinned clients.",
         ),
+      );
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    void fetchGanttClientFilterOptions()
+      .then((options) => {
+        if (active) setServerClientOptions(options);
+      })
+      .catch((error) =>
+        console.warn("Could not load complete Gantt client filter options", error),
       );
     return () => {
       active = false;
@@ -827,6 +871,10 @@ export default function GanttChart({
       )
       .map(({ client }) => client);
   }, [clients, orderedGroups, pinnedClientIds]);
+  const allowedResourceIds = useMemo(
+    () => (resourceIds ? new Set(resourceIds) : undefined),
+    [resourceIds],
+  );
   const unfilteredData = useMemo(
     () =>
       buildSchedulerData(
@@ -836,8 +884,9 @@ export default function GanttChart({
         clientPmAssignees,
         subitemAssignees,
         progressById,
+        allowedResourceIds,
       ),
-    [orderedClients, orderedGroups, clientAssignees, clientPmAssignees, subitemAssignees, progressById],
+    [orderedClients, orderedGroups, clientAssignees, clientPmAssignees, subitemAssignees, progressById, allowedResourceIds],
   );
   const data = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -1000,6 +1049,7 @@ export default function GanttChart({
     [orderedGroups],
   );
   const clientOptions = useMemo<FilterOption[]>(() => {
+    if (serverClientOptions.length) return serverClientOptions;
     const seen = new Set<string>();
     return unfilteredData.flatMap((resource) => {
       if (seen.has(resource.clientId)) return [];
@@ -1011,7 +1061,7 @@ export default function GanttChart({
         },
       ];
     });
-  }, [unfilteredData]);
+  }, [serverClientOptions, unfilteredData]);
   const pmOptions = useMemo<FilterOption[]>(
     () =>
       profiles
@@ -1036,14 +1086,15 @@ export default function GanttChart({
     () =>
       Array.from(
         new Set(
-          unfilteredData.flatMap((resource) =>
-            resource.data.map((item) => item.processStatus),
-          ),
+          [
+            ...timelineProgressOptions.map((option) => option.value),
+            "No status",
+          ],
         ),
       )
         .sort()
         .map((status) => ({ value: status, label: status })),
-    [unfilteredData],
+    [timelineProgressOptions],
   );
   const activeFilterCount =
     filters.groupIds.size +
@@ -1053,6 +1104,56 @@ export default function GanttChart({
     filters.processStatuses.size +
     Number(!!filters.dateFrom) +
     Number(!!filters.dateTo);
+  const serverQuery = useMemo<GanttServerQuery>(
+    () => ({
+      search: searchQuery,
+      searchScope,
+      groupIds: Array.from(filters.groupIds).sort(),
+      clientIds: Array.from(filters.clientIds).sort(),
+      pmIds: Array.from(filters.pmIds).sort(),
+      peopleIds: Array.from(filters.peopleIds).sort(),
+      processStatuses: Array.from(filters.processStatuses).sort(),
+      dateFrom: filters.dateFrom,
+      dateTo: filters.dateTo,
+    }),
+    [filters, searchQuery, searchScope],
+  );
+  const serverQueryKey = useMemo(() => JSON.stringify(serverQuery), [serverQuery]);
+  const prefetchedPageCountRef = useRef<{ key: string; count: number }>({
+    key: "",
+    count: 0,
+  });
+
+  useEffect(() => {
+    if (!onServerQueryChange) return;
+    const timer = window.setTimeout(() => onServerQueryChange(serverQuery), 180);
+    return () => window.clearTimeout(timer);
+  }, [onServerQueryChange, serverQuery, serverQueryKey]);
+
+  useEffect(() => {
+    if (loadedQueryKey !== serverQueryKey) return;
+    const tracker = prefetchedPageCountRef.current;
+    if (tracker.key !== serverQueryKey) {
+      tracker.key = serverQueryKey;
+      tracker.count = 0;
+    }
+    if (
+      !hasMoreResources ||
+      isLoadingMore ||
+      !onLoadMoreResources ||
+      tracker.count >= 2
+    ) {
+      return;
+    }
+    tracker.count += 1;
+    onLoadMoreResources();
+  }, [
+    hasMoreResources,
+    isLoadingMore,
+    loadedQueryKey,
+    onLoadMoreResources,
+    serverQueryKey,
+  ]);
   const toggleFilter = useCallback(
     (
       key: "groupIds" | "clientIds" | "pmIds" | "peopleIds" | "processStatuses",
@@ -1115,6 +1216,66 @@ export default function GanttChart({
       window.removeEventListener("resize", updateWidth);
     };
   }, [timelineCanvasHost]);
+
+  useEffect(() => {
+    if (!hasMoreResources || isLoadingMore || !onLoadMoreResources) return;
+    const scroller = schedulerRootRef.current?.querySelector<HTMLElement>(
+      "#reactSchedulerOutsideWrapper",
+    );
+    if (!scroller) return;
+    const loadWhenNearBottom = () => {
+      if (
+        scroller.scrollTop + scroller.clientHeight >=
+        scroller.scrollHeight - 520
+      ) {
+        onLoadMoreResources();
+      }
+    };
+    scroller.addEventListener("scroll", loadWhenNearBottom, { passive: true });
+    loadWhenNearBottom();
+    return () => scroller.removeEventListener("scroll", loadWhenNearBottom);
+  }, [data.length, hasMoreResources, isLoadingMore, onLoadMoreResources]);
+
+  useEffect(() => {
+    const root = schedulerRootRef.current;
+    const scroller = root?.querySelector<HTMLElement>(
+      "#reactSchedulerOutsideWrapper",
+    );
+    if (!root || !scroller) return;
+
+    // The resource cells are rendered in a portal so the custom column header
+    // can remain fixed. Read their actual on-screen positions from the native
+    // scheduler rows instead of trying to recreate its scroll calculation.
+    // This also accounts for its sticky header and any internal re-layout.
+    let frame = 0;
+    const syncResourceRowPositions = () => {
+      frame = 0;
+      const rootTop = root.getBoundingClientRect().top;
+      setLabelHosts((current) => {
+        const next = current.map((host) => {
+          const top = host.element.getBoundingClientRect().top - rootTop;
+          return { ...host, clientTop: top, groupTop: top };
+        });
+        return current.every(
+          (host, index) =>
+            Math.abs(host.clientTop - next[index].clientTop) < 0.5 &&
+            Math.abs(host.groupTop - next[index].groupTop) < 0.5,
+        )
+          ? current
+          : next;
+      });
+    };
+    const handleScroll = () => {
+      if (!frame)
+        frame = window.requestAnimationFrame(syncResourceRowPositions);
+    };
+    syncResourceRowPositions();
+    scroller.addEventListener("scroll", handleScroll, { passive: true });
+    return () => {
+      scroller.removeEventListener("scroll", handleScroll);
+      if (frame) window.cancelAnimationFrame(frame);
+    };
+  }, [schedulerRootHost, labelHostKey]);
 
   useEffect(() => {
     if (!timelineCanvasHost) return;
@@ -1341,6 +1502,24 @@ export default function GanttChart({
         const canvasHost = root.querySelector<HTMLElement>(
           "#reactSchedulerCanvasWrapper",
         );
+        const canvasHeader = root.querySelector<HTMLElement>(
+          "#reactSchedulerCanvasHeaderWrapper",
+        );
+        const schedulerTopBar =
+          canvasHeader?.previousElementSibling instanceof HTMLElement
+            ? canvasHeader.previousElementSibling
+            : null;
+        // react-scheduler gives its navigation bar a fixed left offset for
+        // its built-in resource pane. Our pane is wider and can be collapsed,
+        // so keep that header in the same coordinate system as the grid.
+        if (schedulerTopBar) {
+          setStyle(schedulerTopBar, "left", `${resourcePanelWidth}px`);
+          setStyle(
+            schedulerTopBar,
+            "width",
+            `calc(100% - ${resourcePanelWidth}px)`,
+          );
+        }
         // Keep the third-party scheduler grid at the bottom of this local
         // stacking context. The resource pane, controls and menus are then
         // explicitly layered above it instead of relying on DOM order.
@@ -1358,9 +1537,10 @@ export default function GanttChart({
               host.resource.id === next[index].resource.id &&
               host.element === next[index].element &&
               host.clientSpanHeight === next[index].clientSpanHeight &&
-              host.clientTop === next[index].clientTop &&
               host.groupSpanHeight === next[index].groupSpanHeight &&
-              host.groupTop === next[index].groupTop,
+              host.startsVisibleClientGroup ===
+                next[index].startsVisibleClientGroup &&
+              host.startsVisibleGroup === next[index].startsVisibleGroup,
           )
             ? current
             : next,
@@ -1510,6 +1690,43 @@ export default function GanttChart({
       event.currentTarget.setPointerCapture(event.pointerId);
     },
     [resourcePanelWidth],
+  );
+
+  const scrollTimelineFromResourcePane = useCallback(
+    (event: ReactWheelEvent<HTMLDivElement>) => {
+      const scroller = schedulerRootRef.current?.querySelector<HTMLElement>(
+        "#reactSchedulerOutsideWrapper",
+      );
+      if (!scroller) return;
+
+      const multiplier =
+        event.deltaMode === 1
+          ? 16
+          : event.deltaMode === 2
+            ? scroller.clientHeight
+            : 1;
+      const nextTop = Math.max(
+        0,
+        Math.min(
+          scroller.scrollHeight - scroller.clientHeight,
+          scroller.scrollTop + event.deltaY * multiplier,
+        ),
+      );
+      const nextLeft = Math.max(
+        0,
+        Math.min(
+          scroller.scrollWidth - scroller.clientWidth,
+          scroller.scrollLeft + event.deltaX * multiplier,
+        ),
+      );
+      if (nextTop === scroller.scrollTop && nextLeft === scroller.scrollLeft)
+        return;
+
+      scroller.scrollTop = nextTop;
+      scroller.scrollLeft = nextLeft;
+      event.preventDefault();
+    },
+    [],
   );
 
   const moveTimelinePan = useCallback(
@@ -1733,6 +1950,7 @@ export default function GanttChart({
             <>
               <div
                 className="absolute left-2 top-2 z-board flex h-9 w-[calc(100%-1rem)] max-w-[554px] items-center gap-1.5"
+                onWheel={scrollTimelineFromResourcePane}
               >
                 <div className="relative min-w-0 flex-1">
                   <Search
@@ -1785,7 +2003,10 @@ export default function GanttChart({
                   )}
                 </button>
               </div>
-              <div className="absolute left-0 top-[92px] z-board grid h-8 w-[570px] grid-cols-[140px_210px_220px] border-y border-slate-200 bg-slate-50 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+              <div
+                className="absolute left-0 top-[92px] z-board grid h-8 w-[570px] grid-cols-[140px_210px_220px] border-y border-slate-200 bg-slate-50 text-[11px] font-semibold uppercase tracking-wide text-slate-500"
+                onWheel={scrollTimelineFromResourcePane}
+              >
                 <div className="flex items-center justify-between border-r border-slate-200 px-3">
                   <span>Group</span>
                   <button
@@ -1822,7 +2043,14 @@ export default function GanttChart({
         {!resourcePaneCollapsed &&
           schedulerRootHost &&
           createPortal(
-            <div className="pointer-events-auto absolute inset-y-0 left-0 z-sticky w-[570px] overflow-hidden border-r border-slate-200 bg-white shadow-[4px_0_12px_rgba(15,23,42,0.08)]">
+            <div
+              className="pointer-events-auto absolute inset-y-0 left-0 z-sticky w-[570px] overflow-hidden border-r border-slate-200 bg-white shadow-[4px_0_12px_rgba(15,23,42,0.08)]"
+              onWheel={scrollTimelineFromResourcePane}
+            >
+              <div
+                className="absolute inset-0"
+                style={{ clipPath: "inset(124px 0 0)" }}
+              >
               {labelHosts.map(
                 ({
                   resource,
@@ -1845,7 +2073,7 @@ export default function GanttChart({
               {startsVisibleGroup && isGroupCollapsed && (
                 <div
                   className="absolute left-[140px] w-[430px] border-b border-slate-200 bg-white"
-                  style={{ top: element.offsetTop, height: element.offsetHeight }}
+                  style={{ top: groupTop, height: element.offsetHeight }}
                   aria-hidden="true"
                 />
               )}
@@ -1854,7 +2082,7 @@ export default function GanttChart({
                 isClientCollapsed && (
                   <div
                     className="absolute left-[350px] w-[220px] border-b border-slate-200 bg-white"
-                    style={{ top: element.offsetTop, height: element.offsetHeight }}
+                    style={{ top: clientTop, height: element.offsetHeight }}
                     aria-hidden="true"
                   />
                 )}
@@ -1909,7 +2137,7 @@ export default function GanttChart({
                     type="button"
                     disabled={!resource.subitemId}
                     className={`absolute left-[350px] w-[220px] min-w-0 border-b border-slate-200 px-3 text-left hover:bg-sky-50 disabled:cursor-default disabled:text-slate-400 disabled:hover:bg-transparent ${resource.data.some((item) => item.isOverdue) ? "bg-red-50 font-semibold text-red-700" : ""}`}
-                    style={{ top: element.offsetTop, height: element.offsetHeight }}
+                    style={{ top: clientTop, height: element.offsetHeight }}
                     onClick={(event) => {
                       event.stopPropagation();
                       if (resource.subitemId)
@@ -1934,6 +2162,7 @@ export default function GanttChart({
                   );
                 },
               )}
+              </div>
             </div>,
             schedulerRootHost,
           )}
@@ -1994,7 +2223,8 @@ export default function GanttChart({
               </h3>
               {filterMenu.kind === "all" && (
                 <p className="mt-0.5 text-[11px] text-slate-500">
-                  Showing {data.length} of {unfilteredData.length} subitem rows
+                  Showing {data.length} of {totalResourceCount ?? unfilteredData.length} timeline rows
+                  {isLoadingMore ? " · Loading more…" : ""}
                 </p>
               )}
             </div>

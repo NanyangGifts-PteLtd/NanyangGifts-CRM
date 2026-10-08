@@ -16,10 +16,13 @@ import {
   fetchClientGroupPage,
   fetchClientGroupCounts,
   fetchCrmBoardQuickFilterCounts,
+  fetchGanttResourcePage,
   fetchClientsWithSubitems,
   searchCrmClients,
   type CrmBoardQuery,
   type CrmQuickFilterCounts,
+  type GanttResourceCursor,
+  type GanttServerQuery,
   updateSubitemRow,
 } from "@/lib/crm";
 import { toast } from "sonner";
@@ -86,6 +89,17 @@ type BoardQuerySnapshot = {
 const BOARD_QUERY_CACHE_TTL_MS = 2 * 60 * 1000;
 const BOARD_QUERY_CACHE_LIMIT = 12;
 const QUICK_FILTER_COUNTS_CACHE_TTL_MS = 60 * 1000;
+const EMPTY_GANTT_QUERY: GanttServerQuery = {
+  search: "",
+  searchScope: "all",
+  groupIds: [],
+  clientIds: [],
+  pmIds: [],
+  peopleIds: [],
+  processStatuses: [],
+  dateFrom: "",
+  dateTo: "",
+};
 
 type QuickFilterCountsCache = {
   data: CrmQuickFilterCounts;
@@ -131,6 +145,17 @@ export default function Page() {
   const [ganttSubitemAssignees, setGanttSubitemAssignees] =
     useState<SubitemAssigneeMap>({});
   const [ganttClientsLoading, setGanttClientsLoading] = useState(false);
+  const [ganttResourcesLoadingMore, setGanttResourcesLoadingMore] =
+    useState(false);
+  const [ganttResourceIds, setGanttResourceIds] = useState<string[]>([]);
+  const [ganttResourceTotal, setGanttResourceTotal] = useState(0);
+  const [ganttHasMoreResources, setGanttHasMoreResources] = useState(false);
+  const [ganttResourceCursor, setGanttResourceCursor] =
+    useState<GanttResourceCursor | null>(null);
+  const [ganttQuery, setGanttQuery] = useState<GanttServerQuery>(
+    EMPTY_GANTT_QUERY,
+  );
+  const [ganttLoadedQueryKey, setGanttLoadedQueryKey] = useState("");
   const [search, setSearch] = useState("");
   const [user, setUser] = useState<User | null>(null);
   const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
@@ -167,6 +192,7 @@ export default function Page() {
   const reconciliationTimer = useRef<number | null>(null);
   const recordsRefreshSequence = useRef(0);
   const ganttRefreshSequence = useRef(0);
+  const ganttPageLoadInFlightRef = useRef(false);
   const boardQueryKeyRef = useRef(JSON.stringify({}));
   // The requested query can change while rows from the previous query remain
   // visible. Track their ownership separately so an in-flight transition can
@@ -569,48 +595,101 @@ export default function Page() {
       user?.id,
     ],
   );
-  const reloadGanttClients = useCallback(async () => {
-    // Keep this scope aligned with GanttChart's `orderedGroups` selection.
-    // Fetching it separately preserves CRM Board pagination while ensuring
-    // chart timelines are never limited to the Board's initial page.
-    const ganttGroups = groups.filter((group) =>
-      /^closed leads\b/i.test(group.name.trim()),
-    );
-    if (ganttGroups.length === 0) return;
-
-    const refreshSequence = ++ganttRefreshSequence.current;
-    setGanttClientsLoading(true);
-    try {
-      const clientPages = await Promise.all(
-        ganttGroups.map((group) => fetchClientsWithSubitems({ groupId: group.id })),
-      );
-      const nextClients = clientPages.flat();
-      const [assignmentMaps, nextSubitemAssignees] = await Promise.all([
-        fetchClientAssignmentMaps(nextClients.map((client) => client.id)),
-        fetchAllSubitemAssignees(
-          nextClients.flatMap((client) =>
-            client.subitems.map((subitem) => subitem.id),
+  const loadGanttResourcePage = useCallback(
+    async (
+      query: GanttServerQuery,
+      cursor: GanttResourceCursor | null = null,
+      append = false,
+    ) => {
+      if (append && ganttPageLoadInFlightRef.current) return;
+      const refreshSequence = append
+        ? ganttRefreshSequence.current
+        : ++ganttRefreshSequence.current;
+      ganttPageLoadInFlightRef.current = true;
+      if (append) setGanttResourcesLoadingMore(true);
+      else setGanttClientsLoading(true);
+      try {
+        const page = await fetchGanttResourcePage(query, cursor, 30);
+        const [assignmentMaps, nextSubitemAssignees] = await Promise.all([
+          fetchClientAssignmentMaps(page.clients.map((client) => client.id)),
+          fetchAllSubitemAssignees(
+            page.clients.flatMap((client) =>
+              client.subitems.map((subitem) => subitem.id),
+            ),
           ),
-        ),
-      ]);
-      if (refreshSequence !== ganttRefreshSequence.current) return;
+        ]);
+        if (refreshSequence !== ganttRefreshSequence.current) return;
 
-      setGanttClients(nextClients);
-      setGanttClientAssignees(assignmentMaps.people);
-      setGanttClientPmAssignees(assignmentMaps.pm);
-      setGanttSubitemAssignees(nextSubitemAssignees);
-    } catch (error) {
-      if (refreshSequence === ganttRefreshSequence.current) {
-        console.error("Failed to load Gantt chart clients", error);
-        toast.error("Could not load the Gantt chart", {
-          description: "Please try opening the chart again.",
+        setGanttClients((current) => {
+          if (!append) return page.clients;
+          const next = new Map(current.map((client) => [client.id, client]));
+          for (const client of page.clients) next.set(client.id, client);
+          return Array.from(next.values());
         });
+        setGanttResourceIds((current) =>
+          append
+            ? Array.from(new Set([...current, ...page.resourceIds]))
+            : page.resourceIds,
+        );
+        setGanttResourceTotal(page.total);
+        setGanttHasMoreResources(page.hasMore);
+        setGanttResourceCursor(page.nextCursor);
+        if (!append) setGanttLoadedQueryKey(JSON.stringify(query));
+        setGanttClientAssignees((current) =>
+          append ? { ...current, ...assignmentMaps.people } : assignmentMaps.people,
+        );
+        setGanttClientPmAssignees((current) =>
+          append ? { ...current, ...assignmentMaps.pm } : assignmentMaps.pm,
+        );
+        setGanttSubitemAssignees((current) =>
+          append ? { ...current, ...nextSubitemAssignees } : nextSubitemAssignees,
+        );
+      } catch (error) {
+        if (refreshSequence === ganttRefreshSequence.current) {
+          console.error("Failed to load Gantt chart resources", error);
+          toast.error("Could not load the Gantt chart", {
+            description: "Please try again.",
+          });
+        }
+      } finally {
+        if (refreshSequence === ganttRefreshSequence.current) {
+          setGanttClientsLoading(false);
+          setGanttResourcesLoadingMore(false);
+          ganttPageLoadInFlightRef.current = false;
+        }
       }
-    } finally {
-      if (refreshSequence === ganttRefreshSequence.current)
-        setGanttClientsLoading(false);
+    },
+    [],
+  );
+  const handleGanttQueryChange = useCallback(
+    (query: GanttServerQuery) => {
+      setGanttQuery(query);
+      void loadGanttResourcePage(query);
+    },
+    [loadGanttResourcePage],
+  );
+  const loadMoreGanttResources = useCallback(() => {
+    if (
+      ganttClientsLoading ||
+      ganttResourcesLoadingMore ||
+      !ganttHasMoreResources ||
+      !ganttResourceCursor
+    ) {
+      return;
     }
-  }, [groups]);
+    void loadGanttResourcePage(ganttQuery, ganttResourceCursor, true);
+  }, [
+    ganttClientsLoading,
+    ganttHasMoreResources,
+    ganttQuery,
+    ganttResourceCursor,
+    ganttResourcesLoadingMore,
+    loadGanttResourcePage,
+  ]);
+  const reloadGanttClients = useCallback(
+    () => loadGanttResourcePage(ganttQuery),
+    [ganttQuery, loadGanttResourcePage],
+  );
   const openPaymentVoucherProject = useCallback(
     (clientId: string) => {
       openCrmRecord(clientId);
@@ -1118,11 +1197,6 @@ export default function Page() {
   );
 
   useEffect(() => {
-    if (activePanel !== "ganttchart") return;
-    void reloadGanttClients();
-  }, [activePanel, reloadGanttClients]);
-
-  useEffect(() => {
     const queryKey = JSON.stringify(boardQuery);
     if (skipBoardReloadForQueryKeyRef.current === queryKey) {
       skipBoardReloadForQueryKeyRef.current = null;
@@ -1424,6 +1498,13 @@ export default function Page() {
               onUpdateSubitem={updateGanttSubitem}
               canEditSubitem={canEditGanttSubitem}
               isLoading={ganttClientsLoading || groups.length === 0}
+              resourceIds={ganttResourceIds}
+              totalResourceCount={ganttResourceTotal}
+              hasMoreResources={ganttHasMoreResources}
+              isLoadingMore={ganttResourcesLoadingMore}
+              onServerQueryChange={handleGanttQueryChange}
+              onLoadMoreResources={loadMoreGanttResources}
+              loadedQueryKey={ganttLoadedQueryKey}
             />
           </div>
         );

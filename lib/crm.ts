@@ -1055,6 +1055,123 @@ export type CrmBoardQuery = {
 
 export type CrmQuickFilterCounts = Record<string, Record<string, number>>;
 
+export type GanttServerQuery = {
+  search: string;
+  searchScope: "all" | "group" | "client" | "subitem";
+  groupIds: string[];
+  clientIds: string[];
+  pmIds: string[];
+  peopleIds: string[];
+  processStatuses: string[];
+  dateFrom: string;
+  dateTo: string;
+};
+
+export type GanttResourceCursor = {
+  groupSort: number;
+  clientCreatedAt: string;
+  clientId: string;
+  subitemPosition: number;
+  subitemId: string;
+  timelineIndex: number;
+};
+
+export type GanttResourcePage = {
+  clients: Client[];
+  resourceIds: string[];
+  total: number;
+  hasMore: boolean;
+  nextCursor: GanttResourceCursor | null;
+};
+
+export async function fetchGanttResourcePage(
+  query: GanttServerQuery,
+  cursor: GanttResourceCursor | null = null,
+  limit = 30,
+): Promise<GanttResourcePage> {
+  const { data, error } = await supabase.rpc("gantt_resource_page", {
+    // Ask for one look-ahead row so cursor pagination can determine whether
+    // another page exists without a separate count/offset calculation.
+    p_limit: limit + 1,
+    p_after_group_sort: cursor?.groupSort ?? null,
+    p_after_client_created_at: cursor?.clientCreatedAt ?? null,
+    p_after_client_id: cursor?.clientId ?? null,
+    p_after_subitem_position: cursor?.subitemPosition ?? null,
+    p_after_subitem_id: cursor?.subitemId ?? null,
+    p_after_timeline_index: cursor?.timelineIndex ?? null,
+    p_search: query.search.trim() || null,
+    p_search_scope: query.searchScope,
+    p_group_ids: query.groupIds.length ? query.groupIds : null,
+    p_client_ids: query.clientIds.length ? query.clientIds : null,
+    p_pm_ids: query.pmIds.length ? query.pmIds : null,
+    p_people_ids: query.peopleIds.length ? query.peopleIds : null,
+    p_process_statuses: query.processStatuses.length
+      ? query.processStatuses
+      : null,
+    p_date_from: query.dateFrom || null,
+    p_date_to: query.dateTo || null,
+  });
+  if (error) throw error;
+
+  const responseRows = (data ?? []) as Array<{
+    client_id: string;
+    subitem_id: string;
+    timeline_id: string;
+    timeline_index: number;
+    group_sort: number;
+    client_created_at: string;
+    subitem_position: number;
+    total_count: number | string;
+  }>;
+  const hasMore = responseRows.length > limit;
+  const rows = responseRows.slice(0, limit);
+  const clientIds = Array.from(new Set(rows.map((row) => String(row.client_id))));
+  const hydratedClients = clientIds.length
+    ? await fetchClientsWithSubitems({ clientIds })
+    : [];
+  const clientsById = new Map(hydratedClients.map((client) => [client.id, client]));
+  const orderedClients = clientIds.flatMap((clientId) => {
+    const client = clientsById.get(clientId);
+    return client ? [client] : [];
+  });
+  const last = rows.at(-1);
+  const total = Number(rows[0]?.total_count ?? 0);
+
+  return {
+    clients: orderedClients,
+    resourceIds: rows.map(
+      (row) => `${row.client_id}::${row.subitem_id}::${row.timeline_id}`,
+    ),
+    total,
+    hasMore,
+    nextCursor: last
+      ? {
+          groupSort: Number(last.group_sort),
+          clientCreatedAt: String(last.client_created_at),
+          clientId: String(last.client_id),
+          subitemPosition: Number(last.subitem_position),
+          subitemId: String(last.subitem_id),
+          timelineIndex: Number(last.timeline_index),
+        }
+      : null,
+  };
+}
+
+export async function fetchGanttClientFilterOptions(): Promise<
+  Array<{ value: string; label: string }>
+> {
+  const { data, error } = await supabase.rpc("gantt_client_filter_options");
+  if (error) throw error;
+  return (data ?? []).map((row: {
+    client_id: string;
+    client_name: string;
+    group_name: string;
+  }) => ({
+    value: String(row.client_id),
+    label: `${row.client_name || "Unnamed client"} - ${row.group_name || "No group"}`,
+  }));
+}
+
 // Quick-filter badges are fixed whole-board reference totals. They are not
 // facets of the active search/filter context, so never send Board query
 // parameters to the count RPC.
