@@ -844,7 +844,16 @@ export default function Page() {
           });
         }
       });
-      if (!preservePagination && protectionDelay > 0) {
+      // A staged company/phone confirmation deliberately holds its record
+      // protection indefinitely until the user confirms or cancels. Do not
+      // pass Infinity to setTimeout: browsers clamp that value and turn the
+      // intended delayed reconciliation into a rapid full-refresh loop.
+      if (!preservePagination && !Number.isFinite(protectionDelay)) {
+        if (reconciliationTimer.current !== null) {
+          window.clearTimeout(reconciliationTimer.current);
+          reconciliationTimer.current = null;
+        }
+      } else if (!preservePagination && protectionDelay > 0) {
         if (reconciliationTimer.current !== null)
           window.clearTimeout(reconciliationTimer.current);
         reconciliationTimer.current = window.setTimeout(

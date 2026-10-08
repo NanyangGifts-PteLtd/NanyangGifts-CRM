@@ -31,8 +31,16 @@ export function AppLiveRefresh({
     const schedule = (kind: RefreshKind) => {
       const current = timers.current[kind];
       if (current !== undefined) window.clearTimeout(current);
+      const protectionDelay = kind === "records" ? boardProtectionDelay() : 0;
+      // A pending confirmation holds a record with an infinite delay. This
+      // means "wait for user resolution", not "schedule a timer with
+      // Infinity" (which browsers clamp to an immediate timeout).
+      if (kind === "records" && !Number.isFinite(protectionDelay)) {
+        delete timers.current[kind];
+        return;
+      }
       const delay = kind === "records"
-        ? Math.max(300, boardProtectionDelay() + 100)
+        ? Math.max(300, protectionDelay + 100)
         : 300;
       timers.current[kind] = window.setTimeout(() => {
         delete timers.current[kind];
