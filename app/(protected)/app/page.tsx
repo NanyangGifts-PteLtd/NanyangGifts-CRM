@@ -92,6 +92,10 @@ type QuickFilterCountsCache = {
   cachedAt: number;
 };
 
+type ReloadClientsOptions = {
+  preservePagination?: boolean;
+};
+
 type SearchViewportAnchor = {
   clientId: string;
   top: number;
@@ -565,7 +569,8 @@ export default function Page() {
     [openCrmRecord],
   );
 
-  const reloadClients = useCallback(async () => {
+  const reloadClients = useCallback(async (options: ReloadClientsOptions = {}) => {
+    const preservePagination = options.preservePagination === true;
     const refreshSequence = ++recordsRefreshSequence.current;
     const writeRevisionAtStart = getBoardWriteRevision();
     try {
@@ -639,7 +644,7 @@ export default function Page() {
             window.clearTimeout(reconciliationTimer.current);
           reconciliationTimer.current = window.setTimeout(() => {
             reconciliationTimer.current = null;
-            void reloadClients();
+            void reloadClients({ preservePagination: true });
           }, 100);
         }
         return;
@@ -650,6 +655,13 @@ export default function Page() {
         const currentClients = new Map(
           current.map((client) => [client.id, client]),
         );
+        if (preservePagination) {
+          // A live refresh should reconcile rows already on screen without
+          // replacing the loaded page set. Replacing it with only the first
+          // page makes every open group flash its loading state.
+          const incomingClients = new Map(rows.map((client) => [client.id, client]));
+          return current.map((client) => incomingClients.get(client.id) ?? client);
+        }
         const incomingClientIds = new Set(rows.map((client) => client.id));
         const reconciledClients = rows.flatMap((incomingClient) => {
           const localClient = currentClients.get(incomingClient.id);
@@ -747,14 +759,16 @@ export default function Page() {
       );
       setClientsLoaded(true);
       setHasLoadedInitialClients(true);
-      setGroupPageState(nextGroupPageState);
+      if (!preservePagination) setGroupPageState(nextGroupPageState);
       const resolvedQueryKey = JSON.stringify(boardQuery);
       displayedBoardQueryKeyRef.current = resolvedQueryKey;
-      cacheBoardQuerySnapshot(resolvedQueryKey, {
-        clients: rows,
-        groupPageState: nextGroupPageState,
-        quickFilterCounts: quickFilterCountsForSnapshot,
-      });
+      if (!preservePagination) {
+        cacheBoardQuerySnapshot(resolvedQueryKey, {
+          clients: rows,
+          groupPageState: nextGroupPageState,
+          quickFilterCounts: quickFilterCountsForSnapshot,
+        });
+      }
       void quickFilterCountsPromise.then((nextQuickFilterCounts) => {
         if (
           refreshSequence !== recordsRefreshSequence.current ||
@@ -763,13 +777,15 @@ export default function Page() {
           return;
         setQuickFilterCounts(nextQuickFilterCounts);
         setQuickFilterCountsLoading(false);
-        cacheBoardQuerySnapshot(resolvedQueryKey, {
-          clients: rows,
-          groupPageState: nextGroupPageState,
-          quickFilterCounts: nextQuickFilterCounts,
-        });
+        if (!preservePagination) {
+          cacheBoardQuerySnapshot(resolvedQueryKey, {
+            clients: rows,
+            groupPageState: nextGroupPageState,
+            quickFilterCounts: nextQuickFilterCounts,
+          });
+        }
       });
-      if (protectionDelay > 0) {
+      if (!preservePagination && protectionDelay > 0) {
         if (reconciliationTimer.current !== null)
           window.clearTimeout(reconciliationTimer.current);
         reconciliationTimer.current = window.setTimeout(
@@ -785,6 +801,11 @@ export default function Page() {
       console.error("Failed to load clients", error);
     }
   }, [boardQuery, cacheBoardQuerySnapshot]);
+
+  const refreshRecordsInPlace = useCallback(
+    () => reloadClients({ preservePagination: true }),
+    [reloadClients],
+  );
 
   const handleServerQueryChange = useCallback(
     (query: CrmBoardQuery) => {
@@ -1428,7 +1449,7 @@ export default function Page() {
   return (
     <div className="flex h-screen overflow-hidden bg-[#f8fafc]">
       <AppLiveRefresh
-        onRecordsRefresh={reloadClients}
+        onRecordsRefresh={refreshRecordsInPlace}
         onProfilesRefresh={reloadProfiles}
         onGroupsRefresh={refreshGroupsInPlace}
         onNotificationsRefresh={loadNotifications}
