@@ -3178,8 +3178,8 @@ export function ClientRow({
           data-client-column="selectCheckbox"
           className="group/client-actions box-border relative flex min-w-0 self-stretch items-center justify-center flex-shrink-0 overflow-visible"
           style={{
-            minWidth: 60,
-            width: 60,
+            minWidth: 76,
+            width: 76,
             order: columnOrderMap.selectCheckbox ?? 0,
           }}
         >
@@ -3198,7 +3198,7 @@ export function ClientRow({
               onToggleClientSubitemsLock?.(client.id, !subitemsLocked)
             }
             align="left"
-            className="absolute -left-12 top-1/2 z-30 -translate-y-1/2"
+            className="absolute -left-16 top-1/2 z-30 -translate-y-1/2"
             triggerClassName="opacity-0 transition-opacity group-hover:opacity-100"
           />
           {subitemsLocked && (
@@ -3225,16 +3225,17 @@ export function ClientRow({
             <button
               data-selection-control
               onClick={onToggleExpand}
-              className="absolute left-[calc(50%+14px)] top-1/2 -translate-y-1/2 text-gray-400 transition-colors hover:text-gray-700"
+              aria-label={isExpanded ? "Collapse subitems" : "Expand subitems"}
+              className="absolute bottom-1 right-0 top-1 z-10 flex w-8 items-center justify-center rounded text-gray-400 transition-colors hover:bg-slate-100 hover:text-gray-700"
             >
               {isExpanded ? (
                 <ChevronDown
-                  size={14}
+                  size={20}
                   className="transition transform active:scale-150 duration-100"
                 />
               ) : (
                 <ChevronRight
-                  size={14}
+                  size={20}
                   className="transition transform active:scale-150 duration-100"
                 />
               )}

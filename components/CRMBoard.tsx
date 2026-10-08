@@ -246,7 +246,7 @@ type CombinedPushPreview = {
   amendShipmentIdBySubitemId?: Record<string, string>;
 };
 const CLIENT_HEADER_COLS: HeaderCol[] = [
-  { key: "selectCheckbox", label: "", width: 60, minWidth: 7 },
+  { key: "selectCheckbox", label: "", width: 76, minWidth: 7 },
   { key: "client", label: "Client", width: 250, minWidth: 7 },
   { key: "people", label: "People", width: 60, minWidth: 7 },
   { key: "pm", label: "PM", width: 60, minWidth: 7 },
@@ -371,7 +371,7 @@ const UNQUALIFIED_GROUP_NAME = "unqualified lead";
 const isUnqualifiedGroupName = (name?: string | null) =>
   name?.trim().toLowerCase() === UNQUALIFIED_GROUP_NAME;
 const TRACKING_HEADER_COLS: HeaderCol[] = [
-  { key: "selectCheckbox", label: "", width: 60, minWidth: 7 },
+  { key: "selectCheckbox", label: "", width: 76, minWidth: 7 },
   { key: "client", label: "Client", width: 250, minWidth: 7 },
   { key: "people", label: "People", width: 90, minWidth: 7 },
   { key: "channel", label: "Channel", width: 110, minWidth: 7 },
@@ -2058,7 +2058,7 @@ export function CRMBoard({
       ...(emptyHeader ? [emptyHeader] : []),
     ].map((column) =>
       column.key === "selectCheckbox"
-        ? { ...column, width: 60, minWidth: 60 }
+        ? { ...column, width: 76, minWidth: 76 }
         : column,
     );
   }, [headerCols, clientCustomCols, clientMergedOrderKeys, customClientWidths]);
