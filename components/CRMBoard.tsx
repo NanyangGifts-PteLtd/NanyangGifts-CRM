@@ -859,7 +859,10 @@ export function CRMBoard({
   const [customerMatchPending, setCustomerMatchPending] =
     useState<CustomerMatchPending | null>(null);
   const [savingCustomerMatch, setSavingCustomerMatch] = useState(false);
+  const [customerProfileSavingFields, setCustomerProfileSavingFields] =
+    useState<Set<string>>(new Set());
   const customerMatchRevisionRef = useRef(new Map<string, number>());
+  const customerProfileSavingRef = useRef(new Map<string, number>());
   const customerMatchProtectionRef = useRef<
     Map<string, { revision: number; release: () => void }>
   >(new Map());
@@ -6763,20 +6766,31 @@ export function CRMBoard({
       action: "link" | "different" | "same_add" | "same_correct",
       profileId?: string,
     ) => {
+      const revisionKey = `${pending.clientId}:${pending.field}`;
+      if (
+        customerMatchRevisionRef.current.get(revisionKey) !== pending.revision
+      ) {
+        releaseCustomerMatchProtection(
+          pending.clientId,
+          pending.field,
+          pending.revision,
+        );
+        return;
+      }
+
+      // Close the decision UI immediately. The profile operation continues in
+      // the background and is represented by a toast instead of blocking the
+      // user behind a disabled dialog.
+      setCustomerMatchPending(null);
+      customerProfileSavingRef.current.set(revisionKey, pending.revision);
+      setCustomerProfileSavingFields((current) => {
+        const next = new Set(current);
+        next.add(revisionKey);
+        return next;
+      });
       setSavingCustomerMatch(true);
+      const toastId = toast.loading("Saving customer information…");
       try {
-        const revisionKey = `${pending.clientId}:${pending.field}`;
-        if (
-          customerMatchRevisionRef.current.get(revisionKey) !== pending.revision
-        ) {
-          releaseCustomerMatchProtection(
-            pending.clientId,
-            pending.field,
-            pending.revision,
-          );
-          setCustomerMatchPending(null);
-          return;
-        }
         const response = await fetch("/api/customer-profiles/match", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -6792,23 +6806,27 @@ export function CRMBoard({
           throw new Error(
             result.error || "Unable to match this customer profile.",
           );
+        const resolvedValue =
+          typeof result.resolvedValue === "string" && result.resolvedValue.trim()
+            ? result.resolvedValue.trim()
+            : pending.value;
         // The user may have cancelled while the profile request was in
         // flight. Never commit the staged field after that cancellation.
         if (
           customerMatchRevisionRef.current.get(revisionKey) !== pending.revision
         ) {
+          toast.dismiss(toastId);
           releaseCustomerMatchProtection(
             pending.clientId,
             pending.field,
             pending.revision,
           );
-          setCustomerMatchPending(null);
           return;
         }
         setClients((current) =>
           current.map((client) =>
             client.id === pending.clientId
-              ? { ...client, [pending.field]: pending.value }
+              ? { ...client, [pending.field]: resolvedValue }
               : client,
           ),
         );
@@ -6816,7 +6834,7 @@ export function CRMBoard({
           await enqueueBoardWrite("client", pending.clientId, () =>
             updateClientRow(
               pending.clientId,
-              { [pending.field]: pending.value } as Partial<Client>,
+              { [pending.field]: resolvedValue } as Partial<Client>,
               { customerProfileAction: action },
             ),
           );
@@ -6824,31 +6842,51 @@ export function CRMBoard({
           setClients((current) =>
             current.map((client) =>
               client.id === pending.clientId &&
-              client[pending.field] === pending.value
+              client[pending.field] === resolvedValue
                 ? { ...client, [pending.field]: pending.oldValue }
                 : client,
             ),
           );
           throw saveError;
         }
-        setCustomerMatchPending(null);
-        pending.onResolved?.({ confirmed: true, value: pending.value });
+        pending.onResolved?.({ confirmed: true, value: resolvedValue });
         toast.success(
           action === "different"
             ? "Customer profile linked"
             : action === "link"
               ? "Existing profile linked"
               : "Customer profile updated",
+          { id: toastId },
         );
       } catch (error) {
+        setClients((current) =>
+          current.map((client) =>
+            client.id === pending.clientId &&
+            client[pending.field] === pending.value
+              ? { ...client, [pending.field]: pending.oldValue }
+              : client,
+          ),
+        );
         pending.onResolved?.({ confirmed: false, value: pending.oldValue });
         toast.error("Customer information was not changed", {
+          id: toastId,
           description:
             error instanceof Error
               ? error.message
               : "The customer profile could not be updated.",
         });
       } finally {
+        if (
+          customerProfileSavingRef.current.get(revisionKey) === pending.revision
+        ) {
+          customerProfileSavingRef.current.delete(revisionKey);
+          setCustomerProfileSavingFields((current) => {
+            if (!current.has(revisionKey)) return current;
+            const next = new Set(current);
+            next.delete(revisionKey);
+            return next;
+          });
+        }
         releaseCustomerMatchProtection(
           pending.clientId,
           pending.field,
@@ -6926,6 +6964,12 @@ export function CRMBoard({
             : null;
       if (existingClient && customerField) {
         const revisionKey = `${clientId}:${customerField}`;
+        if (customerProfileSavingRef.current.has(revisionKey)) {
+          toast.info(
+            `This ${customerField === "phone" ? "phone number" : "company name"} is still being linked to a customer profile. Please wait a moment before editing it again.`,
+          );
+          return;
+        }
         const revision =
           (customerMatchRevisionRef.current.get(revisionKey) ?? 0) + 1;
         customerMatchRevisionRef.current.set(revisionKey, revision);
@@ -7046,6 +7090,18 @@ export function CRMBoard({
             !oldValue &&
             !preview.exactProfileId &&
             !pending.suggestions.length
+          ) {
+            await commitCustomerMatch(pending, "different");
+            return;
+          }
+          // An exact normalized value is unambiguous, whether it belongs to
+          // another profile or the profile already linked to this lead. Link
+          // it immediately so the board adopts the profile's canonical value.
+          // Similar (but not exact) names still require a user decision,
+          // because they may be an intentional rename.
+          if (
+            preview.exactProfileId &&
+            !customerMatchOptions?.requireConfirmation
           ) {
             await commitCustomerMatch(pending, "different");
             return;
@@ -12297,6 +12353,12 @@ export function CRMBoard({
                           onAutoEditNameStarted={() =>
                             setAutoEditClientNameId(null)
                           }
+                          companyProfileSaving={customerProfileSavingFields.has(
+                            `${client.id}:company`,
+                          )}
+                          phoneProfileSaving={customerProfileSavingFields.has(
+                            `${client.id}:phone`,
+                          )}
                           groupAccentColor={groupAccentColor(group)}
                           onToggleExpand={() =>
                             setExpandedIds((prev) =>

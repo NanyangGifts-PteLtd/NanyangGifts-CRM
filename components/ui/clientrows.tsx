@@ -542,6 +542,8 @@ export type ClientRowProps = {
   trackingMode?: boolean;
   autoEditName?: boolean;
   onAutoEditNameStarted?: () => void;
+  companyProfileSaving?: boolean;
+  phoneProfileSaving?: boolean;
 };
 
 export function ClientRow({
@@ -672,6 +674,8 @@ export function ClientRow({
   trackingMode = false,
   autoEditName = false,
   onAutoEditNameStarted,
+  companyProfileSaving = false,
+  phoneProfileSaving = false,
 }: ClientRowProps) {
   const confirm = useAppConfirmation();
   const [permissionNotice, setPermissionNotice] = useState<{
@@ -4238,10 +4242,12 @@ export function ClientRow({
           }}
         >
           <EditableCell
-            className="!justify-start px-1"
+            className={`!justify-start px-1 ${companyProfileSaving ? "cursor-wait opacity-60" : ""}`}
             value={client.company}
             onChange={(v) => onUpdate({ company: v })}
             placeholder=""
+            readOnly={companyProfileSaving}
+            readOnlyReason="Customer profile linking is in progress"
           />
         </div>
 
@@ -4291,14 +4297,16 @@ export function ClientRow({
           }}
         >
           <EditableCell
-            className={
+            className={`${
               isBlacklisted
                 ? "!bg-transparent !text-white !hover:bg-red-800 font-semibold"
                 : "text-blue-600"
-            }
+            } ${phoneProfileSaving ? "cursor-wait opacity-60" : ""}`}
             value={client.phone}
             onChange={(v) => onUpdate({ phone: v })}
             placeholder=""
+            readOnly={phoneProfileSaving}
+            readOnlyReason="Customer profile linking is in progress"
           />
         </div>
 

@@ -61,6 +61,16 @@ export function EditableCell({
   }, [autoEdit, editing, readOnly, onAutoEditStarted]);
 
   useEffect(() => {
+    // A field can become temporarily read-only while a background operation
+    // finalises it. Do not leave an already-open draft editable or allow it
+    // to submit after that lock has taken effect.
+    if (!readOnly || !editing) return;
+    savedRef.current = true;
+    setLocal(value);
+    setEditing(false);
+  }, [editing, readOnly, value]);
+
+  useEffect(() => {
     onEditingChange?.(editing);
   }, [editing, onEditingChange]);
 

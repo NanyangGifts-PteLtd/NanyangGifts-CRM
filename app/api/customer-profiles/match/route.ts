@@ -74,6 +74,48 @@ async function exactMatch(field: Field, value: string) {
   return data?.find((profile) => normalizeCompany(profile.name) === normalizeCompany(value))?.id ?? null;
 }
 
+async function canonicalProfileValue(
+  field: Field,
+  profileId: string,
+  matchingValue?: string,
+) {
+  if (field === "company") {
+    const { data, error } = await supabaseAdmin
+      .from("customer_company_profiles")
+      .select("name")
+      .eq("id", profileId)
+      .maybeSingle();
+    if (error) throw error;
+    return data?.name?.trim() || null;
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("customer_client_profile_phone_numbers")
+    .select("phone_number, is_primary")
+    .eq("client_profile_id", profileId)
+    .order("is_primary", { ascending: false })
+    .order("created_at");
+  if (error) throw error;
+  const matchingPhone = matchingValue
+    ? data?.find(
+        (phone) => normalizePhone(phone.phone_number) === normalizePhone(matchingValue),
+      )
+    : null;
+  const storedPhone =
+    matchingPhone?.phone_number?.trim() || data?.[0]?.phone_number?.trim();
+  if (storedPhone) return storedPhone;
+
+  // Preserve compatibility with profiles created before phone entries were
+  // normalized into the dedicated phone-number table.
+  const { data: profile, error: profileError } = await supabaseAdmin
+    .from("customer_client_profiles")
+    .select("phone_number")
+    .eq("id", profileId)
+    .maybeSingle();
+  if (profileError) throw profileError;
+  return profile?.phone_number?.trim() || null;
+}
+
 async function link(clientId: string, field: Field, profileId: string, userId: string) {
   const column = field === "phone" ? "client_profile_id" : "company_profile_id";
   const primaryColumn = field === "phone" ? "is_primary_client" : "is_primary_company";
@@ -165,22 +207,26 @@ export async function POST(request: NextRequest) {
     if ((action === "same_add" || action === "same_correct") && exactProfileId && exactProfileId !== linkedProfileId) {
       return NextResponse.json({ error: "This value already belongs to another customer profile. It cannot be added to the currently linked profile." }, { status: 409 });
     }
-    let linkedCompanyName: string | null = null;
+    let resolvedValue: string | null = null;
     if (action === "link" && chosenProfileId) {
       await link(clientId, field, chosenProfileId, user.id);
-      if (field === "company") {
-        const { data: profile, error } = await supabaseAdmin
-          .from("customer_company_profiles")
-          .select("name")
-          .eq("id", chosenProfileId)
-          .maybeSingle();
-        if (error) throw error;
-        linkedCompanyName = profile?.name?.trim() || null;
-      }
+      resolvedValue = await canonicalProfileValue(
+        field,
+        chosenProfileId,
+        value,
+      );
     }
     else if (action === "different") {
-      if (exactProfileId) await link(clientId, field, exactProfileId, user.id);
-      else await createAndLink(clientId, field, value, String(body.clientName ?? ""), user.id);
+      if (exactProfileId) {
+        await link(clientId, field, exactProfileId, user.id);
+        resolvedValue = await canonicalProfileValue(
+          field,
+          exactProfileId,
+          value,
+        );
+      } else {
+        await createAndLink(clientId, field, value, String(body.clientName ?? ""), user.id);
+      }
     } else if ((action === "same_add" || action === "same_correct") && !linkedProfileId) {
       await createAndLink(clientId, field, value, String(body.clientName ?? ""), user.id);
     } else if ((action === "same_add" || action === "same_correct") && field === "phone" && linkedProfileId) {
@@ -199,7 +245,14 @@ export async function POST(request: NextRequest) {
       if (error) throw error;
       await link(clientId, field, linkedProfileId, user.id);
     } else return NextResponse.json({ error: "Invalid matching action." }, { status: 400 });
-    return NextResponse.json({ ok: true, companyName: linkedCompanyName });
+    return NextResponse.json({
+      ok: true,
+      // A selected/exact profile is authoritative for the board cell. For an
+      // edit that changes the current profile, the entered value is the new
+      // canonical value and remains authoritative.
+      resolvedValue: resolvedValue || value,
+      companyName: field === "company" ? resolvedValue : null,
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to update the customer profile link.";
     return NextResponse.json({ error: message.includes("unique") ? "That phone number or company is already assigned to another profile." : message }, { status: 409 });
