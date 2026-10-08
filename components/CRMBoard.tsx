@@ -10762,9 +10762,6 @@ export function CRMBoard({
               <div className="grid gap-4 md:grid-cols-2">
               {customerMatchPending.oldValue && (
                 <div className="rounded-xl border border-sky-200 bg-sky-50/50 p-4 text-center">
-                  <p className="text-sm font-semibold text-sky-900">
-                    Same customer
-                  </p>
                   <div className="mt-3 grid gap-2 text-sm">
                     <div className="rounded-md border border-sky-100 bg-white px-3 py-2 text-center">
                       <span className="mt-0.5 block font-medium text-slate-700">
@@ -10823,18 +10820,15 @@ export function CRMBoard({
                       }
                       className="rounded-md border border-sky-300 bg-white px-3 py-2 text-xs font-semibold text-sky-800 hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      Correct the{" "}
+                      {" "}
                       {customerMatchPending.field === "phone"
-                        ? "number"
-                        : "company name"}
+                        ? "Edit and save the number"
+                        : "Rename and save the company name"}
                     </button>
                   </div>
                 </div>
               )}
               <div className="flex flex-col items-center justify-center rounded-xl border border-slate-200 bg-slate-50 p-4 text-center">
-                <p className="text-sm font-semibold text-slate-800">
-                  New customer
-                </p>
                 <button
                   type="button"
                   disabled={
