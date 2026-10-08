@@ -1055,26 +1055,13 @@ export type CrmBoardQuery = {
 
 export type CrmQuickFilterCounts = Record<string, Record<string, number>>;
 
-export async function fetchCrmBoardQuickFilterCounts(
-  query: CrmBoardQuery = {},
-): Promise<CrmQuickFilterCounts> {
+// Quick-filter badges are fixed whole-board reference totals. They are not
+// facets of the active search/filter context, so never send Board query
+// parameters to the count RPC.
+export async function fetchCrmBoardQuickFilterCounts(): Promise<CrmQuickFilterCounts> {
   const { data, error } = await supabase.rpc(
     "crm_board_quick_filter_counts_v2",
-    {
-      p_search: query.search?.trim() || null,
-      p_search_columns: query.searchColumns ?? null,
-      p_advanced_rules: query.advancedRules ?? [],
-      p_advanced_join: query.advancedJoin ?? "and",
-      p_status_option_id: query.statusOptionId ?? null,
-      p_importance_option_id: query.importanceOptionId ?? null,
-      p_reply_status_option_id: query.replyStatusOptionId ?? null,
-      p_channel_option_id: query.channelOptionId ?? null,
-      p_subitem_status_option_id: query.subitemStatusOptionId ?? null,
-      p_payment_option_id: query.paymentOptionId ?? null,
-      p_payment_status_option_id: query.paymentStatusOptionId ?? null,
-      p_subprogress_option_id: query.subprogressOptionId ?? null,
-      p_person_id: query.personId ?? null,
-    },
+    {},
   );
   if (error) throw error;
   const counts: CrmQuickFilterCounts = {};
