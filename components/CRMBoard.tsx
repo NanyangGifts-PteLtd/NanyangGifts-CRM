@@ -870,13 +870,6 @@ export function CRMBoard({
   const [autoEditClientNameId, setAutoEditClientNameId] = useState<
     string | null
   >(null);
-  const [pendingGroupContentIds, setPendingGroupContentIds] = useState<
-    Set<string>
-  >(new Set());
-  const [loadedGroupContentIds, setLoadedGroupContentIds] = useState<
-    Set<string>
-  >(new Set());
-  const pendingGroupExpansionIdsRef = useRef<Set<string>>(new Set());
   const [openGroupMenu, setOpenGroupMenu] = useState<string | null>(null);
 
   useEffect(() => {
@@ -1425,17 +1418,6 @@ export function CRMBoard({
   );
 
   const [groups, setGroups] = useState<CRMGroup[]>([]);
-  useEffect(() => {
-    const openGroupIds = groups
-      .filter((group) => !collapsedGroups[group.id])
-      .map((group) => group.id);
-    if (!openGroupIds.length) return;
-    setLoadedGroupContentIds((current) => {
-      const next = new Set(current);
-      openGroupIds.forEach((id) => next.add(id));
-      return next;
-    });
-  }, [collapsedGroups, groups]);
   const allGroupsCollapsed =
     groups.length > 0 && groups.every((group) => collapsedGroups[group.id]);
   const [groupToDelete, setGroupToDelete] = useState<CRMGroup | null>(null);
@@ -5966,6 +5948,7 @@ export function CRMBoard({
           : { ...client, subitems: [...client.subitems].sort(compareSubitems) },
       ),
   }));
+
   const resultGroupIds = groupedClients
     .filter(({ clients: groupClients }) => groupClients.length > 0)
     .map(({ group }) => group.id);
@@ -6503,36 +6486,8 @@ export function CRMBoard({
   const toggleGroup = useCallback(
     (id: string) => {
       const isCollapsed = Boolean(collapsedGroups[id]);
-
-      if (!isCollapsed) {
-        pendingGroupExpansionIdsRef.current.delete(id);
-        setPendingGroupContentIds((current) => {
-          const next = new Set(current);
-          next.delete(id);
-          return next;
-        });
-        setCollapsedGroups((current) => ({ ...current, [id]: true }));
-        return;
-      }
-
-      // Paint the lightweight group skeleton before mounting a potentially
-      // large client/subitem tree, including after the board itself is loaded.
-      pendingGroupExpansionIdsRef.current.add(id);
-      setPendingGroupContentIds((current) => new Set(current).add(id));
-      void (onPrimeGroup ?? onLoadMoreGroup)?.(id);
-      requestAnimationFrame(() => {
-        if (!pendingGroupExpansionIdsRef.current.has(id)) return;
-        setCollapsedGroups((current) => ({ ...current, [id]: false }));
-        window.setTimeout(() => {
-          if (!pendingGroupExpansionIdsRef.current.has(id)) return;
-          pendingGroupExpansionIdsRef.current.delete(id);
-          setPendingGroupContentIds((current) => {
-            const next = new Set(current);
-            next.delete(id);
-            return next;
-          });
-        }, 160);
-      });
+      setCollapsedGroups((current) => ({ ...current, [id]: !isCollapsed }));
+      if (isCollapsed) void (onPrimeGroup ?? onLoadMoreGroup)?.(id);
     },
     [collapsedGroups, onLoadMoreGroup, onPrimeGroup],
   );
@@ -11718,7 +11673,13 @@ export function CRMBoard({
               const groupTotalMinWidth = trackingView
                 ? Math.max(groupClientTableMinWidth, TRACKING_VIEW_MIN_WIDTH)
                 : groupClientTableMinWidth;
-              const isGroupExpanding = pendingGroupContentIds.has(group.id);
+              const isGroupExpanding =
+                Boolean(groupPageState[group.id]?.loading) &&
+                groupClients.length === 0;
+              // Keep already-loaded rows visible during background page
+              // loading. A skeleton is only needed when there is no real
+              // group content to show yet.
+              const showGroupSkeleton = isGroupExpanding && groupClients.length === 0;
 
               return (
                 <React.Fragment key={group.id}>
@@ -11910,7 +11871,7 @@ export function CRMBoard({
                     </div>
                   </div>
 
-                  {isGroupExpanding && (
+                  {showGroupSkeleton && (
                       <div
                         className="relative overflow-hidden bg-white"
                         style={{
@@ -11981,8 +11942,7 @@ export function CRMBoard({
                       </div>
                     )}
 
-                  {!collapsedGroups[group.id] &&
-                    !pendingGroupContentIds.has(group.id) && (
+                  {!collapsedGroups[group.id] && !showGroupSkeleton && (
                     <div
                       data-client-group={group.id}
                       onDragOver={(event) =>
