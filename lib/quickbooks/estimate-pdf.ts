@@ -91,7 +91,6 @@ export async function archiveQuickBooksEstimatePdf({
         ...customFields,
         filesMiscellaneous: JSON.stringify([...files, attachment]),
       },
-      updated_at: createdAt.toISOString(),
     })
     .eq("id", clientId);
   if (updateError) {
