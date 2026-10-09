@@ -83,6 +83,8 @@ import {
   type DeletedBinItem,
   type CrmBoardQuery,
   type CrmQuickFilterCounts,
+  fetchSubitemDetailPayloads,
+  fetchClientCustomFields,
 } from "@/lib/crm";
 import { fetchClientAssignmentMaps } from "@/lib/assignments";
 import { GenerateOcfModal } from "./Generate-OCF-Modal";
@@ -126,7 +128,6 @@ import {
 } from "@/lib/board-labels";
 import { overallPaymentStatus as calculateOverallPaymentStatus } from "@/lib/payment-status";
 import {
-  expandedGroupsForSearch,
   matchesBoardSearchValues,
   selectedBoardSearchColumns,
   setAllSearchColumns,
@@ -751,6 +752,13 @@ export function CRMBoard({
     useState<Set<string>>(new Set());
   const [boardSearchColumnQuery, setBoardSearchColumnQuery] = useState("");
   const searchCollapsedGroupsRef = useRef<Record<string, boolean> | null>(null);
+  // A filtered result set gets its initial group layout exactly once. Keeping
+  // this separate from `collapsedGroups` is important: the latter is also the
+  // user's manual expand/collapse preference while a filter is active.
+  const pendingResultGroupExpansionRef = useRef<string | null>(null);
+  const appliedResultGroupExpansionRef = useRef<string | null>(null);
+  const [resultGroupExpansionRequest, setResultGroupExpansionRequest] =
+    useState(0);
   const boardSearchRef = useRef<HTMLDivElement>(null);
   const boardSearchInputRef = useRef<HTMLInputElement>(null);
   const boardSearchDebounceRef = useRef<number | null>(null);
@@ -870,6 +878,8 @@ export function CRMBoard({
   const [collapsedGroups, setCollapsedGroups] = useState<
     Record<string, boolean>
   >({});
+  const clientDetailHydrationRequestsRef = useRef(new Map<string, Promise<void>>());
+  const hydratedClientCustomFieldsRef = useRef(new Set<string>());
   const [autoEditClientNameId, setAutoEditClientNameId] = useState<
     string | null
   >(null);
@@ -5697,6 +5707,32 @@ export function CRMBoard({
             ? "filter"
             : "other";
       lastServerQueryRef.current = serializedQuery;
+
+      // Do not couple this to sorting: a new sort should preserve the user's
+      // current group layout. Searches and filters, on the other hand, get a
+      // one-time layout once their result set is available.
+      const resultScope = {
+        search: query.search,
+        searchColumns: query.searchColumns,
+        advancedRules: query.advancedRules,
+        advancedJoin: query.advancedJoin,
+        statusOptionId: query.statusOptionId,
+        importanceOptionId: query.importanceOptionId,
+        replyStatusOptionId: query.replyStatusOptionId,
+        channelOptionId: query.channelOptionId,
+        subitemStatusOptionId: query.subitemStatusOptionId,
+        paymentOptionId: query.paymentOptionId,
+        paymentStatusOptionId: query.paymentStatusOptionId,
+        subprogressOptionId: query.subprogressOptionId,
+        personId: query.personId,
+      };
+      const hasResultScope = Object.values(resultScope).some(
+        (value) => value !== undefined,
+      );
+      pendingResultGroupExpansionRef.current = hasResultScope
+        ? JSON.stringify(resultScope)
+        : null;
+      setResultGroupExpansionRequest((current) => current + 1);
       onServerQueryChange(query);
     }, boardSearchTerm.trim() ? 250 : 0);
     return () => window.clearTimeout(timer);
@@ -5955,11 +5991,15 @@ export function CRMBoard({
   const resultGroupIds = groupedClients
     .filter(({ clients: groupClients }) => groupClients.length > 0)
     .map(({ group }) => group.id);
-  const searchResultGroupIds = boardSearchActive
+  // Group counts come from the server for the active query, so use them for
+  // filters as well as text search. The locally loaded rows are only the
+  // first page and cannot tell us whether another group has a result.
+  const searchResultGroupIds = shouldExpandGroupsForResults
     ? groups
         .filter((group) => (groupPageState[group.id]?.total ?? 0) > 0)
         .map((group) => group.id)
     : resultGroupIds;
+  const searchResultGroupIdsKey = searchResultGroupIds.join(",");
 
   useEffect(() => {
     if (!shouldExpandGroupsForResults) {
@@ -5967,16 +6007,39 @@ export function CRMBoard({
         setCollapsedGroups(searchCollapsedGroupsRef.current);
         searchCollapsedGroupsRef.current = null;
       }
+      pendingResultGroupExpansionRef.current = null;
+      appliedResultGroupExpansionRef.current = null;
       return;
     }
+
+    const expansionKey = pendingResultGroupExpansionRef.current;
+    // Wait until the requested query has supplied its complete per-group
+    // totals. This avoids applying a new filter's layout to the prior query's
+    // visible rows during the hand-off.
+    if (
+      !expansionKey ||
+      boardQueryLoading ||
+      !clientsLoaded ||
+      appliedResultGroupExpansionRef.current === expansionKey
+    )
+      return;
+
     if (!searchCollapsedGroupsRef.current)
       searchCollapsedGroupsRef.current = collapsedGroups;
-    setCollapsedGroups((current) =>
-      expandedGroupsForSearch(searchResultGroupIds, current),
+
+    const groupsWithResults = new Set(searchResultGroupIds);
+    setCollapsedGroups(
+      Object.fromEntries(
+        groups.map((group) => [group.id, !groupsWithResults.has(group.id)]),
+      ),
     );
+    appliedResultGroupExpansionRef.current = expansionKey;
   }, [
-    collapsedGroups,
-    searchResultGroupIds,
+    boardQueryLoading,
+    clientsLoaded,
+    groups,
+    resultGroupExpansionRequest,
+    searchResultGroupIdsKey,
     shouldExpandGroupsForResults,
   ]);
 
@@ -6472,6 +6535,74 @@ export function CRMBoard({
     const facet = quickFilterCounts[filterKey];
     return facet ? (facet[optionId] ?? 0) : fallback();
   };
+
+  const hydrateClientSubitemDetails = useCallback(
+    async (clientId: string) => {
+      const client = clients.find((entry) => entry.id === clientId);
+      const missingSubitemIds = (client?.subitems ?? [])
+        .filter((subitem) => !subitem.detailsHydrated)
+        .map((subitem) => subitem.id);
+      const needsClientCustomFields =
+        !hydratedClientCustomFieldsRef.current.has(clientId);
+      if (!missingSubitemIds.length && !needsClientCustomFields) return;
+
+      const existing = clientDetailHydrationRequestsRef.current.get(clientId);
+      if (existing) return existing;
+
+      const request = Promise.all([
+        fetchSubitemDetailPayloads(missingSubitemIds),
+        needsClientCustomFields
+          ? fetchClientCustomFields(clientId)
+          : Promise.resolve({}),
+      ])
+        .then(([{ subitems: detailsBySubitemId, clientCustomFields }, clientCustomFieldsDirect]) => {
+          setClients((current) =>
+            current.map((entry) =>
+              entry.id !== clientId
+                ? entry
+                : {
+                    ...entry,
+                    customFields: {
+                      ...(entry.customFields ?? {}),
+                      ...(clientCustomFields.get(entry.id) ?? {}),
+                      ...clientCustomFieldsDirect,
+                    },
+                    subitems: entry.subitems.map((subitem) => ({
+                      ...subitem,
+                      ...(detailsBySubitemId.get(subitem.id) ?? {}),
+                      customFields: {
+                        ...(subitem.customFields ?? {}),
+                        ...(detailsBySubitemId.get(subitem.id)?.customFields ?? {}),
+                      },
+                    })),
+                  },
+            ),
+          );
+          hydratedClientCustomFieldsRef.current.add(clientId);
+        })
+        .catch((error) => {
+          console.error("Could not load subitem detail payloads", error);
+          toast.error("Could not load subitem details", {
+            description: "Please collapse and reopen the client to try again.",
+          });
+          throw error;
+        })
+        .finally(() => {
+          clientDetailHydrationRequestsRef.current.delete(clientId);
+        });
+      clientDetailHydrationRequestsRef.current.set(clientId, request);
+      return request;
+    },
+    [clients, setClients],
+  );
+
+  // Programmatic expansion (search navigation, Create client, Expand all)
+  // must receive the same lazy detail payload as a caret click.
+  useEffect(() => {
+    for (const clientId of expandedIds) {
+      void hydrateClientSubitemDetails(clientId);
+    }
+  }, [expandedIds, hydrateClientSubitemDetails]);
 
   // --- Selection ---
   const toggleExpandAll = useCallback(() => {
@@ -12360,17 +12491,22 @@ export function CRMBoard({
                             `${client.id}:phone`,
                           )}
                           groupAccentColor={groupAccentColor(group)}
-                          onToggleExpand={() =>
+                          onToggleExpand={() => {
+                            const isExpanded = expandedIdSet.has(client.id);
                             setExpandedIds((prev) =>
-                              prev.includes(client.id)
+                              isExpanded
                                 ? prev.filter((id) => id !== client.id)
                                 : [...prev, client.id],
-                            )
-                          }
+                            );
+                            if (!isExpanded)
+                              void hydrateClientSubitemDetails(client.id);
+                          }}
                           onOpenOcfModal={handleOpenOcfModal}
                           onOpenDetail={() => {
                             clearAllSelections();
-                            setDetailClientId(client.id);
+                            void hydrateClientSubitemDetails(client.id).finally(
+                              () => setDetailClientId(client.id),
+                            );
                           }}
                           onBeginFocusedAction={clearAllSelections}
                           isSelected={selectedIds.has(client.id)}
@@ -12590,10 +12726,13 @@ export function CRMBoard({
                           onMoveSubitemAction={moveSubitemAction}
                           onOpenSubitemDetail={(subitemId) => {
                             clearAllSelections();
-                            setDetailSubitem({
-                              clientId: client.id,
-                              subitemId,
-                            });
+                            void hydrateClientSubitemDetails(client.id).finally(
+                              () =>
+                                setDetailSubitem({
+                                  clientId: client.id,
+                                  subitemId,
+                                }),
+                            );
                           }}
                           onPaymentRowsChanged={(subitemId, paymentRows) =>
                             setClients((current) =>

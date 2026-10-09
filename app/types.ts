@@ -165,6 +165,10 @@ export interface Subitem {
   difference: string;
   paymentRemarks: string;
   paymentRows: PaymentRow[];
+  // The Board receives scalar subitem fields first, then fetches these larger
+  // editable payloads when its client row is expanded. Other callers (such
+  // as Gantt) still hydrate them eagerly.
+  detailsHydrated?: boolean;
 
   // Timeline
   timelineRows: TimelineRow[];

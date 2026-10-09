@@ -17,7 +17,8 @@ import {
   fetchClientGroupCounts,
   fetchCrmBoardQuickFilterCounts,
   fetchGanttResourcePage,
-  fetchClientsWithSubitems,
+  fetchInitialCrmClientBundle,
+  fetchHydratedClientBundle,
   searchCrmClients,
   type CrmBoardQuery,
   type CrmQuickFilterCounts,
@@ -34,8 +35,6 @@ import { createClient as createSupabaseClient } from "@/lib/supabase/client";
 import { ReportsPanel } from "@/components/ReportsPanel";
 import { RoundRobinAdminPanel } from "@/components/RoundRobinPanel";
 import GanttChart from "@/components/Gantt-Chart";
-import { fetchClientAssignmentMaps } from "@/lib/assignments";
-import { fetchAllSubitemAssignees } from "@/components/CRMBoard";
 import { TeamPanel } from "@/components/TeamPanel";
 import { UserAdminPanel } from "@/components/UserAdminPanel";
 import { CustomerProfilesPanel } from "@/components/CustomerProfilesPanel";
@@ -495,9 +494,8 @@ export default function Page() {
       let client = clients.find((item) => item.id === result.clientId);
       if (!client) {
         try {
-          const [hydratedClient] = await fetchClientsWithSubitems({
-            clientIds: [result.clientId],
-          });
+          const hydration = await fetchHydratedClientBundle([result.clientId]);
+          const [hydratedClient] = hydration.clients;
           if (hydratedClient) {
             client = hydratedClient;
             setClients((current) =>
@@ -505,6 +503,18 @@ export default function Page() {
                 ? current
                 : [...current, hydratedClient],
             );
+            setClientAssignees((current) => ({
+              ...current,
+              ...hydration.clientAssignees,
+            }));
+            setClientPmAssignees((current) => ({
+              ...current,
+              ...hydration.clientPmAssignees,
+            }));
+            setSubitemAssignees((current) => ({
+              ...current,
+              ...hydration.subitemAssignees,
+            }));
           }
         } catch (error) {
           console.error("Failed to load universal-search result", error);
@@ -610,14 +620,6 @@ export default function Page() {
       else setGanttClientsLoading(true);
       try {
         const page = await fetchGanttResourcePage(query, cursor, 30);
-        const [assignmentMaps, nextSubitemAssignees] = await Promise.all([
-          fetchClientAssignmentMaps(page.clients.map((client) => client.id)),
-          fetchAllSubitemAssignees(
-            page.clients.flatMap((client) =>
-              client.subitems.map((subitem) => subitem.id),
-            ),
-          ),
-        ]);
         if (refreshSequence !== ganttRefreshSequence.current) return;
 
         setGanttClients((current) => {
@@ -636,13 +638,17 @@ export default function Page() {
         setGanttResourceCursor(page.nextCursor);
         if (!append) setGanttLoadedQueryKey(JSON.stringify(query));
         setGanttClientAssignees((current) =>
-          append ? { ...current, ...assignmentMaps.people } : assignmentMaps.people,
+          append ? { ...current, ...page.clientAssignees } : page.clientAssignees,
         );
         setGanttClientPmAssignees((current) =>
-          append ? { ...current, ...assignmentMaps.pm } : assignmentMaps.pm,
+          append
+            ? { ...current, ...page.clientPmAssignees }
+            : page.clientPmAssignees,
         );
         setGanttSubitemAssignees((current) =>
-          append ? { ...current, ...nextSubitemAssignees } : nextSubitemAssignees,
+          append
+            ? { ...current, ...page.subitemAssignees }
+            : page.subitemAssignees,
         );
       } catch (error) {
         if (refreshSequence === ganttRefreshSequence.current) {
@@ -753,22 +759,23 @@ export default function Page() {
       const [initialPage, groupCounts] = await Promise.all([
           Object.keys(boardQuery).length
             ? fetchClientGroupPage(null, 0, 30, boardQuery)
-            : fetchClientsWithSubitems({
+            : fetchInitialCrmClientBundle({
                 limit: 30,
                 excludeGroupNames: ["Failed", "Unqualified Lead", "To Delete"],
-              }).then((clients) => ({ clients })),
+              }).then((hydration) => ({
+                clients: hydration.clients,
+                clientAssignees: hydration.clientAssignees,
+                clientPmAssignees: hydration.clientPmAssignees,
+                subitemAssignees: hydration.subitemAssignees,
+              })),
           fetchClientGroupCounts(boardQuery),
         ]);
       const rows = initialPage.clients;
-      // Only hydrate assignment data used by this result page. Fetching every
-      // client/subitem assignment on each query made board searches feel like
-      // full-board refreshes.
-      const [clientAssignmentMaps, subitemAssigneeMap] = await Promise.all([
-        fetchClientAssignmentMaps(rows.map((client) => client.id)),
-        fetchAllSubitemAssignees(
-          rows.flatMap((client) => client.subitems.map((subitem) => subitem.id)),
-        ),
-      ]);
+      const clientAssignmentMaps = {
+        people: initialPage.clientAssignees,
+        pm: initialPage.clientPmAssignees,
+      };
+      const subitemAssigneeMap = initialPage.subitemAssignees;
 
       // Never allow an older or edit-stale request to install its snapshot.
       // A fresh reconciliation will pick up both the latest local write and
@@ -1002,15 +1009,14 @@ export default function Page() {
   );
 
   const mergeAssignmentDataForClients = useCallback(
-    async (rows: Client[]) => {
-      const [assignmentMaps, nextSubitemAssignees] = await Promise.all([
-        fetchClientAssignmentMaps(rows.map((client) => client.id)),
-        fetchAllSubitemAssignees(
-          rows.flatMap((client) =>
-            client.subitems.map((subitem) => subitem.id),
-          ),
-        ),
-      ]);
+    (
+      rows: Client[],
+      assignmentMaps: {
+        people: ClientAssigneeMap;
+        pm: ClientAssigneeMap;
+      },
+      nextSubitemAssignees: SubitemAssigneeMap,
+    ) => {
       setClientAssignees((current) => {
         const next = { ...current };
         for (const client of rows) {
@@ -1062,7 +1068,11 @@ export default function Page() {
     }));
     try {
       const page = await fetchClientGroupPage(groupId, offset, 30, boardQuery);
-      await mergeAssignmentDataForClients(page.clients);
+      mergeAssignmentDataForClients(
+        page.clients,
+        { people: page.clientAssignees, pm: page.clientPmAssignees },
+        page.subitemAssignees,
+      );
       const viewportAnchor = captureSearchViewportAnchor();
       setClients((current) => {
         const knownIds = new Set(current.map((client) => client.id));
@@ -1117,7 +1127,11 @@ export default function Page() {
       const pagesToFetch = groupPageState[groupId]?.loaded ? 2 : 3;
       for (let pageNumber = 0; pageNumber < pagesToFetch; pageNumber += 1) {
         const page = await fetchClientGroupPage(groupId, offset, 30, boardQuery);
-        await mergeAssignmentDataForClients(page.clients);
+        mergeAssignmentDataForClients(
+          page.clients,
+          { people: page.clientAssignees, pm: page.clientPmAssignees },
+          page.subitemAssignees,
+        );
         const viewportAnchor = captureSearchViewportAnchor();
         setClients((current) => {
           const knownIds = new Set(current.map((client) => client.id));

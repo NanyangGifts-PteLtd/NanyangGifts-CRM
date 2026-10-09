@@ -11,6 +11,8 @@ import type {
   Subitem,
   ActivityEntry,
   PaymentRow,
+  ClientAssigneeMap,
+  SubitemAssigneeMap,
 } from "@/app/types";
 import { addClientAssignee } from "./assignments";
 import { capitaliseFirstCharacter } from "./text-format";
@@ -231,6 +233,7 @@ type Subitems = {
     mode_of_payment: string | null;
     mode_of_payment_option_id: string | null;
   }> | null;
+  details_hydrated?: boolean | null;
   timeline_rows: any[] | null;
   timeline_groups?: any[] | null;
   show_timeline: boolean | null;
@@ -296,6 +299,37 @@ type Clients = {
   custom_fields?: Record<string, string>;
   deleted_at?: string | null;
   deleted_by?: string | null;
+};
+
+export type HydratedClientBundle = {
+  clients: Client[];
+  clientAssignees: ClientAssigneeMap;
+  clientPmAssignees: ClientAssigneeMap;
+  subitemAssignees: SubitemAssigneeMap;
+};
+
+type HydratedClientRpcRow = {
+  client_id: string;
+  client_row: Clients;
+  people_assignee_ids: string[] | null;
+  pm_assignee_ids: string[] | null;
+  subitem_assignee_ids: Record<string, string[] | null> | null;
+};
+
+type HydratedSubitemDetailsRpcRow = {
+  subitem_id: string;
+  client_id: string;
+  payment_rows: Subitems["payment_rows"];
+  timeline_rows: Subitems["timeline_rows"];
+  timeline_groups: Subitems["timeline_groups"];
+  sample_rows: Subitems["sample_rows"];
+  subitem_custom_fields: Record<string, string> | null;
+  client_custom_fields: Record<string, string> | null;
+};
+
+export type HydratedSubitemDetails = {
+  subitems: Map<string, Partial<Subitem>>;
+  clientCustomFields: Map<string, Record<string, string>>;
 };
 
 export type DeletedBinItem = {
@@ -502,6 +536,7 @@ export function mapSubitems(row: Subitems): Subitem {
         modeOfPaymentOptionId: paymentRow.mode_of_payment_option_id ?? null,
       }))
       .sort((first, second) => first.position - second.position),
+    detailsHydrated: row.details_hydrated ?? true,
     timelineRows: row.timeline_rows ?? [],
     timelineGroups:
       Array.isArray(row.timeline_groups) && row.timeline_groups.length
@@ -832,6 +867,12 @@ export async function fetchClientsWithSubitems(params?: {
   limit?: number;
   excludeGroupNames?: string[];
 }) {
+  // Paged CRM, Gantt, and universal-search callers already know their client
+  // IDs. Hydrate those IDs through one set-based RPC rather than issuing
+  // separate client, subitem, payment, OCF, and assignment requests.
+  if (params?.clientIds) {
+    return (await fetchHydratedClientBundle(params.clientIds)).clients;
+  }
   // Keep the board payload intentional. These are the fields consumed by
   // `mapClients` and the board's calculated/search columns; avoid transferring
   // unrelated columns as the clients table grows.
@@ -908,6 +949,15 @@ export async function fetchClientsWithSubitems(params?: {
   }
 
   const typedClientsData = (clientsData ?? []) as unknown as Clients[];
+  // The selection query above is retained for the legacy callers that choose
+  // IDs by group/exclusion. From this point onward use the common hydration
+  // RPC instead of repeating related-table requests in the browser.
+  return (await fetchHydratedClientBundle(
+    typedClientsData.map((row) => String(row.id)),
+  )).clients;
+
+  /* Legacy hydration kept temporarily as a reference while the versioned RPC
+   * is verified in production. It is intentionally unreachable. */
   const activeClientIds = typedClientsData.map((row) => String(row.id));
   const clientIdChunks = Array.from(
     { length: Math.ceil(activeClientIds.length / 200) },
@@ -1028,6 +1078,256 @@ export async function fetchClientsWithSubitems(params?: {
   );
 }
 
+/**
+ * Hydrates an already selected, ordered client page and its assignment maps in
+ * one request. The database function intentionally mirrors the legacy board
+ * payload so callers can migrate without changing visible CRM behaviour.
+ */
+export async function fetchHydratedClientBundle(
+  clientIds: string[],
+): Promise<HydratedClientBundle> {
+  const orderedIds = Array.from(
+    new Set(clientIds.map(String).filter(Boolean)),
+  );
+  if (!orderedIds.length) {
+    return {
+      clients: [],
+      clientAssignees: {},
+      clientPmAssignees: {},
+      subitemAssignees: {},
+    };
+  }
+
+  const { data, error } = await supabase.rpc("crm_hydrate_clients_v1", {
+    p_client_ids: orderedIds,
+  });
+  if (error) throw error;
+
+  const clientAssignees: ClientAssigneeMap = {};
+  const clientPmAssignees: ClientAssigneeMap = {};
+  const subitemAssignees: SubitemAssigneeMap = {};
+  const clientsById = new Map<string, Client>();
+
+  for (const row of (data ?? []) as HydratedClientRpcRow[]) {
+    const clientId = String(row.client_id);
+    if (!clientId || !row.client_row) continue;
+    clientsById.set(clientId, mapClients(row.client_row));
+
+    const peopleIds = (row.people_assignee_ids ?? []).map(String);
+    const pmIds = (row.pm_assignee_ids ?? []).map(String);
+    if (peopleIds.length) clientAssignees[clientId] = peopleIds;
+    if (pmIds.length) clientPmAssignees[clientId] = pmIds;
+
+    for (const [subitemId, userIds] of Object.entries(
+      row.subitem_assignee_ids ?? {},
+    )) {
+      const ids = (userIds ?? []).map(String);
+      if (ids.length) subitemAssignees[subitemId] = ids;
+    }
+  }
+
+  return {
+    clients: orderedIds.flatMap((clientId) => {
+      const client = clientsById.get(clientId);
+      return client ? [client] : [];
+    }),
+    clientAssignees,
+    clientPmAssignees,
+    subitemAssignees,
+  };
+}
+
+/**
+ * Board-only hydration avoids large timeline/sample/payment JSON until the
+ * user opens a client. The full hydrator above remains the deliberate choice
+ * for Gantt, which needs timeline data to render its resource rows.
+ */
+export async function fetchLeanBoardClientBundle(
+  clientIds: string[],
+): Promise<HydratedClientBundle> {
+  const orderedIds = Array.from(
+    new Set(clientIds.map(String).filter(Boolean)),
+  );
+  if (!orderedIds.length) {
+    return {
+      clients: [],
+      clientAssignees: {},
+      clientPmAssignees: {},
+      subitemAssignees: {},
+    };
+  }
+
+  const { data, error } = await supabase.rpc("crm_hydrate_board_clients_v1", {
+    p_client_ids: orderedIds,
+  });
+  if (error) throw error;
+
+  const clientAssignees: ClientAssigneeMap = {};
+  const clientPmAssignees: ClientAssigneeMap = {};
+  const subitemAssignees: SubitemAssigneeMap = {};
+  const clientsById = new Map<string, Client>();
+  for (const row of (data ?? []) as HydratedClientRpcRow[]) {
+    const clientId = String(row.client_id);
+    if (!clientId || !row.client_row) continue;
+    clientsById.set(clientId, mapClients(row.client_row));
+    const peopleIds = (row.people_assignee_ids ?? []).map(String);
+    const pmIds = (row.pm_assignee_ids ?? []).map(String);
+    if (peopleIds.length) clientAssignees[clientId] = peopleIds;
+    if (pmIds.length) clientPmAssignees[clientId] = pmIds;
+    for (const [subitemId, userIds] of Object.entries(
+      row.subitem_assignee_ids ?? {},
+    )) {
+      const ids = (userIds ?? []).map(String);
+      if (ids.length) subitemAssignees[subitemId] = ids;
+    }
+  }
+  return {
+    clients: orderedIds.flatMap((clientId) => {
+      const client = clientsById.get(clientId);
+      return client ? [client] : [];
+    }),
+    clientAssignees,
+    clientPmAssignees,
+    subitemAssignees,
+  };
+}
+
+export async function fetchSubitemDetailPayloads(subitemIds: string[]) {
+  const ids = Array.from(new Set(subitemIds.map(String).filter(Boolean)));
+  if (!ids.length) {
+    return {
+      subitems: new Map<string, Partial<Subitem>>(),
+      clientCustomFields: new Map<string, Record<string, string>>(),
+    } satisfies HydratedSubitemDetails;
+  }
+  const { data, error } = await supabase.rpc("crm_hydrate_subitem_details_v2", {
+    p_subitem_ids: ids,
+  });
+  if (error) throw error;
+  const subitems = new Map<string, Partial<Subitem>>();
+  const clientCustomFields = new Map<string, Record<string, string>>();
+  for (const row of (data ?? []) as HydratedSubitemDetailsRpcRow[]) {
+    const mapped = mapSubitems({
+      id: String(row.subitem_id),
+      client_id: "",
+      position: null,
+      created_at: null,
+      waiting_started_at: null,
+      name: null,
+      people: null,
+      status: null,
+      local_overseas: null,
+      qty: null,
+      description: null,
+      remarks: null,
+      shipper: null,
+      supplier: null,
+      cost: null,
+      manpower: null,
+      manpower_rmb: null,
+      ls: null,
+      os: null,
+      currency: null,
+      c_sgd: null,
+      tc: null,
+      uc: null,
+      tc_sgd: null,
+      price: null,
+      up: null,
+      num_of_cartons: null,
+      cn_tracking: null,
+      sg_tracking: null,
+      pl: null,
+      sl: null,
+      owner: null,
+      payment: null,
+      payment_status: null,
+      total_uc: null,
+      ls_rmb: null,
+      total_c: null,
+      mode_of_payment: null,
+      order_number: null,
+      quantity_produced: null,
+      qty_free: null,
+      sample: null,
+      qty_total: null,
+      qty_we_keep: null,
+      qty_for: null,
+      payment_amount: null,
+      difference: null,
+      payment_remarks: null,
+      shipper_id: null,
+      payment_rows: row.payment_rows,
+      timeline_rows: row.timeline_rows,
+      timeline_groups: row.timeline_groups,
+      sample_rows: row.sample_rows,
+      show_timeline: false,
+      show_payments: false,
+      show_sample: false,
+      sample_order_status: null,
+      sample_status: null,
+      sample_type: null,
+      details_hydrated: true,
+    });
+    subitems.set(String(row.subitem_id), {
+      paymentRows: mapped.paymentRows,
+      timelineRows: mapped.timelineRows,
+      timelineGroups: mapped.timelineGroups,
+      sampleRows: mapped.sampleRows,
+      customFields: row.subitem_custom_fields ?? {},
+      detailsHydrated: true,
+    });
+    clientCustomFields.set(
+      String(row.client_id),
+      row.client_custom_fields ?? {},
+    );
+  }
+  return { subitems, clientCustomFields } satisfies HydratedSubitemDetails;
+}
+
+export async function fetchClientCustomFields(clientId: string) {
+  const { data, error } = await supabase
+    .from("clients")
+    .select("custom_fields")
+    .eq("id", clientId)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (error) throw error;
+  return (data?.custom_fields ?? {}) as Record<string, string>;
+}
+
+/** Selects the default board page while retaining its excluded-group policy. */
+export async function fetchInitialCrmClientBundle(params?: {
+  limit?: number;
+  excludeGroupNames?: string[];
+}): Promise<HydratedClientBundle> {
+  let excludedGroupIds: string[] = [];
+  if (params?.excludeGroupNames?.length) {
+    const { data, error } = await supabase
+      .from("crm_groups")
+      .select("id")
+      .in(
+        "name",
+        params.excludeGroupNames.map((name) => name.trim()),
+      );
+    if (error) throw error;
+    excludedGroupIds = (data ?? []).map((group) => String(group.id));
+  }
+
+  let query = supabase
+    .from("clients")
+    .select("id")
+    .is("deleted_at", null)
+    .order("created_at", { ascending: false })
+    .limit(params?.limit ?? 30);
+  if (excludedGroupIds.length) {
+    query = query.not("group_id", "in", `(${excludedGroupIds.join(",")})`);
+  }
+  const { data, error } = await query;
+  if (error) throw error;
+  return fetchLeanBoardClientBundle((data ?? []).map((row) => String(row.id)));
+}
+
 export type CrmBoardQuery = {
   search?: string;
   searchColumns?: string[];
@@ -1078,6 +1378,9 @@ export type GanttResourceCursor = {
 
 export type GanttResourcePage = {
   clients: Client[];
+  clientAssignees: ClientAssigneeMap;
+  clientPmAssignees: ClientAssigneeMap;
+  subitemAssignees: SubitemAssigneeMap;
   resourceIds: string[];
   total: number;
   hasMore: boolean;
@@ -1126,19 +1429,15 @@ export async function fetchGanttResourcePage(
   const hasMore = responseRows.length > limit;
   const rows = responseRows.slice(0, limit);
   const clientIds = Array.from(new Set(rows.map((row) => String(row.client_id))));
-  const hydratedClients = clientIds.length
-    ? await fetchClientsWithSubitems({ clientIds })
-    : [];
-  const clientsById = new Map(hydratedClients.map((client) => [client.id, client]));
-  const orderedClients = clientIds.flatMap((clientId) => {
-    const client = clientsById.get(clientId);
-    return client ? [client] : [];
-  });
+  const hydration = await fetchHydratedClientBundle(clientIds);
   const last = rows.at(-1);
   const total = Number(rows[0]?.total_count ?? 0);
 
   return {
-    clients: orderedClients,
+    clients: hydration.clients,
+    clientAssignees: hydration.clientAssignees,
+    clientPmAssignees: hydration.clientPmAssignees,
+    subitemAssignees: hydration.subitemAssignees,
     resourceIds: rows.map(
       (row) => `${row.client_id}::${row.subitem_id}::${row.timeline_id}`,
     ),
@@ -1224,21 +1523,15 @@ export async function fetchClientGroupPage(
     String(row.client_id),
   );
   const total = Number(data?.[0]?.total_count ?? 0);
-  const hydratedClients: Client[] = clientIds.length
-    ? await fetchClientsWithSubitems({ clientIds })
-    : [];
+  const hydration = await fetchLeanBoardClientBundle(clientIds);
   // `in(id, …)` has no ordering contract. Restore the RPC order so a
   // name/company/follow-up sort does not silently revert to created_at when
   // the records are hydrated with subitems.
-  const clientsById = new Map(
-    hydratedClients.map((client) => [client.id, client]),
-  );
-  const clients = clientIds.flatMap((clientId) => {
-    const client = clientsById.get(clientId);
-    return client ? [client] : [];
-  });
   return {
-    clients,
+    clients: hydration.clients,
+    clientAssignees: hydration.clientAssignees,
+    clientPmAssignees: hydration.clientPmAssignees,
+    subitemAssignees: hydration.subitemAssignees,
     total,
     hasMore: offset + clientIds.length < total,
     nextOffset: offset + clientIds.length,

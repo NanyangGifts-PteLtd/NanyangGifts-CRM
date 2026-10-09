@@ -79,7 +79,14 @@ type AttachmentItem = {
   storagePath?: string;
 };
 
-type SampleArtworkUpload = { name: string; url: string; mimeType: string };
+type SampleArtworkUpload = {
+  file: File;
+  name: string;
+  // This Data URL is used only for the draft preview and sample-estimate
+  // request. Persisted artwork always goes through Supabase Storage.
+  url: string;
+  mimeType: string;
+};
 
 function PdfIcon({ size = 16 }: { size?: number }) {
   return (
@@ -324,6 +331,7 @@ function imageFileToArtwork(file: File): Promise<SampleArtworkUpload> {
     const reader = new FileReader();
     reader.onload = () =>
       resolve({
+        file,
         name: file.name,
         url: String(reader.result),
         mimeType: file.type || "image/png",
@@ -1584,26 +1592,30 @@ export function ClientRow({
         "filesMiscellaneous",
         JSON.stringify([...current, attachment]),
       );
-      sampleEstimateArtwork
+      await Promise.all(
+        sampleEstimateArtwork
         .filter(({ subitem }) =>
           selectedDraftQuoteSubitemIds.includes(subitem.id),
         )
-        .forEach(({ subitem, artwork }) => {
+        .map(async ({ subitem, artwork }) => {
           const uploaded = sampleArtworkUploads[subitem.id];
           if (!uploaded || !artwork) return;
+          const [storedArtwork] = await uploadCrmFiles(
+            [uploaded.file],
+            `subitems/${subitem.id}/artworkFile`,
+            { clientId: client.id, subitemId: subitem.id },
+          );
           onUpdateSubitem(subitem.id, {
             customFields: {
               ...subitem.customFields,
               artworkFile: JSON.stringify({
-                id: crypto.randomUUID(),
+                ...storedArtwork,
                 kind: "file",
-                name: uploaded.name,
-                url: uploaded.url,
-                mimeType: uploaded.mimeType,
               }),
             },
           });
-        });
+        }),
+      );
       setSampleEstimate({ filename: result.filename, url: result.url });
     } catch (error: unknown) {
       setSampleEstimateError(
