@@ -1573,7 +1573,7 @@ export async function fetchHydratedClientGroupPage(
         p_offset: offset,
         p_exclude_group_names: options?.excludeGroupNames ?? null,
       })
-    : await supabase.rpc("crm_board_client_page_hydrated_v2", {
+    : await supabase.rpc("crm_board_client_page_hydrated_v3", {
       p_group_id: groupId,
       p_limit: limit,
       p_offset: offset,
@@ -1640,7 +1640,7 @@ export async function searchCrmClients(query: string, limit = 40) {
 export async function fetchClientGroupCounts(query: CrmBoardQuery = {}) {
   if (Object.keys(query).length) {
     const { data, error } = await supabase.rpc(
-      "crm_board_client_group_counts_v2",
+      "crm_board_client_group_counts_v3",
       {
         p_search: query.search?.trim() || null,
         p_search_columns: query.searchColumns ?? null,
