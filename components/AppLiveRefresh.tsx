@@ -6,8 +6,18 @@ import { boardProtectionDelay } from "@/lib/board-write-coordinator";
 
 type RefreshKind = "records" | "profiles" | "groups" | "notifications" | "boardMetadata" | "labelOptions" | "roundRobin";
 
+type RecordRow = Record<string, unknown>;
+
+export type LiveRecordChange = {
+  table: "clients" | "subitems" | "client_assignees" | "subitem_assignees";
+  eventType: "INSERT" | "UPDATE" | "DELETE";
+  new: RecordRow;
+  old: RecordRow;
+};
+
 export function AppLiveRefresh({
   onRecordsRefresh,
+  onGanttRecordsRefresh,
   onProfilesRefresh,
   onGroupsRefresh,
   onNotificationsRefresh,
@@ -15,7 +25,8 @@ export function AppLiveRefresh({
   onLabelOptionsRefresh,
   onRoundRobinRefresh,
 }: {
-  onRecordsRefresh: () => void | Promise<void>;
+  onRecordsRefresh: (changes: LiveRecordChange[]) => void | Promise<void>;
+  onGanttRecordsRefresh: (changes: LiveRecordChange[]) => void | Promise<void>;
   onProfilesRefresh: () => void | Promise<void>;
   onGroupsRefresh: () => void | Promise<void>;
   onNotificationsRefresh: () => void | Promise<void>;
@@ -24,6 +35,7 @@ export function AppLiveRefresh({
   onRoundRobinRefresh: () => void;
 }) {
   const timers = useRef<Partial<Record<RefreshKind, number>>>({});
+  const pendingRecordChanges = useRef<LiveRecordChange[]>([]);
 
   useEffect(() => {
     const supabase = createClient();
@@ -45,7 +57,13 @@ export function AppLiveRefresh({
       timers.current[kind] = window.setTimeout(() => {
         delete timers.current[kind];
         if (disposed) return;
-        if (kind === "records") void onRecordsRefresh();
+        if (kind === "records") {
+          const changes = pendingRecordChanges.current.splice(0);
+          if (changes.length) {
+            void onRecordsRefresh(changes);
+            void onGanttRecordsRefresh(changes);
+          }
+        }
         if (kind === "profiles") void onProfilesRefresh();
         if (kind === "groups") void onGroupsRefresh();
         if (kind === "notifications") void onNotificationsRefresh();
@@ -53,6 +71,17 @@ export function AppLiveRefresh({
         if (kind === "labelOptions") onLabelOptionsRefresh();
         if (kind === "roundRobin") onRoundRobinRefresh();
       }, delay);
+    };
+    const scheduleRecordChange = (
+      table: LiveRecordChange["table"],
+      payload: {
+        eventType: LiveRecordChange["eventType"];
+        new: RecordRow;
+        old: RecordRow;
+      },
+    ) => {
+      pendingRecordChanges.current.push({ table, ...payload });
+      schedule("records");
     };
 
     let channel: ReturnType<typeof supabase.channel> | null = null;
@@ -62,13 +91,13 @@ export function AppLiveRefresh({
       if (session) supabase.realtime.setAuth(session.access_token);
       channel = supabase
         .channel("app-live-refresh")
-        .on("postgres_changes", { event: "*", schema: "public", table: "clients" }, () => schedule("records"))
-        .on("postgres_changes", { event: "*", schema: "public", table: "subitems" }, () => schedule("records"))
+        .on("postgres_changes", { event: "*", schema: "public", table: "clients" }, (payload) => scheduleRecordChange("clients", payload))
+        .on("postgres_changes", { event: "*", schema: "public", table: "subitems" }, (payload) => scheduleRecordChange("subitems", payload))
         // An activity entry accompanies many record writes but does not change
         // Board record data. Reloading here duplicates the clients/subitems
         // refresh and can replay an older snapshot over an active editor.
-        .on("postgres_changes", { event: "*", schema: "public", table: "client_assignees" }, () => schedule("records"))
-        .on("postgres_changes", { event: "*", schema: "public", table: "subitem_assignees" }, () => schedule("records"))
+        .on("postgres_changes", { event: "*", schema: "public", table: "client_assignees" }, (payload) => scheduleRecordChange("client_assignees", payload))
+        .on("postgres_changes", { event: "*", schema: "public", table: "subitem_assignees" }, (payload) => scheduleRecordChange("subitem_assignees", payload))
         .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, () => schedule("profiles"))
         .on("postgres_changes", { event: "*", schema: "public", table: "crm_groups" }, () => schedule("groups"))
         .on("postgres_changes", { event: "*", schema: "public", table: "option_values" }, () => schedule("labelOptions"))
@@ -83,9 +112,10 @@ export function AppLiveRefresh({
       disposed = true;
       Object.values(timers.current).forEach((timer) => window.clearTimeout(timer));
       timers.current = {};
+      pendingRecordChanges.current = [];
       if (channel) supabase.removeChannel(channel);
     };
-  }, [onBoardMetadataRefresh, onGroupsRefresh, onLabelOptionsRefresh, onNotificationsRefresh, onProfilesRefresh, onRecordsRefresh, onRoundRobinRefresh]);
+  }, [onBoardMetadataRefresh, onGanttRecordsRefresh, onGroupsRefresh, onLabelOptionsRefresh, onNotificationsRefresh, onProfilesRefresh, onRecordsRefresh, onRoundRobinRefresh]);
 
   return null;
 }

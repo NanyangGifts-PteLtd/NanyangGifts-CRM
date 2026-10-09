@@ -302,6 +302,26 @@ function parsePmIds(client: Client): string[] {
   }
 }
 
+// Timelines become operational only once their subitem reaches the Awarded
+// phase. Keep this in step with the eligibility rule used by the expanded CRM
+// subitem view and OCF workflow. A stored draft timeline is not, by itself, a
+// reason for an unawarded subitem to appear on the operational Gantt.
+const GANTT_ELIGIBLE_SUBITEM_STATUSES = new Set([
+  "awarded",
+  "verify later",
+  "verified",
+  "variation cost difference",
+]);
+
+function isGanttEligibleSubitem(subitem: Subitem) {
+  const normalizedStatus = String(subitem.status ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[/_-]+/g, " ")
+    .replace(/\s+/g, " ");
+  return GANTT_ELIGIBLE_SUBITEM_STATUSES.has(normalizedStatus);
+}
+
 function buildSchedulerData(
   clients: Client[],
   groups: CRMGroup[],
@@ -332,7 +352,9 @@ function buildSchedulerData(
       const subitems = Array.isArray(client.subitems)
         ? client.subitems.filter(
             (subitem): subitem is Subitem =>
-              !!subitem && typeof subitem === "object",
+              !!subitem &&
+              typeof subitem === "object" &&
+              isGanttEligibleSubitem(subitem),
           )
         : [];
       // The Gantt chart represents subitem processes. Clients without a

@@ -19,6 +19,7 @@ import {
   fetchGanttResourcePage,
   fetchHydratedClientGroupPage,
   fetchHydratedClientBundle,
+  fetchLeanBoardClientBundle,
   searchCrmClients,
   type CrmBoardQuery,
   type CrmQuickFilterCounts,
@@ -32,9 +33,13 @@ import Sidebar, { type SidePanel } from "../../../components/Sidebar";
 import TopBar from "../../../components/TopBar";
 import type { User } from "@supabase/supabase-js";
 import { createClient as createSupabaseClient } from "@/lib/supabase/client";
-import { AppLiveRefresh } from "@/components/AppLiveRefresh";
+import {
+  AppLiveRefresh,
+  type LiveRecordChange,
+} from "@/components/AppLiveRefresh";
 import {
   boardProtectionDelay,
+  enqueueBoardWrite,
   getBoardWriteRevision,
   isBoardRecordProtected,
 } from "@/lib/board-write-coordinator";
@@ -161,6 +166,10 @@ type QuickFilterCountsCache = {
 
 type ReloadClientsOptions = {
   preservePagination?: boolean;
+  // Membership changes (for example, a realtime client move) can place a
+  // row outside the global initial page. Prime its destination group as part
+  // of the same reconciliation so its updated count and visible rows agree.
+  targetGroupIds?: string[];
 };
 
 type SearchViewportAnchor = {
@@ -168,6 +177,22 @@ type SearchViewportAnchor = {
   top: number;
   scrollTop: number;
 };
+
+function realtimeRowId(row: Record<string, unknown>) {
+  const id = row.id;
+  return typeof id === "string" && id ? id : null;
+}
+
+function realtimeClientId(row: Record<string, unknown>) {
+  const clientId = row.client_id;
+  return typeof clientId === "string" && clientId ? clientId : null;
+}
+
+function realtimeSubitemId(row: Record<string, unknown>) {
+  const subitemId = row.subitem_id;
+  if (typeof subitemId === "string" && subitemId) return subitemId;
+  return realtimeRowId(row);
+}
 
 function panelFromSearchParam(value: string | null): SidePanel | null {
   return PANEL_IDS.includes(value as SidePanel) ? (value as SidePanel) : null;
@@ -750,6 +775,163 @@ export default function Page() {
     () => loadGanttResourcePage(ganttQuery),
     [ganttQuery, loadGanttResourcePage],
   );
+  const refreshGanttRecordsInPlace = useCallback(
+    async (changes: LiveRecordChange[]) => {
+      // Gantt owns a panel-scoped snapshot. Do no work while it is closed;
+      // opening the panel always requests a fresh first resource page.
+      if (activePanel !== "ganttchart" || !changes.length) return;
+
+      // Gantt's filter component reports its query asynchronously. A remote
+      // edit can arrive in the short interval where the displayed resource
+      // page belongs to a previous query key. Previously that made us return
+      // without doing anything, leaving the visible chart stale. In that
+      // state a normal first-page reload is the safe reconciliation path.
+      if (ganttLoadedQueryKey !== JSON.stringify(ganttQuery)) {
+        await reloadGanttClients();
+        return;
+      }
+
+      const knownClients = new Map(
+        ganttClients.map((client) => [client.id, client]),
+      );
+      const clientIdBySubitemId = new Map<string, string>();
+      for (const client of ganttClients) {
+        for (const subitem of client.subitems) {
+          clientIdBySubitemId.set(subitem.id, client.id);
+        }
+      }
+
+      const targetClientIds = new Set<string>();
+      for (const change of changes) {
+        const clientId =
+          change.table === "clients"
+            ? realtimeRowId(change.new) ?? realtimeRowId(change.old)
+            : change.table === "client_assignees"
+              ? realtimeClientId(change.new) ?? realtimeClientId(change.old)
+            : realtimeClientId(change.new) ??
+              realtimeClientId(change.old) ??
+              clientIdBySubitemId.get(
+                realtimeSubitemId(change.new) ??
+                  realtimeSubitemId(change.old) ??
+                  "",
+              );
+        if (!clientId) {
+          // Without a client identity we cannot safely patch only one Gantt
+          // resource set. Fall back to its normal first-page refresh.
+          void reloadGanttClients();
+          return;
+        }
+        targetClientIds.add(clientId);
+      }
+
+      // An explicit client filter is an allow-list. A change to another
+      // client cannot affect the visible Gantt result set.
+      const requestedClientIds = [...targetClientIds].filter(
+        (clientId) =>
+          !ganttQuery.clientIds.length || ganttQuery.clientIds.includes(clientId),
+      );
+      if (!requestedClientIds.length) return;
+
+      const refreshSequence = ++ganttRefreshSequence.current;
+      const previousSubitemIds = new Set(
+        requestedClientIds.flatMap(
+          (clientId) =>
+            knownClients.get(clientId)?.subitems.map((subitem) => subitem.id) ?? [],
+        ),
+      );
+      try {
+        // Scope the existing server query to each affected client. This keeps
+        // group/person/status/date filters authoritative while avoiding a
+        // complete Gantt hydration for a single remote edit.
+        const [pages, totalPage] = await Promise.all([
+          Promise.all(
+            requestedClientIds.map((clientId) =>
+              fetchGanttResourcePage(
+                { ...ganttQuery, clientIds: [clientId] },
+                null,
+                100,
+              ),
+            ),
+          ),
+          // A zero-row page asks the RPC for one look-ahead row only. It is a
+          // cheap way to retain an exact global timeline total without
+          // hydrating another set of clients.
+          fetchGanttResourcePage(ganttQuery, null, 0),
+        ]);
+        if (refreshSequence !== ganttRefreshSequence.current) return;
+
+        // An unusually large single-client result cannot be patched without
+        // truncating resources, so use the established paginated reload.
+        if (pages.some((page) => page.hasMore)) {
+          await reloadGanttClients();
+          return;
+        }
+
+        const refreshedClients = new Map(
+          pages.flatMap((page) => page.clients).map((client) => [client.id, client]),
+        );
+        const refreshedClientAssignees = Object.assign(
+          {},
+          ...pages.map((page) => page.clientAssignees),
+        );
+        const refreshedClientPmAssignees = Object.assign(
+          {},
+          ...pages.map((page) => page.clientPmAssignees),
+        );
+        const refreshedSubitemAssignees = Object.assign(
+          {},
+          ...pages.map((page) => page.subitemAssignees),
+        );
+        const targetResourcePrefix = new Set(
+          requestedClientIds.map((clientId) => `${clientId}::`),
+        );
+
+        setGanttClients((current) => {
+          const next = new Map(current.map((client) => [client.id, client]));
+          for (const clientId of requestedClientIds) next.delete(clientId);
+          for (const client of refreshedClients.values()) next.set(client.id, client);
+          return Array.from(next.values());
+        });
+        setGanttClientAssignees((current) => {
+          const next = { ...current };
+          for (const clientId of requestedClientIds) delete next[clientId];
+          return { ...next, ...refreshedClientAssignees };
+        });
+        setGanttClientPmAssignees((current) => {
+          const next = { ...current };
+          for (const clientId of requestedClientIds) delete next[clientId];
+          return { ...next, ...refreshedClientPmAssignees };
+        });
+        setGanttSubitemAssignees((current) => {
+          const next = { ...current };
+          for (const subitemId of previousSubitemIds) delete next[subitemId];
+          return { ...next, ...refreshedSubitemAssignees };
+        });
+        setGanttResourceIds((current) => [
+          ...current.filter(
+            (resourceId) =>
+              ![...targetResourcePrefix].some((prefix) =>
+                resourceId.startsWith(prefix),
+              ),
+          ),
+          ...pages.flatMap((page) => page.resourceIds),
+        ]);
+        setGanttResourceTotal(totalPage.total);
+      } catch (error) {
+        console.warn("Could not reconcile targeted Gantt changes", error);
+        if (refreshSequence === ganttRefreshSequence.current) {
+          await reloadGanttClients();
+        }
+      }
+    },
+    [
+      activePanel,
+      ganttClients,
+      ganttLoadedQueryKey,
+      ganttQuery,
+      reloadGanttClients,
+    ],
+  );
   const openPaymentVoucherProject = useCallback(
     (clientId: string) => {
       openCrmRecord(clientId);
@@ -769,6 +951,9 @@ export default function Page() {
 
   const reloadClients = useCallback(async (options: ReloadClientsOptions = {}) => {
     const preservePagination = options.preservePagination === true;
+    const targetGroupIds = Array.from(
+      new Set((options.targetGroupIds ?? []).filter(Boolean)),
+    );
     const refreshSequence = ++recordsRefreshSequence.current;
     const writeRevisionAtStart = getBoardWriteRevision();
     try {
@@ -810,7 +995,7 @@ export default function Page() {
             quickFilterCountsRequestRef.current = request;
             return request;
           })());
-      const [initialPage, groupCounts] = await Promise.all([
+      const [initialPage, groupCounts, targetedGroupPages] = await Promise.all([
           fetchHydratedClientGroupPage(null, 0, 30, boardQuery, {
             // Preserve the landing-page policy previously implemented by
             // fetchInitialCrmClientBundle, without a preliminary ID query.
@@ -819,13 +1004,43 @@ export default function Page() {
               : ["Failed", "Unqualified Lead", "To Delete"],
           }),
           fetchClientGroupCounts(boardQuery),
+          Promise.all(
+            targetGroupIds.map((groupId) =>
+              fetchHydratedClientGroupPage(groupId, 0, 30, boardQuery),
+            ),
+          ),
         ]);
-      const rows = initialPage.clients;
+      const targetedPagesByGroupId = new Map(
+        targetGroupIds.map((groupId, index) => [
+          groupId,
+          targetedGroupPages[index],
+        ]),
+      );
+      const rows = Array.from(
+        new Map(
+          [
+            ...initialPage.clients,
+            ...targetedGroupPages.flatMap((page) => page.clients),
+          ].map((client) => [client.id, client]),
+        ).values(),
+      );
       const clientAssignmentMaps = {
-        people: initialPage.clientAssignees,
-        pm: initialPage.clientPmAssignees,
+        people: Object.assign(
+          {},
+          initialPage.clientAssignees,
+          ...targetedGroupPages.map((page) => page.clientAssignees),
+        ),
+        pm: Object.assign(
+          {},
+          initialPage.clientPmAssignees,
+          ...targetedGroupPages.map((page) => page.clientPmAssignees),
+        ),
       };
-      const subitemAssigneeMap = initialPage.subitemAssignees;
+      const subitemAssigneeMap = Object.assign(
+        {},
+        initialPage.subitemAssignees,
+        ...targetedGroupPages.map((page) => page.subitemAssignees),
+      );
 
       // Never allow an older or edit-stale request to install its snapshot.
       // A fresh reconciliation will pick up both the latest local write and
@@ -839,7 +1054,10 @@ export default function Page() {
             window.clearTimeout(reconciliationTimer.current);
           reconciliationTimer.current = window.setTimeout(() => {
             reconciliationTimer.current = null;
-            void reloadClients({ preservePagination: true });
+            // This can be a stale response caused by a client move. Keep
+            // the destination group in the retry; using the global first
+            // page alone can otherwise leave its count ahead of its rows.
+            void reloadClients({ targetGroupIds });
           }, 100);
         }
         return;
@@ -944,11 +1162,12 @@ export default function Page() {
           {
             total,
             hasMore:
-              rows.filter((client) => client.groupId === groupId).length <
-              total,
+              targetedPagesByGroupId.get(groupId)?.hasMore ??
+              rows.filter((client) => client.groupId === groupId).length < total,
             loading: false,
-            loaded: false,
-            loadedCount: 0,
+            loaded: targetedPagesByGroupId.has(groupId),
+            loadedCount:
+              targetedPagesByGroupId.get(groupId)?.nextOffset ?? 0,
           },
         ]),
       );
@@ -1007,8 +1226,215 @@ export default function Page() {
   }, [boardQuery, cacheBoardQuerySnapshot]);
 
   const refreshRecordsInPlace = useCallback(
-    () => reloadClients({ preservePagination: true }),
-    [reloadClients],
+    async (changes: LiveRecordChange[]) => {
+      if (!changes.length) return;
+
+      // A cached query snapshot cannot tell whether a remote edit changed a
+      // row's filter membership or sort position. Discard it, but do not
+      // reload the visible Board unless the event cannot be reconciled safely.
+      boardQueryCacheRef.current.clear();
+      const refreshSequence = ++recordsRefreshSequence.current;
+      const knownClients = new Map(clients.map((client) => [client.id, client]));
+      const clientIdBySubitemId = new Map<string, string>();
+      for (const client of clients) {
+        for (const subitem of client.subitems) {
+          clientIdBySubitemId.set(subitem.id, client.id);
+        }
+      }
+
+      const targetClientIds = new Set<string>();
+      const deletedClientIds = new Set<string>();
+      const targetGroupIds = new Set<string>();
+      const initiallyExcludedGroupIds = new Set(
+        groups
+          .filter((group) =>
+            ["Failed", "Unqualified Lead", "To Delete"].includes(group.name),
+          )
+          .map((group) => group.id),
+      );
+      let requiresFilteredFallback = false;
+
+      for (const change of changes) {
+        const currentRow = change.new;
+        const previousRow = change.old;
+        const clientId =
+          change.table === "clients"
+            ? realtimeRowId(currentRow) ?? realtimeRowId(previousRow)
+            : change.table === "client_assignees"
+              ? realtimeClientId(currentRow) ?? realtimeClientId(previousRow)
+            : realtimeClientId(currentRow) ??
+              realtimeClientId(previousRow) ??
+              clientIdBySubitemId.get(
+                realtimeSubitemId(currentRow) ??
+                  realtimeSubitemId(previousRow) ??
+                  "",
+              );
+
+        if (!clientId) {
+          requiresFilteredFallback = true;
+          continue;
+        }
+        if (change.table === "clients") {
+          const localGroupId = knownClients.get(clientId)?.groupId;
+          const nextGroupId =
+            typeof currentRow.group_id === "string"
+              ? currentRow.group_id
+              : null;
+          // The client may not be in the currently loaded rows (for example,
+          // it was moved repeatedly between sessions). Still refresh the
+          // destination group's first page so the row can enter the Board.
+          // We intentionally avoid this extra request for ordinary edits to
+          // an already loaded client.
+          if (
+            nextGroupId &&
+            !initiallyExcludedGroupIds.has(nextGroupId) &&
+            (!knownClients.has(clientId) || localGroupId !== nextGroupId)
+          ) {
+            targetGroupIds.add(nextGroupId);
+          }
+          // A move can put a client into or out of the default Board's
+          // excluded groups, and changes the source/destination page order.
+          // Reconcile the page rather than retaining a misplaced local row.
+          if (localGroupId && nextGroupId && localGroupId !== nextGroupId) {
+            requiresFilteredFallback = true;
+          }
+        }
+        if (change.table === "subitems") {
+          const localClientId = clientIdBySubitemId.get(
+            realtimeSubitemId(currentRow) ??
+              realtimeSubitemId(previousRow) ??
+              "",
+          );
+          if (localClientId && localClientId !== clientId) {
+            requiresFilteredFallback = true;
+          }
+        }
+        if (knownClients.has(clientId)) targetClientIds.add(clientId);
+        if (change.table === "clients" && change.eventType === "DELETE") {
+          deletedClientIds.add(clientId);
+        }
+      }
+
+      // Server-side filters can make a remotely edited record appear,
+      // disappear, or move page. Until targeted membership RPCs exist, retain
+      // the guarded full reconciliation for that correctness-sensitive case.
+      if (
+        Object.keys(boardQuery).length ||
+        requiresFilteredFallback ||
+        targetGroupIds.size > 0
+      ) {
+        // `preservePagination` only merges incoming rows over existing ones;
+        // that is intentionally unsuitable for moves because it would retain
+        // the client in its old group when the refreshed page omits it.
+        await reloadClients({ targetGroupIds: [...targetGroupIds] });
+        return;
+      }
+
+      try {
+        const hydrated = await fetchLeanBoardClientBundle(
+          [...targetClientIds].filter((clientId) => !deletedClientIds.has(clientId)),
+        );
+        if (refreshSequence !== recordsRefreshSequence.current) return;
+
+        const incomingClients = new Map(
+          hydrated.clients.map((client) => [client.id, client]),
+        );
+        setClients((current) =>
+          current.flatMap((client) => {
+            if (deletedClientIds.has(client.id)) {
+              return isBoardRecordProtected("client", client.id) ? [client] : [];
+            }
+            const incoming = incomingClients.get(client.id);
+            if (!incoming || isBoardRecordProtected("client", client.id)) {
+              return [client];
+            }
+            return [incoming];
+          }),
+        );
+        setClientAssignees((current) => {
+          const next = { ...current };
+          for (const client of hydrated.clients) {
+            if (hydrated.clientAssignees[client.id])
+              next[client.id] = hydrated.clientAssignees[client.id];
+            else delete next[client.id];
+          }
+          return next;
+        });
+        setClientPmAssignees((current) => {
+          const next = { ...current };
+          for (const client of hydrated.clients) {
+            if (hydrated.clientPmAssignees[client.id])
+              next[client.id] = hydrated.clientPmAssignees[client.id];
+            else delete next[client.id];
+          }
+          return next;
+        });
+        setSubitemAssignees((current) => {
+          const next = { ...current };
+          for (const client of hydrated.clients) {
+            for (const subitem of client.subitems) {
+              if (hydrated.subitemAssignees[subitem.id])
+                next[subitem.id] = hydrated.subitemAssignees[subitem.id];
+              else delete next[subitem.id];
+            }
+          }
+          return next;
+        });
+
+        if (deletedClientIds.size) {
+          setClientAssignees((current) => {
+            const next = { ...current };
+            for (const clientId of deletedClientIds) delete next[clientId];
+            return next;
+          });
+          setClientPmAssignees((current) => {
+            const next = { ...current };
+            for (const clientId of deletedClientIds) delete next[clientId];
+            return next;
+          });
+        }
+
+        // Header totals and quick-filter badges are small global metadata
+        // queries. Refresh each once per coalesced event batch, without
+        // replacing Board rows or resetting pagination.
+        const [nextGroupCounts, nextQuickFilterCounts] = await Promise.all([
+          fetchClientGroupCounts(boardQuery),
+          fetchCrmBoardQuickFilterCounts(),
+        ]);
+        if (refreshSequence !== recordsRefreshSequence.current) return;
+        setGroupPageState((current) => {
+          const next = { ...current };
+          for (const [groupId, total] of Object.entries(nextGroupCounts)) {
+            const state = next[groupId];
+            next[groupId] = {
+              total,
+              hasMore: (state?.loadedCount ?? 0) < total,
+              loading: state?.loading ?? false,
+              loaded: state?.loaded ?? false,
+              loadedCount: state?.loadedCount ?? 0,
+            };
+          }
+          return next;
+        });
+        quickFilterCountsCacheRef.current = {
+          data: nextQuickFilterCounts,
+          cachedAt: Date.now(),
+        };
+        setQuickFilterCounts(nextQuickFilterCounts);
+        setQuickFilterCountsLoading(false);
+      } catch (error) {
+        console.warn("Could not reconcile targeted realtime changes", error);
+        if (refreshSequence === recordsRefreshSequence.current) {
+          await reloadClients();
+        }
+      }
+    },
+    [
+      boardQuery,
+      clients,
+      groups,
+      reloadClients,
+    ],
   );
 
   const handleServerQueryChange = useCallback(
@@ -1258,8 +1684,15 @@ export default function Page() {
       setGanttClients(applySubitemUpdate);
       setClients(applySubitemUpdate);
       try {
-        await updateSubitemRow(subitemId, updates);
+        // Timeline cells can emit consecutive edits (for example, status then
+        // date). Serialize them with the Board's write coordinator so an
+        // earlier network request cannot finish after a later one and restore
+        // an older timeline JSON payload.
+        await enqueueBoardWrite("subitem", subitemId, () =>
+          updateSubitemRow(subitemId, updates),
+        );
       } catch (error) {
+        console.error("Could not save Gantt timeline update", error);
         await reloadGanttClients();
         toast.error("Could not save the timeline update", {
           description:
@@ -1681,6 +2114,7 @@ export default function Page() {
     <div className="flex h-screen overflow-hidden bg-[#f8fafc]">
       <AppLiveRefresh
         onRecordsRefresh={refreshRecordsInPlace}
+        onGanttRecordsRefresh={refreshGanttRecordsInPlace}
         onProfilesRefresh={reloadProfiles}
         onGroupsRefresh={refreshGroupsInPlace}
         onNotificationsRefresh={loadNotifications}

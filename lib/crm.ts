@@ -1445,7 +1445,9 @@ export async function fetchGanttResourcePage(
   const clientIds = Array.from(new Set(rows.map((row) => String(row.client_id))));
   const hydration = await fetchHydratedClientBundle(clientIds);
   const last = rows.at(-1);
-  const total = Number(rows[0]?.total_count ?? 0);
+  // Read the total before slicing so a zero-row, count-only request can use
+  // the RPC's first look-ahead row without hydrating any client records.
+  const total = Number(responseRows[0]?.total_count ?? 0);
 
   return {
     clients: hydration.clients,
