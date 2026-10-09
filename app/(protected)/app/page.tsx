@@ -14,11 +14,10 @@ import type {
   CRMGroup,
 } from "../../types";
 import {
-  fetchClientGroupPage,
   fetchClientGroupCounts,
   fetchCrmBoardQuickFilterCounts,
   fetchGanttResourcePage,
-  fetchInitialCrmClientBundle,
+  fetchHydratedClientGroupPage,
   fetchHydratedClientBundle,
   searchCrmClients,
   type CrmBoardQuery,
@@ -812,17 +811,13 @@ export default function Page() {
             return request;
           })());
       const [initialPage, groupCounts] = await Promise.all([
-          Object.keys(boardQuery).length
-            ? fetchClientGroupPage(null, 0, 30, boardQuery)
-            : fetchInitialCrmClientBundle({
-                limit: 30,
-                excludeGroupNames: ["Failed", "Unqualified Lead", "To Delete"],
-              }).then((hydration) => ({
-                clients: hydration.clients,
-                clientAssignees: hydration.clientAssignees,
-                clientPmAssignees: hydration.clientPmAssignees,
-                subitemAssignees: hydration.subitemAssignees,
-              })),
+          fetchHydratedClientGroupPage(null, 0, 30, boardQuery, {
+            // Preserve the landing-page policy previously implemented by
+            // fetchInitialCrmClientBundle, without a preliminary ID query.
+            excludeGroupNames: Object.keys(boardQuery).length
+              ? undefined
+              : ["Failed", "Unqualified Lead", "To Delete"],
+          }),
           fetchClientGroupCounts(boardQuery),
         ]);
       const rows = initialPage.clients;
@@ -1122,7 +1117,12 @@ export default function Page() {
       },
     }));
     try {
-      const page = await fetchClientGroupPage(groupId, offset, 30, boardQuery);
+      const page = await fetchHydratedClientGroupPage(
+        groupId,
+        offset,
+        30,
+        boardQuery,
+      );
       mergeAssignmentDataForClients(
         page.clients,
         { people: page.clientAssignees, pm: page.clientPmAssignees },
@@ -1181,7 +1181,12 @@ export default function Page() {
       // position whenever its sentinel becomes visible.
       const pagesToFetch = groupPageState[groupId]?.loaded ? 2 : 3;
       for (let pageNumber = 0; pageNumber < pagesToFetch; pageNumber += 1) {
-        const page = await fetchClientGroupPage(groupId, offset, 30, boardQuery);
+        const page = await fetchHydratedClientGroupPage(
+          groupId,
+          offset,
+          30,
+          boardQuery,
+        );
         mergeAssignmentDataForClients(
           page.clients,
           { people: page.clientAssignees, pm: page.clientPmAssignees },

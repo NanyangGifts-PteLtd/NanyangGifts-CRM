@@ -316,6 +316,10 @@ type HydratedClientRpcRow = {
   subitem_assignee_ids: Record<string, string[] | null> | null;
 };
 
+type HydratedBoardPageRpcRow = HydratedClientRpcRow & {
+  total_count: number | string | null;
+};
+
 type HydratedSubitemDetailsRpcRow = {
   subitem_id: string;
   client_id: string;
@@ -1162,11 +1166,21 @@ export async function fetchLeanBoardClientBundle(
   });
   if (error) throw error;
 
+  return mapHydratedClientRpcRows(
+    (data ?? []) as HydratedClientRpcRow[],
+    orderedIds,
+  );
+}
+
+function mapHydratedClientRpcRows(
+  rows: HydratedClientRpcRow[],
+  orderedIds: string[],
+): HydratedClientBundle {
   const clientAssignees: ClientAssigneeMap = {};
   const clientPmAssignees: ClientAssigneeMap = {};
   const subitemAssignees: SubitemAssigneeMap = {};
   const clientsById = new Map<string, Client>();
-  for (const row of (data ?? []) as HydratedClientRpcRow[]) {
+  for (const row of rows) {
     const clientId = String(row.client_id);
     if (!clientId || !row.client_row) continue;
     clientsById.set(clientId, mapClients(row.client_row));
@@ -1535,6 +1549,63 @@ export async function fetchClientGroupPage(
     total,
     hasMore: offset + clientIds.length < total,
     nextOffset: offset + clientIds.length,
+  };
+}
+
+/**
+ * Fetches a display-ready lean Board page in one RPC. The older
+ * `fetchClientGroupPage` remains available as a rollback path while this
+ * rollout is verified in production.
+ */
+export async function fetchHydratedClientGroupPage(
+  groupId: string | null,
+  offset = 0,
+  limit = 30,
+  query: CrmBoardQuery = {},
+  options?: { excludeGroupNames?: string[] },
+) {
+  const useInitialPageRpc = Boolean(options?.excludeGroupNames?.length);
+  const response = useInitialPageRpc
+    ? await supabase.rpc("crm_board_initial_page_hydrated_v1", {
+        p_limit: limit,
+        p_offset: offset,
+        p_exclude_group_names: options?.excludeGroupNames ?? null,
+      })
+    : await supabase.rpc("crm_board_client_page_hydrated_v2", {
+      p_group_id: groupId,
+      p_limit: limit,
+      p_offset: offset,
+      p_search: query.search?.trim() || null,
+      p_search_columns: query.searchColumns ?? null,
+      p_sort_category: query.sortCategory ?? "client",
+      p_sort_column: query.sortColumn ?? "dateCreated",
+      p_sort_value_type: query.sortValueType ?? "date",
+      p_sort_direction: query.sortDirection ?? "desc",
+      p_advanced_rules: query.advancedRules ?? [],
+      p_advanced_join: query.advancedJoin ?? "and",
+      p_status_option_id: query.statusOptionId ?? null,
+      p_importance_option_id: query.importanceOptionId ?? null,
+      p_reply_status_option_id: query.replyStatusOptionId ?? null,
+      p_channel_option_id: query.channelOptionId ?? null,
+      p_subitem_status_option_id: query.subitemStatusOptionId ?? null,
+      p_payment_option_id: query.paymentOptionId ?? null,
+      p_payment_status_option_id: query.paymentStatusOptionId ?? null,
+      p_subprogress_option_id: query.subprogressOptionId ?? null,
+      p_person_id: query.personId ?? null,
+    });
+  const { data, error } = response;
+  if (error) throw error;
+
+  const rows = (data ?? []) as HydratedBoardPageRpcRow[];
+  const orderedIds = rows.map((row) => String(row.client_id));
+  const hydration = mapHydratedClientRpcRows(rows, orderedIds);
+  const total = Number(rows[0]?.total_count ?? 0);
+
+  return {
+    ...hydration,
+    total,
+    hasMore: offset + orderedIds.length < total,
+    nextOffset: offset + orderedIds.length,
   };
 }
 
