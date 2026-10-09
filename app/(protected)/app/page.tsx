@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import { useSearchParams } from "next/navigation";
 import type {
   Client,
@@ -32,22 +33,76 @@ import Sidebar, { type SidePanel } from "../../../components/Sidebar";
 import TopBar from "../../../components/TopBar";
 import type { User } from "@supabase/supabase-js";
 import { createClient as createSupabaseClient } from "@/lib/supabase/client";
-import { ReportsPanel } from "@/components/ReportsPanel";
-import { RoundRobinAdminPanel } from "@/components/RoundRobinPanel";
-import GanttChart from "@/components/Gantt-Chart";
-import { TeamPanel } from "@/components/TeamPanel";
-import { UserAdminPanel } from "@/components/UserAdminPanel";
-import { CustomerProfilesPanel } from "@/components/CustomerProfilesPanel";
-import { SupplierProfilesPanel } from "@/components/SupplierProfilesPanel";
-import { AdditionalCostsBoard } from "@/components/AdditionalCostsBoard";
-import { EmailReviewPanel } from "@/components/EmailReviewPanel";
-import { WorkingCalendarPanel } from "@/components/WorkingCalendarPanel";
 import { AppLiveRefresh } from "@/components/AppLiveRefresh";
 import {
   boardProtectionDelay,
   getBoardWriteRevision,
   isBoardRecordProtected,
 } from "@/lib/board-write-coordinator";
+
+const PanelLoading = () => (
+  <div className="flex h-full min-h-48 items-center justify-center text-sm text-gray-500">
+    Loading panel…
+  </div>
+);
+
+// The CRM Board is the default application view, so it remains in the initial
+// bundle. Every other panel is loaded only when the user navigates to it.
+const GanttChart = dynamic(() => import("@/components/Gantt-Chart"), {
+  ssr: false,
+  loading: PanelLoading,
+});
+const ReportsPanel = dynamic(
+  () => import("@/components/ReportsPanel").then((module) => module.ReportsPanel),
+  { ssr: false, loading: PanelLoading },
+);
+const RoundRobinAdminPanel = dynamic(
+  () =>
+    import("@/components/RoundRobinPanel").then(
+      (module) => module.RoundRobinAdminPanel,
+    ),
+  { ssr: false, loading: PanelLoading },
+);
+const TeamPanel = dynamic(
+  () => import("@/components/TeamPanel").then((module) => module.TeamPanel),
+  { ssr: false, loading: PanelLoading },
+);
+const UserAdminPanel = dynamic(
+  () => import("@/components/UserAdminPanel").then((module) => module.UserAdminPanel),
+  { ssr: false, loading: PanelLoading },
+);
+const CustomerProfilesPanel = dynamic(
+  () =>
+    import("@/components/CustomerProfilesPanel").then(
+      (module) => module.CustomerProfilesPanel,
+    ),
+  { ssr: false, loading: PanelLoading },
+);
+const SupplierProfilesPanel = dynamic(
+  () =>
+    import("@/components/SupplierProfilesPanel").then(
+      (module) => module.SupplierProfilesPanel,
+    ),
+  { ssr: false, loading: PanelLoading },
+);
+const AdditionalCostsBoard = dynamic(
+  () =>
+    import("@/components/AdditionalCostsBoard").then(
+      (module) => module.AdditionalCostsBoard,
+    ),
+  { ssr: false, loading: PanelLoading },
+);
+const EmailReviewPanel = dynamic(
+  () => import("@/components/EmailReviewPanel").then((module) => module.EmailReviewPanel),
+  { ssr: false, loading: PanelLoading },
+);
+const WorkingCalendarPanel = dynamic(
+  () =>
+    import("@/components/WorkingCalendarPanel").then(
+      (module) => module.WorkingCalendarPanel,
+    ),
+  { ssr: false, loading: PanelLoading },
+);
 
 const PANEL_IDS: SidePanel[] = [
   "crm",
