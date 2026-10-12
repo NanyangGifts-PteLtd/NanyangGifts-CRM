@@ -212,6 +212,11 @@ function canViewPanel(panel: SidePanel, role: string | null) {
 export default function Page() {
   const searchParams = useSearchParams();
   const [clients, setClients] = useState<Client[]>([]);
+  // Reload callbacks need the latest hydrated-state snapshot without taking a
+  // `clients` dependency, which would otherwise recreate the callback after
+  // every row update and retrigger the Board-load effect.
+  const clientsRef = useRef<Client[]>([]);
+  clientsRef.current = clients;
   // The CRM Board intentionally retains only its loaded pages. The Gantt
   // chart, however, must be able to draw every timeline in its visible
   // groups, so it owns a separate, panel-scoped hydrated snapshot.
@@ -1016,7 +1021,7 @@ export default function Page() {
           targetedGroupPages[index],
         ]),
       );
-      const rows = Array.from(
+      let rows = Array.from(
         new Map(
           [
             ...initialPage.clients,
@@ -1041,6 +1046,48 @@ export default function Page() {
         initialPage.subitemAssignees,
         ...targetedGroupPages.map((page) => page.subitemAssignees),
       );
+
+      // Page RPCs intentionally return lean Board rows. Do not let a
+      // reconciliation replace a client whose nested details are already in
+      // memory with that lean shape: doing so unmounts the open timeline,
+      // payments, samples, and attachment previews before CRMBoard hydrates
+      // them a second time. Fetching full data only for those already
+      // hydrated rows keeps remote edits authoritative without making every
+      // collapsed row expensive.
+      const currentClientById = new Map(
+        clientsRef.current.map((client) => [client.id, client]),
+      );
+      const detailClientIds = rows
+        .filter((incomingClient) =>
+          currentClientById
+            .get(incomingClient.id)
+            ?.subitems.some((subitem) => subitem.detailsHydrated),
+        )
+        .map((client) => client.id);
+      if (detailClientIds.length) {
+        try {
+          const fullHydration = await fetchHydratedClientBundle(detailClientIds);
+          const fullClientsById = new Map(
+            fullHydration.clients.map((client) => [client.id, client]),
+          );
+          rows = rows.map(
+            (client) => fullClientsById.get(client.id) ?? client,
+          );
+          Object.assign(
+            clientAssignmentMaps.people,
+            fullHydration.clientAssignees,
+          );
+          Object.assign(clientAssignmentMaps.pm, fullHydration.clientPmAssignees);
+          Object.assign(subitemAssigneeMap, fullHydration.subitemAssignees);
+        } catch (error) {
+          // Keep the normal page refresh usable if an optional detail refresh
+          // fails. A later expansion can retry the detail hydration.
+          console.warn(
+            "Could not preserve hydrated CRM details during reconciliation",
+            error,
+          );
+        }
+      }
 
       // Never allow an older or edit-stale request to install its snapshot.
       // A fresh reconciliation will pick up both the latest local write and
@@ -1331,9 +1378,51 @@ export default function Page() {
       }
 
       try {
-        const hydrated = await fetchLeanBoardClientBundle(
-          [...targetClientIds].filter((clientId) => !deletedClientIds.has(clientId)),
+        const refreshClientIds = [...targetClientIds].filter(
+          (clientId) => !deletedClientIds.has(clientId),
         );
+        // Lean hydration deliberately omits timeline, payment, sample, and
+        // attachment metadata until a Board row is opened. Replacing an
+        // already expanded row with that lean shape makes its nested table
+        // disappear, triggers a second detail request, and remounts file
+        // previews when this session receives its own Realtime echo.
+        //
+        // Refresh open rows with the full single-client hydrator instead;
+        // collapsed rows retain the cheaper lean refresh path.
+        const expandedClientIdSet = new Set(expandedClientIds);
+        const expandedRefreshClientIds = refreshClientIds.filter((clientId) =>
+          expandedClientIdSet.has(clientId),
+        );
+        const leanRefreshClientIds = refreshClientIds.filter(
+          (clientId) => !expandedClientIdSet.has(clientId),
+        );
+        const [leanHydration, expandedHydration] = await Promise.all([
+          fetchLeanBoardClientBundle(leanRefreshClientIds),
+          fetchHydratedClientBundle(expandedRefreshClientIds),
+        ]);
+        const refreshedClientsById = new Map(
+          [...leanHydration.clients, ...expandedHydration.clients].map(
+            (client) => [client.id, client],
+          ),
+        );
+        const hydrated = {
+          clients: refreshClientIds.flatMap((clientId) => {
+            const client = refreshedClientsById.get(clientId);
+            return client ? [client] : [];
+          }),
+          clientAssignees: {
+            ...leanHydration.clientAssignees,
+            ...expandedHydration.clientAssignees,
+          },
+          clientPmAssignees: {
+            ...leanHydration.clientPmAssignees,
+            ...expandedHydration.clientPmAssignees,
+          },
+          subitemAssignees: {
+            ...leanHydration.subitemAssignees,
+            ...expandedHydration.subitemAssignees,
+          },
+        };
         if (refreshSequence !== recordsRefreshSequence.current) return;
 
         const incomingClients = new Map(
@@ -1432,6 +1521,7 @@ export default function Page() {
     [
       boardQuery,
       clients,
+      expandedClientIds,
       groups,
       reloadClients,
     ],
