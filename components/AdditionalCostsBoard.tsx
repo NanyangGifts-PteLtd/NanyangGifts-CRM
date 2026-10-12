@@ -176,6 +176,7 @@ const defaultVoucherColumnLayout = (
 });
 const cellClass =
   "h-10 min-w-0 bg-white px-2 text-sm text-slate-700 outline-none focus:bg-sky-50 focus:ring-1 focus:ring-inset focus:ring-sky-400";
+const hiddenBillGstCodeNames = new Set(["sr9%", "txrc-ess"]);
 const clientLabel = (client: Client) =>
   `${client.name || "Unnamed client"}${client.displayId ? ` · ${client.displayId}` : ""}`;
 // Keep chooser order consistent with the CRM Board's default client sort:
@@ -322,6 +323,14 @@ export function AdditionalCostsBoard({
   }>({ vendors: [], accounts: [], terms: [], taxCodes: [] });
   const [billOptionsLoading, setBillOptionsLoading] = useState(false);
   const [billOptionsError, setBillOptionsError] = useState<string | null>(null);
+  const selectableBillTaxCodes = useMemo(
+    () =>
+      billOptions.taxCodes.filter(
+        (taxCode) =>
+          !hiddenBillGstCodeNames.has(taxCode.name.trim().toLowerCase()),
+      ),
+    [billOptions.taxCodes],
+  );
   const [extractingBillDocument, setExtractingBillDocument] = useState(false);
   const [billDocumentPreview, setBillDocumentPreview] = useState<{
     name: string;
@@ -3687,7 +3696,7 @@ export function AdditionalCostsBoard({
                                             className="w-full rounded border border-slate-300 bg-white px-3 py-2"
                                           >
                                             <option value="">Choose GST</option>
-                                            {billOptions.taxCodes.map(
+                                            {selectableBillTaxCodes.map(
                                               (option) => (
                                                 <option
                                                   key={option.id}
