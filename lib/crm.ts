@@ -2653,74 +2653,6 @@ export async function updateSubitemRow(
     );
   }
 
-  if (nextUpdates.timelineGroups !== undefined) {
-    const normalizeTracking = (value: unknown) =>
-      String(value ?? "")
-        .trim()
-        .toLowerCase();
-    const existingTimelines =
-      Array.isArray(existing.timeline_groups) && existing.timeline_groups.length
-        ? existing.timeline_groups
-        : [{ id: "default", cnTracking: existing.cn_tracking ?? "" }];
-    const existingTrackingByTimelineId = new Map(
-      existingTimelines.map(
-        (timeline: { id?: unknown; cnTracking?: unknown }) => [
-          String(timeline.id ?? ""),
-          normalizeTracking(timeline.cnTracking),
-        ],
-      ),
-    );
-    // Older records may already contain duplicate legacy tracking values.
-    // They should not prevent an unrelated timeline edit. Validate values
-    // only when they are new or have actually changed.
-    const changedTracking = nextUpdates.timelineGroups
-      .map((timeline) => ({
-        id: String(timeline.id ?? ""),
-        value: normalizeTracking(timeline.cnTracking),
-      }))
-      .filter(
-        (timeline) =>
-          timeline.value &&
-          existingTrackingByTimelineId.get(timeline.id) !== timeline.value,
-      );
-    for (const changed of changedTracking) {
-      if (
-        nextUpdates.timelineGroups.some(
-          (timeline) =>
-            String(timeline.id ?? "") !== changed.id &&
-            normalizeTracking(timeline.cnTracking) === changed.value,
-        )
-      ) {
-        throw new Error("CN Tracking numbers must be unique within a subitem.");
-      }
-    }
-    if (changedTracking.length) {
-      const { data: otherSubitems, error: trackingReadError } = await supabase
-        .from("subitems")
-        .select("id, name, timeline_groups")
-        .neq("id", subitemId)
-        .is("deleted_at", null);
-      if (trackingReadError) throw trackingReadError;
-      const requestedSet = new Set(
-        changedTracking.map((timeline) => timeline.value),
-      );
-      for (const other of otherSubitems ?? []) {
-        const otherTimelines = Array.isArray(other.timeline_groups)
-          ? other.timeline_groups
-          : [];
-        if (
-          otherTimelines.some((timeline: { cnTracking?: unknown }) =>
-            requestedSet.has(normalizeTracking(timeline.cnTracking)),
-          )
-        ) {
-          throw new Error(
-            `CN Tracking number is already used by ${other.name ?? "another subitem"}.`,
-          );
-        }
-      }
-    }
-  }
-
   if ("qty" in updates || "up" in updates) {
     const qty = Number(updates.qty ?? 0);
     const up = Number(updates.up ?? 0);
@@ -2905,14 +2837,20 @@ export async function updateSubitemRow(
         ? {
             timeline_groups: nextUpdates.timelineGroups,
             timeline_rows: nextUpdates.timelineGroups[0]?.rows ?? [],
-            cn_tracking: nextUpdates.timelineGroups
-              .map((timeline) => timeline.cnTracking.trim())
-              .filter(Boolean)
-              .join(", "),
-            sg_tracking: nextUpdates.timelineGroups
-              .map((timeline) => timeline.sgTracking.trim())
-              .filter(Boolean)
-              .join(", "),
+            cn_tracking: Array.from(
+              new Set(
+                nextUpdates.timelineGroups
+                  .map((timeline) => timeline.cnTracking.trim())
+                  .filter(Boolean),
+              ),
+            ).join(", "),
+            sg_tracking: Array.from(
+              new Set(
+                nextUpdates.timelineGroups
+                  .map((timeline) => timeline.sgTracking.trim())
+                  .filter(Boolean),
+              ),
+            ).join(", "),
           }
         : {}),
       ...(nextUpdates.showTimeline !== undefined

@@ -7735,14 +7735,20 @@ export function CRMBoard({
       const optimisticUpdates: Partial<Subitem> = updates.timelineGroups
         ? {
             ...updates,
-            cnTracking: updates.timelineGroups
-              .map((timeline) => timeline.cnTracking.trim())
-              .filter(Boolean)
-              .join(", "),
-            sgTracking: updates.timelineGroups
-              .map((timeline) => timeline.sgTracking.trim())
-              .filter(Boolean)
-              .join(", "),
+            cnTracking: Array.from(
+              new Set(
+                updates.timelineGroups
+                  .map((timeline) => timeline.cnTracking.trim())
+                  .filter(Boolean),
+              ),
+            ).join(", "),
+            sgTracking: Array.from(
+              new Set(
+                updates.timelineGroups
+                  .map((timeline) => timeline.sgTracking.trim())
+                  .filter(Boolean),
+              ),
+            ).join(", "),
           }
         : updates;
       setClients((prev) =>
@@ -7763,20 +7769,6 @@ export function CRMBoard({
         void reloadClients();
         const message =
           error instanceof Error ? error.message : "Please try again.";
-        if (
-          /CN Tracking number.*already used|CN Tracking numbers must be unique/i.test(
-            message,
-          )
-        ) {
-          toast.error("CN Tracking number must be unique", {
-            description: message.startsWith(
-              "CN Tracking number is already used by",
-            )
-              ? `${message} Enter a different number.`
-              : "That CN Tracking number is already attached to another timeline. Enter a different number.",
-          });
-          return;
-        }
         toast.error("Could not save the subitem update", {
           description: message,
         });

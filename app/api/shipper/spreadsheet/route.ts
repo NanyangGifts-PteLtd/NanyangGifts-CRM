@@ -49,6 +49,19 @@ function splitCnTrackingNumbers(value: unknown) {
   ];
 }
 
+function uniqueTimelineTrackingSummary(
+  timelines: Record<string, unknown>[],
+  field: "cnTracking" | "sgTracking",
+) {
+  return Array.from(
+    new Set(
+      timelines
+        .map((timeline) => String(timeline[field] ?? "").trim())
+        .filter(Boolean),
+    ),
+  ).join(", ");
+}
+
 // The spreadsheet is the shipping-side source of truth for a waybill. When it
 // changes, mirror it back to every CRM subitem identified by this row's CN
 // tracking value(s). Multiple CN values are supported as a temporary format
@@ -77,8 +90,8 @@ async function syncSgTrackingFromWaybill(values: Record<string, unknown>) {
     if (!changed) continue;
     const { error } = await supabaseAdmin.from("subitems").update({
       timeline_groups: timelines,
-      cn_tracking: timelines.map((timeline: Record<string, unknown>) => String(timeline.cnTracking ?? "").trim()).filter(Boolean).join(", "),
-      sg_tracking: timelines.map((timeline: Record<string, unknown>) => String(timeline.sgTracking ?? "").trim()).filter(Boolean).join(", "),
+      cn_tracking: uniqueTimelineTrackingSummary(timelines, "cnTracking"),
+      sg_tracking: uniqueTimelineTrackingSummary(timelines, "sgTracking"),
     }).eq("id", subitem.id);
     if (error) throw error;
   }
