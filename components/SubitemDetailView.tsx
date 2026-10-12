@@ -714,6 +714,7 @@ export function SubitemDetailView({
                               canEdit ? (
                                 <input
                                   type="date"
+                                  lang="en-GB"
                                   value={dateValue(String(row[key] ?? ""))}
                                   onChange={(event) =>
                                     updateTimeline(

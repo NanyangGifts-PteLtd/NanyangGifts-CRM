@@ -4444,6 +4444,7 @@ export function SubitemsTable({
                       {col.field_type === "date" ? (
                         <input
                           type="date"
+                          lang="en-GB"
                           value={sub.customFields?.[col.id] ?? ""}
                           onChange={(e) =>
                             onUpdateSubitem(sub.id, {

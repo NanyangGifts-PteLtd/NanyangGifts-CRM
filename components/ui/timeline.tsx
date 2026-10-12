@@ -66,6 +66,47 @@ export function formatDateUTC(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
+function formatTimelineDate(value: string) {
+  const matched = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  return matched ? `${matched[3]}/${matched[2]}/${matched[1]}` : "";
+}
+
+function TimelineDateInput({
+  value,
+  onChange,
+  label,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  label: string;
+}) {
+  return (
+    <div className="relative h-8 w-32 rounded border border-gray-200 bg-white text-xs">
+      <span
+        aria-hidden="true"
+        className={`pointer-events-none absolute inset-y-0 left-0 flex items-center px-2 ${
+          value ? "text-gray-700" : "text-transparent"
+        }`}
+      >
+        {formatTimelineDate(value)}
+      </span>
+      <Calendar
+        aria-hidden="true"
+        size={15}
+        className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-gray-700"
+      />
+      <input
+        type="date"
+        lang="en-GB"
+        aria-label={label}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+      />
+    </div>
+  );
+}
+
 export function diffDaysUTC(start: Date, end: Date): number {
   return Math.round((end.getTime() - start.getTime()) / 86_400_000);
 }
@@ -809,22 +850,20 @@ export function TimelineSection({
 
                   <td className="border-r border-gray-100 px-2 py-1">
                     <div className="flex gap-1">
-                      <input
-                        type="date"
+                      <TimelineDateInput
                         value={row.timelineStart || ""}
-                        onChange={(e) =>
-                          updateRow(row.id, "timelineStart", e.target.value)
+                        onChange={(value) =>
+                          updateRow(row.id, "timelineStart", value)
                         }
-                        className={`w-32 cursor-pointer rounded border border-gray-200 bg-white px-1 py-1 text-xs ${row.timelineStart ? "text-gray-700" : "text-transparent focus:text-gray-700"}`}
+                        label={`${row.name || "Timeline"} start date`}
                       />
                       {(row.id !== "nbd" && row.name.trim().toLowerCase() !== "nbd") && (
-                        <input
-                          type="date"
+                        <TimelineDateInput
                           value={row.timelineEnd || ""}
-                          onChange={(e) =>
-                            updateRow(row.id, "timelineEnd", e.target.value)
+                          onChange={(value) =>
+                            updateRow(row.id, "timelineEnd", value)
                           }
-                          className={`w-32 cursor-pointer rounded border border-gray-200 bg-white px-1 py-1 text-xs ${row.timelineEnd ? "text-gray-700" : "text-transparent focus:text-gray-700"}`}
+                          label={`${row.name || "Timeline"} end date`}
                         />
                       )}
                     </div>

@@ -2378,6 +2378,7 @@ export default function GanttChart({
                       <span>From</span>
                       <input
                         type="date"
+                        lang="en-GB"
                         value={filters.dateFrom}
                         onChange={(event) =>
                           setFilters((current) => ({
@@ -2392,6 +2393,7 @@ export default function GanttChart({
                       <span>To</span>
                       <input
                         type="date"
+                        lang="en-GB"
                         value={filters.dateTo}
                         onChange={(event) =>
                           setFilters((current) => ({

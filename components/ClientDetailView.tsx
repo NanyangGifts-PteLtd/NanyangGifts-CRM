@@ -1124,7 +1124,7 @@ export function ClientDetailView({
                                     "Unknown user"}
                                 </p>
                                 <p className="text-xs text-slate-400">
-                                  {new Date(update.created_at).toLocaleString()}
+                                {new Date(update.created_at).toLocaleString("en-SG")}
                                 </p>
                               </div>
                               {canDelete && (
