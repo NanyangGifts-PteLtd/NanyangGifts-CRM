@@ -2134,6 +2134,38 @@ async function assertCreatorActionAllowed(
 
 export async function deleteClientRow(clientId: string) {
   await assertCreatorActionAllowed("clients", clientId, "soft-delete");
+  const { data: client, error: clientReadError } = await supabase
+    .from("clients")
+    .select("name")
+    .eq("id", clientId)
+    .single();
+  if (clientReadError) throw clientReadError;
+
+  // Payment Voucher subitems cannot be put in the Bin: their associated
+  // voucher must be permanently deactivated, which also removes the linked
+  // subitem. Do this before soft-deleting the client and its ordinary items.
+  const { data: voucherSubitems, error: voucherSubitemsError } = await supabase
+    .from("subitems")
+    .select("id")
+    .eq("client_id", clientId)
+    .contains("custom_fields", { additionalCostLinked: "true" })
+    .is("deleted_at", null);
+  if (voucherSubitemsError) throw voucherSubitemsError;
+
+  const reason = `Parent client ${client.name?.trim() || "(unnamed)"} was moved to the Bin.`;
+  for (const voucherSubitem of voucherSubitems ?? []) {
+    const response = await fetch(
+      `/api/additional-costs?subitemId=${encodeURIComponent(voucherSubitem.id)}&reason=${encodeURIComponent(reason)}`,
+      { method: "DELETE" },
+    );
+    const result = await response.json().catch(() => null);
+    if (!response.ok) {
+      throw new Error(
+        result?.error ?? "The linked Payment Voucher could not be deactivated.",
+      );
+    }
+  }
+
   const deletedAt = new Date().toISOString();
   const {
     data: { user },

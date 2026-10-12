@@ -644,7 +644,7 @@ export async function DELETE(request: NextRequest) {
     if (quickBooksBillOnly && !["admin", "director", "dev"].includes(role)) {
       throw new Error("You can only delete QuickBooks-only Bills as an admin, director, or dev user.");
     }
-    if (!quickBooksBillOnly && !["admin", "director"].includes(role)) {
+    if (!quickBooksBillOnly && !["admin", "director", "dev"].includes(role)) {
       const { data: assignment, error: assignmentError } = await supabaseAdmin
         .from("client_assignees")
         .select("client_id")
