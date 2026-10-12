@@ -227,7 +227,9 @@ export async function POST(request: NextRequest) {
             if (ocfItemIds.length > 0) {
                 const { data: ocfItemRows } = await supabase
                     .from("order_confirmation_items")
-                    .select("id, subitem_id, delivery_address, delivery_contact_number")
+                    .select(
+                        "id, subitem_id, delivery_name, delivery_address, delivery_contact_number, delivery_remarks",
+                    )
                     .in("id", ocfItemIds);
 
                 for (const ocfItem of ocfItemRows ?? []) {
@@ -237,8 +239,10 @@ export async function POST(request: NextRequest) {
                         .from("shipper_view_rows")
                         .update({
                             delivery_info: [
+                                ocfItem.delivery_name ? `Name: ${ocfItem.delivery_name}` : null,
                                 ocfItem.delivery_contact_number ? `Contact: ${ocfItem.delivery_contact_number}` : null,
                                 ocfItem.delivery_address ? `Address: ${ocfItem.delivery_address}` : null,
+                                ocfItem.delivery_remarks ? `Remarks: ${ocfItem.delivery_remarks}` : null,
                             ].filter(Boolean).join("\n") || null,
                         })
                         .eq("subitem_id", ocfItem.subitem_id);

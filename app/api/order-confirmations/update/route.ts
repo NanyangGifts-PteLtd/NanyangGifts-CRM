@@ -86,7 +86,9 @@ export async function POST(req: Request) {
         })
         .eq("id", item.id)
         .eq("order_confirmation_id", ocfId)
-        .select("subitem_id, delivery_address, delivery_contact_number")
+        .select(
+          "subitem_id, delivery_name, delivery_address, delivery_contact_number, delivery_remarks",
+        )
         .maybeSingle();
 
       if (itemError) {
@@ -104,11 +106,17 @@ export async function POST(req: Request) {
         .update({
           delivery_info:
             [
+              updatedItem.delivery_name
+                ? `Name: ${updatedItem.delivery_name}`
+                : null,
               updatedItem.delivery_contact_number
                 ? `Contact: ${updatedItem.delivery_contact_number}`
                 : null,
               updatedItem.delivery_address
                 ? `Address: ${updatedItem.delivery_address}`
+                : null,
+              updatedItem.delivery_remarks
+                ? `Remarks: ${updatedItem.delivery_remarks}`
                 : null,
             ]
               .filter(Boolean)

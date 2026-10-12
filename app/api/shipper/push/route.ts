@@ -78,8 +78,10 @@ const SPREADSHEET_VALUE_FIELDS = [
 type OcfJoinRow = {
   id: string;
   subitem_id: string;
+  delivery_name: string | null;
   delivery_contact_number: string | null;
   delivery_address: string | null;
+  delivery_remarks: string | null;
   order_confirmations: {
     id: string;
     client_submitted_at: string | null;
@@ -87,16 +89,20 @@ type OcfJoinRow = {
 };
 
 function buildDeliveryInfo(item?: {
+  delivery_name?: string | null;
   delivery_contact_number?: string | null;
   delivery_address?: string | null;
+  delivery_remarks?: string | null;
 }) {
   if (!item) return null;
 
   const parts = [
+    item.delivery_name ? `Name: ${item.delivery_name}` : null,
     item.delivery_contact_number
       ? `Contact: ${item.delivery_contact_number}`
       : null,
     item.delivery_address ? `Address: ${item.delivery_address}` : null,
+    item.delivery_remarks ? `Remarks: ${item.delivery_remarks}` : null,
   ].filter(Boolean);
 
   return parts.length > 0 ? parts.join("\n") : null;
@@ -542,8 +548,10 @@ export async function POST(req: NextRequest) {
         `
         id,
         subitem_id,
+        delivery_name,
         delivery_contact_number,
         delivery_address,
+        delivery_remarks,
         order_confirmations!inner (
             id,
             client_submitted_at
