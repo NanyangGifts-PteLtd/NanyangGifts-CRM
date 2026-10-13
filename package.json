@@ -5,7 +5,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "migrate:storage": "node migration-events/2026-10-13-us-to-sg/scripts/migrate-supabase-storage.mjs"
   },
   "dependencies": {
     "@auth0/nextjs-auth0": "^4.22.0",
@@ -92,6 +93,7 @@
     "eslint": "^9",
     "eslint-config-next": "15.3.1",
     "postcss": "^8",
+    "supabase": "^2.120.0",
     "tailwindcss": "^3.4.1",
     "tailwindcss-animate": "^1.0.7",
     "typescript": "^5",
