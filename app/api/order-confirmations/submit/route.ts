@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { updateCrmSpreadsheetDeliveryInfo } from "@/lib/shipper/spreadsheet";
 
 function getClientIp(request: NextRequest) {
     const forwardedFor = request.headers.get("x-forwarded-for");
@@ -232,21 +233,19 @@ export async function POST(request: NextRequest) {
                     )
                     .in("id", ocfItemIds);
 
-                for (const ocfItem of ocfItemRows ?? []) {
-                    if (!ocfItem.subitem_id) continue;
-
-                    await supabase
-                        .from("shipper_view_rows")
-                        .update({
-                            delivery_info: [
+                await updateCrmSpreadsheetDeliveryInfo(
+                    (ocfItemRows ?? [])
+                        .filter((ocfItem) => Boolean(ocfItem.subitem_id))
+                        .map((ocfItem) => ({
+                            sourceSubitemId: ocfItem.subitem_id!,
+                            deliveryInfo: [
                                 ocfItem.delivery_name ? `Name: ${ocfItem.delivery_name}` : null,
                                 ocfItem.delivery_contact_number ? `Contact: ${ocfItem.delivery_contact_number}` : null,
                                 ocfItem.delivery_address ? `Address: ${ocfItem.delivery_address}` : null,
                                 ocfItem.delivery_remarks ? `Remarks: ${ocfItem.delivery_remarks}` : null,
                             ].filter(Boolean).join("\n") || null,
-                        })
-                        .eq("subitem_id", ocfItem.subitem_id);
-                }
+                        })),
+                );
             }
         }
 

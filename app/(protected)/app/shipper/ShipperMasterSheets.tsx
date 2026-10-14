@@ -33,9 +33,6 @@ export function ShipperMasterSheets({
           {activeShipper.name || "Unnamed shipper"}
         </div>
         <div className="flex gap-2">
-          <span className="rounded bg-sky-600 px-2 py-1 text-xs text-white">
-            Workbook
-          </span>
           {activeShipper.website_url && (
             <a
               href={activeShipper.website_url}

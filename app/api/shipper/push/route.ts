@@ -285,28 +285,15 @@ export async function POST(req: NextRequest) {
     }
 
     if (body.statusOnly) {
-      // A send is written to both the legacy CRM projection and the shipper
-      // workbook. Older records may exist in only one of them, so derive the
-      // Sent state from both sources instead of treating the projection as the
-      // source of truth.
-      const [legacyResult, spreadsheetResult] = await Promise.all([
-        supabaseAdmin
-          .from("shipper_view_rows")
-          .select("subitem_id")
-          .in("subitem_id", subitemIds),
-        supabaseAdmin
-          .from("shipper_spreadsheet_rows")
-          .select("source_subitem_id")
-          .eq("source_type", "crm_push")
-          .in("source_subitem_id", subitemIds),
-      ]);
+      const { data: spreadsheetRows, error } = await supabaseAdmin
+        .from("shipper_spreadsheet_rows")
+        .select("source_subitem_id")
+        .eq("source_type", "crm_push")
+        .in("source_subitem_id", subitemIds);
 
-      if (legacyResult.error || spreadsheetResult.error) {
+      if (error) {
         return NextResponse.json(
-          {
-            error:
-              legacyResult.error?.message ?? spreadsheetResult.error?.message,
-          },
+          { error: error.message },
           { status: 500 },
         );
       }
@@ -314,13 +301,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         pushedSubitemIds: [
           ...new Set(
-            [...(legacyResult.data ?? [])]
-              .map((row) => row.subitem_id)
-              .concat(
-                (spreadsheetResult.data ?? []).map(
-                  (row) => row.source_subitem_id,
-                ),
-              )
+            (spreadsheetRows ?? [])
+              .map((row) => row.source_subitem_id)
               .filter(
                 (subitemId): subitemId is string =>
                   typeof subitemId === "string",
@@ -632,12 +614,7 @@ export async function POST(req: NextRequest) {
     });
 
     const previewSubitemIds = subitems.map((item) => item.id);
-    const [legacyRowsResult, spreadsheetRowsResult, activityRowsResult] =
-      await Promise.all([
-        supabaseAdmin
-          .from("shipper_view_rows")
-          .select("subitem_id, shipper_id")
-          .in("subitem_id", previewSubitemIds),
+    const [spreadsheetRowsResult, activityRowsResult] = await Promise.all([
         supabaseAdmin
           .from("shipper_spreadsheet_rows")
           .select("source_subitem_id, workbook:shipper_workbooks(shipper_id)")
@@ -650,24 +627,16 @@ export async function POST(req: NextRequest) {
           .in("subitem_id", previewSubitemIds)
           .order("created_at", { ascending: false }),
       ]);
-    if (
-      legacyRowsResult.error ||
-      spreadsheetRowsResult.error ||
-      activityRowsResult.error
-    )
+    if (spreadsheetRowsResult.error || activityRowsResult.error)
       return NextResponse.json(
         {
           error:
-            legacyRowsResult.error?.message ??
             spreadsheetRowsResult.error?.message ??
             activityRowsResult.error?.message,
         },
         { status: 500 },
       );
 
-    const legacyBySubitemId = new Map(
-      (legacyRowsResult.data ?? []).map((row) => [row.subitem_id, row]),
-    );
     const spreadsheetShipperBySubitemId = new Map<string, string>();
     for (const row of spreadsheetRowsResult.data ?? []) {
       const workbook = Array.isArray(row.workbook)
@@ -683,8 +652,7 @@ export async function POST(req: NextRequest) {
       }
     }
     // Activity is ordered newest first and records the selected shipper at
-    // send time. Prefer it over the mutable legacy projection, then fall back
-    // to the workbook association for older rows that have no activity meta.
+    // send time. It takes priority over workbook association for prior sends.
     const activityShipperBySubitemId = new Map<string, string>();
     for (const row of activityRowsResult.data ?? []) {
       const meta = row.meta as { shipperId?: unknown } | null;
@@ -701,10 +669,8 @@ export async function POST(req: NextRequest) {
       const shipperId =
         activityShipperBySubitemId.get(subitemId) ??
         spreadsheetShipperBySubitemId.get(subitemId) ??
-        legacyBySubitemId.get(subitemId)?.shipper_id ??
         null;
       if (
-        legacyBySubitemId.has(subitemId) ||
         spreadsheetShipperBySubitemId.has(subitemId) ||
         activityShipperBySubitemId.has(subitemId)
       ) {
@@ -857,23 +823,7 @@ export async function POST(req: NextRequest) {
       };
     });
 
-    const { data: pushedRows, error: upsertError } = await supabaseAdmin
-      .from("shipper_view_rows")
-      .upsert(rowsToUpsert, { onConflict: "subitem_id" })
-      .select();
-
-    if (upsertError) {
-      return NextResponse.json({ error: upsertError.message }, { status: 500 });
-    }
-
-    // The legacy row remains only as a pushed-status projection for CRM.
-    // Its former shipment/item synchronisation is deliberately omitted:
-    // the workbook is now the delivery destination for normal pushes.
-
-    // The workbook grows downward: every confirmed CRM push creates a new
-    // row after the final populated spreadsheet row. shipper_view_rows is
-    // intentionally retained for now as the CRM's existing pushed-status
-    // compatibility projection.
+    // The workbook is the sole destination for normal CRM pushes.
     const spreadsheetRowsByShipper = new Map<
       string,
       Array<{
@@ -1005,13 +955,13 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       ok: true,
-      count: pushedRows?.length ?? 0,
+      count: rowsToUpsert.length,
       spreadsheetRowsCreated: spreadsheetPushes.reduce(
         (count, workbook) => count + workbook.rowNumbers.length,
         0,
       ),
       spreadsheetPushes,
-      rows: pushedRows ?? [],
+      rows: rowsToUpsert,
     });
   } catch (error: any) {
     return NextResponse.json(

@@ -20,12 +20,10 @@ export async function POST(request: NextRequest) {
     const isStaff = SHIPMENT_STAFF_ROLES.has(role);
     const formData = await request.formData();
     const file = formData.get("file");
-    const shipmentId = String(formData.get("shipmentId") ?? "");
-    const shipmentItemId = String(formData.get("shipmentItemId") ?? "");
     const spreadsheetRowId = String(formData.get("spreadsheetRowId") ?? "");
     const requestedShipperId = String(formData.get("shipperId") ?? "");
 
-    if (!(file instanceof File) || (!shipmentId && !shipmentItemId && !spreadsheetRowId)) {
+    if (!(file instanceof File) || !spreadsheetRowId) {
       return NextResponse.json({ error: "An image and attachment target are required" }, { status: 400 });
     }
     if (!file.type.startsWith("image/")) {
@@ -35,19 +33,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Images must be 10 MB or smaller" }, { status: 400 });
     }
 
-    const { data: target, error: targetError } = spreadsheetRowId
-      ? await supabaseAdmin.from("shipper_spreadsheet_rows").select("id, workbook:shipper_workbooks(shipper_id)").eq("id", spreadsheetRowId).maybeSingle()
-      : shipmentId
-        ? await supabaseAdmin.from("shipper_shipments").select("id, shipper_id").eq("id", shipmentId).maybeSingle()
-        : await supabaseAdmin.from("shipper_shipment_items").select("id, shipment:shipper_shipments(shipper_id)").eq("id", shipmentItemId).maybeSingle();
+    const { data: target, error: targetError } = await supabaseAdmin
+      .from("shipper_spreadsheet_rows")
+      .select("id, workbook:shipper_workbooks(shipper_id)")
+      .eq("id", spreadsheetRowId)
+      .maybeSingle();
     if (targetError) throw targetError;
-    const itemShipment = (target as { shipment?: { shipper_id?: string | null } | Array<{ shipper_id?: string | null }> } | null)?.shipment;
     const workbook = (target as { workbook?: { shipper_id?: string | null } | Array<{ shipper_id?: string | null }> } | null)?.workbook;
-    const targetShipperId = spreadsheetRowId
-      ? (Array.isArray(workbook) ? workbook[0]?.shipper_id : workbook?.shipper_id) ?? null
-      : shipmentId
-      ? (target as { shipper_id?: string | null } | null)?.shipper_id ?? null
-      : (Array.isArray(itemShipment) ? itemShipment[0]?.shipper_id : itemShipment?.shipper_id) ?? null;
+    const targetShipperId =
+      (Array.isArray(workbook) ? workbook[0]?.shipper_id : workbook?.shipper_id) ??
+      null;
     if (!target || !targetShipperId || (requestedShipperId && requestedShipperId !== targetShipperId)) {
       return NextResponse.json({ error: "Shipment target not found" }, { status: 404 });
     }
@@ -56,7 +51,7 @@ export async function POST(request: NextRequest) {
     }
 
     const extension = file.name.split(".").pop()?.toLowerCase() || "bin";
-    const path = `${targetShipperId}/${spreadsheetRowId ? "spreadsheet" : "shipments"}/${spreadsheetRowId || shipmentId || shipmentItemId}/${crypto.randomUUID()}.${extension}`;
+    const path = `${targetShipperId}/spreadsheet/${spreadsheetRowId}/${crypto.randomUUID()}.${extension}`;
     const { error: uploadError } = await supabaseAdmin.storage.from(BUCKET).upload(
       path,
       Buffer.from(await file.arrayBuffer()),

@@ -210,3 +210,35 @@ export async function createCrmSpreadsheetRows(params: {
   if (error) throw error;
   return data ?? [];
 }
+
+/** Keep OCF delivery details in sync with workbook rows created from CRM. */
+export async function updateCrmSpreadsheetDeliveryInfo(
+  updates: Array<{ sourceSubitemId: string; deliveryInfo: string | null }>,
+) {
+  if (!updates.length) return;
+  const deliveryBySubitemId = new Map(
+    updates.map((update) => [update.sourceSubitemId, update.deliveryInfo]),
+  );
+  const { data: rows, error } = await supabaseAdmin
+    .from("shipper_spreadsheet_rows")
+    .select("id, source_subitem_id, values")
+    .eq("source_type", "crm_push")
+    .in("source_subitem_id", [...deliveryBySubitemId.keys()]);
+  if (error) throw error;
+
+  await Promise.all(
+    (rows ?? []).map(async (row) => {
+      const { error: updateError } = await supabaseAdmin
+        .from("shipper_spreadsheet_rows")
+        .update({
+          values: {
+            ...((row.values ?? {}) as Record<string, unknown>),
+            delivery_info:
+              deliveryBySubitemId.get(row.source_subitem_id ?? "") ?? null,
+          },
+        })
+        .eq("id", row.id);
+      if (updateError) throw updateError;
+    }),
+  );
+}

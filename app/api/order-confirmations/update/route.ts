@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { canEditClient } from "@/lib/client-access";
+import { updateCrmSpreadsheetDeliveryInfo } from "@/lib/shipper/spreadsheet";
 
 export async function POST(req: Request) {
   try {
@@ -101,10 +102,10 @@ export async function POST(req: Request) {
         );
       }
 
-      const { error: shipperUpdateError } = await supabase
-        .from("shipper_view_rows")
-        .update({
-          delivery_info:
+      await updateCrmSpreadsheetDeliveryInfo([
+        {
+          sourceSubitemId: updatedItem.subitem_id,
+          deliveryInfo:
             [
               updatedItem.delivery_name
                 ? `Name: ${updatedItem.delivery_name}`
@@ -121,12 +122,8 @@ export async function POST(req: Request) {
             ]
               .filter(Boolean)
               .join("\n") || null,
-        })
-        .eq("subitem_id", updatedItem.subitem_id);
-
-      if (shipperUpdateError) {
-        console.error("Failed to update shipper view row:", shipperUpdateError);
-      }
+        },
+      ]);
     }
 
     await supabase.from("activity_log").insert({

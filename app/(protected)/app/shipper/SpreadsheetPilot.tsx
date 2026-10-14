@@ -2487,6 +2487,10 @@ export function SpreadsheetPilot({
         ref={gridContainerRef}
         className="relative"
         onContextMenuCapture={(event) => {
+          // Glide's cell callback opens the application menu, but its event
+          // is not consistently the browser's native event. Prevent the
+          // native menu at the container boundary as well.
+          event.preventDefault();
           const bounds = event.currentTarget.getBoundingClientRect();
           contextPointer.current = {
             x: event.clientX - bounds.left,

@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { createShipment, type ShipmentInput } from "@/lib/shipper/shipments";
 import { createCrmSpreadsheetRows } from "@/lib/shipper/spreadsheet";
 
 type PushValue = Record<string, string> & { subitemId: string };
@@ -189,11 +188,14 @@ export async function POST(request: NextRequest) {
         shipper.id,
       ]),
     );
+    const shipperIds = new Set((shippers ?? []).map((shipper) => shipper.id));
     const resolveShipper = (item: {
       shipper_id: string | null;
       shipper: string | null;
     }) =>
-      item.shipper_id ??
+      (item.shipper_id && shipperIds.has(item.shipper_id)
+        ? item.shipper_id
+        : null) ??
       normalizedShippers.get(
         String(item.shipper ?? "")
           .replace(/\s+-\s+(sea|air)\s*$/i, "")
@@ -207,7 +209,7 @@ export async function POST(request: NextRequest) {
     const clientIds = new Set(
       subitems!.map((item) => item.client_id).filter(Boolean),
     );
-    const shipperIds = new Set(
+    const resolvedShipperIds = new Set(
       subitems!
         .map((item) =>
           resolveShipper((() => {
@@ -229,7 +231,7 @@ export async function POST(request: NextRequest) {
         },
         { status: 400 },
       );
-    if (shipperIds.size !== 1 || ![...shipperIds][0])
+    if (resolvedShipperIds.size !== 1 || ![...resolvedShipperIds][0])
       return NextResponse.json(
         {
           error:
@@ -349,7 +351,7 @@ export async function POST(request: NextRequest) {
         },
       };
     });
-    const targetShipperId = [...shipperIds][0] as string;
+    const targetShipperId = [...resolvedShipperIds][0] as string;
     const workbookShipperName =
       shippers?.find((shipper) => shipper.id === targetShipperId)?.name ??
       "Shipper";
@@ -381,19 +383,6 @@ export async function POST(request: NextRequest) {
     const positions = new Map(
       (workbookRows ?? []).map((row, index) => [row.id, index + 1]),
     );
-    const legacyProjection = rowsForWorkbook.map((row) => ({
-      subitem_id: row.sourceSubitemId,
-      client_id:
-        subitems!.find((item) => item.id === row.sourceSubitemId)?.client_id ??
-        null,
-      shipper_id: targetShipperId,
-      pushed_by: user.id,
-      ...row.values,
-    }));
-    const { error: legacyError } = await supabaseAdmin
-      .from("shipper_view_rows")
-      .upsert(legacyProjection, { onConflict: "subitem_id" });
-    if (legacyError) throw legacyError;
     await supabaseAdmin
       .from("activity_log")
       .insert(
@@ -432,6 +421,9 @@ export async function POST(request: NextRequest) {
       { status: 201 },
     );
 
+    /* Legacy shipment-table implementation retired. It is intentionally kept
+       as a non-executable reference until the database cleanup has been
+       deployed and verified, then will be deleted with the legacy routes.
     const items = ids.map((id) => {
       const value = values.get(id);
       const source = subitems!.find((item) => item.id === id)!;
@@ -649,6 +641,7 @@ export async function POST(request: NextRequest) {
       },
       { status: 201 },
     );
+    */
   } catch (error: any) {
     return NextResponse.json(
       { error: error?.message ?? "Could not create the combined shipment." },

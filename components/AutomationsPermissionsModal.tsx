@@ -155,15 +155,6 @@ const automations: ReferenceItem[] = [
     source: "components/SubitemDetailView.tsx",
   },
   {
-    title: "Shipment auto-lock",
-    trigger:
-      "A shipment reaches its configured auto-lock time while the shipment grid is open.",
-    behaviour:
-      "Applies the shipment’s due auto-lock and refreshes the row state. The API also validates the applicable lock requirements.",
-    source:
-      "app/(protected)/app/shipper/ShipmentGrid.tsx; app/api/shipper/shipments/route.ts",
-  },
-  {
     title: "System label resolution",
     trigger:
       "A process applies a protected system label or evaluates a label condition.",
