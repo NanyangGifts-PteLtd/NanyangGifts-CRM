@@ -3182,7 +3182,7 @@ export function ClientRow({
         className={`relative box-border border-b flex text-[15px] items-center flex-shrink-0 border-r border-[#D0D4E4] group transition-colors focus-within:z-[70] ${
           isSelected
             ? "bg-sky-50/70 shadow-[inset_0_0_0_1px_rgba(56,189,248,0.35)]"
-            : ""
+            : "bg-white"
         }`}
       >
         <div

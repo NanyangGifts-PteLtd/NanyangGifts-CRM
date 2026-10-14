@@ -2,7 +2,10 @@
 
 import { useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { boardProtectionDelay } from "@/lib/board-write-coordinator";
+import {
+  boardProtectionDelay,
+  isBoardRecordProtected,
+} from "@/lib/board-write-coordinator";
 
 type RefreshKind = "records" | "profiles" | "groups" | "notifications" | "boardMetadata" | "labelOptions" | "roundRobin";
 
@@ -80,6 +83,22 @@ export function AppLiveRefresh({
         old: RecordRow;
       },
     ) => {
+      // A client deletion soft-deletes its subitems too. The Board has already
+      // removed those rows optimistically, so reconciling their individual
+      // Realtime echoes can lack a parent client ID and force an unnecessary
+      // full Board reload. The client event itself is still retained to update
+      // group counts; only a locally protected subitem echo is redundant.
+      if (table === "subitems") {
+        const subitemId =
+          typeof payload.new.id === "string"
+            ? payload.new.id
+            : typeof payload.old.id === "string"
+              ? payload.old.id
+              : null;
+        if (subitemId && isBoardRecordProtected("subitem", subitemId)) {
+          return;
+        }
+      }
       pendingRecordChanges.current.push({ table, ...payload });
       schedule("records");
     };

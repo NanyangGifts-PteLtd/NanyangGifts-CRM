@@ -83,18 +83,18 @@ export async function POST(request: NextRequest) {
 
   try {
     const formData = await request.formData();
-    const clientId = String(formData.get("clientId") ?? "").trim();
+    const suppliedClientId = String(formData.get("clientId") ?? "").trim();
     const reviewId = String(formData.get("reviewId") ?? "").trim();
     const externalId = String(
       formData.get("externalId") ?? formData.get("messageId") ?? "",
     ).trim();
     const attachmentId = String(formData.get("attachmentId") ?? "").trim();
     const file = formData.get("file");
-    if ((!clientId && !reviewId) || !externalId || !(file instanceof File)) {
+    if (!externalId || !(file instanceof File)) {
       return NextResponse.json(
         {
           error:
-            "clientId or reviewId, externalId/messageId, and file are required.",
+            "externalId/messageId and file are required.",
         },
         { status: 400 },
       );
@@ -187,14 +187,23 @@ export async function POST(request: NextRequest) {
       .select("client_id")
       .eq("source", "email")
       .eq("external_id", externalId)
-      .eq("client_id", clientId)
       .maybeSingle();
     if (ingestionError) throw ingestionError;
-    if (!ingestion)
+    const clientId = ingestion?.client_id ?? null;
+    if (!clientId)
       return NextResponse.json(
-        { error: "Matching email ingestion was not found." },
-        { status: 404 },
+        {
+          error:
+            "Matching email ingestion has not created its client yet. Retry the attachment shortly.",
+        },
+        { status: 409 },
       );
+    if (suppliedClientId && suppliedClientId !== clientId) {
+      return NextResponse.json(
+        { error: "The supplied clientId does not match this email ingestion." },
+        { status: 409 },
+      );
+    }
 
     const { data: client, error: clientError } = await supabaseAdmin
       .from("clients")
@@ -277,7 +286,12 @@ export async function POST(request: NextRequest) {
       });
     if (activityError) throw activityError;
 
-    return NextResponse.json({ ok: true, duplicate: false, file: stored });
+    return NextResponse.json({
+      ok: true,
+      duplicate: false,
+      clientId,
+      file: stored,
+    });
   } catch (error) {
     return NextResponse.json(
       {

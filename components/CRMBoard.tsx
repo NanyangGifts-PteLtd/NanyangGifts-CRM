@@ -8181,10 +8181,13 @@ export function CRMBoard({
         showAssignmentPermissionError();
         return;
       }
-      const releaseClientProtection = holdBoardRecordProtection(
-        "client",
-        clientId,
-      );
+      const clientToDelete = clients.find((client) => client.id === clientId);
+      const releaseProtections = [
+        holdBoardRecordProtection("client", clientId),
+        ...(clientToDelete?.subitems ?? []).map((subitem) =>
+          holdBoardRecordProtection("subitem", subitem.id),
+        ),
+      ];
       setClients((prev) => prev.filter((c) => c.id !== clientId));
       setSelectedIds((prev) => {
         const next = new Set(prev);
@@ -8198,13 +8201,27 @@ export function CRMBoard({
           "The client was moved to the Bin and can be restored for 30 days.",
         );
       } catch (error: any) {
-        setClients(clients);
+        // Restore only this failed optimistic deletion. Replacing the entire
+        // Board snapshot can resurrect other rows that were successfully
+        // deleted or changed while this request was in flight.
+        if (clientToDelete) {
+          setClients((current) => {
+            if (current.some((client) => client.id === clientId)) return current;
+            const currentById = new Map(
+              [...current, clientToDelete].map((client) => [client.id, client]),
+            );
+            return clients.flatMap((client) => {
+              const restored = currentById.get(client.id);
+              return restored ? [restored] : [];
+            });
+          });
+        }
         console.error("Failed to delete client", error);
         toast.error("Client could not be deleted", {
           description: error?.message || "The client was not deleted.",
         });
       } finally {
-        releaseClientProtection();
+        releaseProtections.forEach((release) => release());
       }
     },
     [
@@ -8242,13 +8259,43 @@ export function CRMBoard({
       showAssignmentPermissionError();
       return;
     }
-    const releaseClientProtections = ids.map((id) =>
-      holdBoardRecordProtection("client", id),
+    const selectedClientsById = new Map(
+      clients.map((client) => [client.id, client]),
     );
+    const releaseClientProtections = ids.flatMap((id) => [
+      holdBoardRecordProtection("client", id),
+      ...(selectedClientsById.get(id)?.subitems ?? []).map((subitem) =>
+        holdBoardRecordProtection("subitem", subitem.id),
+      ),
+    ]);
     setClients((prev) => prev.filter((c) => !selectedIds.has(c.id)));
     setSelectedIds(new Set());
     try {
-      await Promise.all(ids.map((id) => deleteClientRow(id)));
+      const results = await Promise.allSettled(
+        ids.map((id) => deleteClientRow(id)),
+      );
+      const failedIds = new Set(
+        results.flatMap((result, index) =>
+          result.status === "rejected" ? [ids[index]] : [],
+        ),
+      );
+      if (failedIds.size) {
+        setClients((current) => {
+          const currentById = new Map(current.map((client) => [client.id, client]));
+          for (const client of clients) {
+            if (failedIds.has(client.id)) currentById.set(client.id, client);
+          }
+          return clients.flatMap((client) => {
+            const restored = currentById.get(client.id);
+            return restored ? [restored] : [];
+          });
+        });
+        setSelectedIds(new Set(failedIds));
+        const firstFailure = results.find(
+          (result): result is PromiseRejectedResult => result.status === "rejected",
+        );
+        throw firstFailure?.reason ?? new Error("Some clients could not be deleted.");
+      }
       notifyChange(
         "Clients deleted",
         `${ids.length} selected client${ids.length === 1 ? "" : "s"} were removed.`,
@@ -8668,12 +8715,30 @@ export function CRMBoard({
             ? "The voucher was permanently deactivated and its linked subitem was removed."
             : "The subitem was moved to the Bin and can be restored for 30 days.",
         );
+        return true;
       } catch (error: any) {
-        setClients(clients);
+        const originalClient = clients.find((client) => client.id === _clientId);
+        const originalSubitem = originalClient?.subitems.find(
+          (subitem) => subitem.id === subitemId,
+        );
+        if (originalSubitem) {
+          setClients((current) =>
+            current.map((client) => {
+              if (client.id !== _clientId || client.subitems.some((item) => item.id === subitemId)) {
+                return client;
+              }
+              const restoredSubitems = [...client.subitems, originalSubitem].sort(
+                (left, right) => (left.position ?? 0) - (right.position ?? 0),
+              );
+              return { ...client, subitems: restoredSubitems };
+            }),
+          );
+        }
         console.error("Failed to delete subitem", error);
         toast.error("Subitem could not be deleted", {
           description: error?.message || "The subitem was not deleted.",
         });
+        return false;
       } finally {
         releaseSubitemProtection();
       }
@@ -9021,7 +9086,7 @@ export function CRMBoard({
   );
 
   return (
-    <div className="crm-board box-border flex h-full flex-col bg-white pl-14">
+    <div className="crm-board box-border flex min-h-full flex-col bg-white pl-14">
       {detailSubitem &&
         (() => {
           const owner = clients.find(
@@ -11269,7 +11334,7 @@ export function CRMBoard({
                 setSelectedSubitemIds((previous) =>
                   previous.filter((id) => !selected.includes(id)),
                 );
-                await Promise.all(
+                const outcomes = await Promise.all(
                   selected.map((subitemId) => {
                     const owner = clients.find((client) =>
                       client.subitems.some(
@@ -11283,9 +11348,15 @@ export function CRMBoard({
                     // the client's People or PM fields.
                     return owner
                       ? deleteSubitem(owner.id, subitemId)
-                      : Promise.resolve();
+                      : Promise.resolve(false);
                   }),
                 );
+                const failedIds = selected.filter(
+                  (_subitemId, index) => !outcomes[index],
+                );
+                if (failedIds.length) {
+                  setSelectedSubitemIds(failedIds);
+                }
               }}
             >
               Delete subitems
