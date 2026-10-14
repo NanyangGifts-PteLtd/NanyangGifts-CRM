@@ -6427,9 +6427,13 @@ export function CRMBoard({
   }, [groups, parentClientOptions, subitemMoveSearch]);
 
   const filteredClients = displayedClients;
+  const selectableFilteredClients = useMemo(
+    () => filteredClients.filter((client) => canEditClientRecord(client.id)),
+    [canEditClientRecord, filteredClients],
+  );
   const allFilteredSelected =
-    filteredClients.length > 0 &&
-    filteredClients.every((c) => selectedIds.has(c.id));
+    selectableFilteredClients.length > 0 &&
+    selectableFilteredClients.every((c) => selectedIds.has(c.id));
 
   const renderFilterColumn = ({
     label,
@@ -6649,14 +6653,14 @@ export function CRMBoard({
 
   const toggleSelect = useCallback(
     (id: string) => {
-      if (selectedSubitemIds.length > 0) return;
+      if (selectedSubitemIds.length > 0 || !canEditClientRecord(id)) return;
       setSelectedIds((prev) => {
         const next = new Set(prev);
         next.has(id) ? next.delete(id) : next.add(id);
         return next;
       });
     },
-    [selectedSubitemIds.length],
+    [canEditClientRecord, selectedSubitemIds.length],
   );
 
   const toggleSelectAll = useCallback(() => {
@@ -6664,33 +6668,35 @@ export function CRMBoard({
     if (allFilteredSelected) {
       setSelectedIds((prev) => {
         const next = new Set(prev);
-        filteredClients.forEach((c) => next.delete(c.id));
+        selectableFilteredClients.forEach((c) => next.delete(c.id));
         return next;
       });
     } else {
       setSelectedIds((prev) => {
         const next = new Set(prev);
-        filteredClients.forEach((c) => next.add(c.id));
+        selectableFilteredClients.forEach((c) => next.add(c.id));
         return next;
       });
     }
-  }, [allFilteredSelected, filteredClients, selectedSubitemIds.length]);
+  }, [allFilteredSelected, selectableFilteredClients, selectedSubitemIds.length]);
 
   const toggleSelectGroup = useCallback(
     (groupClientIds: string[]) => {
       if (selectedSubitemIds.length > 0 || groupClientIds.length === 0) return;
+      const selectableIds = groupClientIds.filter(canEditClientRecord);
+      if (!selectableIds.length) return;
       setSelectedIds((previous) => {
         const next = new Set(previous);
-        const allGroupClientsSelected = groupClientIds.every((clientId) =>
+        const allGroupClientsSelected = selectableIds.every((clientId) =>
           next.has(clientId),
         );
-        groupClientIds.forEach((clientId) =>
+        selectableIds.forEach((clientId) =>
           allGroupClientsSelected ? next.delete(clientId) : next.add(clientId),
         );
         return next;
       });
     },
-    [selectedSubitemIds.length],
+    [canEditClientRecord, selectedSubitemIds.length],
   );
 
   // --- Assignees ---
@@ -7971,35 +7977,57 @@ export function CRMBoard({
     [reloadClients],
   );
 
-  const permanentlyDeleteBinItem = useCallback(async (item: DeletedBinItem) => {
+  const permanentlyDeleteBinItems = useCallback(async (items: DeletedBinItem[]) => {
     const response = await fetch("/api/crm-bin/permanent-delete", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type: item.type, id: item.id }),
+      body: JSON.stringify({
+        items: items.map((item) => ({ type: item.type, id: item.id })),
+      }),
     });
     const result = await response.json();
     if (!response.ok)
       throw new Error(
-        result?.error || "Item could not be permanently deleted.",
+        result?.error || "Bin items could not be permanently deleted.",
       );
+    return new Map<string, string | null>(
+      items.map((item) => {
+        const itemResult = result?.results?.find(
+          (candidate: { type?: string; id?: string }) =>
+            candidate?.type === item.type && candidate?.id === item.id,
+        );
+        return [
+          `${item.type}:${item.id}`,
+          itemResult?.ok === false
+            ? itemResult.error || "could not be deleted"
+            : null,
+        ];
+      }),
+    );
   }, []);
 
   const confirmPermanentBinDelete = useCallback(async () => {
     const items = pendingPermanentBinItems ?? [];
     if (!items.length) return;
     setPermanentlyDeletingBin(true);
-    const failures: string[] = [];
-    const deletedKeys = new Set<string>();
-    for (const item of items) {
-      try {
-        await permanentlyDeleteBinItem(item);
-        deletedKeys.add(`${item.type}:${item.id}`);
-      } catch (error: any) {
-        failures.push(
-          `${item.name}: ${error?.message || "could not be deleted"}`,
-        );
-      }
+    let outcomes: Map<string, string | null>;
+    try {
+      outcomes = await permanentlyDeleteBinItems(items);
+    } catch (error: any) {
+      outcomes = new Map(
+        items.map((item) => [
+          `${item.type}:${item.id}`,
+          error?.message || "could not be deleted",
+        ]),
+      );
     }
+    const deletedKeys = new Set(
+      [...outcomes].flatMap(([key, error]) => (error ? [] : [key])),
+    );
+    const failures = items.flatMap((item) => {
+      const error = outcomes.get(`${item.type}:${item.id}`);
+      return error ? [`${item.name}: ${error}`] : [];
+    });
     setBinItems((current) =>
       current.filter((item) => !deletedKeys.has(`${item.type}:${item.id}`)),
     );
@@ -8017,7 +8045,7 @@ export function CRMBoard({
         `Some items could not be permanently deleted:\n${failures.join("\n")}`,
       );
     await reloadClients();
-  }, [pendingPermanentBinItems, permanentlyDeleteBinItem, reloadClients]);
+  }, [pendingPermanentBinItems, permanentlyDeleteBinItems, reloadClients]);
 
   const restoreSelectedBinItems = useCallback(async () => {
     const items = binItems.filter((item) =>
@@ -8939,28 +8967,38 @@ export function CRMBoard({
   const toggleSubitemSelection = useCallback(
     (subitemId: string) => {
       if (selectedIds.size > 0) return;
+      const owner = clients.find((client) =>
+        client.subitems.some((subitem) => subitem.id === subitemId),
+      );
+      if (!owner || !canEditSubitemRecord(owner.id, subitemId)) return;
       setSelectedSubitemIds((previous) =>
         previous.includes(subitemId)
           ? previous.filter((id) => id !== subitemId)
           : [...previous, subitemId],
       );
     },
-    [selectedIds.size],
+    [canEditSubitemRecord, clients, selectedIds.size],
   );
 
   const toggleAllSubitems = useCallback(
     (subitemIds: string[]) => {
       if (selectedIds.size > 0) return;
+      const selectableIds = subitemIds.filter((subitemId) => {
+        const owner = clients.find((client) =>
+          client.subitems.some((subitem) => subitem.id === subitemId),
+        );
+        return !!owner && canEditSubitemRecord(owner.id, subitemId);
+      });
+      if (!selectableIds.length) return;
       setSelectedSubitemIds((previous) => {
         const allSelected =
-          subitemIds.length > 0 &&
-          subitemIds.every((id) => previous.includes(id));
+          selectableIds.every((id) => previous.includes(id));
         return allSelected
-          ? previous.filter((id) => !subitemIds.includes(id))
-          : [...new Set([...previous, ...subitemIds])];
+          ? previous.filter((id) => !selectableIds.includes(id))
+          : [...new Set([...previous, ...selectableIds])];
       });
     },
-    [selectedIds.size],
+    [canEditSubitemRecord, clients, selectedIds.size],
   );
 
   const clearSubitemSelection = useCallback(() => {
@@ -11812,13 +11850,18 @@ export function CRMBoard({
                       type="checkbox"
                       checked={allFilteredSelected}
                       onChange={toggleSelectAll}
-                      disabled={selectedSubitemIds.length > 0}
+                      disabled={
+                        selectedSubitemIds.length > 0 ||
+                        selectableFilteredClients.length === 0
+                      }
                       title={
                         selectedSubitemIds.length > 0
                           ? "Clients and subitems cannot be selected together"
-                          : "Select all clients"
+                          : selectableFilteredClients.length === 0
+                            ? "You can only select items that are assigned to you"
+                            : "Select all clients"
                       }
-                      className={`h-3 w-3 rounded border border-slate-400 bg-white accent-[#7BCBD5] ${selectedSubitemIds.length > 0 ? "cursor-not-allowed opacity-40" : "cursor-pointer"}`}
+                      className={`h-3 w-3 rounded border border-slate-400 bg-white accent-[#7BCBD5] ${selectedSubitemIds.length > 0 || selectableFilteredClients.length === 0 ? "cursor-not-allowed opacity-40" : "cursor-pointer"}`}
                     />
                   ) : col.key === "addClientCol" ? (
                     canCreateCustomColumns ? (
@@ -11883,6 +11926,9 @@ export function CRMBoard({
             </div>
           ) : (
             boardVisibleGroups.map(({ group, clients: groupClients }) => {
+              const selectableGroupClients = groupClients.filter((client) =>
+                canEditClientRecord(client.id),
+              );
               const groupHiddenColumnKeys = new Set(hiddenColumnKeys);
               if (!isUnqualifiedGroupName(group.name))
                 groupHiddenColumnKeys.add("client:unqualifiedReason");
@@ -12326,26 +12372,28 @@ export function CRMBoard({
                                 <input
                                   type="checkbox"
                                   checked={
-                                    groupClients.length > 0 &&
-                                    groupClients.every((client) =>
+                                    selectableGroupClients.length > 0 &&
+                                    selectableGroupClients.every((client) =>
                                       selectedIds.has(client.id),
                                     )
                                   }
                                   onChange={() =>
                                     toggleSelectGroup(
-                                      groupClients.map((client) => client.id),
+                                      selectableGroupClients.map((client) => client.id),
                                     )
                                   }
                                   disabled={
                                     selectedSubitemIds.length > 0 ||
-                                    groupClients.length === 0
+                                    selectableGroupClients.length === 0
                                   }
                                   title={
                                     selectedSubitemIds.length > 0
                                       ? "Clients and subitems cannot be selected together"
-                                      : "Select clients in this group"
+                                      : selectableGroupClients.length === 0
+                                        ? "You can only select items that are assigned to you"
+                                        : "Select clients in this group"
                                   }
-                                  className={`w-3 h-3 rounded accent-[#7BCBD5] ${selectedSubitemIds.length > 0 || groupClients.length === 0 ? "cursor-not-allowed opacity-40" : "cursor-pointer"}`}
+                                  className={`w-3 h-3 rounded accent-[#7BCBD5] ${selectedSubitemIds.length > 0 || selectableGroupClients.length === 0 ? "cursor-not-allowed opacity-40" : "cursor-pointer"}`}
                                 />
                               ) : col.key === "addClientCol" ||
                                 (trackingView && col.key === "empty") ? (
@@ -12573,6 +12621,7 @@ export function CRMBoard({
                           }}
                           onBeginFocusedAction={clearAllSelections}
                           isSelected={selectedIds.has(client.id)}
+                          canSelect={canEditClientRecord(client.id)}
                           onToggleSelect={() => toggleSelect(client.id)}
                           onUpdate={(updates) =>
                             updateClient(client.id, updates)

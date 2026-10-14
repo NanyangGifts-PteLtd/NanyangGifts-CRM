@@ -3550,7 +3550,9 @@ export function SubitemsTable({
   };
 
   const totalColSpan = 1 + cols.length + subitemCustomCols.length + 1;
-  const selectableSubitems = displayedSubitems;
+  const selectableSubitems = displayedSubitems.filter((subitem) =>
+    hasSubitemEditPermission(subitem.id),
+  );
   const priceCalculatorSubitem = priceCalculatorSubitemId
     ? (subitems.find((subitem) => subitem.id === priceCalculatorSubitemId) ??
       null)
@@ -4392,15 +4394,19 @@ export function SubitemsTable({
                         if (!clientIsSelected) onToggleSubitemSelection(sub.id);
                       }}
                       onChange={() => {}}
-                      disabled={clientIsSelected}
+                      disabled={
+                        clientIsSelected || !hasSubitemEditPermission(sub.id)
+                      }
                       title={
                         clientIsSelected
                           ? "Clients and subitems cannot be selected together"
+                          : !hasSubitemEditPermission(sub.id)
+                            ? "You can only select items that are assigned to you"
                           : isAdditionalCostSubitem(sub)
                             ? "Select Payment Voucher subitem (bulk actions are unavailable)"
                             : "Select subitem"
                       }
-                      className={`h-3 w-3 rounded border border-slate-400 bg-white accent-[#7BCBD5] ${clientIsSelected ? "cursor-not-allowed opacity-40" : "cursor-pointer"}`}
+                      className={`h-3 w-3 rounded border border-slate-400 bg-white accent-[#7BCBD5] ${clientIsSelected || !hasSubitemEditPermission(sub.id) ? "cursor-not-allowed opacity-40" : "cursor-pointer"}`}
                     />
                   </td>
 

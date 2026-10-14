@@ -373,6 +373,7 @@ export type ClientRowProps = {
   client: Client;
   isBlacklisted: boolean;
   isSelected: boolean;
+  canSelect?: boolean;
   isExpanded: boolean;
   groupAccentColor: string;
   onToggleExpand: () => void;
@@ -558,6 +559,7 @@ export function ClientRow({
   client,
   isBlacklisted,
   isSelected,
+  canSelect = true,
   isExpanded,
   groupAccentColor,
   onToggleExpand,
@@ -3229,13 +3231,15 @@ export function ClientRow({
             type="checkbox"
             checked={isSelected}
             onChange={onToggleSelect}
-            disabled={selectedSubitemIds.length > 0}
+            disabled={selectedSubitemIds.length > 0 || !canSelect}
             title={
               selectedSubitemIds.length > 0
                 ? "Clients and subitems cannot be selected together"
-                : "Select client"
+                : !canSelect
+                  ? "You can only select items that are assigned to you"
+                  : "Select client"
             }
-            className={`absolute left-1/2 top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded border border-slate-400 bg-white accent-[#7BCBD5] transition duration-200 active:scale-150 ${selectedSubitemIds.length > 0 ? "cursor-not-allowed opacity-40" : "cursor-pointer"}`}
+            className={`absolute left-1/2 top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded border border-slate-400 bg-white accent-[#7BCBD5] transition duration-200 active:scale-150 ${selectedSubitemIds.length > 0 || !canSelect ? "cursor-not-allowed opacity-40" : "cursor-pointer"}`}
           />
           {!trackingMode && (
             <button
