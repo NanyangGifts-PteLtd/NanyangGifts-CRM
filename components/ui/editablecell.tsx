@@ -245,7 +245,7 @@ export function EditableCell({
         savedRef.current = false;
         setEditing(true);
       }}
-      title={readOnlyReason ?? value}
+      title={readOnly ? (readOnlyReason ?? value) : value}
       className={`flex ${fitContent ? "w-fit max-w-full" : "w-15"} justify-center py-0.5 text-xs ${readOnly ? "cursor-default" : "cursor-text hover:bg-blue-50"} rounded min-h-[22px] items-center ${
         multiline
           ? "whitespace-nowrap overflow-hidden text-ellipsis"
