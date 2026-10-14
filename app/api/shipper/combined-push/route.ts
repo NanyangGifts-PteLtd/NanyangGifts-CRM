@@ -54,7 +54,9 @@ function timelineShipper(
     ) ??
     (groups.length === 1 ? groups[0] : undefined);
   return {
-    id: timeline?.shipperOptionId ?? fallback.shipper_id,
+    // This is an option_values ID, not a public.shippers ID. Resolve the
+    // timeline label below instead of ever passing it to shipper_workbooks.
+    id: fallback.shipper_id,
     name: timeline?.shipper ?? fallback.shipper,
   };
 }

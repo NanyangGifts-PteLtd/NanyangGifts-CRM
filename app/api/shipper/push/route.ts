@@ -182,7 +182,10 @@ function timelineShipper(
     (groups.length === 1 ? groups[0] : undefined);
   return {
     name: timeline?.shipper ?? fallback.shipper ?? "",
-    id: timeline?.shipperOptionId ?? fallback.shipper_id ?? null,
+    // shipperOptionId identifies an option_values row for the display label;
+    // it is not a foreign key to public.shippers. The actual shipper ID lives
+    // on the subitem, while the selected timeline label resolves the target.
+    id: fallback.shipper_id ?? null,
   };
 }
 
