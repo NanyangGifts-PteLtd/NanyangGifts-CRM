@@ -285,6 +285,7 @@ type Clients = {
   nbd: string | null;
   total_price: string | null;
   billing_address: string | null;
+  created_by?: string | null;
   created_at: string | null;
   waiting_started_at: string | null;
   group_id: string;
@@ -605,6 +606,7 @@ function mapClients(row: Clients): Client {
     nbd: row.nbd ?? "",
     totalPrice: row.total_price ?? "",
     billingAddress: row.billing_address ?? "",
+    createdBy: row.created_by ?? null,
     createdAt: row.created_at ?? "",
     waitingStartedAt: row.waiting_started_at ?? null,
     groupId: row.group_id ?? null,
@@ -891,7 +893,7 @@ export async function fetchClientsWithSubitems(params?: {
     "tracking_overall_invoice_payment_status",
     "tracking_overall_invoice_payment_status_option_id", "company", "email",
     "phone", "requirements", "unqualified_reason", "nbd",
-    "total_price", "billing_address", "created_at", "waiting_started_at",
+    "total_price", "billing_address", "created_by", "created_at", "waiting_started_at",
     "group_id", "expanded", "color", "custom_fields", "deleted_at",
     "deleted_by",
   ].join(", ");
@@ -1786,6 +1788,7 @@ export async function createClientRow(
       nbd: "",
       total_price: "",
       billing_address: "",
+      created_by: currentUserId ?? null,
       group_id: groupId ?? null,
       expanded: true,
       color: "#7BCBD5",

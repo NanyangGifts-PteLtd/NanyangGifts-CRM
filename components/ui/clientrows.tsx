@@ -2011,11 +2011,25 @@ export function ClientRow({
       { totalPrice: 0, totalMarkup: 0 },
     );
 
-  const clientCreationActivity = client.activityLog?.find(
-    (entry) => entry.action === "client_added",
-  );
+  const inboundSource = String(client.customFields?.source ?? "").trim();
+  const inboundSourceLabel =
+    inboundSource === "email"
+      ? "Email"
+      : inboundSource === "woocommerce"
+        ? "WooCommerce"
+        : inboundSource === "wpforms"
+          ? "WPForms"
+          : inboundSource;
+  const creatorProfile = client.createdBy
+    ? profiles.find((profile) => profile.id === client.createdBy)
+    : null;
+  const creatorLabel = inboundSourceLabel
+    ? `Created via ${inboundSourceLabel} ingestion`
+    : creatorProfile?.full_name?.trim() ||
+      creatorProfile?.email ||
+      "Created by Unknown user";
   const clientCreatedTooltip = client.createdAt
-    ? `Created by ${clientCreationActivity?.actorName ?? "Unknown user"} on ${new Date(client.createdAt).toLocaleDateString("en-GB")} at ${new Date(client.createdAt).toLocaleTimeString("en-GB")}`
+    ? `${creatorLabel} on ${new Date(client.createdAt).toLocaleDateString("en-GB")} at ${new Date(client.createdAt).toLocaleTimeString("en-GB")}`
     : "";
 
   // activity log text

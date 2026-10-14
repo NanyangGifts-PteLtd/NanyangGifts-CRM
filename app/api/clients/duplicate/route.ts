@@ -118,6 +118,7 @@ export async function POST(request: NextRequest) {
         name: sourceClientResult.data.name ?? "New Client",
         status: newLeadLabel.value,
         status_option_id: newLeadLabel.id,
+        created_by: user.id,
         custom_fields: withoutFileCustomFields(sourceClientResult.data.custom_fields),
         activity_log: [],
       })

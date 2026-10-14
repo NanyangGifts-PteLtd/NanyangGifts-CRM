@@ -253,6 +253,7 @@ export interface Client {
   unqualifiedReason: string;
   nbd: string;
   totalPrice: string;
+  createdBy?: string | null;
   createdAt: string;
   waitingStartedAt?: string | null;
   billingAddress: string;
