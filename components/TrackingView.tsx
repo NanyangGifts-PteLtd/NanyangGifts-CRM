@@ -136,7 +136,8 @@ export function TrackingView({
   const toggleGroup = (groupId: string) =>
     setCollapsedGroupIds((current) => {
       const next = new Set(current);
-      next.has(groupId) ? next.delete(groupId) : next.add(groupId);
+      if (next.has(groupId)) next.delete(groupId);
+      else next.add(groupId);
       return next;
     });
 

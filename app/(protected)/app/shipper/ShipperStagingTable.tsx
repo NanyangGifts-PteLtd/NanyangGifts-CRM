@@ -347,9 +347,8 @@ export function ShipperStagingTable({
                     onChange={() =>
                       setSelected((current) => {
                         const next = new Set(current);
-                        next.has(row.id)
-                          ? next.delete(row.id)
-                          : next.add(row.id);
+                        if (next.has(row.id)) next.delete(row.id);
+                        else next.add(row.id);
                         return next;
                       })
                     }
@@ -426,9 +425,8 @@ export function ShipperStagingTable({
                     onClick={() =>
                       setOpenGroups((current) => {
                         const next = new Set(current);
-                        next.has(group.id)
-                          ? next.delete(group.id)
-                          : next.add(group.id);
+                        if (next.has(group.id)) next.delete(group.id);
+                        else next.add(group.id);
                         return next;
                       })
                     }

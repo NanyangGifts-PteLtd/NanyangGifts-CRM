@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
   if (!clientId || !name || !normalizePhone(phone)) return NextResponse.json({ error: "A contact name and phone number are required." }, { status: 400 });
   const { data: lead } = await supabaseAdmin.from("clients").select("id").eq("id", clientId).maybeSingle();
   if (!lead) return NextResponse.json({ error: "Lead not found." }, { status: 404 });
-  let { data: match } = await supabaseAdmin.from("customer_client_profile_phone_numbers").select("client_profile_id").eq("normalized_phone", normalizePhone(phone)).maybeSingle();
+  const { data: match } = await supabaseAdmin.from("customer_client_profile_phone_numbers").select("client_profile_id").eq("normalized_phone", normalizePhone(phone)).maybeSingle();
   let profileId = match?.client_profile_id;
   if (!profileId) {
     const { data: created, error } = await supabaseAdmin.from("customer_client_profiles").insert({ name, phone_number: phone, created_by: user.id }).select("id").single();

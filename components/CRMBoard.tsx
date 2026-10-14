@@ -6610,7 +6610,8 @@ export function CRMBoard({
 
   // --- Selection ---
   const toggleExpandAll = useCallback(() => {
-    allExpanded ? setExpandedIds([]) : setExpandedIds(clients.map((c) => c.id));
+    if (allExpanded) setExpandedIds([]);
+    else setExpandedIds(clients.map((c) => c.id));
   }, [allExpanded, clients, setExpandedIds]);
 
   const toggleCollapseAllGroups = useCallback(() => {
@@ -6656,7 +6657,8 @@ export function CRMBoard({
       if (selectedSubitemIds.length > 0 || !canEditClientRecord(id)) return;
       setSelectedIds((prev) => {
         const next = new Set(prev);
-        next.has(id) ? next.delete(id) : next.add(id);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
         return next;
       });
     },

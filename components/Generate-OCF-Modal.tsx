@@ -364,7 +364,7 @@ export function GenerateOcfModal({
     }
   }
 
-  function useSavedFinalArtwork(subitemId: string, enabled: boolean) {
+  function handleSavedFinalArtwork(subitemId: string, enabled: boolean) {
     if (!enabled) {
       updateRow(subitemId, {
         usingFinalArtwork: false,
@@ -713,7 +713,7 @@ export function GenerateOcfModal({
                                     type="checkbox"
                                     checked={row.usingFinalArtwork}
                                     onChange={(event) =>
-                                      useSavedFinalArtwork(
+                                      handleSavedFinalArtwork(
                                         row.subitemId,
                                         event.target.checked,
                                       )

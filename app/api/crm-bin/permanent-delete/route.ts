@@ -49,6 +49,10 @@ async function audit(entry: { type: "client" | "subitem"; id: string; clientId?:
 
 type BinItem = { type: "client" | "subitem"; id: string };
 
+function errorMessage(error: unknown, fallback: string) {
+  return error instanceof Error && error.message ? error.message : fallback;
+}
+
 async function permanentlyDeleteItem({ type, id }: BinItem) {
   if (type === "client") {
     const { data: client, error } = await supabaseAdmin.from("clients").select("id, name, deleted_at, subitems!subitems_client_id_fkey(id)").eq("id", id).not("deleted_at", "is", null).single();
@@ -83,11 +87,11 @@ async function deleteItemsWithConcurrency(items: BinItem[]) {
       try {
         const { filesRemoved } = await permanentlyDeleteItem(item);
         results[index] = { ...item, ok: true, filesRemoved };
-      } catch (error: any) {
+      } catch (error: unknown) {
         results[index] = {
           ...item,
           ok: false,
-          error: error?.message || "Item could not be permanently deleted.",
+          error: errorMessage(error, "Item could not be permanently deleted."),
         };
       }
     }
@@ -130,8 +134,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: true, filesRemoved });
     }
     return NextResponse.json({ ok: true, results: await deleteItemsWithConcurrency(items) });
-  } catch (error: any) {
-    const message = error?.message || "Item could not be permanently deleted.";
+  } catch (error: unknown) {
+    const message = errorMessage(error, "Item could not be permanently deleted.");
     return NextResponse.json(
       { error: message },
       {

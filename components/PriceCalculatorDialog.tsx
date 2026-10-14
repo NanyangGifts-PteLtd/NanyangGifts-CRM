@@ -156,7 +156,7 @@ export function PriceCalculatorDialog(props: Props) {
   const setTypedMarkup = (candidate: number) => {
     if (Number.isFinite(candidate)) setMarkup(candidate);
   };
-  const useUp = (up: number | null) => {
+  const applyUnitPrice = (up: number | null) => {
     if (up != null) {
       onUpdate({ up: String(roundUnitPrice(up)) });
       onClose();
@@ -291,7 +291,7 @@ export function PriceCalculatorDialog(props: Props) {
               <button
                 type="button"
                 disabled={readOnly || row.up == null}
-                onClick={() => useUp(row.up)}
+                onClick={() => applyUnitPrice(row.up)}
                 className="rounded bg-amber-600 px-2 py-1 text-xs font-semibold text-white disabled:opacity-40"
               >
                 Use Unit Price
@@ -344,7 +344,7 @@ export function PriceCalculatorDialog(props: Props) {
             <button
               type="button"
               disabled={readOnly}
-              onClick={() => useUp(parseSubitemNumber(record.up))}
+              onClick={() => applyUnitPrice(parseSubitemNumber(record.up))}
               className="inline-flex items-center justify-center gap-1 rounded bg-amber-600 px-2 py-1.5 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"
             >
               <Check size={14} /> Use Unit Price
@@ -479,7 +479,7 @@ export function PriceCalculatorDialog(props: Props) {
           <button
             type="button"
             disabled={readOnly || slider.up == null}
-            onClick={() => useUp(slider.up)}
+            onClick={() => applyUnitPrice(slider.up)}
             className="mt-5 rounded bg-amber-600 px-4 py-2 text-sm font-semibold text-white"
           >
             Use slider Unit Price
