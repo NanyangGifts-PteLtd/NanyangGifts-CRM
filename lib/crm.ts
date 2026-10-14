@@ -171,6 +171,7 @@ type Subitems = {
   client_id: string;
   position: number | null;
   created_at: string | null;
+  deletion_owner_id?: string | null;
   waiting_started_at: string | null;
   name: string | null;
   people: string | null;
@@ -286,6 +287,7 @@ type Clients = {
   total_price: string | null;
   billing_address: string | null;
   created_by?: string | null;
+  deletion_owner_id?: string | null;
   created_at: string | null;
   waiting_started_at: string | null;
   group_id: string;
@@ -471,6 +473,7 @@ export function mapSubitems(row: Subitems): Subitem {
     id: row.id,
     displayId: row.display_id ?? "",
     createdAt: row.created_at ?? null,
+    deletionOwnerId: row.deletion_owner_id ?? null,
     position: row.position ?? Number.MAX_SAFE_INTEGER,
     name: row.name ?? "",
     people: row.people ?? "",
@@ -607,6 +610,7 @@ function mapClients(row: Clients): Client {
     totalPrice: row.total_price ?? "",
     billingAddress: row.billing_address ?? "",
     createdBy: row.created_by ?? null,
+    deletionOwnerId: row.deletion_owner_id ?? null,
     createdAt: row.created_at ?? "",
     waitingStartedAt: row.waiting_started_at ?? null,
     groupId: row.group_id ?? null,
@@ -894,7 +898,7 @@ export async function fetchClientsWithSubitems(params?: {
     "tracking_overall_invoice_payment_status_option_id", "company", "email",
     "phone", "requirements", "unqualified_reason", "nbd",
     "total_price", "billing_address", "created_by", "created_at", "waiting_started_at",
-    "group_id", "expanded", "color", "custom_fields", "deleted_at",
+    "group_id", "expanded", "color", "custom_fields", "deletion_owner_id", "deleted_at",
     "deleted_by",
   ].join(", ");
   const subitemBoardSelect = [
@@ -912,7 +916,7 @@ export async function fetchClientsWithSubitems(params?: {
     "payment_amount", "difference", "payment_remarks", "timeline_rows",
     "timeline_groups", "show_timeline", "show_payments", "show_sample",
     "sample_rows", "sample_order_status", "sample_status", "sample_type",
-    "custom_fields", "shipper_id", "deleted_at", "deleted_by",
+    "custom_fields", "shipper_id", "deletion_owner_id", "deleted_at", "deleted_by",
     "deleted_with_client_id",
   ].join(", ");
   const paymentRowSelect = [
@@ -2173,11 +2177,15 @@ export async function deleteClientRow(clientId: string) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  const { error } = await supabase
+  const { data: deletedClient, error } = await supabase
     .from("clients")
     .update({ deleted_at: deletedAt, deleted_by: user?.id ?? null })
-    .eq("id", clientId);
+    .eq("id", clientId)
+    .select("id")
+    .maybeSingle();
   if (error) throw error;
+  if (!deletedClient)
+    throw new Error("This client can no longer be moved to the Bin.");
   const { error: subitemsError } = await supabase
     .from("subitems")
     .update({
@@ -3247,16 +3255,20 @@ export async function deleteSubitemRow(subitemId: string, deactivationReason?: s
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  const { error } = await supabase
+  const { data: deletedSubitem, error } = await supabase
     .from("subitems")
     .update({
       deleted_at: deletedAt,
       deleted_by: user?.id ?? null,
       deleted_with_client_id: null,
     })
-    .eq("id", subitemId);
+    .eq("id", subitemId)
+    .select("id")
+    .maybeSingle();
 
   if (error) throw error;
+  if (!deletedSubitem)
+    throw new Error("This subitem can no longer be moved to the Bin.");
 }
 
 export async function restoreSubitemRow(subitemId: string) {

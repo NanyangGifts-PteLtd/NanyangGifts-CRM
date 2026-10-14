@@ -108,6 +108,7 @@ export interface Subitem {
   /** Immutable, human-readable identifier for staff-facing selection. */
   displayId: string;
   createdAt: string | null;
+  deletionOwnerId?: string | null;
   /** Persisted order within the owning client. */
   position: number;
   name: string;
@@ -254,6 +255,7 @@ export interface Client {
   nbd: string;
   totalPrice: string;
   createdBy?: string | null;
+  deletionOwnerId?: string | null;
   createdAt: string;
   waitingStartedAt?: string | null;
   billingAddress: string;
