@@ -1291,6 +1291,7 @@ export default function Page() {
 
       const targetClientIds = new Set<string>();
       const deletedClientIds = new Set<string>();
+      const deletedSubitemIds = new Set<string>();
       const targetGroupIds = new Set<string>();
       const initiallyExcludedGroupIds = new Set(
         groups
@@ -1300,10 +1301,21 @@ export default function Page() {
           .map((group) => group.id),
       );
       let requiresFilteredFallback = false;
+      let hasNonRemovalChange = false;
 
       for (const change of changes) {
         const currentRow = change.new;
         const previousRow = change.old;
+        // Supabase emits a soft delete as UPDATE. It is nevertheless an
+        // unambiguous removal from this Board, even when a server-side filter
+        // is active. Treating it as an ordinary edit causes the generic
+        // filtered-query fallback below, which replaces every loaded group
+        // page with page one.
+        const isSoftDeletion =
+          change.eventType === "UPDATE" &&
+          typeof currentRow.deleted_at === "string" &&
+          currentRow.deleted_at.length > 0;
+        const isRemoval = change.eventType === "DELETE" || isSoftDeletion;
         const clientId =
           change.table === "clients"
             ? realtimeRowId(currentRow) ?? realtimeRowId(previousRow)
@@ -1318,9 +1330,23 @@ export default function Page() {
               );
 
         if (!clientId) {
-          requiresFilteredFallback = true;
+          if (!isRemoval) {
+            requiresFilteredFallback = true;
+            hasNonRemovalChange = true;
+          }
           continue;
         }
+        if (change.table === "clients" && isRemoval) {
+          deletedClientIds.add(clientId);
+          continue;
+        }
+        if (change.table === "subitems" && isRemoval) {
+          const subitemId =
+            realtimeSubitemId(currentRow) ?? realtimeSubitemId(previousRow);
+          if (subitemId) deletedSubitemIds.add(subitemId);
+          continue;
+        }
+        hasNonRemovalChange = true;
         if (change.table === "clients") {
           const localGroupId = knownClients.get(clientId)?.groupId;
           const nextGroupId =
@@ -1357,16 +1383,13 @@ export default function Page() {
           }
         }
         if (knownClients.has(clientId)) targetClientIds.add(clientId);
-        if (change.table === "clients" && change.eventType === "DELETE") {
-          deletedClientIds.add(clientId);
-        }
       }
 
       // Server-side filters can make a remotely edited record appear,
       // disappear, or move page. Until targeted membership RPCs exist, retain
       // the guarded full reconciliation for that correctness-sensitive case.
       if (
-        Object.keys(boardQuery).length ||
+        (Object.keys(boardQuery).length && hasNonRemovalChange) ||
         requiresFilteredFallback ||
         targetGroupIds.size > 0
       ) {
@@ -1433,9 +1456,20 @@ export default function Page() {
             if (deletedClientIds.has(client.id)) {
               return isBoardRecordProtected("client", client.id) ? [client] : [];
             }
+            const remainingSubitems = deletedSubitemIds.size
+              ? client.subitems.filter(
+                  (subitem) =>
+                    !deletedSubitemIds.has(subitem.id) ||
+                    isBoardRecordProtected("subitem", subitem.id),
+                )
+              : client.subitems;
             const incoming = incomingClients.get(client.id);
             if (!incoming || isBoardRecordProtected("client", client.id)) {
-              return [client];
+              return [
+                remainingSubitems === client.subitems
+                  ? client
+                  : { ...client, subitems: remainingSubitems },
+              ];
             }
             return [incoming];
           }),
@@ -1479,6 +1513,13 @@ export default function Page() {
           setClientPmAssignees((current) => {
             const next = { ...current };
             for (const clientId of deletedClientIds) delete next[clientId];
+            return next;
+          });
+        }
+        if (deletedSubitemIds.size) {
+          setSubitemAssignees((current) => {
+            const next = { ...current };
+            for (const subitemId of deletedSubitemIds) delete next[subitemId];
             return next;
           });
         }
