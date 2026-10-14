@@ -3512,11 +3512,11 @@ export function SubitemsTable({
           const start = parseDateUTC(row.timelineStart);
           const end = parseDateUTC(row.timelineEnd);
           const enteredDuration = row.duration.trim() !== "" ? Number(row.duration) : NaN;
-          if (start && Number.isFinite(enteredDuration) && enteredDuration >= 0) {
+          if (start && Number.isFinite(enteredDuration) && enteredDuration >= 1) {
             // Preserve the dependent row's duration when its start shifts; move
             // the end date along with it instead of shortening/lengthening it.
             const computedEnd = new Date(start);
-            computedEnd.setUTCDate(computedEnd.getUTCDate() + enteredDuration);
+            computedEnd.setUTCDate(computedEnd.getUTCDate() + enteredDuration - 1);
             row.timelineEnd = formatDateUTC(computedEnd);
           } else if (start && end) {
             const durationDays = diffDaysUTC(start, end);

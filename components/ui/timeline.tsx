@@ -9,6 +9,7 @@ import {
   Plus,
   Trash2,
 } from "lucide-react";
+import { InlineDatePicker } from "./inline-date-picker";
 import { StatusBadge } from "./statusbadge";
 import { toast } from "sonner";
 import { useEffect, useMemo, useState } from "react";
@@ -66,49 +67,9 @@ export function formatDateUTC(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
-function formatTimelineDate(value: string) {
-  const matched = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
-  return matched ? `${matched[3]}/${matched[2]}/${matched[1]}` : "";
-}
-
-function TimelineDateInput({
-  value,
-  onChange,
-  label,
-}: {
-  value: string;
-  onChange: (value: string) => void;
-  label: string;
-}) {
-  return (
-    <div className="relative h-8 w-32 rounded border border-gray-200 bg-white text-xs">
-      <span
-        aria-hidden="true"
-        className={`pointer-events-none absolute inset-y-0 left-0 flex items-center px-2 ${
-          value ? "text-gray-700" : "text-transparent"
-        }`}
-      >
-        {formatTimelineDate(value)}
-      </span>
-      <Calendar
-        aria-hidden="true"
-        size={15}
-        className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-gray-700"
-      />
-      <input
-        type="date"
-        lang="en-GB"
-        aria-label={label}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-      />
-    </div>
-  );
-}
-
 export function diffDaysUTC(start: Date, end: Date): number {
-  return Math.round((end.getTime() - start.getTime()) / 86_400_000);
+  const difference = Math.round((end.getTime() - start.getTime()) / 86_400_000);
+  return difference >= 0 ? difference + 1 : difference - 1;
 }
 
 export const DEFAULT_TIMELINE_ROWS = [
@@ -312,30 +273,47 @@ export function TimelineSection({
 
     const markOverdueRows = () => {
       const today = formatDateUTC(new Date());
+      let normalizedDurationCount = 0;
       const nextRows = rows.map((row) => {
+        const start = parseDateUTC(row.timelineStart);
+        const end = parseDateUTC(row.timelineEnd);
+        // Older rows stored the exclusive difference. Valid date ranges are
+        // inclusive, so correct them during the normal editable timeline save.
+        const inclusiveDuration = start && end ? diffDaysUTC(start, end) : null;
+        const durationNormalized =
+          inclusiveDuration !== null &&
+          inclusiveDuration >= 1 &&
+          row.duration !== String(inclusiveDuration);
+        if (durationNormalized) normalizedDurationCount += 1;
+        const nextRow = durationNormalized
+          ? { ...row, duration: String(inclusiveDuration) }
+          : row;
         const isComplete = Boolean(
-          row.subProgressOptionId &&
-          completeProgressIds.has(row.subProgressOptionId),
+          nextRow.subProgressOptionId &&
+          completeProgressIds.has(nextRow.subProgressOptionId),
         );
         const isPastEndDate = Boolean(
-          row.timelineEnd && row.timelineEnd < today,
+          nextRow.timelineEnd && nextRow.timelineEnd < today,
         );
         return isPastEndDate &&
           !isComplete &&
-          row.subProgressOptionId !== lateProgress?.id &&
+          nextRow.subProgressOptionId !== lateProgress?.id &&
           lateProgress
           ? {
-              ...row,
+              ...nextRow,
               subProgress: lateProgress.value,
               subProgressOptionId: lateProgress.id,
             }
-          : row;
+          : nextRow;
       });
       const lateCount = nextRows.filter(
-        (row, index) => row !== rows[index],
+        (row, index) =>
+          row.subProgressOptionId !== rows[index].subProgressOptionId,
       ).length;
-      if (lateCount > 0) {
+      if (lateCount > 0 || normalizedDurationCount > 0) {
         onUpdate(nextRows);
+      }
+      if (lateCount > 0) {
         toast.warning("Timeline progress updated", {
           description: `${lateCount} process${lateCount === 1 ? "" : "es"} automatically marked Late because its end date has passed.`,
         });
@@ -395,13 +373,13 @@ export function TimelineSection({
       if (field === "duration") {
         const durationDays = Number(val);
         if (val.trim() !== "" && Number.isFinite(durationDays)) {
-          if (durationDays < 0) {
-            toast.warning("Negative duration entered", {
-              description: `${target.name} duration of ${durationDays} days is negative — dates were not automatically updated. Please check the entered value.`,
+          if (durationDays < 1) {
+            toast.warning("Invalid duration entered", {
+              description: `${target.name} duration must be at least 1 day because the start and end dates are both included. Dates were not automatically updated.`,
             });
           } else if (start) {
             const computedEnd = new Date(start);
-            computedEnd.setUTCDate(computedEnd.getUTCDate() + durationDays);
+            computedEnd.setUTCDate(computedEnd.getUTCDate() + durationDays - 1);
             const nextEnd = formatDateUTC(computedEnd);
             if (nextEnd !== target.timelineEnd) {
               target.timelineEnd = nextEnd;
@@ -411,7 +389,7 @@ export function TimelineSection({
             }
           } else if (end) {
             const computedStart = new Date(end);
-            computedStart.setUTCDate(computedStart.getUTCDate() - durationDays);
+            computedStart.setUTCDate(computedStart.getUTCDate() - durationDays + 1);
             const nextStart = formatDateUTC(computedStart);
             if (nextStart !== target.timelineStart) {
               target.timelineStart = nextStart;
@@ -423,7 +401,7 @@ export function TimelineSection({
             const today = formatDateUTC(new Date());
             target.timelineStart = today;
             const computedEnd = new Date(`${today}T00:00:00Z`);
-            computedEnd.setUTCDate(computedEnd.getUTCDate() + durationDays);
+            computedEnd.setUTCDate(computedEnd.getUTCDate() + durationDays - 1);
             target.timelineEnd = formatDateUTC(computedEnd);
             toast.success("Timeline dates initialized", {
               description: `${target.name} start date set to today (${today}) and end date calculated from the ${durationDays}-day duration.`,
@@ -443,14 +421,14 @@ export function TimelineSection({
         const resolvedEnd = parseDateUTC(target.timelineEnd);
         const fixedDuration = String(target.duration ?? "").trim();
         const durationDays = Number(fixedDuration);
-        if (fixedDuration && Number.isFinite(durationDays) && durationDays >= 0) {
+        if (fixedDuration && Number.isFinite(durationDays) && durationDays >= 1) {
           if (field === "timelineStart" && resolvedStart) {
             const computedEnd = new Date(resolvedStart);
-            computedEnd.setUTCDate(computedEnd.getUTCDate() + durationDays);
+            computedEnd.setUTCDate(computedEnd.getUTCDate() + durationDays - 1);
             target.timelineEnd = formatDateUTC(computedEnd);
           } else if (field === "timelineEnd" && resolvedEnd) {
             const computedStart = new Date(resolvedEnd);
-            computedStart.setUTCDate(computedStart.getUTCDate() - durationDays);
+            computedStart.setUTCDate(computedStart.getUTCDate() - durationDays + 1);
             target.timelineStart = formatDateUTC(computedStart);
           }
         } else if (resolvedStart && resolvedEnd) {
@@ -470,10 +448,10 @@ export function TimelineSection({
           }
         } else if (target.duration) {
           const durationDays = Number(target.duration);
-          if (Number.isFinite(durationDays) && durationDays >= 0) {
+          if (Number.isFinite(durationDays) && durationDays >= 1) {
             if (field === "timelineStart" && resolvedStart && !resolvedEnd) {
               const computedEnd = new Date(resolvedStart);
-              computedEnd.setUTCDate(computedEnd.getUTCDate() + durationDays);
+              computedEnd.setUTCDate(computedEnd.getUTCDate() + durationDays - 1);
               target.timelineEnd = formatDateUTC(computedEnd);
               toast.success("Timeline end date updated", {
                 description: `${target.name} end date automatically set based on the ${durationDays}-day duration.`,
@@ -485,7 +463,7 @@ export function TimelineSection({
             ) {
               const computedStart = new Date(resolvedEnd);
               computedStart.setUTCDate(
-                computedStart.getUTCDate() - durationDays,
+                computedStart.getUTCDate() - durationDays + 1,
               );
               target.timelineStart = formatDateUTC(computedStart);
               toast.success("Timeline start date updated", {
@@ -850,20 +828,22 @@ export function TimelineSection({
 
                   <td className="border-r border-gray-100 px-2 py-1">
                     <div className="flex gap-1">
-                      <TimelineDateInput
+                      <InlineDatePicker
                         value={row.timelineStart || ""}
                         onChange={(value) =>
                           updateRow(row.id, "timelineStart", value)
                         }
                         label={`${row.name || "Timeline"} start date`}
+                        className="min-w-32 rounded px-2 text-xs text-gray-700 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7BCBD5]"
                       />
                       {(row.id !== "nbd" && row.name.trim().toLowerCase() !== "nbd") && (
-                        <TimelineDateInput
+                        <InlineDatePicker
                           value={row.timelineEnd || ""}
                           onChange={(value) =>
                             updateRow(row.id, "timelineEnd", value)
                           }
                           label={`${row.name || "Timeline"} end date`}
+                          className="min-w-32 rounded px-2 text-xs text-gray-700 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7BCBD5]"
                         />
                       )}
                     </div>

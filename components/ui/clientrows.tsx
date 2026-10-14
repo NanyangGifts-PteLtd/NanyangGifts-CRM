@@ -14,7 +14,6 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import {
-  ChevronLeft,
   ChevronDown,
   ChevronRight,
   Activity,
@@ -24,7 +23,6 @@ import {
   Plus,
   Link as LinkIcon,
   FileText,
-  CalendarDays,
   LockKeyhole,
   X,
 } from "lucide-react";
@@ -61,11 +59,7 @@ import { useEscapeClose } from "@/components/hooks/use-escape-close";
 import { useAppConfirmation } from "./confirmation-provider";
 import { findSystemOption, type OptionEntry } from "@/lib/board-labels";
 import { overallPaymentStatus as calculateOverallPaymentStatus } from "@/lib/payment-status";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { InlineDatePicker } from "./inline-date-picker";
 
 type AttachmentItem = {
   id: string;
@@ -159,120 +153,6 @@ const quickBooksPaymentTerms = [
 const standardQuickBooksPaymentTerms = quickBooksPaymentTerms.filter(
   (term) => term !== customPaymentTermOption,
 );
-
-function WorkingDatePicker({
-  value,
-  onCommit,
-  className,
-}: {
-  value: string;
-  onCommit: (date: string) => void;
-  className?: string;
-}) {
-  const [open, setOpen] = useState(false);
-  const selected = /^\d{4}-\d{2}-\d{2}$/.test(value)
-    ? new Date(`${value}T12:00:00`)
-    : undefined;
-  const [displayedMonth, setDisplayedMonth] = useState(
-    () => selected ?? new Date(),
-  );
-  useEffect(() => {
-    if (open) setDisplayedMonth(selected ?? new Date());
-  }, [open, value]);
-  const dateToValue = (date: Date) =>
-    `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-  const year = displayedMonth.getFullYear();
-  const month = displayedMonth.getMonth();
-  const firstWeekday = new Date(year, month, 1).getDay();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const cells = Array.from(
-    { length: firstWeekday + daysInMonth },
-    (_, index) => (index < firstWeekday ? null : index - firstWeekday + 1),
-  );
-  const selectDate = (day: number) => {
-    onCommit(dateToValue(new Date(year, month, day)));
-    setOpen(false);
-  };
-
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          className={`flex h-full w-full items-center justify-between px-1 text-left ${className ?? ""}`}
-        >
-          <span>{selected ? selected.toLocaleDateString("en-GB") : ""}</span>
-          <CalendarDays size={14} className="shrink-0 text-slate-600" />
-        </button>
-      </PopoverTrigger>
-      <PopoverContent
-        align="start"
-        className="z-tooltip w-[248px] !border-slate-200 !bg-white !p-3 !text-slate-800 !opacity-100 shadow-xl"
-        style={{ backgroundColor: "#ffffff", opacity: 1 }}
-      >
-        <div className="mb-2 flex items-center justify-between">
-          <button
-            type="button"
-            onClick={() => setDisplayedMonth(new Date(year, month - 1, 1))}
-            className="rounded p-1 text-slate-600 hover:bg-slate-100"
-            aria-label="Previous month"
-          >
-            <ChevronLeft size={16} />
-          </button>
-          <span className="text-sm font-semibold text-slate-800">
-            {displayedMonth.toLocaleDateString("en-SG", {
-              month: "long",
-              year: "numeric",
-            })}
-          </span>
-          <button
-            type="button"
-            onClick={() => setDisplayedMonth(new Date(year, month + 1, 1))}
-            className="rounded p-1 text-slate-600 hover:bg-slate-100"
-            aria-label="Next month"
-          >
-            <ChevronRight size={16} />
-          </button>
-        </div>
-        <div className="grid grid-cols-7 gap-1 text-center text-xs">
-          {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((day) => (
-            <span key={day} className="py-1 font-medium text-slate-400">
-              {day}
-            </span>
-          ))}
-          {cells.map((day, index) =>
-            day === null ? (
-              <span key={`blank-${index}`} />
-            ) : (
-              <button
-                key={day}
-                type="button"
-                onClick={() => selectDate(day)}
-                className={`h-8 rounded text-sm hover:bg-sky-100 ${selected?.getFullYear() === year && selected.getMonth() === month && selected.getDate() === day ? "bg-sky-600 font-semibold text-white hover:bg-sky-700" : "text-slate-700"}`}
-              >
-                {day}
-              </button>
-            ),
-          )}
-        </div>
-        {value && (
-          <div className="border-t border-slate-100 p-2">
-            <button
-              type="button"
-              onClick={() => {
-                onCommit("");
-                setOpen(false);
-              }}
-              className="w-full rounded px-2 py-1.5 text-xs text-slate-600 hover:bg-slate-100"
-            >
-              Clear date
-            </button>
-          </div>
-        )}
-      </PopoverContent>
-    </Popover>
-  );
-}
 
 function QuickBooksPaymentTermField({
   value,
@@ -3927,11 +3807,12 @@ export function ClientRow({
             order: columnOrderMap.followUp ?? 4,
           }}
         >
-          <WorkingDatePicker
+          <InlineDatePicker
             value={toDateInputValue(client.followUp)}
-            onCommit={(date) =>
+            onChange={(date) =>
               void commitWorkingCalendarDate("followUp", date)
             }
+            label="Follow Up date"
             className={`text-[12.6px] px-1 border-none outline-none bg-transparent cursor-pointer w-full ${toDateInputValue(client.followUp) ? "text-gray-700" : "text-transparent focus:text-gray-700"}`}
           />
         </div>
@@ -4369,9 +4250,10 @@ export function ClientRow({
             order: columnOrderMap.nbd ?? 12,
           }}
         >
-          <WorkingDatePicker
+          <InlineDatePicker
             value={toDateInputValue(client.nbd)}
-            onCommit={(date) => void commitWorkingCalendarDate("nbd", date)}
+            onChange={(date) => void commitWorkingCalendarDate("nbd", date)}
+            label="NBD date"
             className={`text-[12.6px] border-none outline-none bg-transparent cursor-pointer w-full ${toDateInputValue(client.nbd) ? "text-gray-700" : "text-transparent focus:text-gray-700"}`}
           />
         </div>

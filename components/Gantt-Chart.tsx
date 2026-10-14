@@ -263,9 +263,9 @@ function resolveTimelineDependencies(previous: TimelineRow[], next: TimelineRow[
       if (row.timelineStart === nextStart) continue;
       row.timelineStart = nextStart;
       const duration = Number(row.duration);
-      if (row.duration.trim() !== "" && Number.isFinite(duration) && duration >= 0) {
+      if (row.duration.trim() !== "" && Number.isFinite(duration) && duration >= 1) {
         const end = new Date(start);
-        end.setDate(end.getDate() + duration);
+        end.setDate(end.getDate() + duration - 1);
         row.timelineEnd = formatDate(end);
       }
       updates += 1;
