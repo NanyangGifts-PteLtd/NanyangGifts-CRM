@@ -40,6 +40,10 @@ function CombinedShipmentInfo({
   );
   const set = (key: string, value: string) =>
     onChange({ ...preview, shared: { ...preview.shared, [key]: value } });
+  const missingShared = (key: string) =>
+    !String(preview.shared[key] ?? "").trim();
+  const requiredSharedInputClass = (key: string) =>
+    `mt-1 w-full rounded border px-3 py-2 text-sm text-slate-900 ${missingShared(key) ? "border-red-300 bg-red-50" : "border-slate-300"}`;
   return (
     <section className="mt-5 border-t border-slate-200 pt-4">
       <h3 className="text-sm font-semibold text-slate-900">
@@ -52,7 +56,7 @@ function CombinedShipmentInfo({
             type="date"
             value={preview.shared.info_provided_date}
             onChange={(e) => set("info_provided_date", e.target.value)}
-            className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm text-slate-900"
+            className={requiredSharedInputClass("info_provided_date")}
           />
         </label>
         <div className="text-xs font-medium text-slate-700">
@@ -77,7 +81,7 @@ function CombinedShipmentInfo({
           <select
             value={preview.shared.sea_or_air}
             onChange={(e) => set("sea_or_air", e.target.value)}
-            className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm text-slate-900"
+            className={requiredSharedInputClass("sea_or_air")}
           >
             <option value="" />
             <option value="空运">空运</option>
@@ -91,7 +95,7 @@ function CombinedShipmentInfo({
             value={preview.shared.delivery_info}
             onChange={(e) => set("delivery_info", e.target.value)}
             rows={3}
-            className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm text-slate-900"
+            className={requiredSharedInputClass("delivery_info")}
           />
         </label>
       </div>
