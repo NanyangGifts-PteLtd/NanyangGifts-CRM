@@ -507,6 +507,38 @@ function placeCaretAfterInitialValue(
   event.currentTarget.setSelectionRange(end, end);
 }
 
+function TextFormatMirror({
+  text,
+  formats,
+}: {
+  text: string;
+  formats: TextFormatRange[] | undefined;
+}) {
+  const normalized = normalizedTextFormats(formats, text.length);
+  if (!normalized.length) return <>{text}</>;
+  const boundaries = new Set([0, text.length]);
+  normalized.forEach(({ start, end }) => {
+    boundaries.add(start);
+    boundaries.add(end);
+  });
+  const positions = [...boundaries].sort((left, right) => left - right);
+  return (
+    <>
+      {positions.slice(0, -1).map((start, index) => {
+        const end = positions[index + 1];
+        const color = normalized.find(
+          (format) => start >= format.start && start < format.end,
+        )?.color;
+        return (
+          <span key={`${start}-${end}`} style={color ? { color } : undefined}>
+            {text.slice(start, end)}
+          </span>
+        );
+      })}
+    </>
+  );
+}
+
 function DropdownEditor({
   value,
   onFinishedEditing,
@@ -592,10 +624,14 @@ function TextEditor({
   value: GridCell;
   onFinishedEditing: (next?: GridCell, movement?: EditorMovement) => void;
 }) {
+  const [draft, setDraft] = useState(
+    value.kind === GridCellKind.Text ? String(value.data ?? "") : "",
+  );
   if (value.kind !== GridCellKind.Text) return null;
   const formattingCell = value as GridCell & {
     field?: string;
     rowId?: string;
+    textFormats?: TextFormatRange[];
     onTextSelectionChange?: (selection: ActiveTextSelection | null) => void;
   };
   const updateSelection = (element: HTMLTextAreaElement) => {
@@ -613,45 +649,57 @@ function TextEditor({
     );
   };
   return (
-    <textarea
-      autoFocus
-      defaultValue={value.data}
-      onFocus={placeCaretAfterInitialValue}
-      onSelect={(event) => updateSelection(event.currentTarget)}
-      onKeyUp={(event) => updateSelection(event.currentTarget)}
-      onMouseUp={(event) => updateSelection(event.currentTarget)}
-      onBlur={(event) => {
-        onFinishedEditing({
-          ...value,
-          data: event.currentTarget.value,
-          displayData: event.currentTarget.value,
-        });
-      }}
-      onKeyDown={(event) => {
-        const next = movementAtTextEdge(event.currentTarget, event.key);
-        if (next) {
-          event.preventDefault();
-          onFinishedEditing(
-            {
-              ...value,
-              data: event.currentTarget.value,
-              displayData: event.currentTarget.value,
-            },
-            next,
-          );
-          return;
-        }
-        if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
-          event.preventDefault();
+    <div className="relative h-full w-full">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words px-2 py-1 text-center text-slate-900"
+      >
+        <TextFormatMirror
+          text={draft}
+          formats={formattingCell.textFormats}
+        />
+      </div>
+      <textarea
+        autoFocus
+        defaultValue={draft}
+        onInput={(event) => setDraft(event.currentTarget.value)}
+        onFocus={placeCaretAfterInitialValue}
+        onSelect={(event) => updateSelection(event.currentTarget)}
+        onKeyUp={(event) => updateSelection(event.currentTarget)}
+        onMouseUp={(event) => updateSelection(event.currentTarget)}
+        onBlur={(event) => {
           onFinishedEditing({
             ...value,
             data: event.currentTarget.value,
             displayData: event.currentTarget.value,
           });
-        }
-      }}
-      className="h-full w-full resize-none border-0 bg-white px-2 py-1 text-center outline-none"
-    />
+        }}
+        onKeyDown={(event) => {
+          const next = movementAtTextEdge(event.currentTarget, event.key);
+          if (next) {
+            event.preventDefault();
+            onFinishedEditing(
+              {
+                ...value,
+                data: event.currentTarget.value,
+                displayData: event.currentTarget.value,
+              },
+              next,
+            );
+            return;
+          }
+          if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+            event.preventDefault();
+            onFinishedEditing({
+              ...value,
+              data: event.currentTarget.value,
+              displayData: event.currentTarget.value,
+            });
+          }
+        }}
+        className="relative h-full w-full resize-none border-0 bg-transparent px-2 py-1 text-center text-transparent caret-slate-900 outline-none"
+      />
+    </div>
   );
 }
 
@@ -662,13 +710,14 @@ function RemarksEditor({
   value: GridCell;
   onFinishedEditing: (next?: GridCell, movement?: EditorMovement) => void;
 }) {
-  if (value.kind !== GridCellKind.Text) return null;
-  const raw = String(value.data ?? "");
-  const attachments = raw.match(/\[\[shipper-image:[^\]]+\]\]/g) ?? [];
-  const text = raw
+  const raw = value.kind === GridCellKind.Text ? String(value.data ?? "") : "";
+  const initialText = raw
     .replace(/\[\[shipper-image:[^\]]+\]\]/g, "")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+  const [draft, setDraft] = useState(initialText);
+  if (value.kind !== GridCellKind.Text) return null;
+  const attachments = raw.match(/\[\[shipper-image:[^\]]+\]\]/g) ?? [];
   const finish = (nextText: string, movement?: EditorMovement) => {
     const cleaned = nextText.trim();
     const next = `${cleaned}${cleaned && attachments.length ? "\n\n" : ""}${attachments.join("\n")}`;
@@ -677,6 +726,7 @@ function RemarksEditor({
   const formattingCell = value as GridCell & {
     field?: string;
     rowId?: string;
+    textFormats?: TextFormatRange[];
     onTextSelectionChange?: (selection: ActiveTextSelection | null) => void;
   };
   const updateSelection = (element: HTMLTextAreaElement) => {
@@ -694,30 +744,39 @@ function RemarksEditor({
     );
   };
   return (
-    <textarea
-      autoFocus
-      defaultValue={text}
-      onFocus={placeCaretAfterInitialValue}
-      onSelect={(event) => updateSelection(event.currentTarget)}
-      onKeyUp={(event) => updateSelection(event.currentTarget)}
-      onMouseUp={(event) => updateSelection(event.currentTarget)}
-      onBlur={(event) => {
-        finish(event.currentTarget.value);
-      }}
-      onKeyDown={(event) => {
-        const next = movementAtTextEdge(event.currentTarget, event.key);
-        if (next) {
-          event.preventDefault();
-          finish(event.currentTarget.value, next);
-          return;
-        }
-        if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
-          event.preventDefault();
+    <div className="relative h-full w-full">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words px-2 py-1 text-center text-slate-900"
+      >
+        <TextFormatMirror text={draft} formats={formattingCell.textFormats} />
+      </div>
+      <textarea
+        autoFocus
+        defaultValue={draft}
+        onInput={(event) => setDraft(event.currentTarget.value)}
+        onFocus={placeCaretAfterInitialValue}
+        onSelect={(event) => updateSelection(event.currentTarget)}
+        onKeyUp={(event) => updateSelection(event.currentTarget)}
+        onMouseUp={(event) => updateSelection(event.currentTarget)}
+        onBlur={(event) => {
           finish(event.currentTarget.value);
-        }
-      }}
-      className="h-full w-full resize-none border-0 bg-white px-2 py-1 text-center outline-none"
-    />
+        }}
+        onKeyDown={(event) => {
+          const next = movementAtTextEdge(event.currentTarget, event.key);
+          if (next) {
+            event.preventDefault();
+            finish(event.currentTarget.value, next);
+            return;
+          }
+          if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+            event.preventDefault();
+            finish(event.currentTarget.value);
+          }
+        }}
+        className="relative h-full w-full resize-none border-0 bg-transparent px-2 py-1 text-center text-transparent caret-slate-900 outline-none"
+      />
+    </div>
   );
 }
 
@@ -1235,6 +1294,11 @@ export function SpreadsheetPilot({
           readonly: readOnly,
           allowWrapping: true,
           contentAlign: "center",
+          // Formula columns retain their worksheet tint through every visible
+          // virtual row, not just rows that have already been materialized.
+          themeOverride: formulaFields.has(key)
+            ? { bgCell: "#fff7d6", textDark: "#7c4a03" }
+            : undefined,
           field: key,
         } as GridCell;
       }
@@ -1247,8 +1311,21 @@ export function SpreadsheetPilot({
         previous?.shipment_group_id === record.shipment_group_id &&
         shipmentFields.has(key),
       );
-      const values: Record<string, unknown> = hasRowContent(record)
-        ? { ...record.values, ...formulaValues(record.values) }
+      // Follower rows are only the visual continuation of a shipment merge.
+      // Its leader owns the shared value and character formatting, including
+      // when a follower is the physical cell that opens the editor.
+      let valueOwner = record;
+      if (record.shipment_group_id && shipmentFields.has(key)) {
+        let ownerRow = row;
+        while (
+          ownerRow > 0 &&
+          rows[ownerRow - 1]?.shipment_group_id === record.shipment_group_id
+        )
+          ownerRow -= 1;
+        valueOwner = rows[ownerRow] ?? record;
+      }
+      const values: Record<string, unknown> = hasRowContent(valueOwner)
+        ? { ...valueOwner.values, ...formulaValues(valueOwner.values) }
         : {};
       const rawValue = values[key];
       // Followers render blank because their visible content is painted as one
@@ -1261,15 +1338,19 @@ export function SpreadsheetPilot({
         formulaFields.has(key) ||
         (mode === "shipper" && !shipperEditableFields.has(key));
       const textFormats = textFormatFields.has(key)
-        ? normalizedTextFormats(record.text_formats?.[key], value.length)
+        ? normalizedTextFormats(valueOwner.text_formats?.[key], value.length)
         : [];
       return {
         kind: GridCellKind.Text,
         // A vertical merge is simulated with one leader and blank followers.
         // Keeping follower clipboard data blank prevents copy/cut from
         // duplicating the shared shipment value once per physical row.
-        data: isMergedFollower ? "" : value,
+        // Keep follower cells blank when copied, while still supplying the
+        // shared value to Glide's editor. This makes any point in a vertical
+        // merge editable rather than only its top physical cell.
+        data: value,
         displayData: isMergedFollower ? "" : formattedValue(key, rawValue),
+        copyData: isMergedFollower ? "" : undefined,
         allowOverlay: !readOnly,
         readonly: readOnly,
         allowWrapping: true,
@@ -1293,7 +1374,7 @@ export function SpreadsheetPilot({
               : undefined;
         })(),
         field: key,
-        rowId: record.id,
+        rowId: valueOwner.id,
         textFormats,
         onTextSelectionChange: textFormatFields.has(key)
           ? updateActiveTextSelection
@@ -1435,11 +1516,13 @@ export function SpreadsheetPilot({
       }
       const selection = gridSelection?.current;
       const isNormallySelected = Boolean(
-        selection &&
-        args.col >= selection.range.x &&
-        args.col < selection.range.x + selection.range.width &&
-        args.row >= selection.range.y &&
-        args.row < selection.range.y + selection.range.height,
+        (selection &&
+          args.col >= selection.range.x &&
+          args.col < selection.range.x + selection.range.width &&
+          args.row >= selection.range.y &&
+          args.row < selection.range.y + selection.range.height) ||
+          gridSelection?.rows.hasIndex(args.row) ||
+          gridSelection?.columns.hasIndex(args.col),
       );
       if (
         (!record?.shipment_group_id || !shipmentFields.has(key)) &&
@@ -1562,11 +1645,15 @@ export function SpreadsheetPilot({
         );
       }
       const mergedIsSelected = Boolean(
-        selection &&
+        (selection &&
           args.col >= selection.range.x &&
           args.col < selection.range.x + selection.range.width &&
           selection.range.y <= last &&
-          selection.range.y + selection.range.height - 1 >= first,
+          selection.range.y + selection.range.height - 1 >= first) ||
+          gridSelection?.columns.hasIndex(args.col) ||
+          gridSelection?.rows
+            .toArray()
+            .some((row) => row >= first && row <= last),
       );
       if (mergedIsSelected) {
         ctx.fillStyle = "rgba(79, 108, 255, 0.10)";
@@ -1650,40 +1737,50 @@ export function SpreadsheetPilot({
           last = Math.max(last, groupLast);
         }
       }
-      const [activeCol, activeRow] = current.cell;
-      const activeKey = String(columns[activeCol]?.id ?? "");
-      const activeGroupId = rows[activeRow]?.shipment_group_id;
-      let activeLeader = activeRow;
-      if (activeGroupId && shipmentFields.has(activeKey)) {
-        while (
-          activeLeader > 0 &&
-          rows[activeLeader - 1]?.shipment_group_id === activeGroupId
-        )
-          activeLeader -= 1;
-      }
+      // Preserve the physical cell the user clicked. Redirecting that cell to
+      // the visual merge leader makes Glide treat every later click on a
+      // follower as a new selection instead of the second click that opens
+      // its editor. The range still expands to cover the full visual merge.
       setGridSelection({
         ...next,
         current: {
           ...current,
-          cell: [activeCol, activeLeader],
           range: { ...range, y: first, height: last - first + 1 },
         },
       });
     },
     [activeTextSelection, columns, rows],
   );
-  const mergedEditorHeight = useMemo(() => {
+  const mergedEditorGeometry = useMemo(() => {
     const current = gridSelection?.current;
     if (!current) return null;
     const [col, row] = current.cell;
     const record = rows[row];
     const key = String(columns[col]?.id ?? "");
     if (!record?.shipment_group_id || !shipmentFields.has(key)) return null;
-    const range = current.range;
-    if (range.x !== col || range.y !== row || range.height < 2) return null;
-    return Array.from({ length: range.height }, (_, index) =>
-      rowHeightForIndex(row + index),
-    ).reduce((sum, height) => sum + height, 0);
+    let first = row;
+    let last = row;
+    while (
+      first > 0 &&
+      rows[first - 1]?.shipment_group_id === record.shipment_group_id
+    )
+      first -= 1;
+    while (
+      last + 1 < rows.length &&
+      rows[last + 1]?.shipment_group_id === record.shipment_group_id
+    )
+      last += 1;
+    return {
+      height: Array.from({ length: last - first + 1 }, (_, index) =>
+        rowHeightForIndex(first + index),
+      ).reduce((sum, height) => sum + height, 0),
+      // Glide anchors an overlay to the physical cell that activated it. The
+      // follower must stay active so a second click can enter edit mode, but
+      // the overlay itself belongs at the visual merge leader.
+      topOffset: Array.from({ length: row - first }, (_, index) =>
+        rowHeightForIndex(first + index),
+      ).reduce((sum, height) => sum + height, 0),
+    };
   }, [columns, gridSelection, rowHeightForIndex, rows]);
   const onGridKeyDown = useCallback(
     (event: {
@@ -3020,8 +3117,11 @@ export function SpreadsheetPilot({
           provideEditor={(cell) => {
             if (cell.kind !== GridCellKind.Text) return undefined;
             const field = (cell as GridCell & { field?: string }).field ?? "";
-            const styleOverride = mergedEditorHeight
-              ? { height: `${mergedEditorHeight}px` }
+            const styleOverride = mergedEditorGeometry
+              ? {
+                  height: `${mergedEditorGeometry.height}px`,
+                  top: `calc(var(--overlay-top) - ${mergedEditorGeometry.topOffset}px)`,
+                }
               : undefined;
             if (remarksFields.has(field))
               return {
