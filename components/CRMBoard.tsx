@@ -377,6 +377,7 @@ const TRACKING_HEADER_COLS: HeaderCol[] = [
   { key: "client", label: "Client", width: 250, minWidth: 7 },
   { key: "people", label: "People", width: 90, minWidth: 7 },
   { key: "channel", label: "Channel", width: 110, minWidth: 7 },
+  { key: "progress", label: "Progress", width: 110, minWidth: 7 },
   { key: "trackingRemarks", label: "Remarks", width: 240, minWidth: 140 },
   {
     key: "trackingTotalPrice",
@@ -2178,10 +2179,16 @@ export function CRMBoard({
     ] as HeaderCol[];
     const trackingByKey = new Map(base.map((column) => [column.key, column]));
     const preferredOrder = trackingClientOrderKeys.length
-      ? trackingClientOrderKeys.includes("trackingTotalPrice")
-        ? trackingClientOrderKeys
-        : (() => {
-            const next = [...trackingClientOrderKeys];
+      ? (() => {
+          const next = [...trackingClientOrderKeys];
+          // Existing saved Tracking layouts predate Progress. Insert it at
+          // its intended default position without overwriting a user's other
+          // column choices.
+          if (!next.includes("progress")) {
+            const channelIndex = next.indexOf("channel");
+            next.splice(channelIndex >= 0 ? channelIndex + 1 : next.length, 0, "progress");
+          }
+          if (!next.includes("trackingTotalPrice")) {
             const anchorIndex = next.indexOf("trackingRemarks");
             next.splice(
               anchorIndex >= 0 ? anchorIndex + 1 : next.length,
@@ -2193,8 +2200,9 @@ export function CRMBoard({
               "trackingInvoiceTotal",
               "trackingInvoiceNumbers",
             );
-            return next;
-          })()
+          }
+          return next;
+        })()
       : base.map((column) => column.key);
     const ordered = preferredOrder
       .map((key) => trackingByKey.get(key))

@@ -2074,7 +2074,7 @@ export function ClientRow({
         )
         .join(
           "",
-        )} ${trackingMode ? `[data-client-id="${client.id}"] [data-client-column]{flex-grow:0!important;flex-shrink:0!important}[data-client-id="${client.id}"] [data-client-column]:not([data-client-column="selectCheckbox"]):not([data-client-column="client"]):not([data-client-column="people"]):not([data-client-column="channel"]):not([data-client-column^="custom:"]):not(.tracking-client-cell){display:none!important}` : ""}`}</style>
+        )} ${trackingMode ? `[data-client-id="${client.id}"] [data-client-column]{flex-grow:0!important;flex-shrink:0!important}[data-client-id="${client.id}"] [data-client-column]:not([data-client-column="selectCheckbox"]):not([data-client-column="client"]):not([data-client-column="people"]):not([data-client-column="channel"]):not([data-client-column="progress"]):not([data-client-column^="custom:"]):not(.tracking-client-cell){display:none!important}` : ""}`}</style>
       {permissionNotice && (
         <div
           role="alert"
