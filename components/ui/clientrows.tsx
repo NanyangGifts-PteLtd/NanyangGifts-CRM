@@ -57,7 +57,11 @@ import { FilePreview } from "./file-preview";
 import { toast } from "sonner";
 import { useEscapeClose } from "@/components/hooks/use-escape-close";
 import { useAppConfirmation } from "./confirmation-provider";
-import { findSystemOption, type OptionEntry } from "@/lib/board-labels";
+import {
+  AWARDED_OR_LATER_SUBITEM_STATUS_SYSTEM_KEYS,
+  findSystemOption,
+  type OptionEntry,
+} from "@/lib/board-labels";
 import { overallPaymentStatus as calculateOverallPaymentStatus } from "@/lib/payment-status";
 import { InlineDatePicker } from "./inline-date-picker";
 
@@ -703,12 +707,7 @@ export function ClientRow({
   const awardedOrLaterStatusIds = useMemo(
     () =>
       new Set(
-        [
-          "subitem_status_awarded",
-          "subitem_status_verify_later",
-          "subitem_status_verified",
-          "subitem_status_variation_cost_difference",
-        ]
+        AWARDED_OR_LATER_SUBITEM_STATUS_SYSTEM_KEYS
           .map(
             (key) =>
               subitemStatusOptions.find((option) => option.systemKey === key)

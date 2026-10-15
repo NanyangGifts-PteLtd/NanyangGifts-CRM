@@ -12,6 +12,16 @@ export const PAYMENT_STATUS_SYSTEM_KEYS = new Set([
   "payment_status_resolved",
 ]);
 
+// These managed keys define the statuses that count towards client-level
+// commercial totals. The rendered label may be renamed, so consumers resolve
+// the keys to option IDs before comparing them with a subitem.
+export const AWARDED_OR_LATER_SUBITEM_STATUS_SYSTEM_KEYS = [
+  "subitem_status_awarded",
+  "subitem_status_verify_later",
+  "subitem_status_verified",
+  "subitem_status_variation_cost_difference",
+] as const;
+
 export const DEFAULT_PAYMENT_STATUS_OPTIONS: OptionEntry[] = [
   { value: "✅", color: "#22c55e" },
   { value: "MISMATCH", color: "#ef4444" },

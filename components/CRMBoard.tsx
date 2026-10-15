@@ -122,6 +122,7 @@ import { uploadCrmFiles } from "@/lib/crm-files";
 import { CombinedPushPreviewModal } from "./shipper/CombinedPushPreviewModal";
 import { useEscapeClose } from "./hooks/use-escape-close";
 import {
+  AWARDED_OR_LATER_SUBITEM_STATUS_SYSTEM_KEYS,
   canonicalPaymentStatusOptions,
   findSystemOption,
   type OptionEntry,
@@ -1429,6 +1430,26 @@ export function CRMBoard({
           subitem.statusOptionId === awardedSubitemStatus.id,
       ),
     [awardedSubitemStatus?.id],
+  );
+  const awardedOrLaterSubitemStatusIds = useMemo(
+    () =>
+      new Set(
+        AWARDED_OR_LATER_SUBITEM_STATUS_SYSTEM_KEYS.map(
+          (systemKey) =>
+            subitemStatusEntries.find(
+              (option) => option.systemKey === systemKey,
+            )?.id,
+        ).filter((id): id is string => Boolean(id)),
+      ),
+    [subitemStatusEntries],
+  );
+  const contributesToAwardedOrLaterTotals = useCallback(
+    (subitem: Pick<Subitem, "statusOptionId">) =>
+      Boolean(
+        subitem.statusOptionId &&
+          awardedOrLaterSubitemStatusIds.has(subitem.statusOptionId),
+      ),
+    [awardedOrLaterSubitemStatusIds],
   );
   const channelOptions = channelEntries.map((e) => e.value);
   const importanceOptions = importanceEntries.map((e) => e.value);
@@ -4905,16 +4926,18 @@ export function CRMBoard({
       if (key === "dateCreated") return client.createdAt;
       if (key === "closedDate") return client.customFields?.closedDate ?? "";
       if (key === "totalPrice" || key === "totalMarkup") {
-        return client.subitems.reduce((total, subitem) => {
-          const financials = calculateSubitemFinancials(
-            subitem,
-            currencyEntries,
-          );
-          return (
-            total +
-            (key === "totalPrice" ? financials.price : financials.markup)
-          );
-        }, 0);
+        return client.subitems
+          .filter(contributesToAwardedOrLaterTotals)
+          .reduce((total, subitem) => {
+            const financials = calculateSubitemFinancials(
+              subitem,
+              currencyEntries,
+            );
+            return (
+              total +
+              (key === "totalPrice" ? financials.price : financials.markup)
+            );
+          }, 0);
       }
       if (key === "overallPaymentStatus") {
         const awardedSubitems = client.subitems.filter(isAwardedSubitem);
@@ -5129,6 +5152,8 @@ export function CRMBoard({
     clientPeopleIds,
     clientPmAssigneeIds,
     clients,
+    contributesToAwardedOrLaterTotals,
+    isAwardedSubitem,
     mergedHeaderCols,
     peopleProfilesById,
     channelEntries,
@@ -5315,6 +5340,7 @@ export function CRMBoard({
       clientAssignees,
       clientPeopleIds,
       clientPmAssigneeIds,
+      contributesToAwardedOrLaterTotals,
       currencyEntries,
       peopleProfilesById,
       overallPaymentStatusEntries,
@@ -5359,7 +5385,7 @@ export function CRMBoard({
         return Array.isArray(value) ? value : [value];
       };
       const clientFinancialTotals = () =>
-        client.subitems.reduce(
+        client.subitems.filter(contributesToAwardedOrLaterTotals).reduce(
           (totals, subitem) => {
             const financials = calculateSubitemFinancials(
               subitem,
@@ -5485,6 +5511,7 @@ export function CRMBoard({
       clientAssignees,
       clientPeopleIds,
       clientPmAssigneeIds,
+      contributesToAwardedOrLaterTotals,
       currencyEntries,
       isAwardedSubitem,
       overallPaymentStatusEntries,
@@ -5839,12 +5866,20 @@ export function CRMBoard({
         .filter(Boolean)
         .join(", ");
     if (column === "dateCreated") return client.createdAt ?? "";
-    if (column === "totalMarkup")
-      return client.subitems.reduce(
-        (total, subitem) =>
-          total + calculateSubitemFinancials(subitem, currencyEntries).markup,
-        0,
-      );
+    if (column === "totalPrice" || column === "totalMarkup")
+      return client.subitems
+        .filter(contributesToAwardedOrLaterTotals)
+        .reduce(
+          (total, subitem) => {
+            const financials = calculateSubitemFinancials(
+              subitem,
+              currencyEntries,
+            );
+            return total +
+              (column === "totalPrice" ? financials.price : financials.markup);
+          },
+          0,
+        );
     if (column.startsWith("custom:"))
       return client.customFields?.[column.slice(7)] ?? "";
     return String((client as unknown as Record<string, unknown>)[column] ?? "");
@@ -6030,9 +6065,12 @@ export function CRMBoard({
 
   const groupedClients = groups.map((group) => ({
     group,
+    // Client ordering is computed against the complete result set by the
+    // paged RPC before LIMIT/OFFSET is applied. Re-sorting only the rows that
+    // happen to be loaded would make the visible order change as each page
+    // arrives, and can disagree with server-only fields such as assignees.
     clients: displayedClients
       .filter((c) => c.groupId === group.id)
-      .sort(compareClients)
       .map((client) =>
         activeBoardSort.category === "client"
           ? client
@@ -6431,8 +6469,16 @@ export function CRMBoard({
                     ? financials.tc / financials.quantity
                     : 0;
                 return {
-                  totalPrice: subitemTotals.totalPrice + financials.price,
-                  totalMarkup: subitemTotals.totalMarkup + financials.markup,
+                  totalPrice:
+                    subitemTotals.totalPrice +
+                    (contributesToAwardedOrLaterTotals(subitem)
+                      ? financials.price
+                      : 0),
+                  totalMarkup:
+                    subitemTotals.totalMarkup +
+                    (contributesToAwardedOrLaterTotals(subitem)
+                      ? financials.markup
+                      : 0),
                   totalUp:
                     subitemTotals.totalUp + parseSubitemNumber(subitem.up),
                   totalUc: subitemTotals.totalUc + unitCost,
@@ -6449,7 +6495,7 @@ export function CRMBoard({
           },
           { totalPrice: 0, totalMarkup: 0, totalUp: 0, totalUc: 0 },
         ),
-    [clients, selectedIds],
+    [clients, contributesToAwardedOrLaterTotals, currencyEntries, selectedIds],
   );
   const orderedMoveGroups = useMemo(() => {
     const orderedGroups = groups
@@ -6866,29 +6912,11 @@ export function CRMBoard({
     Shortlisted: "Shortlisted",
     Unqualified: "Unqualified Lead",
   };
-  const closingQualifiedSubitemStatusIds = useMemo(
-    () =>
-      new Set(
-        [
-          "subitem_status_awarded",
-          "subitem_status_verify_later",
-          "subitem_status_verified",
-          "subitem_status_variation_cost_difference",
-        ]
-          .map(
-            (key) =>
-              subitemStatusEntries.find((option) => option.systemKey === key)
-                ?.id,
-          )
-          .filter((id): id is string => Boolean(id)),
-      ),
-    [subitemStatusEntries],
-  );
   const hasClosingQualifiedSubitem = (client: Client) =>
     client.subitems.some((subitem) =>
       Boolean(
         subitem.statusOptionId &&
-        closingQualifiedSubitemStatusIds.has(subitem.statusOptionId),
+        awardedOrLaterSubitemStatusIds.has(subitem.statusOptionId),
       ),
     );
 
