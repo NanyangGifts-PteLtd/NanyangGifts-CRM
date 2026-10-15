@@ -25,7 +25,7 @@ const PREVIEW_FIELDS = [
   "shipper_remarks",
   "samples_by_air",
   "samples_by_sea",
-  "item_name",
+  "item_chinese_name",
   "air_received",
   "sea_received",
 ] as const;
@@ -34,7 +34,6 @@ const REQUIRED_PREVIEW_FIELDS = PREVIEW_FIELDS.filter(
     ![
       "cartons",
       "shipper_remarks",
-      "item_name",
       "air_received",
       "sea_received",
     ].includes(field),
@@ -61,6 +60,7 @@ const SPREADSHEET_VALUE_FIELDS = [
   "info_provided_date",
   "cn_tracking_no",
   "cartons",
+  "item_chinese_name",
   "item_name",
   "delivery_info",
   "qty",
@@ -601,6 +601,7 @@ export async function POST(req: NextRequest) {
             trackingOptions.length === 1 ? trackingOptions[0] : undefined,
         }),
         item_name: item.name ?? null,
+        item_chinese_name: null,
         delivery_info: buildDeliveryInfo(ocfItem) ?? null,
         qty: item.qty ?? null,
         up: item.cost ?? null,
@@ -781,11 +782,6 @@ export async function POST(req: NextRequest) {
           `Complete all mandatory fields before sending: ${missing.join(", ")}`,
         );
       const source = subitems.find((item) => item.id === preview.subitem_id);
-      // This is mandatory for the spreadsheet, but an empty preview field is
-      // deliberately safe: retain the CRM subitem name rather than blocking
-      // a send or writing an empty item name.
-      if (!String(edits.item_name ?? "").trim())
-        edits.item_name = source?.name ?? "";
       const trackingOptions = timelineTrackingNumbers(
         source?.timeline_groups,
         source?.cn_tracking,

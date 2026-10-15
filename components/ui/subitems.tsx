@@ -328,7 +328,7 @@ const SHIPPER_PUSH_FIELDS: Array<{
     label: "发样品海运 / Samples to send by sea",
     required: true,
   },
-  { key: "item_name", label: "Item display name" },
+  { key: "item_chinese_name", label: "品名/Item Chinese Name", required: true },
 ];
 
 type SubitemProps = {
@@ -2060,8 +2060,8 @@ export function SubitemsTable({
       const today = `${singaporeNow.getUTCFullYear()}-${String(singaporeNow.getUTCMonth() + 1).padStart(2, "0")}-${String(singaporeNow.getUTCDate()).padStart(2, "0")}`;
       setPushPreview({
         subitemId,
-        // Keep the CRM name separately for reference. item_name is the
-        // editable value that will be written to the shipper workbook.
+        // Keep the CRM name separately for reference. The required Chinese
+        // shipper-facing name deliberately starts empty on every new send.
         subitemName: String(row.item_name ?? ""),
         ...Object.fromEntries(
           SHIPPER_PUSH_FIELDS.map(({ key }) => [
@@ -3720,7 +3720,7 @@ export function SubitemsTable({
                 <div className="space-y-4 md:pl-4">
                   {pushField("samples_by_air", "Samples by Air")}
                   {pushField("samples_by_sea", "Samples by Sea")}
-                  {pushField("item_name", "Item display name *")}
+                  {pushField("item_chinese_name", "品名/Item Chinese Name")}
                   {pushField("shipper_remarks", "Remarks")}
                 </div>
               </div>

@@ -47,7 +47,7 @@ export function ShipperMasterSheets({
         </div>
       </div>
       <div className="min-h-0 flex-1 overflow-hidden">
-        <SpreadsheetPilot key={activeShipper.id} shipperId={activeShipper.id} />
+        <SpreadsheetPilot key={activeShipper.id} shipperId={activeShipper.id} shipperName={activeShipper.name} />
       </div>
       <div className="fixed bottom-0 left-0 z-40 flex items-end gap-2 border-t border-r border-slate-300 bg-slate-50 px-3 pt-3 shadow-[0_-2px_8px_rgba(15,23,42,0.08)]">
         {shippers.map((shipper) => (

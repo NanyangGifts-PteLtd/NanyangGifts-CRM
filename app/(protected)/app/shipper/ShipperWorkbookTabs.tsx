@@ -11,6 +11,6 @@ const SpreadsheetPilot = dynamic(
  * Shipper users work exclusively in the workbook. The legacy shipment-table
  * navigation is intentionally not exposed from this view.
  */
-export function ShipperWorkbookTabs({ shipperId }: { shipperId: string }) {
-  return <SpreadsheetPilot shipperId={shipperId} mode="shipper" />;
+export function ShipperWorkbookTabs({ shipperId, shipperName }: { shipperId: string; shipperName?: string | null }) {
+  return <SpreadsheetPilot shipperId={shipperId} shipperName={shipperName} mode="shipper" />;
 }

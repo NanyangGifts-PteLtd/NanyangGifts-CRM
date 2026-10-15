@@ -32,7 +32,7 @@ export default async function ShipperPage({
                 <h1 className="text-lg font-semibold">{shipper.name}</h1>
                 <ShipperAccountMenu name={profile?.full_name ?? profile?.email ?? user.email} />
             </div>
-            <ShipperWorkbookTabs shipperId={shipper.id} />
+            <ShipperWorkbookTabs shipperId={shipper.id} shipperName={shipper.name} />
         </main>
     );
 }

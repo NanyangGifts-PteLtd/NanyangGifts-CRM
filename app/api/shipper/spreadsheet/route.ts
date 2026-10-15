@@ -14,6 +14,7 @@ const SHIPPER_EDITABLE_FIELDS = new Set(["serial_number", "waybill_date", "waybi
 // rest of a completed shipment row has been locked.
 const ALWAYS_EDITABLE_AFTER_LOCK_FIELDS = new Set(["air_received", "sea_received"]);
 const FORMULA_FIELDS = new Set(["freight_cost", "total_cost", "value"]);
+const A5_CUSTOMS_FIELDS = new Set(["material", "use_for", "hs_code"]);
 const SHIPMENT_FIELDS = new Set(["serial_number", "waybill_date", "waybill_number", "pieces", "chargeable_weight_kg", "freight_unit_price", "destination", "freight_cost", "gst", "other_fees", "total_cost", "channel", "logistics_remarks", "ic", "info_provided_date", "delivery_info", "sea_or_air", "tax_refund"]);
 const SHIPMENT_INPUT_FIELDS = [...SHIPMENT_FIELDS].filter((field) => !FORMULA_FIELDS.has(field));
 const NUMERIC_FIELDS = new Set(["pieces", "chargeable_weight_kg", "freight_unit_price", "gst", "other_fees", "cartons", "qty", "up"]);
@@ -217,6 +218,9 @@ export async function POST(request: NextRequest) {
     if (role === "shipper" && fields.some((field) => !SHIPPER_EDITABLE_FIELDS.has(field))) {
       throw new Error("You do not have permission to edit one or more selected columns");
     }
+    if (shipper.name?.trim() !== "A5 汇荣" && fields.some((field) => A5_CUSTOMS_FIELDS.has(field))) {
+      throw new Error("These customs columns are only available for A5 汇荣");
+    }
     const workbook = await getOrCreateShipperWorkbook(body.shipperId, shipper.name ?? "Shipper");
     const { data: existingRows, error: rowsError } = await supabaseAdmin
       .from("shipper_spreadsheet_rows")
@@ -357,7 +361,7 @@ export async function PATCH(request: NextRequest) {
   try {
     const body = await request.json() as { shipperId?: string; rowId?: string; values?: Record<string, unknown>; cellFills?: Record<string, string>; textFormats?: Record<string, Array<{ start: number; end: number; color: string }>>; replaceValues?: boolean; isLocked?: boolean; version?: number; operation?: "merge" | "unmerge" | "update-shared" | "move-rows" | "delete-rows"; rowIds?: string[]; resolvedValues?: Record<string, unknown>; referenceRowId?: string; placement?: "above" | "below" };
     if (!body.shipperId || (!body.rowId && !body.operation)) throw new Error("shipperId and rowId are required");
-    const { role } = await authorize(body.shipperId);
+    const { role, shipper } = await authorize(body.shipperId);
     const workbook = await getOrCreateShipperWorkbook(body.shipperId, "Shipper");
     await lockExpiredRows(workbook.id);
     if (body.operation) {
@@ -544,6 +548,9 @@ export async function PATCH(request: NextRequest) {
       if (role === "shipper" && fields.some((field) => !SHIPPER_EDITABLE_FIELDS.has(field))) {
         throw new Error("You do not have permission to edit one or more selected columns");
       }
+      if (shipper.name?.trim() !== "A5 汇荣" && fields.some((field) => A5_CUSTOMS_FIELDS.has(field))) {
+        throw new Error("These customs columns are only available for A5 汇荣");
+      }
     }
     if (body.version !== undefined && body.version !== existing.version) throw new Error("This row was changed by another user. Refresh and try again.");
     const payload: Record<string, unknown> = {};
@@ -560,6 +567,9 @@ export async function PATCH(request: NextRequest) {
         !field || typeof color !== "string" || !/^#[0-9a-f]{6}$/i.test(color),
       );
       if (invalidFill) throw new Error("Invalid spreadsheet cell fill");
+      if (shipper.name?.trim() !== "A5 汇荣" && Object.keys(body.cellFills).some((field) => A5_CUSTOMS_FIELDS.has(field))) {
+        throw new Error("These customs columns are only available for A5 汇荣");
+      }
       if (role === "shipper" && Object.keys(body.cellFills).some((field) => !SHIPPER_EDITABLE_FIELDS.has(field))) {
         throw new Error("You do not have permission to format one or more selected columns");
       }
@@ -567,6 +577,9 @@ export async function PATCH(request: NextRequest) {
     }
     if (body.textFormats) {
       const textFormats = validateTextFormats(body.textFormats);
+      if (shipper.name?.trim() !== "A5 汇荣" && Object.keys(textFormats).some((field) => A5_CUSTOMS_FIELDS.has(field))) {
+        throw new Error("These customs columns are only available for A5 汇荣");
+      }
       const valuesForTextFormats = body.values
         ? body.replaceValues
           ? body.values

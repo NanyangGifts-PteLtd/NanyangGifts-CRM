@@ -22,7 +22,8 @@ export type SpreadsheetRow = {
 const SPREADSHEET_MANUAL_FIELDS = new Set([
   "serial_number", "waybill_date", "waybill_number", "pieces", "chargeable_weight_kg",
   "destination", "freight_unit_price", "gst", "other_fees", "channel", "logistics_remarks",
-  "ic", "info_provided_date", "cn_tracking_no", "cartons", "item_name", "delivery_info",
+  "ic", "info_provided_date", "cn_tracking_no", "cartons", "item_chinese_name", "item_name", "delivery_info",
+  "material", "use_for", "hs_code",
   "qty", "up", "sea_or_air", "tax_refund", "shipper_remarks", "samples_by_air",
   "samples_by_sea", "air_received", "sea_received",
 ]);

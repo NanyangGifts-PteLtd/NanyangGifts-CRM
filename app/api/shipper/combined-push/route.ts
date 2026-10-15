@@ -300,10 +300,11 @@ export async function POST(request: NextRequest) {
       if (
         !value?.cn_tracking_no?.trim() ||
         !value.qty?.trim() ||
-        !value.up?.trim()
+        !value.up?.trim() ||
+        !value.item_chinese_name?.trim()
       )
         throw new Error(
-          `Complete CN Tracking, Qty, and Unit Price for ${source.name || "each item"}.`,
+          `Complete CN Tracking, Qty, Unit Price, and 品名/Item Chinese Name for ${source.name || "each item"}.`,
         );
       if (
         !timelineTrackingNumbers(
@@ -337,9 +338,8 @@ export async function POST(request: NextRequest) {
           info_provided_date: shared.info_provided_date,
           cn_tracking_no: value.cn_tracking_no,
           cartons: value.cartons || null,
-          // Keep the CRM name intact but send the name explicitly confirmed
-          // in this preview (for example, a Chinese shipper-facing name).
-          item_name: String(value.item_name ?? "").trim() || source.name || null,
+          item_name: source.name ?? null,
+          item_chinese_name: value.item_chinese_name.trim(),
           delivery_info: shared.delivery_info,
           qty,
           up,

@@ -151,7 +151,7 @@ export function CombinedPushPreviewModal({
   const required = (key: string) => !String(item[key] ?? "").trim();
   const complete =
     preview.rows.every((row) =>
-      ["cn_tracking_no", "qty", "up", "samples_by_air", "samples_by_sea"].every(
+      ["cn_tracking_no", "qty", "up", "samples_by_air", "samples_by_sea", "item_chinese_name"].every(
         (key) => String(row[key] ?? "").trim(),
       ),
     ) &&
@@ -299,7 +299,7 @@ export function CombinedPushPreviewModal({
             <div className="space-y-4">
               {field("Samples by Air", "samples_by_air")}
               {field("Samples by Sea", "samples_by_sea")}
-              {field("Item display name", "item_name", "text")}
+              {field("品名/Item Chinese Name", "item_chinese_name", "text")}
               <label className="block text-xs font-medium text-slate-700">
                 Remarks
                 <textarea

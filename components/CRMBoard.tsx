@@ -6333,7 +6333,7 @@ export function CRMBoard({
           qty: String(row.qty ?? ""),
           up: String(row.up ?? ""),
           cartons: String(row.cartons ?? ""),
-          item_name: String(row.item_name ?? ""),
+          item_chinese_name: "",
           samples_by_air: String(row.samples_by_air ?? ""),
           samples_by_sea: String(row.samples_by_sea ?? ""),
           shipper_remarks: String(row.shipper_remarks ?? ""),

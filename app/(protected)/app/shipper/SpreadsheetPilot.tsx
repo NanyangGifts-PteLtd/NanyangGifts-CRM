@@ -59,7 +59,7 @@ type ActiveTextSelection = {
 // last known snapshot per workbook so a previously visited tab is visible at
 // once while a background request checks for newer data.
 const workbookSnapshotCache = new Map<string, WorkbookSnapshot>();
-const columns: GridColumn[] = [
+const baseColumns: GridColumn[] = [
   { id: "__lock", title: "", width: 48 },
   { id: "serial_number", title: "序号", width: 100 },
   { id: "waybill_date", title: "运单日期", width: 130 },
@@ -78,8 +78,12 @@ const columns: GridColumn[] = [
   { id: "info_provided_date", title: "提供资料日期", width: 145 },
   { id: "cn_tracking_no", title: "单号 / CN Tracking #", width: 180 },
   { id: "cartons", title: "箱子 / Cartons", width: 120 },
-  { id: "item_name", title: "货名 / Item name", width: 210 },
+  { id: "item_chinese_name", title: "品名", width: 180 },
+  { id: "item_name", title: "英文品名", width: 210 },
   { id: "delivery_info", title: "地址 / Address", width: 240 },
+  { id: "material", title: "Material材质", width: 160 },
+  { id: "use_for", title: "Use for用途", width: 160 },
+  { id: "hs_code", title: "HS code海关偏码", width: 160 },
   { id: "qty", title: "数量 / Qty", width: 100 },
   { id: "up", title: "单价 / Unit Price", width: 130 },
   { id: "value", title: "货值 / Value", width: 125 },
@@ -117,8 +121,12 @@ const textFormatFields = new Set([
   "logistics_remarks",
   "ic",
   "cn_tracking_no",
+  "item_chinese_name",
   "item_name",
   "delivery_info",
+  "material",
+  "use_for",
+  "hs_code",
   "shipper_remarks",
   "air_received",
   "sea_received",
@@ -150,7 +158,7 @@ const shipmentFields = new Set([
 const shipmentInputFields = [...shipmentFields].filter(
   (field) => !formulaFields.has(field),
 );
-const clearableFields = columns
+const clearableFields = baseColumns
   .map((column) => String(column.id))
   .filter((field) => field !== "__lock" && !formulaFields.has(field));
 const dateFields = new Set(["waybill_date", "info_provided_date"]);
@@ -715,11 +723,22 @@ function RemarksEditor({
 
 export function SpreadsheetPilot({
   shipperId,
+  shipperName,
   mode = "internal",
 }: {
   shipperId: string;
+  shipperName?: string | null;
   mode?: "internal" | "shipper";
 }) {
+  // These customs columns are specific to A5 汇荣's workbook. Keeping the
+  // fields in the row JSON lets existing A5 rows retain their values while
+  // ensuring other shippers never see the columns.
+  const columns = useMemo(
+    () => shipperName?.trim() === "A5 汇荣"
+      ? baseColumns
+      : baseColumns.filter((column) => !["material", "use_for", "hs_code"].includes(String(column.id))),
+    [shipperName],
+  );
   const confirm = useAppConfirmation();
   const cachedSnapshot = workbookSnapshotCache.get(shipperId);
   const [rows, setRows] = useState<Row[]>(() => cachedSnapshot?.rows ?? []);
@@ -1281,7 +1300,7 @@ export function SpreadsheetPilot({
           : undefined,
       } as GridCell;
     },
-    [mode, rows, updateActiveTextSelection],
+    [columns, mode, rows, updateActiveTextSelection],
   );
   const rowHeightForIndex = useCallback(
     (rowIndex: number) => {
@@ -1310,7 +1329,7 @@ export function SpreadsheetPilot({
       }, 1);
       return Math.min(136, Math.max(34, lines * 18 + 12));
     },
-    [rows],
+    [columns, rows],
   );
   const drawMergedShipmentCell = useCallback(
     (
@@ -1563,7 +1582,7 @@ export function SpreadsheetPilot({
       }
       ctx.restore();
     },
-    [gridSelection, rowHeightForIndex, rows],
+    [columns, gridSelection, rowHeightForIndex, rows],
   );
   const mergedRowTheme = useCallback(
     (row: number) => {
@@ -1651,7 +1670,7 @@ export function SpreadsheetPilot({
         },
       });
     },
-    [activeTextSelection, rows],
+    [activeTextSelection, columns, rows],
   );
   const mergedEditorHeight = useMemo(() => {
     const current = gridSelection?.current;
@@ -1665,7 +1684,7 @@ export function SpreadsheetPilot({
     return Array.from({ length: range.height }, (_, index) =>
       rowHeightForIndex(row + index),
     ).reduce((sum, height) => sum + height, 0);
-  }, [gridSelection, rowHeightForIndex, rows]);
+  }, [columns, gridSelection, rowHeightForIndex, rows]);
   const onGridKeyDown = useCallback(
     (event: {
       key: string;
@@ -1752,7 +1771,7 @@ export function SpreadsheetPilot({
         rows: CompactSelection.empty(),
       });
     },
-    [gridSelection, mode, rows],
+    [columns, gridSelection, mode, rows],
   );
   const drawCenteredHeader = useCallback(
     (args: {
@@ -1892,7 +1911,7 @@ export function SpreadsheetPilot({
       });
       queueSave(record.id, { [key]: value }, false, textFormats);
     },
-    [load, markLocalMutation, mode, queueSave, rememberUndo, rows, shipperId],
+    [columns, load, markLocalMutation, mode, queueSave, rememberUndo, rows, shipperId],
   );
   const onCellsEdited = useCallback(
     (edits: ReadonlyArray<{ location: Item; value: GridCell }>) => {
@@ -2074,7 +2093,7 @@ export function SpreadsheetPilot({
       }
       return true;
     },
-    [markLocalMutation, mode, onCellEdited, queueSave, rememberUndo, rows, shipperId],
+    [columns, markLocalMutation, mode, onCellEdited, queueSave, rememberUndo, rows, shipperId],
   );
   const height = useMemo(
     () =>
