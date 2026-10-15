@@ -7,6 +7,7 @@ import logo from "./nanyanggifts-gifts-and-merch.png";
 import { DEFAULT_IMPORTANT_NOTES } from "@/components/Important-Notes";
 import OcfImportantNotes from "@/components/OcfImportantNotes";
 import { OcfFloatingInstruction } from "@/components/OcfFloatingInstruction";
+import { PrintArtworkAppendix } from "@/components/ocf/PrintArtworkAppendix";
 
 type OcfItem = {
   id: string;
@@ -353,7 +354,8 @@ export default function ClientOcfView({ ocf }: { ocf: Ocf }) {
                       ) : null}
                       {item.image_url ? (
                         <div className="text-xs text-red-600">
-                          Click image to enlarge
+                          <span className="print:hidden">Click image to enlarge</span>
+                          <span className="hidden print:inline">Full image at the end</span>
                         </div>
                       ) : null}
                       <label
@@ -603,6 +605,8 @@ export default function ClientOcfView({ ocf }: { ocf: Ocf }) {
             />
           )}
         </div>
+
+        <PrintArtworkAppendix items={items} />
       </div>
 
       {expandedImage ? (

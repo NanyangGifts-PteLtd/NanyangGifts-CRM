@@ -7,6 +7,7 @@ import logo from "./nanyanggifts-gifts-and-merch.png";
 import { DEFAULT_IMPORTANT_NOTES } from "@/components/Important-Notes";
 import OcfImportantNotes from "@/components/OcfImportantNotes";
 import { OcfFloatingInstruction } from "@/components/OcfFloatingInstruction";
+import { PrintArtworkAppendix } from "@/components/ocf/PrintArtworkAppendix";
 
 type OcfItem = {
   id: string;
@@ -276,6 +277,13 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
             </button>
             <button
               type="button"
+              onClick={() => window.print()}
+              className="whitespace-nowrap rounded bg-slate-600 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700"
+            >
+              Print OCF
+            </button>
+            <button
+              type="button"
               onClick={() =>
                 setSaveMessage(
                   "Emailing the OCF to the client will be available once the email integration is connected.",
@@ -406,7 +414,8 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
                       ) : null}
                       {item.image_url ? (
                         <div className="text-xs text-red-600">
-                          Click image to enlarge
+                          <span className="print:hidden">Click image to enlarge</span>
+                          <span className="hidden print:inline">Full image at the end</span>
                         </div>
                       ) : null}
                       <label className="flex w-full items-start gap-2 rounded border border-gray-200 bg-gray-50 px-2 py-2 text-[10px] font-medium">
@@ -650,6 +659,8 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
               : "-"}
           </p>
         </div>
+
+        <PrintArtworkAppendix items={items} />
       </div>
 
       {expandedImage ? (
