@@ -29,6 +29,7 @@ type Row = {
   id: string;
   values: Record<string, unknown>;
   cell_fills: Record<string, string>;
+  text_formats: Record<string, TextFormatRange[]>;
   is_locked: boolean;
   auto_lock_at: string | null;
   version: number;
@@ -43,7 +44,15 @@ type UndoEntry = {
     id: string;
     values?: Record<string, unknown>;
     cellFills?: Record<string, string>;
+    textFormats?: Record<string, TextFormatRange[]>;
   }>;
+};
+type TextFormatRange = { start: number; end: number; color: string };
+type ActiveTextSelection = {
+  rowId: string;
+  field: string;
+  start: number;
+  end: number;
 };
 
 // Switching shipper tabs remounts the spreadsheet intentionally. Keep the
@@ -99,6 +108,21 @@ const shipperEditableFields = new Set([
 const alwaysEditableAfterLockFields = new Set(["air_received", "sea_received"]);
 const remarksFields = new Set(["logistics_remarks", "shipper_remarks"]);
 const formulaFields = new Set(["freight_cost", "total_cost", "value"]);
+// Only free-text worksheet columns use the textarea editor. Date, number and
+// dropdown fields deliberately keep their structured editing behaviour.
+const textFormatFields = new Set([
+  "serial_number",
+  "waybill_number",
+  "destination",
+  "logistics_remarks",
+  "ic",
+  "cn_tracking_no",
+  "item_name",
+  "delivery_info",
+  "shipper_remarks",
+  "air_received",
+  "sea_received",
+]);
 const shipperFormulaFields = new Set(["freight_cost", "total_cost"]);
 // These are the shipment-scoped columns in the existing Shipment view. A
 // merged spreadsheet shipment shares exactly these fields; item columns remain
@@ -182,6 +206,101 @@ const fillColors = [
   "#7c3aed",
   "#bae6fd",
 ];
+const textColors = [
+  "#111827",
+  "#dc2626",
+  "#ea580c",
+  "#ca8a04",
+  "#16a34a",
+  "#0891b2",
+  "#2563eb",
+  "#7c3aed",
+  "#c026d3",
+  "#e11d48",
+];
+
+function normalizedTextFormats(
+  formats: TextFormatRange[] | undefined,
+  textLength: number,
+) {
+  return (formats ?? [])
+    .filter(
+      (format) =>
+        Number.isInteger(format.start) &&
+        Number.isInteger(format.end) &&
+        format.start >= 0 &&
+        format.end > format.start &&
+        format.end <= textLength &&
+        /^#[0-9a-f]{6}$/i.test(format.color),
+    )
+    .sort((left, right) => left.start - right.start || left.end - right.end);
+}
+
+function updateTextFormats(
+  formats: TextFormatRange[] | undefined,
+  start: number,
+  end: number,
+  color: string | null,
+) {
+  const retained: TextFormatRange[] = [];
+  for (const format of formats ?? []) {
+    if (format.start < start)
+      retained.push({ ...format, end: Math.min(format.end, start) });
+    if (format.end > end)
+      retained.push({ ...format, start: Math.max(format.start, end) });
+  }
+  if (color) retained.push({ start, end, color });
+  const ordered = retained
+    .filter((format) => format.end > format.start)
+    .sort((left, right) => left.start - right.start || left.end - right.end);
+  return ordered.reduce<TextFormatRange[]>((merged, format) => {
+    const previous = merged.at(-1);
+    if (
+      previous &&
+      previous.color === format.color &&
+      previous.end === format.start
+    ) {
+      previous.end = format.end;
+    } else merged.push({ ...format });
+    return merged;
+  }, []);
+}
+
+// Rebase formatting around a normal cell edit. Ranges touched by the edit are
+// removed rather than assigned to a potentially unrelated replacement string.
+function rebaseTextFormats(
+  formats: TextFormatRange[] | undefined,
+  previous: string,
+  next: string,
+) {
+  if (previous === next) return formats ?? [];
+  let prefix = 0;
+  while (
+    prefix < previous.length &&
+    prefix < next.length &&
+    previous[prefix] === next[prefix]
+  )
+    prefix += 1;
+  let previousEnd = previous.length;
+  let nextEnd = next.length;
+  while (
+    previousEnd > prefix &&
+    nextEnd > prefix &&
+    previous[previousEnd - 1] === next[nextEnd - 1]
+  ) {
+    previousEnd -= 1;
+    nextEnd -= 1;
+  }
+  const delta = nextEnd - previousEnd;
+  return normalizedTextFormats(formats, previous.length)
+    .flatMap((format) => {
+      if (format.end <= prefix) return [format];
+      if (format.start >= previousEnd)
+        return [{ ...format, start: format.start + delta, end: format.end + delta }];
+      return [];
+    })
+    .filter((format) => format.end > format.start);
+}
 
 function numberOrNull(value: unknown) {
   if (value === null || value === undefined || String(value).trim() === "")
@@ -275,6 +394,55 @@ function fillTextColor(fill: string | undefined) {
   return (rgb[0] * 299 + rgb[1] * 587 + rgb[2] * 114) / 1000 < 145
     ? "#ffffff"
     : "#1f2937";
+}
+
+function drawTextWithFormats(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  formats: TextFormatRange[],
+  rect: { x: number; y: number; width: number; height: number },
+  padding: number,
+  defaultColor: string,
+) {
+  const maxWidth = Math.max(0, rect.width - padding * 2);
+  const lines: Array<Array<{ character: string; index: number }>> = [];
+  let line: Array<{ character: string; index: number }> = [];
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+    if (character === "\n") {
+      lines.push(line);
+      line = [];
+      continue;
+    }
+    const nextWidth = ctx.measureText(
+      `${line.map((part) => part.character).join("")}${character}`,
+    ).width;
+    if (line.length && nextWidth > maxWidth) {
+      lines.push(line);
+      line = [];
+    }
+    line.push({ character, index });
+  }
+  lines.push(line);
+  const lineHeight = 18;
+  const firstLineY = rect.y + rect.height / 2 - ((lines.length - 1) * lineHeight) / 2;
+  ctx.textAlign = "left";
+  ctx.textBaseline = "middle";
+  lines.forEach((parts, lineIndex) => {
+    const width = parts.reduce(
+      (sum, part) => sum + ctx.measureText(part.character).width,
+      0,
+    );
+    let x = rect.x + Math.max(padding, (rect.width - width) / 2);
+    for (const part of parts) {
+      const color = formats.find(
+        (format) => part.index >= format.start && part.index < format.end,
+      )?.color ?? defaultColor;
+      ctx.fillStyle = color;
+      ctx.fillText(part.character, x, firstLineY + lineIndex * lineHeight);
+      x += ctx.measureText(part.character).width;
+    }
+  });
 }
 
 function validationMessage(field: string, value: unknown) {
@@ -417,18 +585,40 @@ function TextEditor({
   onFinishedEditing: (next?: GridCell, movement?: EditorMovement) => void;
 }) {
   if (value.kind !== GridCellKind.Text) return null;
+  const formattingCell = value as GridCell & {
+    field?: string;
+    rowId?: string;
+    onTextSelectionChange?: (selection: ActiveTextSelection | null) => void;
+  };
+  const updateSelection = (element: HTMLTextAreaElement) => {
+    const start = element.selectionStart;
+    const end = element.selectionEnd;
+    formattingCell.onTextSelectionChange?.(
+      formattingCell.rowId && formattingCell.field && end > start
+        ? {
+            rowId: formattingCell.rowId,
+            field: formattingCell.field,
+            start,
+            end,
+          }
+        : null,
+    );
+  };
   return (
     <textarea
       autoFocus
       defaultValue={value.data}
       onFocus={placeCaretAfterInitialValue}
-      onBlur={(event) =>
+      onSelect={(event) => updateSelection(event.currentTarget)}
+      onKeyUp={(event) => updateSelection(event.currentTarget)}
+      onMouseUp={(event) => updateSelection(event.currentTarget)}
+      onBlur={(event) => {
         onFinishedEditing({
           ...value,
           data: event.currentTarget.value,
           displayData: event.currentTarget.value,
-        })
-      }
+        });
+      }}
       onKeyDown={(event) => {
         const next = movementAtTextEdge(event.currentTarget, event.key);
         if (next) {
@@ -476,12 +666,36 @@ function RemarksEditor({
     const next = `${cleaned}${cleaned && attachments.length ? "\n\n" : ""}${attachments.join("\n")}`;
     onFinishedEditing({ ...value, data: next, displayData: cleaned }, movement);
   };
+  const formattingCell = value as GridCell & {
+    field?: string;
+    rowId?: string;
+    onTextSelectionChange?: (selection: ActiveTextSelection | null) => void;
+  };
+  const updateSelection = (element: HTMLTextAreaElement) => {
+    const start = element.selectionStart;
+    const end = element.selectionEnd;
+    formattingCell.onTextSelectionChange?.(
+      formattingCell.rowId && formattingCell.field && end > start
+        ? {
+            rowId: formattingCell.rowId,
+            field: formattingCell.field,
+            start,
+            end,
+          }
+        : null,
+    );
+  };
   return (
     <textarea
       autoFocus
       defaultValue={text}
       onFocus={placeCaretAfterInitialValue}
-      onBlur={(event) => finish(event.currentTarget.value)}
+      onSelect={(event) => updateSelection(event.currentTarget)}
+      onKeyUp={(event) => updateSelection(event.currentTarget)}
+      onMouseUp={(event) => updateSelection(event.currentTarget)}
+      onBlur={(event) => {
+        finish(event.currentTarget.value);
+      }}
       onKeyDown={(event) => {
         const next = movementAtTextEdge(event.currentTarget, event.key);
         if (next) {
@@ -519,6 +733,9 @@ export function SpreadsheetPilot({
     undefined,
   );
   const [isFillPaletteOpen, setIsFillPaletteOpen] = useState(false);
+  const [isTextPaletteOpen, setIsTextPaletteOpen] = useState(false);
+  const [activeTextSelection, setActiveTextSelection] =
+    useState<ActiveTextSelection | null>(null);
   const [contextMenu, setContextMenu] = useState<{
     x: number;
     y: number;
@@ -529,6 +746,7 @@ export function SpreadsheetPilot({
     Array<{
       values: Record<string, unknown>;
       cellFills: Record<string, string>;
+      textFormats: Record<string, TextFormatRange[]>;
       shipmentGroupId: string | null;
     }>
   >([]);
@@ -550,7 +768,11 @@ export function SpreadsheetPilot({
   const pendingSaves = useRef(
     new Map<
       string,
-      { values: Record<string, unknown>; replaceValues: boolean }
+      {
+        values: Record<string, unknown>;
+        replaceValues: boolean;
+        textFormats?: Record<string, TextFormatRange[]>;
+      }
     >(),
   );
   const saveTimer = useRef<number | null>(null);
@@ -785,6 +1007,9 @@ export function SpreadsheetPilot({
               rowId,
               values: pendingSave.values,
               replaceValues: pendingSave.replaceValues,
+              ...(pendingSave.textFormats
+                ? { textFormats: pendingSave.textFormats }
+                : {}),
             }),
           });
           return { response, result: await response.json() };
@@ -826,13 +1051,19 @@ export function SpreadsheetPilot({
   }, [load, shipperId]);
   flushPendingSavesRef.current = flushPendingSaves;
   const queueSave = useCallback(
-    (rowId: string, values: Record<string, unknown>, replaceValues = false) => {
+    (
+      rowId: string,
+      values: Record<string, unknown>,
+      replaceValues = false,
+      textFormats?: Record<string, TextFormatRange[]>,
+    ) => {
       const existing = pendingSaves.current.get(rowId);
       pendingSaves.current.set(rowId, {
         values: replaceValues
           ? values
           : { ...(existing?.values ?? {}), ...values },
         replaceValues: replaceValues || existing?.replaceValues === true,
+        textFormats: textFormats ?? existing?.textFormats,
       });
       if (saveTimer.current !== null) window.clearTimeout(saveTimer.current);
       saveTimer.current = window.setTimeout(
@@ -846,7 +1077,11 @@ export function SpreadsheetPilot({
     (
       label: string,
       affectedRows: Row[],
-      fields: { values?: boolean; cellFills?: boolean } = { values: true },
+      fields: {
+        values?: boolean;
+        cellFills?: boolean;
+        textFormats?: boolean;
+      } = { values: true },
     ) => {
       if (undoInProgress.current || !affectedRows.length) return;
       undoHistory.current.push({
@@ -864,6 +1099,9 @@ export function SpreadsheetPilot({
             : {}),
           ...(fields.cellFills
             ? { cellFills: { ...(row.cell_fills ?? {}) } }
+            : {}),
+          ...(fields.textFormats
+            ? { textFormats: { ...(row.text_formats ?? {}) } }
             : {}),
         })),
       });
@@ -898,6 +1136,9 @@ export function SpreadsheetPilot({
               ...(snapshot.cellFills
                 ? { cellFills: snapshot.cellFills }
                 : {}),
+              ...(snapshot.textFormats
+                ? { textFormats: snapshot.textFormats }
+                : {}),
             }),
           });
           return { response, result: await response.json() };
@@ -927,6 +1168,13 @@ export function SpreadsheetPilot({
     }
   }, [flushPendingSaves, load, markLocalMutation, shipperId]);
   undoShortcut.current = () => void undoLastChange();
+  const updateActiveTextSelection = useCallback(
+    (selection: ActiveTextSelection | null) => {
+      setActiveTextSelection(selection);
+      setIsTextPaletteOpen(Boolean(selection));
+    },
+    [],
+  );
   const getCellContent = useCallback(
     ([col, row]: Item): GridCell => {
       const record = rows[row];
@@ -993,6 +1241,9 @@ export function SpreadsheetPilot({
         (record.is_locked && !alwaysEditableAfterLockFields.has(key)) ||
         formulaFields.has(key) ||
         (mode === "shipper" && !shipperEditableFields.has(key));
+      const textFormats = textFormatFields.has(key)
+        ? normalizedTextFormats(record.text_formats?.[key], value.length)
+        : [];
       return {
         kind: GridCellKind.Text,
         // A vertical merge is simulated with one leader and blank followers.
@@ -1006,17 +1257,31 @@ export function SpreadsheetPilot({
         contentAlign: "center",
         themeOverride: (() => {
           const fill = record.cell_fills?.[key];
-          if (fill) return { bgCell: fill, textDark: fillTextColor(fill) };
+          if (fill)
+            return {
+              bgCell: fill,
+              textDark: textFormats.length ? "transparent" : fillTextColor(fill),
+            };
           if (record.is_locked && !alwaysEditableAfterLockFields.has(key))
-            return { bgCell: "#f1f5f9", textDark: "#475569" };
+            return {
+              bgCell: "#f1f5f9",
+              textDark: textFormats.length ? "transparent" : "#475569",
+            };
           return formulaFields.has(key)
             ? { bgCell: "#fff7d6", textDark: "#7c4a03" }
-            : undefined;
+            : textFormats.length
+              ? { textDark: "transparent" }
+              : undefined;
         })(),
         field: key,
+        rowId: record.id,
+        textFormats,
+        onTextSelectionChange: textFormatFields.has(key)
+          ? updateActiveTextSelection
+          : undefined,
       } as GridCell;
     },
-    [mode, rows],
+    [mode, rows, updateActiveTextSelection],
   );
   const rowHeightForIndex = useCallback(
     (rowIndex: number) => {
@@ -1068,6 +1333,30 @@ export function SpreadsheetPilot({
       drawContent();
       const key = String(columns[args.col]?.id ?? "");
       const record = rows[args.row];
+      const cellFormats = (
+        args.cell as GridCell & { textFormats?: TextFormatRange[] }
+      ).textFormats ?? [];
+      if (
+        record &&
+        cellFormats.length &&
+        (!record.shipment_group_id || !shipmentFields.has(key))
+      ) {
+        const fill = record.cell_fills?.[key];
+        args.ctx.save();
+        args.ctx.font = args.theme.baseFontStyle;
+        drawTextWithFormats(
+          args.ctx,
+          String((args.cell as GridCell & { data?: unknown }).data ?? ""),
+          cellFormats,
+          args.rect,
+          args.theme.cellHorizontalPadding,
+          fillTextColor(fill) ??
+            (record.is_locked && !alwaysEditableAfterLockFields.has(key)
+              ? "#475569"
+              : "#1f2937"),
+        );
+        args.ctx.restore();
+      }
       if (record && remarksFields.has(key)) {
         const images = remarkImages(record.values[key]);
         const source = images[0] ? attachmentSource(images[0]) : null;
@@ -1207,11 +1496,25 @@ export function SpreadsheetPilot({
           rowHeightForIndex(first + index),
         ).reduce((sum, rowHeight) => sum + rowHeight, 0);
       const display = formattedValue(key, values[key]);
+      const textFormats = normalizedTextFormats(
+        leader.text_formats?.[key],
+        String(values[key] ?? "").length,
+      );
       const ctx = args.ctx;
       ctx.save();
       ctx.fillStyle = fill;
       ctx.fillRect(args.rect.x + 1, top + 1, args.rect.width - 2, height - 2);
-      if (display) {
+      if (display && textFormats.length) {
+        ctx.font = args.theme.baseFontStyle;
+        drawTextWithFormats(
+          ctx,
+          String(values[key] ?? ""),
+          textFormats,
+          { x: args.rect.x, y: top, width: args.rect.width, height },
+          args.theme.cellHorizontalPadding,
+          fillTextColor(fill) ?? args.theme.textDark,
+        );
+      } else if (display) {
         ctx.font = args.theme.baseFontStyle;
         ctx.fillStyle = fillTextColor(fill) ?? args.theme.textDark;
         ctx.textBaseline = "middle";
@@ -1277,6 +1580,22 @@ export function SpreadsheetPilot({
   const onGridSelectionChange = useCallback(
     (next: GridSelection) => {
       const current = next.current;
+      if (activeTextSelection) {
+        const selectedRow = rows.findIndex(
+          (row) => row.id === activeTextSelection.rowId,
+        );
+        const selectedColumn = columns.findIndex(
+          (column) => column.id === activeTextSelection.field,
+        );
+        if (
+          !current ||
+          current.cell[0] !== selectedColumn ||
+          current.cell[1] !== selectedRow
+        ) {
+          setActiveTextSelection(null);
+          setIsTextPaletteOpen(false);
+        }
+      }
       if (!current) {
         setGridSelection(next);
         return;
@@ -1332,7 +1651,7 @@ export function SpreadsheetPilot({
         },
       });
     },
-    [rows],
+    [activeTextSelection, rows],
   );
   const mergedEditorHeight = useMemo(() => {
     const current = gridSelection?.current;
@@ -1545,17 +1864,33 @@ export function SpreadsheetPilot({
         return;
       }
       if (recordUndo) rememberUndo("Cell edit undone", [record]);
+      const previousText = String(record.values[key] ?? "");
+      const nextText = String(value ?? "");
+      const textFormats = record.text_formats?.[key]
+        ? {
+            ...record.text_formats,
+            [key]: rebaseTextFormats(
+              record.text_formats[key],
+              previousText,
+              nextText,
+            ),
+          }
+        : undefined;
       markLocalMutation();
       flushSync(() => {
         setRows((current) =>
           current.map((item) =>
             item.id === record.id
-              ? { ...item, values: { ...item.values, [key]: value } }
+              ? {
+                  ...item,
+                  values: { ...item.values, [key]: value },
+                  ...(textFormats ? { text_formats: textFormats } : {}),
+                }
               : item,
           ),
         );
       });
-      queueSave(record.id, { [key]: value });
+      queueSave(record.id, { [key]: value }, false, textFormats);
     },
     [load, markLocalMutation, mode, queueSave, rememberUndo, rows, shipperId],
   );
@@ -1819,6 +2154,63 @@ export function SpreadsheetPilot({
       void load();
     }
   };
+  const applyTextColour = async (color: string | null) => {
+    const selection = activeTextSelection;
+    if (!selection) return;
+    const record = rows.find((row) => row.id === selection.rowId);
+    if (!record) return;
+    if (
+      (record.is_locked && !alwaysEditableAfterLockFields.has(selection.field)) ||
+      formulaFields.has(selection.field) ||
+      (mode === "shipper" && !shipperEditableFields.has(selection.field))
+    )
+      return;
+    const text = String(record.values[selection.field] ?? "");
+    if (
+      selection.start < 0 ||
+      selection.end > text.length ||
+      selection.end <= selection.start
+    )
+      return;
+    const textFormats = {
+      ...(record.text_formats ?? {}),
+      [selection.field]: updateTextFormats(
+        normalizedTextFormats(record.text_formats?.[selection.field], text.length),
+        selection.start,
+        selection.end,
+        color,
+      ),
+    };
+    if (!textFormats[selection.field].length) delete textFormats[selection.field];
+    rememberUndo("Text colour change undone", [record], { textFormats: true });
+    markLocalMutation();
+    flushSync(() =>
+      setRows((current) =>
+        current.map((row) =>
+          row.id === record.id ? { ...row, text_formats: textFormats } : row,
+        ),
+      ),
+    );
+    setIsTextPaletteOpen(false);
+    const response = await fetch("/api/shipper/spreadsheet", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ shipperId, rowId: record.id, textFormats }),
+    });
+    const result = await response.json();
+    if (!response.ok) {
+      setError(result.error ?? "Could not save text colour");
+      void load();
+      return;
+    }
+    setRows((current) =>
+      current.map((row) =>
+        row.id === record.id
+          ? { ...row, text_formats: result.row.text_formats ?? textFormats, version: result.row.version }
+          : row,
+      ),
+    );
+  };
   const clearSelectionContents = () => {
     const range = gridSelection?.current?.range;
     const selectedRows = gridSelection?.rows.toArray() ?? [];
@@ -1939,6 +2331,7 @@ export function SpreadsheetPilot({
           ),
         ),
         cellFills: { ...(row.cell_fills ?? {}) },
+        textFormats: { ...(row.text_formats ?? {}) },
         shipmentGroupId: row.shipment_group_id,
       }));
     setCopiedRows(copies);
@@ -2427,6 +2820,18 @@ export function SpreadsheetPilot({
             Fill colour
           </button>
         )}
+        {activeTextSelection && (
+          <button
+            type="button"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => setIsTextPaletteOpen((open) => !open)}
+            className="flex items-center gap-1 rounded border border-slate-300 px-2 py-1.5 text-xs text-slate-700"
+            title="Change the selected text colour"
+          >
+            <span className="border-b-2 border-slate-700 font-semibold leading-none">A</span>
+            Text colour
+          </button>
+        )}
         {mode !== "shipper" && hasRowClipboard && (
           <div className="flex items-center gap-2 rounded border border-sky-200 bg-sky-50 px-2 py-1 text-xs text-sky-800">
             <span>
@@ -2475,6 +2880,31 @@ export function SpreadsheetPilot({
             <button
               type="button"
               onClick={() => void fillSelection(null)}
+              className="rounded border border-slate-300 px-2 text-[10px] text-slate-600"
+            >
+              Clear
+            </button>
+          </div>
+        )}
+        {activeTextSelection && isTextPaletteOpen && (
+          <div className="flex flex-wrap gap-1 py-1">
+            {textColors.map((color) => (
+              <button
+                key={color}
+                type="button"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => void applyTextColour(color)}
+                className="flex h-5 w-5 items-center justify-center rounded border border-slate-300 bg-white text-[13px] font-semibold"
+                style={{ color }}
+                title="Set selected text colour"
+              >
+                A
+              </button>
+            ))}
+            <button
+              type="button"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => void applyTextColour(null)}
               className="rounded border border-slate-300 px-2 text-[10px] text-slate-600"
             >
               Clear

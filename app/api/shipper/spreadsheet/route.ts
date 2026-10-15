@@ -124,6 +124,34 @@ function validateSpreadsheetValues(values: Record<string, unknown>) {
   }));
 }
 
+function validateTextFormats(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Invalid spreadsheet text formatting");
+  }
+  const formats = value as Record<string, unknown>;
+  for (const [field, ranges] of Object.entries(formats)) {
+    if (!field || !Array.isArray(ranges) || FORMULA_FIELDS.has(field)) {
+      throw new Error("Invalid spreadsheet text formatting");
+    }
+    if (ranges.length > 100) throw new Error("Too many text formatting ranges");
+    for (const range of ranges) {
+      if (
+        !range ||
+        typeof range !== "object" ||
+        !Number.isInteger((range as { start?: unknown }).start) ||
+        !Number.isInteger((range as { end?: unknown }).end) ||
+        typeof (range as { color?: unknown }).color !== "string" ||
+        !/^#[0-9a-f]{6}$/i.test((range as { color: string }).color) ||
+        (range as { start: number }).start < 0 ||
+        (range as { end: number }).end <= (range as { start: number }).start
+      ) {
+        throw new Error("Invalid spreadsheet text formatting");
+      }
+    }
+  }
+  return formats as Record<string, Array<{ start: number; end: number; color: string }>>;
+}
+
 async function authorize(shipperId: string) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -177,7 +205,7 @@ export async function POST(request: NextRequest) {
       trailingBlankCount?: number;
       referenceRowId?: string;
       placement?: "above" | "below";
-      copiedRows?: Array<{ values: Record<string, unknown>; cellFills?: Record<string, string>; shipmentGroupId?: string | null }>;
+      copiedRows?: Array<{ values: Record<string, unknown>; cellFills?: Record<string, string>; textFormats?: Record<string, Array<{ start: number; end: number; color: string }>>; shipmentGroupId?: string | null }>;
     };
     if (!body.shipperId) throw new Error("shipperId is required");
     const { userId, role, shipper } = await authorize(body.shipperId);
@@ -225,6 +253,14 @@ export async function POST(request: NextRequest) {
         if (role === "shipper" && copiedRows.some((row) => Object.keys(row.cellFills ?? {}).some((field) => !SHIPPER_EDITABLE_FIELDS.has(field)))) {
           throw new Error("You do not have permission to format one or more copied columns");
         }
+        if (copiedRows.some((row) => row.textFormats)) {
+          for (const row of copiedRows) {
+            if (row.textFormats) validateTextFormats(row.textFormats);
+          }
+        }
+        if (role === "shipper" && copiedRows.some((row) => Object.keys(row.textFormats ?? {}).some((field) => !SHIPPER_EDITABLE_FIELDS.has(field)))) {
+          throw new Error("You do not have permission to format one or more copied columns");
+        }
         const sortStep = before && after
           ? (Number(after.sort_key) - Number(before.sort_key)) / (rowCount + 1)
           : 1000;
@@ -248,6 +284,7 @@ export async function POST(request: NextRequest) {
               values,
               auto_lock_at: autoLockAt(values),
               cell_fills: row.cellFills ?? {},
+              text_formats: row.textFormats ?? {},
               created_by: userId,
             };
           }))
@@ -318,7 +355,7 @@ export async function POST(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
-    const body = await request.json() as { shipperId?: string; rowId?: string; values?: Record<string, unknown>; cellFills?: Record<string, string>; replaceValues?: boolean; isLocked?: boolean; version?: number; operation?: "merge" | "unmerge" | "update-shared" | "move-rows" | "delete-rows"; rowIds?: string[]; resolvedValues?: Record<string, unknown>; referenceRowId?: string; placement?: "above" | "below" };
+    const body = await request.json() as { shipperId?: string; rowId?: string; values?: Record<string, unknown>; cellFills?: Record<string, string>; textFormats?: Record<string, Array<{ start: number; end: number; color: string }>>; replaceValues?: boolean; isLocked?: boolean; version?: number; operation?: "merge" | "unmerge" | "update-shared" | "move-rows" | "delete-rows"; rowIds?: string[]; resolvedValues?: Record<string, unknown>; referenceRowId?: string; placement?: "above" | "below" };
     if (!body.shipperId || (!body.rowId && !body.operation)) throw new Error("shipperId and rowId are required");
     const { role } = await authorize(body.shipperId);
     const workbook = await getOrCreateShipperWorkbook(body.shipperId, "Shipper");
@@ -491,7 +528,7 @@ export async function PATCH(request: NextRequest) {
     }
     const { data: existing, error: existingError } = await supabaseAdmin
       .from("shipper_spreadsheet_rows")
-      .select("id, values, is_locked, auto_lock_at, cell_fills, version")
+      .select("id, values, is_locked, auto_lock_at, cell_fills, text_formats, version")
       .eq("id", body.rowId)
       .eq("workbook_id", workbook.id)
       .maybeSingle();
@@ -527,6 +564,28 @@ export async function PATCH(request: NextRequest) {
         throw new Error("You do not have permission to format one or more selected columns");
       }
       payload.cell_fills = body.cellFills;
+    }
+    if (body.textFormats) {
+      const textFormats = validateTextFormats(body.textFormats);
+      const valuesForTextFormats = body.values
+        ? body.replaceValues
+          ? body.values
+          : { ...(existing.values ?? {}), ...body.values }
+        : (existing.values ?? {});
+      if (
+        Object.entries(textFormats).some(([field, ranges]) =>
+          ranges.some(
+            (range) =>
+              range.end > String(valuesForTextFormats[field] ?? "").length,
+          ),
+        )
+      ) {
+        throw new Error("Text formatting range is outside the cell value");
+      }
+      if (role === "shipper" && Object.keys(textFormats).some((field) => !SHIPPER_EDITABLE_FIELDS.has(field))) {
+        throw new Error("You do not have permission to format one or more selected columns");
+      }
+      payload.text_formats = textFormats;
     }
     if (body.isLocked !== undefined) {
       payload.is_locked = body.isLocked;
