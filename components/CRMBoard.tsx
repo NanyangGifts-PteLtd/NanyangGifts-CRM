@@ -544,7 +544,7 @@ const AddClientInput = React.memo(function AddClientInput({
   };
 
   return (
-    <div className="group/add-client relative min-h-[34px] rounded-bl-md border border-[#D0D4E4] border-t-0 bg-white px-2 py-1 hover:bg-[#f5fbff] focus-within:bg-[#f5fbff]">
+    <div className="group/add-client relative min-h-[34px] rounded-bl-md border border-[#D0D4E4] bg-white px-2 py-1 hover:bg-[#f5fbff] focus-within:bg-[#f5fbff]">
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-y-0 left-0 z-[60] w-[5px] rounded-bl-md"
@@ -9225,7 +9225,13 @@ export function CRMBoard({
   );
 
   return (
-    <div className="crm-board box-border flex min-h-full flex-col bg-white pl-14">
+    <div
+      className="crm-board box-border flex min-h-full flex-col bg-white pl-14"
+      // The page-level scroller owns horizontal scrolling. Give the shell the
+      // same full width as the grid so group/header backgrounds do not end at
+      // the viewport edge while the user is scrolled to the right.
+      style={{ minWidth: totalMinWidth + 56 }}
+    >
       {detailSubitem &&
         (() => {
           const owner = clients.find(
