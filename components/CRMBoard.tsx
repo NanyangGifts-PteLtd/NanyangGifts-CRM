@@ -192,6 +192,7 @@ const BOARD_OPTION_GROUP_CODES = [
   "tracking_payment_status",
   "tracking_price_invoice_match",
   "tracking_invoice_payment_status",
+  "moon_cake",
 ] as const;
 const normalizeBlacklistPhone = (value: string) => value.replace(/\D/g, "");
 type CustomerMatchPending = {
@@ -341,6 +342,7 @@ const CLIENT_HEADER_COLS: HeaderCol[] = [
     width: 125,
     minWidth: 125,
   },
+  { key: "moonCake", label: "Mooncake", width: 100, minWidth: 80 },
   { key: "dateCreated", label: "Date Created", width: 90, minWidth: 7 },
   { key: "closedDate", label: "Closed Date", width: 90, minWidth: 7 },
   { key: "addClientCol", label: "", width: 44, minWidth: 44 },
@@ -1350,6 +1352,7 @@ export function CRMBoard({
   );
   const [channelEntries, setChannelEntries] = useState<OptionEntry[]>([]);
   const [importanceEntries, setImportanceEntries] = useState<OptionEntry[]>([]);
+  const [moonCakeEntries, setMoonCakeEntries] = useState<OptionEntry[]>([]);
   const [progressEntries, setProgressEntries] = useState<OptionEntry[]>([]);
   const [paymentEntries, setPaymentEntries] = useState<OptionEntry[]>([]);
   const [paymentStatusEntries, setPaymentStatusEntries] = useState<
@@ -2112,11 +2115,21 @@ export function CRMBoard({
           if (followUpIndex >= 0) next.splice(followUpIndex + 1, 0, "followUpDone");
           return next;
         })();
-    const ordered = mergedOrderWithFollowUpDone
+    // Saved layouts predate Mooncake. Keep it immediately left of Date
+    // Created instead of appending it to the end of an existing layout.
+    const mergedOrderWithMoonCake = clientMergedOrderKeys.includes("moonCake")
+      ? mergedOrderWithFollowUpDone
+      : (() => {
+          const next = [...mergedOrderWithFollowUpDone];
+          const dateCreatedIndex = next.indexOf("dateCreated");
+          if (dateCreatedIndex >= 0) next.splice(dateCreatedIndex, 0, "moonCake");
+          return next;
+        })();
+    const ordered = mergedOrderWithMoonCake
       .map((key) => middle.find((col) => col.key === key))
       .filter(Boolean) as HeaderCol[];
     const remaining = middle.filter(
-      (col) => !mergedOrderWithFollowUpDone.includes(col.key),
+      (col) => !mergedOrderWithMoonCake.includes(col.key),
     );
 
     return [
@@ -2886,6 +2899,7 @@ export function CRMBoard({
       setClientStatusEntries(optionsFor("client_status"));
       setChannelEntries(optionsFor("channel"));
       setImportanceEntries(optionsFor("importance"));
+      setMoonCakeEntries(optionsFor("moon_cake"));
       setProgressEntries(optionsFor("progress"));
       setPaymentEntries(optionsFor("payment"));
       setPaymentStatusEntries(
@@ -3319,6 +3333,7 @@ export function CRMBoard({
         client_status: setClientStatusEntries,
         channel: setChannelEntries,
         importance: setImportanceEntries,
+        moon_cake: setMoonCakeEntries,
         progress: setProgressEntries,
         payment: setPaymentEntries,
         payment_status: setPaymentStatusEntries,
@@ -3401,6 +3416,7 @@ export function CRMBoard({
         client_status: setClientStatusEntries,
         channel: setChannelEntries,
         importance: setImportanceEntries,
+        moon_cake: setMoonCakeEntries,
         progress: setProgressEntries,
         payment: setPaymentEntries,
         payment_status: setPaymentStatusEntries,
@@ -3724,6 +3740,7 @@ export function CRMBoard({
         client_status: setClientStatusEntries,
         channel: setChannelEntries,
         importance: setImportanceEntries,
+        moon_cake: setMoonCakeEntries,
         progress: setProgressEntries,
         payment: setPaymentEntries,
         payment_status: setPaymentStatusEntries,
@@ -4158,6 +4175,30 @@ export function CRMBoard({
   const handleDeleteImportance = useCallback(
     async (name: string) => {
       await deleteOptionValue("importance", name, setImportanceEntries);
+    },
+    [deleteOptionValue],
+  );
+
+  const handleAddMoonCake = useCallback(
+    async (name: string) => {
+      await insertOptionValue(
+        "moon_cake",
+        name,
+        moonCakeEntries,
+        setMoonCakeEntries,
+      );
+    },
+    [insertOptionValue, moonCakeEntries],
+  );
+
+  const handleDeleteMoonCake = useCallback(
+    async (name: string, optionId?: string) => {
+      await deleteOptionValue(
+        "moon_cake",
+        name,
+        setMoonCakeEntries,
+        optionId,
+      );
     },
     [deleteOptionValue],
   );
@@ -12812,6 +12853,7 @@ export function CRMBoard({
                           statusOptions={clientStatusEntries}
                           channelOptions={channelEntries}
                           importanceOptions={importanceEntries}
+                          moonCakeOptions={moonCakeEntries}
                           progressOptions={progressEntries}
                           paymentOptions={paymentEntries}
                           paymentStatusOptions={paymentStatusEntries}
@@ -12863,6 +12905,8 @@ export function CRMBoard({
                           onDeleteChannel={handleDeleteChannel}
                           onAddImportance={handleAddImportance}
                           onDeleteImportance={handleDeleteImportance}
+                          onAddMoonCake={handleAddMoonCake}
+                          onDeleteMoonCake={handleDeleteMoonCake}
                           onAddProgress={handleAddProgress}
                           onDeleteProgress={handleDeleteProgress}
                           onAddPayment={handleAddPayment}

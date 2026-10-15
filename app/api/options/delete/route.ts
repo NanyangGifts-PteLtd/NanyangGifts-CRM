@@ -107,6 +107,11 @@ const TRACKING_CUSTOM_FIELD_BY_CODE: Record<string, string> = {
   tracking_payment_status: "trackingPaymentStatus",
   tracking_price_invoice_match: "trackingPriceInvoiceMatch",
 };
+// These custom fields store stable option IDs rather than a duplicated label
+// string. This keeps renames and recolours independent from client data.
+const CLIENT_CUSTOM_OPTION_ID_FIELD_BY_CODE: Record<string, string> = {
+  moon_cake: "moonCakeOptionId",
+};
 async function canManageLabels() {
   const caller = await createClient();
   const {
@@ -149,6 +154,20 @@ async function usageFor(
   optionId: string,
   matchedById: boolean,
 ) {
+  const customOptionIdField = CLIENT_CUSTOM_OPTION_ID_FIELD_BY_CODE[code];
+  if (customOptionIdField) {
+    const { data, error } = await supabaseAdmin
+      .from("clients")
+      .select("id, custom_fields");
+    if (error) return { error: error.message, ids: new Set<string>() };
+    return {
+      ids: new Set(
+        (data ?? [])
+          .filter((row) => row.custom_fields?.[customOptionIdField] === optionId)
+          .map((row) => row.id),
+      ),
+    };
+  }
   const trackingField = TRACKING_CUSTOM_FIELD_BY_CODE[code];
   if (trackingField) {
     const { data, error } = await supabaseAdmin
@@ -213,6 +232,27 @@ async function clearUsage(
   optionId: string,
   matchedById: boolean,
 ) {
+  const customOptionIdField = CLIENT_CUSTOM_OPTION_ID_FIELD_BY_CODE[code];
+  if (customOptionIdField) {
+    const { data, error } = await supabaseAdmin
+      .from("clients")
+      .select("id, custom_fields");
+    if (error) return error;
+    for (const row of data ?? []) {
+      if (row.custom_fields?.[customOptionIdField] !== optionId) continue;
+      const { error: updateError } = await supabaseAdmin
+        .from("clients")
+        .update({
+          custom_fields: {
+            ...(row.custom_fields ?? {}),
+            [customOptionIdField]: "",
+          },
+        })
+        .eq("id", row.id);
+      if (updateError) return updateError;
+    }
+    return null;
+  }
   const trackingField = TRACKING_CUSTOM_FIELD_BY_CODE[code];
   if (trackingField) {
     const { data, error } = await supabaseAdmin
@@ -295,6 +335,7 @@ export async function POST(request: NextRequest) {
       "overall_payment_status",
       "subitem_subprogress",
       ...Object.keys(TRACKING_CUSTOM_FIELD_BY_CODE),
+      ...Object.keys(CLIENT_CUSTOM_OPTION_ID_FIELD_BY_CODE),
     ].includes(code)
   ) {
     return NextResponse.json(

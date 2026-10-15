@@ -322,6 +322,7 @@ export type ClientRowProps = {
   statusOptions: OptionEntry[];
   channelOptions: OptionEntry[];
   importanceOptions: OptionEntry[];
+  moonCakeOptions: OptionEntry[];
   progressOptions: OptionEntry[];
   onAddReplyStatus?: (name: string) => void | Promise<void>;
   onDeleteReplyStatus?: (name: string) => void | Promise<void>;
@@ -331,6 +332,11 @@ export type ClientRowProps = {
   onDeleteChannel?: (name: string) => void | Promise<void>;
   onAddImportance?: (name: string) => void | Promise<void>;
   onDeleteImportance?: (name: string) => void | Promise<void>;
+  onAddMoonCake?: (name: string) => void | Promise<void>;
+  onDeleteMoonCake?: (
+    name: string,
+    optionId?: string,
+  ) => void | Promise<void>;
   onAddProgress?: (name: string) => void | Promise<void>;
   onDeleteProgress?: (name: string) => void | Promise<void>;
   paymentOptions: OptionEntry[];
@@ -487,6 +493,7 @@ export function ClientRow({
   statusOptions,
   channelOptions,
   importanceOptions,
+  moonCakeOptions,
   progressOptions,
   onAddReplyStatus,
   onDeleteReplyStatus,
@@ -496,6 +503,8 @@ export function ClientRow({
   onDeleteChannel,
   onAddImportance,
   onDeleteImportance,
+  onAddMoonCake,
+  onDeleteMoonCake,
   onAddProgress,
   onDeleteProgress,
   paymentOptions,
@@ -1910,6 +1919,9 @@ export function ClientRow({
   const clientCreatedTooltip = client.createdAt
     ? `${creatorLabel} on ${new Date(client.createdAt).toLocaleDateString("en-GB")} at ${new Date(client.createdAt).toLocaleTimeString("en-GB")}`
     : "";
+  const moonCakeOption = moonCakeOptions.find(
+    (option) => option.id === client.customFields?.moonCakeOptionId,
+  );
 
   // activity log text
   function displayLogValue(value: unknown) {
@@ -4708,6 +4720,42 @@ export function ClientRow({
             </div>
           </>
         )}
+        <div
+          data-client-column="moonCake"
+          className="overflow-hidden whitespace-nowrap text-ellipsis !text-center border-r border-[#D0D4E4] p-0 h-[33.1px] flex-shrink-0"
+          style={{
+            minWidth: colWidth.moonCake,
+            width: colWidth.moonCake,
+            order: columnOrderMap.moonCake ?? 18.9,
+          }}
+        >
+          <StatusBadge
+            value={moonCakeOption?.value ?? ""}
+            onChange={(_value, option) =>
+              onUpdate({
+                customFields: {
+                  ...(client.customFields ?? {}),
+                  // Persist only the stable option ID. The rendered label is
+                  // resolved from the Mooncake option group above.
+                  moonCakeOptionId: option?.id ?? "",
+                },
+              })
+            }
+            options={moonCakeOptions}
+            onAddOption={onAddMoonCake}
+            onDeleteOption={onDeleteMoonCake}
+            manageLabel="Mooncake"
+            onUpdateOptionColor={(name, color, optionId) =>
+              onUpdateOptionColor?.("moon_cake", name, color, optionId)
+            }
+            onRenameOption={(oldName, newName, optionId) =>
+              onRenameOption?.("moon_cake", oldName, newName, optionId)
+            }
+            onReorderOptions={(values) =>
+              onReorderOptions?.("moon_cake", values)
+            }
+          />
+        </div>
         <div
           data-client-column="dateCreated"
           className="flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis"
