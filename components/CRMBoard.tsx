@@ -492,6 +492,7 @@ interface CRMBoardProps {
     profileId: string,
   ) => void;
   labelOptionsVersion?: number;
+  boardMetadataVersion?: number;
   groupVersion?: number;
 }
 
@@ -724,6 +725,7 @@ export function CRMBoard({
   setSubitemAssignees,
   searchTarget,
   labelOptionsVersion = 0,
+  boardMetadataVersion = 0,
   groupVersion = 0,
   openClientId,
   onOpenClientHandled,
@@ -1178,6 +1180,24 @@ export function CRMBoard({
     setBlacklistedPhones(new Set(numbers));
     setBlacklistedClientIds(new Set(linkedClientIds));
   }, []);
+
+  // A remote custom-column change used to remount the whole CRM Board through
+  // a React key in the parent. Refresh only this metadata so active editors,
+  // expanded rows, selections, and scroll position remain intact.
+  useEffect(() => {
+    if (boardMetadataVersion === 0) return;
+    let active = true;
+    void fetchCustomColumns()
+      .then((columns) => {
+        if (active) setCustomColumns(columns);
+      })
+      .catch((error) =>
+        console.error("Failed to refresh custom columns", error),
+      );
+    return () => {
+      active = false;
+    };
+  }, [boardMetadataVersion]);
 
   useEffect(() => {
     void refreshBlacklist().catch((error) =>

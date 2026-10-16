@@ -955,7 +955,10 @@ export default function Page() {
   );
 
   const reloadClients = useCallback(async (options: ReloadClientsOptions = {}) => {
-    const preservePagination = options.preservePagination === true;
+    // Reconciliation is invoked by many normal Board actions. Keep every page
+    // the user has already loaded unless a caller explicitly needs a new
+    // result set (for example, a search/filter/sort change).
+    const preservePagination = options.preservePagination !== false;
     const targetGroupIds = Array.from(
       new Set((options.targetGroupIds ?? []).filter(Boolean)),
     );
@@ -1220,7 +1223,24 @@ export default function Page() {
       );
       setClientsLoaded(true);
       setHasLoadedInitialClients(true);
-      if (!preservePagination) setGroupPageState(nextGroupPageState);
+      setGroupPageState((current) => {
+        if (!preservePagination) return nextGroupPageState;
+
+        // Preserve each group's pagination/loading state while still making
+        // its total and "has more" indicator authoritative.
+        const next = { ...current };
+        for (const [groupId, state] of Object.entries(nextGroupPageState)) {
+          const existing = current[groupId];
+          next[groupId] = existing
+            ? {
+                ...existing,
+                total: state.total,
+                hasMore: existing.loadedCount < state.total,
+              }
+            : state;
+        }
+        return next;
+      });
       const resolvedQueryKey = JSON.stringify(boardQuery);
       displayedBoardQueryKeyRef.current = resolvedQueryKey;
       if (!preservePagination) {
@@ -1396,7 +1416,13 @@ export default function Page() {
         // `preservePagination` only merges incoming rows over existing ones;
         // that is intentionally unsuitable for moves because it would retain
         // the client in its old group when the refreshed page omits it.
-        await reloadClients({ targetGroupIds: [...targetGroupIds] });
+        await reloadClients({
+          targetGroupIds: [...targetGroupIds],
+          // A remote membership change can make a row enter, leave, or move
+          // within a filtered result set. This is one of the few cases where
+          // replacing the query snapshot is required for correctness.
+          preservePagination: false,
+        });
         return;
       }
 
@@ -1840,7 +1866,8 @@ export default function Page() {
       skipBoardReloadForQueryKeyRef.current = null;
       return;
     }
-    void reloadClients();
+    // A Board-query change intentionally defines a new result set.
+    void reloadClients({ preservePagination: false });
   }, [boardQuery, reloadClients]);
 
   useEffect(() => {
@@ -2085,7 +2112,6 @@ export default function Page() {
       case "crm":
         return (
           <CRMBoard
-            key={crmMetadataVersion}
             clients={clients}
             expandedIds={expandedClientIds}
             setExpandedIds={setExpandedClientIds}
@@ -2117,6 +2143,7 @@ export default function Page() {
             detailViewTarget={crmDetailTarget}
             onDetailViewTargetChange={updateCrmDetailLink}
             labelOptionsVersion={labelOptionsVersion}
+            boardMetadataVersion={crmMetadataVersion}
             groupVersion={groupVersion}
             onOpenCustomerProfile={openCustomerProfile}
           />
