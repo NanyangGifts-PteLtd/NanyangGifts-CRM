@@ -889,6 +889,13 @@ export function CRMBoard({
   >({});
   const clientDetailHydrationRequestsRef = useRef(new Map<string, Promise<void>>());
   const hydratedClientCustomFieldsRef = useRef(new Set<string>());
+  // Custom fields are stored as one JSON object. Keep a local, merged source
+  // of truth while writes are queued so two rapid field changes cannot each
+  // save an older copy of that object over the other.
+  const clientCustomFieldsRef = useRef(new Map<string, Record<string, string>>());
+  const pendingCustomFieldValuesRef = useRef(
+    new Map<string, Map<string, string>>(),
+  );
   const [autoEditClientNameId, setAutoEditClientNameId] = useState<
     string | null
   >(null);
@@ -2837,18 +2844,33 @@ export function CRMBoard({
   }, [mergedHeaderCols, currentUserId, clientWidthsHydrated]);
 
   const updateClientCustomField = useCallback(
-    async (clientId: string, columnId: string, value: string) => {
+    async (
+      clientId: string,
+      columnId: string,
+      value: string,
+      options?: { throwOnError?: boolean },
+    ) => {
       const targetClient = clients.find((c) => c.id === clientId);
       if (!targetClient) return;
 
+      const pendingValues =
+        pendingCustomFieldValuesRef.current.get(clientId) ?? new Map<string, string>();
+      pendingValues.set(columnId, value);
+      pendingCustomFieldValuesRef.current.set(clientId, pendingValues);
       const nextCustomFields = {
-        ...(targetClient.customFields ?? {}),
+        ...(clientCustomFieldsRef.current.get(clientId) ?? targetClient.customFields ?? {}),
         [columnId]: value,
       };
+      clientCustomFieldsRef.current.set(clientId, nextCustomFields);
 
       setClients((prev) =>
         prev.map((c) =>
-          c.id === clientId ? { ...c, customFields: nextCustomFields } : c,
+          c.id === clientId
+            ? {
+                ...c,
+                customFields: { ...(c.customFields ?? {}), [columnId]: value },
+              }
+            : c,
         ),
       );
 
@@ -2858,11 +2880,48 @@ export function CRMBoard({
         );
       } catch (error) {
         console.error("Failed to update client custom field", error);
-        void reloadClients();
+        // Preserve any later custom-field edits while undoing only this
+        // failed optimistic value.
+        const previousValue = targetClient.customFields?.[columnId];
+        const latestFields = clientCustomFieldsRef.current.get(clientId);
+        if (latestFields?.[columnId] === value) {
+          const restoredFields = { ...latestFields };
+          if (previousValue === undefined) delete restoredFields[columnId];
+          else restoredFields[columnId] = previousValue;
+          clientCustomFieldsRef.current.set(clientId, restoredFields);
+          setClients((current) =>
+            current.map((client) =>
+              client.id === clientId && client.customFields?.[columnId] === value
+                ? { ...client, customFields: restoredFields }
+                : client,
+            ),
+          );
+        }
+        if (options?.throwOnError) throw error;
+      } finally {
+        // Keep this field's optimistic value through the Realtime settle
+        // window. It prevents an older hydration from rubberbanding a newly
+        // added attachment icon, while still allowing later edits to win.
+        window.setTimeout(() => {
+          const pending = pendingCustomFieldValuesRef.current.get(clientId);
+          if (!pending || pending.get(columnId) !== value) return;
+          pending.delete(columnId);
+          if (!pending.size) pendingCustomFieldValuesRef.current.delete(clientId);
+        }, 3000);
       }
     },
-    [clients, reloadClients, setClients],
+    [clients, setClients],
   );
+
+  useEffect(() => {
+    for (const client of clients) {
+      const pending = pendingCustomFieldValuesRef.current.get(client.id);
+      clientCustomFieldsRef.current.set(client.id, {
+        ...(client.customFields ?? {}),
+        ...(pending ? Object.fromEntries(pending) : {}),
+      });
+    }
+  }, [clients]);
 
   // Labels are public-to-internal Board configuration. RLS now authorizes
   // these reads directly, avoiding the previous per-label API/service-role

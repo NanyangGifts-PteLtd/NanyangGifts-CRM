@@ -1172,10 +1172,59 @@ export async function fetchLeanBoardClientBundle(
   });
   if (error) throw error;
 
-  return mapHydratedClientRpcRows(
+  return hydrateBoardAttachmentMetadata(mapHydratedClientRpcRows(
     (data ?? []) as HydratedClientRpcRow[],
     orderedIds,
-  );
+  ));
+}
+
+// The lean Board RPC deliberately omits attachment metadata from its main
+// payload. Attachments are still visible Board columns, though, so merge only
+// their small JSON metadata back in with one set-based lookup. This avoids
+// sending file bytes or the rest of a client's custom-field payload while
+// ensuring a normal Board refresh cannot erase an existing preview icon.
+const BOARD_ATTACHMENT_CUSTOM_FIELD_KEYS = [
+  "logoRequirementsFile",
+  "filesMiscellaneous",
+  "closedLeadFiles",
+] as const;
+
+async function hydrateBoardAttachmentMetadata(
+  hydration: HydratedClientBundle,
+): Promise<HydratedClientBundle> {
+  const clientIds = hydration.clients.map((client) => client.id);
+  if (!clientIds.length) return hydration;
+
+  const { data, error } = await supabase
+    .from("clients")
+    .select("id, custom_fields")
+    .in("id", clientIds);
+  if (error) throw error;
+
+  const attachmentFieldsByClientId = new Map<string, Record<string, string>>();
+  for (const row of data ?? []) {
+    const customFields = (row.custom_fields ?? {}) as Record<string, string>;
+    const attachmentFields = Object.fromEntries(
+      BOARD_ATTACHMENT_CUSTOM_FIELD_KEYS.flatMap((key) =>
+        customFields[key] === undefined ? [] : [[key, customFields[key]]],
+      ),
+    );
+    if (Object.keys(attachmentFields).length)
+      attachmentFieldsByClientId.set(String(row.id), attachmentFields);
+  }
+
+  return {
+    ...hydration,
+    clients: hydration.clients.map((client) => {
+      const attachmentFields = attachmentFieldsByClientId.get(client.id);
+      return attachmentFields
+        ? {
+            ...client,
+            customFields: { ...client.customFields, ...attachmentFields },
+          }
+        : client;
+    }),
+  };
 }
 
 function mapHydratedClientRpcRows(
@@ -1606,7 +1655,9 @@ export async function fetchHydratedClientGroupPage(
 
   const rows = (data ?? []) as HydratedBoardPageRpcRow[];
   const orderedIds = rows.map((row) => String(row.client_id));
-  const hydration = mapHydratedClientRpcRows(rows, orderedIds);
+  const hydration = await hydrateBoardAttachmentMetadata(
+    mapHydratedClientRpcRows(rows, orderedIds),
+  );
   const total = Number(rows[0]?.total_count ?? 0);
 
   return {

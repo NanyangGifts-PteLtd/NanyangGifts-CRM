@@ -11,7 +11,7 @@ import {
   PaymentRow,
   Profile,
 } from "../../app/types";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   ChevronDown,
@@ -413,6 +413,7 @@ export type ClientRowProps = {
     clientId: string,
     columnId: string,
     value: string,
+    options?: { throwOnError?: boolean },
   ) => void | Promise<void>;
   currentUserRole?: string | null;
   currentUserId?: string | null;
@@ -846,6 +847,10 @@ export function ClientRow({
   const [attachmentPreview, setAttachmentPreview] = useState<string | null>(
     null,
   );
+  const [optimisticAttachmentItems, setOptimisticAttachmentItems] = useState<
+    Record<string, AttachmentItem[]>
+  >({});
+  const optimisticAttachmentTimers = useRef<Record<string, number>>({});
   const [pendingAttachmentRemoval, setPendingAttachmentRemoval] = useState<{
     fieldKey: string;
     id: string;
@@ -1533,6 +1538,15 @@ export function ClientRow({
     return () => document.removeEventListener("mousedown", handler);
   }, [attachmentSourceMenu]);
 
+  useEffect(
+    () => () => {
+      Object.values(optimisticAttachmentTimers.current).forEach((timer) =>
+        window.clearTimeout(timer),
+      );
+    },
+    [],
+  );
+
   // normalise dates
   function toDateInputValue(value: unknown): string {
     if (!value) return "";
@@ -1649,11 +1663,47 @@ export function ClientRow({
       return [];
     };
 
-    const items = [...parseItems(), ...readOnlyItems];
-    const saveItems = (nextItems: AttachmentItem[]) =>
-      updateClientCustomField(client.id, fieldKey, JSON.stringify(nextItems));
+    const persistedItems = [...parseItems(), ...readOnlyItems];
+    const items = optimisticAttachmentItems[fieldKey] ?? persistedItems;
+    const saveItems = async (nextItems: AttachmentItem[]) => {
+      // Rendering this local list through the short database/Realtime settle
+      // period prevents a preview icon from jumping back to an older list.
+      setOptimisticAttachmentItems((current) => ({
+        ...current,
+        [fieldKey]: nextItems,
+      }));
+      try {
+        await updateClientCustomField(
+          client.id,
+          fieldKey,
+          JSON.stringify(nextItems),
+          { throwOnError: true },
+        );
+      } catch (error) {
+        setOptimisticAttachmentItems((current) => {
+          const next = { ...current };
+          delete next[fieldKey];
+          return next;
+        });
+        throw error;
+      }
+      const existingTimer = optimisticAttachmentTimers.current[fieldKey];
+      if (existingTimer !== undefined) window.clearTimeout(existingTimer);
+      optimisticAttachmentTimers.current[fieldKey] = window.setTimeout(() => {
+        setOptimisticAttachmentItems((current) => {
+          const next = { ...current };
+          delete next[fieldKey];
+          return next;
+        });
+        delete optimisticAttachmentTimers.current[fieldKey];
+      }, 3100);
+    };
     const addItem = (item: AttachmentItem) => {
-      saveItems([...items, item]);
+      void saveItems([...items, item]).catch((error) =>
+        toast.error("Attachment could not be saved", {
+          description: error instanceof Error ? error.message : "Please try again.",
+        }),
+      );
       setAttachmentSourceMenu(null);
       setAttachmentLinkDialog(null);
     };
@@ -1667,7 +1717,7 @@ export function ClientRow({
             { clientId: client.id },
           )
         ).map((file) => ({ ...file, kind: "file" as const }));
-        if (nextItems.length) saveItems([...items, ...nextItems]);
+        if (nextItems.length) await saveItems([...items, ...nextItems]);
       } finally {
         setAttachmentSourceMenu(null);
       }
