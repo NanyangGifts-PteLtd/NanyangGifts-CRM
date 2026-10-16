@@ -3811,8 +3811,9 @@ export function ClientRow({
 
         <div
           data-client-column="followUp"
-          className="flex-1 min-w-0 py-1 overflow-hidden whitespace-nowrap text-ellipsis !text-center border-r border-1 border-[#D0D4E4] transition transform active:scale-95 duration-150"
+          className="flex h-[30px] min-w-0 items-center overflow-hidden whitespace-nowrap text-ellipsis !text-center border-r border-1 border-[#D0D4E4] transition transform active:scale-95 duration-150"
           style={{
+            height: 30,
             minWidth: colWidth.followUp,
             width: colWidth.followUp,
             order: columnOrderMap.followUp ?? 4,

@@ -48,6 +48,7 @@ next-env.d.ts
 # local migration files
 migrations/*
 /.local-migration/
+migration-events/*
 
 # Supabase CLI machine-local link and version state
 /supabase/.temp/
