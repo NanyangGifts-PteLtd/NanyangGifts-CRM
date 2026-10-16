@@ -83,22 +83,50 @@ export function AppLiveRefresh({
         old: RecordRow;
       },
     ) => {
-      // A client deletion soft-deletes its subitems too. The Board has already
-      // removed those rows optimistically, so reconciling their individual
-      // Realtime echoes can lack a parent client ID and force an unnecessary
-      // full Board reload. The client event itself is still retained to update
-      // group counts; only a locally protected subitem echo is redundant.
-      if (table === "subitems") {
-        const subitemId =
-          typeof payload.new.id === "string"
-            ? payload.new.id
-            : typeof payload.old.id === "string"
-              ? payload.old.id
-              : null;
-        if (subitemId && isBoardRecordProtected("subitem", subitemId)) {
-          return;
+      // A local write is already reflected optimistically. Realtime normally
+      // echoes it back within the protection window; treating that echo as a
+      // fresh remote change schedules a later hydration which replaces the
+      // edited row and causes a distracting flicker. Keep the local value
+      // authoritative through the settle window instead. This also covers
+      // assignment-table echoes caused by a locally protected client/subitem.
+      const record = (() => {
+        if (table === "clients") {
+          const id =
+            typeof payload.new.id === "string"
+              ? payload.new.id
+              : typeof payload.old.id === "string"
+                ? payload.old.id
+                : null;
+          return id ? { kind: "client" as const, id } : null;
         }
-      }
+        if (table === "subitems") {
+          const id =
+            typeof payload.new.id === "string"
+              ? payload.new.id
+              : typeof payload.old.id === "string"
+                ? payload.old.id
+                : null;
+          return id ? { kind: "subitem" as const, id } : null;
+        }
+        if (table === "client_assignees") {
+          const id =
+            typeof payload.new.client_id === "string"
+              ? payload.new.client_id
+              : typeof payload.old.client_id === "string"
+                ? payload.old.client_id
+                : null;
+          return id ? { kind: "client" as const, id } : null;
+        }
+        const id =
+          typeof payload.new.subitem_id === "string"
+            ? payload.new.subitem_id
+            : typeof payload.old.subitem_id === "string"
+              ? payload.old.subitem_id
+              : null;
+        return id ? { kind: "subitem" as const, id } : null;
+      })();
+      if (record && isBoardRecordProtected(record.kind, record.id)) return;
+
       pendingRecordChanges.current.push({ table, ...payload });
       schedule("records");
     };
