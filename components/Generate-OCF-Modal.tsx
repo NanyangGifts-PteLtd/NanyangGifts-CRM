@@ -60,6 +60,41 @@ type GenerateOcfModalProps = {
     companyName: string,
   ) => Promise<{ confirmed: boolean; value: string }>;
 };
+
+function showOcfGenerationLoading(target: Window) {
+  // The tab must be opened synchronously with the user's click to satisfy
+  // popup blockers. Replace its otherwise blank about:blank document with a
+  // clear progress state while uploads and OCF creation complete.
+  target.document.open();
+  target.document.write(`<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Generating Order Confirmation Form</title>
+    <style>
+      * { box-sizing: border-box; }
+      body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #f8fafc; color: #172554; font-family: Arial, sans-serif; }
+      main { width: min(440px, calc(100% - 40px)); padding: 42px 36px; background: #fff; border: 1px solid #dbeafe; border-radius: 16px; box-shadow: 0 16px 42px rgba(15, 23, 42, .12); text-align: center; }
+      .mark { width: 42px; height: 42px; margin: 0 auto 18px; display: grid; place-items: center; border-radius: 10px; background: #1294e8; color: #fff; font-size: 24px; font-weight: 800; }
+      h1 { margin: 0; font-size: 20px; color: #0f172a; }
+      p { margin: 12px 0 0; color: #64748b; font-size: 14px; line-height: 1.55; }
+      .spinner { width: 30px; height: 30px; margin: 24px auto 0; border: 3px solid #dbeafe; border-top-color: #1294e8; border-radius: 50%; animation: spin .85s linear infinite; }
+      @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+  </head>
+  <body>
+    <main aria-live="polite">
+      <div class="mark" aria-hidden="true">N</div>
+      <h1>Generating Order Confirmation Form</h1>
+      <p>Uploading artwork and preparing your OCF. This page will open automatically when it is ready.</p>
+      <div class="spinner" aria-label="Loading"></div>
+    </main>
+  </body>
+</html>`);
+  target.document.close();
+}
+
 function toLeadTimeNumber(value: string | number | null | undefined) {
   const num = Number(value);
   return Number.isFinite(num) ? num : null;
@@ -485,6 +520,7 @@ export function GenerateOcfModal({
     // Waiting for artwork uploads before calling window.open allows popup
     // blockers to reject an otherwise successful OCF creation.
     const ocfWindow = window.open("about:blank", "_blank");
+    if (ocfWindow) showOcfGenerationLoading(ocfWindow);
     setCreating(true);
 
     try {
