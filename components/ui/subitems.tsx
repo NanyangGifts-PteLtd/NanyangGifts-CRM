@@ -938,7 +938,17 @@ export function SubitemsTable({
       );
     }
   }, [hasPaymentEligibleSubitems, tableMode]);
-  const togglePaymentView = () => {
+  const togglePaymentView = (clickedSubitem?: Subitem) => {
+    if (
+      !hasPaymentEligibleSubitems ||
+      (clickedSubitem && !isPaymentViewEligible(clickedSubitem))
+    ) {
+      toast.warning("This subitem has not been awarded yet", {
+        description:
+          "Timeline and payment details are available once the subitem has reached the Awarded phase.",
+      });
+      return;
+    }
     if (tableMode === "payment") {
       setTableMode(null);
       setShowSubpaymentTables(false);
@@ -952,13 +962,6 @@ export function SubitemsTable({
       );
       return;
     }
-    if (!hasPaymentEligibleSubitems) {
-      toast.warning("No eligible payment rows", {
-        description:
-          "Payment columns are available once a subitem reaches the Awarded phase.",
-      });
-      return;
-    }
     setTableMode("payment");
   };
   const toggleClientSubpayments = (clickedSubitem: Subitem) => {
@@ -968,7 +971,7 @@ export function SubitemsTable({
     ) {
       toast.warning("This subitem has not been awarded yet", {
         description:
-          "Subpayments are available once the subitem has reached the Awarded phase.",
+          "Timeline and payment details are available once the subitem has reached the Awarded phase.",
       });
       return;
     }
@@ -2383,8 +2386,7 @@ export function SubitemsTable({
             <button
               type="button"
               data-view-action
-              onClick={togglePaymentView}
-              disabled={!hasPaymentEligibleSubitems}
+              onClick={() => togglePaymentView(sub)}
               className={`flex items-center justify-center rounded-sm border p-1 transition active:scale-95 ${
                 tableMode === "payment"
                   ? "border-[#f291b6] bg-[#f291b6] text-white"
@@ -2403,7 +2405,6 @@ export function SubitemsTable({
               type="button"
               data-view-action
               onClick={() => toggleClientSubpayments(sub)}
-              disabled={!hasPaymentEligibleSubitems}
               className={`flex items-center justify-center rounded-sm border p-1 transition active:scale-95 ${
                 tableMode === "payment" && showSubpaymentTables
                   ? "border-[#7a9bc9] bg-[#7a9bc9] text-white"
