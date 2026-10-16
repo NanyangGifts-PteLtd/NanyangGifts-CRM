@@ -2310,7 +2310,10 @@ export default function Page() {
           onSelectSearchResult={selectSearchResult}
         />
 
-        <main ref={mainScrollRef} className="min-h-0 flex-1 overflow-auto">
+        <main
+          ref={mainScrollRef}
+          className="min-h-0 flex-1 overflow-auto"
+        >
           {renderPanel()}
         </main>
       </div>

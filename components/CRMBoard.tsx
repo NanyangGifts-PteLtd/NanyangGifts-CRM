@@ -4,6 +4,7 @@ import React, {
   useState,
   useRef,
   useEffect,
+  useLayoutEffect,
   useCallback,
   useMemo,
 } from "react";
@@ -1639,8 +1640,30 @@ export function CRMBoard({
   const [showBoardMoreMenu, setShowBoardMoreMenu] = useState(false);
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [trackingView, setTrackingView] = useState(false);
+  const boardToolbarRef = useRef<HTMLDivElement>(null);
+  const [boardToolbarWidth, setBoardToolbarWidth] = useState<number | null>(
+    null,
+  );
   const [boardSort, setBoardSort] =
     useState<BoardSortSetting>(DEFAULT_BOARD_SORT);
+
+  useLayoutEffect(() => {
+    const toolbar = boardToolbarRef.current;
+    const scrollViewport = toolbar?.closest("main");
+    if (!scrollViewport) return;
+
+    const updateWidth = () => {
+      // The board shell reserves 3.5rem on the left. Measure the real scroll
+      // viewport so the toolbar also responds to sidebar transitions and
+      // monitor/browser resizing without extending beyond the visible edge.
+      setBoardToolbarWidth(Math.max(0, scrollViewport.clientWidth - 56));
+    };
+
+    updateWidth();
+    const observer = new ResizeObserver(updateWidth);
+    observer.observe(scrollViewport);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     if (!pendingCloseLead) {
@@ -10229,7 +10252,18 @@ export function CRMBoard({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      <div className="flex items-center gap-2 px-2 py-1 border-b border-gray-200 bg-white flex-shrink-0">
+      <div
+        ref={boardToolbarRef}
+        className="sticky left-14 top-0 z-[80] flex flex-shrink-0 items-center gap-2 border-b border-gray-200 bg-white px-2 py-1 shadow-[0_1px_0_rgba(226,232,240,0.75)]"
+        style={
+          boardToolbarWidth === null
+            ? undefined
+            : {
+                width: boardToolbarWidth,
+                maxWidth: boardToolbarWidth,
+              }
+        }
+      >
         <AddGroupModal
           open={showAddGroupModal}
           onClose={() => setShowAddGroupModal(false)}
@@ -10251,14 +10285,6 @@ export function CRMBoard({
               <Plus size={16} /> New client
             </>
           )}
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setTrackingView((enabled) => !enabled)}
-          className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors ${trackingView ? "bg-[#0f8da8] text-white" : "text-slate-700 hover:bg-slate-100"}`}
-        >
-          Tracking View
         </button>
 
         <div ref={boardSearchRef} className="relative">
@@ -11160,6 +11186,14 @@ export function CRMBoard({
         </div>
 
         <div className="flex-1" />
+
+        <button
+          type="button"
+          onClick={() => setTrackingView((enabled) => !enabled)}
+          className={`flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors ${trackingView ? "bg-[#0f8da8] text-white" : "text-slate-700 hover:bg-slate-100"}`}
+        >
+          Tracking View
+        </button>
       </div>
 
       <AlertDialog
