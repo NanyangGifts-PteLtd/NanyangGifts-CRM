@@ -52,3 +52,6 @@ migration-events/*
 
 # Supabase CLI machine-local link and version state
 /supabase/.temp/
+
+# Scripts
+scripts/*
