@@ -1107,7 +1107,10 @@ export default function Page() {
             // This can be a stale response caused by a client move. Keep
             // the destination group in the retry; using the global first
             // page alone can otherwise leave its count ahead of its rows.
-            void reloadClients({ targetGroupIds });
+            // This retry follows a stale response, commonly after a move.
+            // Replacing the affected query snapshot is required so a row can
+            // enter its destination group or leave its previous one.
+            void reloadClients({ targetGroupIds, preservePagination: false });
           }, 100);
         }
         return;

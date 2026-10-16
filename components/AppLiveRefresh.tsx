@@ -7,7 +7,7 @@ import {
   isBoardRecordProtected,
 } from "@/lib/board-write-coordinator";
 
-type RefreshKind = "records" | "profiles" | "groups" | "notifications" | "boardMetadata" | "labelOptions" | "roundRobin";
+type RefreshKind = "records" | "protectedRecords" | "profiles" | "groups" | "notifications" | "boardMetadata" | "labelOptions" | "roundRobin";
 
 type RecordRow = Record<string, unknown>;
 
@@ -39,6 +39,10 @@ export function AppLiveRefresh({
 }) {
   const timers = useRef<Partial<Record<RefreshKind, number>>>({});
   const pendingRecordChanges = useRef<LiveRecordChange[]>([]);
+  // Realtime does not tell us whether a change originated in this browser.
+  // Keep protected echoes out of the active edit, but retain them for one
+  // quiet, targeted reconciliation when the write's settle window ends.
+  const deferredProtectedRecordChanges = useRef<LiveRecordChange[]>([]);
 
   useEffect(() => {
     const supabase = createClient();
@@ -75,6 +79,32 @@ export function AppLiveRefresh({
         if (kind === "roundRobin") onRoundRobinRefresh();
       }, delay);
     };
+    const scheduleDeferredProtectedRecords = () => {
+      const current = timers.current.protectedRecords;
+      if (current !== undefined) window.clearTimeout(current);
+      const protectionDelay = boardProtectionDelay();
+      if (!Number.isFinite(protectionDelay)) {
+        delete timers.current.protectedRecords;
+        return;
+      }
+      timers.current.protectedRecords = window.setTimeout(() => {
+        delete timers.current.protectedRecords;
+        if (disposed) return;
+        if (boardProtectionDelay() > 0) {
+          scheduleDeferredProtectedRecords();
+          return;
+        }
+        pendingRecordChanges.current.push(
+          ...deferredProtectedRecordChanges.current.splice(0),
+        );
+        schedule("records");
+      }, Math.max(350, protectionDelay + 100));
+    };
+    const handleBoardWriteSettled = () => {
+      if (deferredProtectedRecordChanges.current.length)
+        scheduleDeferredProtectedRecords();
+    };
+    window.addEventListener("crm:board-write-settled", handleBoardWriteSettled);
     const scheduleRecordChange = (
       table: LiveRecordChange["table"],
       payload: {
@@ -125,9 +155,14 @@ export function AppLiveRefresh({
               : null;
         return id ? { kind: "subitem" as const, id } : null;
       })();
-      if (record && isBoardRecordProtected(record.kind, record.id)) return;
+      const change = { table, ...payload } as LiveRecordChange;
+      if (record && isBoardRecordProtected(record.kind, record.id)) {
+        deferredProtectedRecordChanges.current.push(change);
+        scheduleDeferredProtectedRecords();
+        return;
+      }
 
-      pendingRecordChanges.current.push({ table, ...payload });
+      pendingRecordChanges.current.push(change);
       schedule("records");
     };
 
@@ -160,6 +195,8 @@ export function AppLiveRefresh({
       Object.values(timers.current).forEach((timer) => window.clearTimeout(timer));
       timers.current = {};
       pendingRecordChanges.current = [];
+      deferredProtectedRecordChanges.current = [];
+      window.removeEventListener("crm:board-write-settled", handleBoardWriteSettled);
       if (channel) supabase.removeChannel(channel);
     };
   }, [onBoardMetadataRefresh, onGanttRecordsRefresh, onGroupsRefresh, onLabelOptionsRefresh, onNotificationsRefresh, onProfilesRefresh, onRecordsRefresh, onRoundRobinRefresh]);

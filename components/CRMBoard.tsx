@@ -453,7 +453,10 @@ interface CRMBoardProps {
   expandedIds: string[];
   setExpandedIds: React.Dispatch<React.SetStateAction<string[]>>;
   setClients: React.Dispatch<React.SetStateAction<Client[]>>;
-  reloadClients: () => Promise<void>;
+  reloadClients: (options?: {
+    preservePagination?: boolean;
+    targetGroupIds?: string[];
+  }) => Promise<void>;
   clientsLoaded?: boolean;
   boardQueryLoading?: boolean;
   hasMoreBoardQueryResults?: boolean;
@@ -4654,7 +4657,7 @@ export function CRMBoard({
           description:
             error instanceof Error ? error.message : "Please try again.",
         });
-        await reloadClients();
+        await reloadClients({ preservePagination: false });
       }
     },
     [
@@ -4709,10 +4712,10 @@ export function CRMBoard({
 
       try {
         await moveSubitemRow(movingSubitem.id, targetClientId);
-        await reloadClients();
+        await reloadClients({ preservePagination: false });
       } catch (error) {
         console.error("Failed to move subitem", error);
-        await reloadClients();
+        await reloadClients({ preservePagination: false });
         toast.error("Subitem could not be moved", {
           description:
             error instanceof Error
@@ -7587,7 +7590,26 @@ export function CRMBoard({
         }
         return true;
       } catch (error: any) {
-        void reloadClients();
+        // Restore the exact pre-edit row. A pagination-preserving refresh may
+        // not contain this row when it sits beyond a group's first page.
+        if (existingClient) {
+          const rollbackUpdates = Object.fromEntries(
+            Object.keys(nextUpdates).map((key) => [
+              key,
+              existingClient[key as keyof Client],
+            ]),
+          ) as Partial<Client>;
+          setClients((current) =>
+            current.map((client) =>
+              client.id === clientId &&
+              Object.entries(nextUpdates).every(
+                ([key, value]) => client[key as keyof Client] === value,
+              )
+                ? { ...client, ...rollbackUpdates }
+                : client,
+            ),
+          );
+        }
         console.error("Failed to update client", error);
         const isRlsError =
           error?.code === "42501" ||
@@ -7886,6 +7908,9 @@ export function CRMBoard({
         );
         return;
       }
+      const originalSubitem = clients
+        .find((client) => client.id === clientId)
+        ?.subitems.find((subitem) => subitem.id === subitemId);
       // Timeline tracking fields are the source of truth. Mirror their
       // comma-separated summaries immediately, rather than waiting for the
       // persisted timeline update and a subsequent client reload.
@@ -7923,7 +7948,29 @@ export function CRMBoard({
         if (optimisticUpdates.supplier !== undefined)
           window.dispatchEvent(new Event("crm:supplier-profiles-updated"));
       } catch (error: any) {
-        void reloadClients();
+        // Restore only the failed row. This is reliable for every loaded
+        // page and avoids disrupting the user's Board position.
+        if (originalSubitem) {
+          const rollbackUpdates = Object.fromEntries(
+            Object.keys(optimisticUpdates).map((key) => [
+              key,
+              originalSubitem[key as keyof Subitem],
+            ]),
+          ) as Partial<Subitem>;
+          setClients((current) =>
+            current.map((client) => ({
+              ...client,
+              subitems: client.subitems.map((subitem) =>
+                subitem.id === subitemId &&
+                Object.entries(optimisticUpdates).every(
+                  ([key, value]) => subitem[key as keyof Subitem] === value,
+                )
+                  ? { ...subitem, ...rollbackUpdates }
+                  : subitem,
+              ),
+            })),
+          );
+        }
         const message =
           error instanceof Error ? error.message : "Please try again.";
         toast.error("Could not save the subitem update", {
@@ -7935,7 +7982,6 @@ export function CRMBoard({
     [
       canEditSubitemRecord,
       clients,
-      reloadClients,
       showAssignmentPermissionError,
     ],
   );
@@ -7946,7 +7992,7 @@ export function CRMBoard({
         const clientId = String(entry.meta?.deletedId ?? entry.clientId ?? "");
         if (!clientId) return;
         await restoreClientRow(clientId);
-        await reloadClients();
+        await reloadClients({ preservePagination: false });
         toast.success("Client deletion undone");
         return;
       }
@@ -7954,7 +8000,7 @@ export function CRMBoard({
         const subitemId = String(entry.meta?.deletedId ?? "");
         if (!subitemId) return;
         await restoreSubitemRow(subitemId);
-        await reloadClients();
+        await reloadClients({ preservePagination: false });
         toast.success("Subitem deletion undone");
         return;
       }
@@ -8112,7 +8158,7 @@ export function CRMBoard({
         setBinItems((items) =>
           items.filter((candidate) => candidate.id !== item.id),
         );
-        await reloadClients();
+        await reloadClients({ preservePagination: false });
         toast.success(
           `${item.type === "client" ? "Client" : "Subitem"} restored`,
         );
@@ -8751,7 +8797,7 @@ export function CRMBoard({
             ),
           ),
         );
-        await reloadClients();
+        await reloadClients({ preservePagination: false });
         toast.success("Clients moved", {
           description: `${selectedIds.size} selected client${selectedIds.size === 1 ? "" : "s"} were moved to the chosen group.`,
         });
@@ -8966,7 +9012,7 @@ export function CRMBoard({
             moveSubitemRow(subitemId, targetClientId),
           ),
         );
-        await reloadClients();
+        await reloadClients({ preservePagination: false });
         toast.success("Subitems moved", {
           description: `${subitemIds.length} subitem${subitemIds.length === 1 ? "" : "s"} moved to the selected client.`,
         });

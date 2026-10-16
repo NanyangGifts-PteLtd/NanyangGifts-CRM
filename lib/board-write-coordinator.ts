@@ -57,7 +57,11 @@ export function holdBoardRecordProtection(kind: RecordKind, id: string) {
     const current = pendingWrites.get(key);
     if (!current) return;
     current.count = Math.max(0, current.count - 1);
-    if (current.count === 0) current.protectUntil = Date.now() + SETTLE_GRACE_MS;
+    if (current.count === 0) {
+      current.protectUntil = Date.now() + SETTLE_GRACE_MS;
+      if (typeof window !== "undefined")
+        window.dispatchEvent(new Event("crm:board-write-settled"));
+    }
   };
 }
 
@@ -92,7 +96,11 @@ export async function enqueueBoardWrite<T>(
     const current = pendingWrites.get(key);
     if (current) {
       current.count = Math.max(0, current.count - 1);
-      if (current.count === 0) current.protectUntil = Date.now() + SETTLE_GRACE_MS;
+      if (current.count === 0) {
+        current.protectUntil = Date.now() + SETTLE_GRACE_MS;
+        if (typeof window !== "undefined")
+          window.dispatchEvent(new Event("crm:board-write-settled"));
+      }
     }
     if (writeQueues.get(key) === queued) writeQueues.delete(key);
   }
