@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
       ? await supabase
           .from("quickbooks_estimate_invoices")
           .select(
-            "id, estimate_generation_id, quickbooks_invoice_doc_number, invoice_date, due_date, subtotal, total, balance, link_source",
+            "id, estimate_generation_id, quickbooks_invoice_doc_number, invoice_date, due_date, subtotal, total, balance, is_voided, link_source",
           )
           .in("estimate_generation_id", quoteIds)
           .order("invoice_date", { ascending: false })
@@ -47,7 +47,7 @@ export async function GET(request: NextRequest) {
       await supabaseAdmin
         .from("quickbooks_client_invoices")
         .select(
-          "id, quickbooks_invoice_doc_number, invoice_date, due_date, subtotal, total, balance, link_source, last_synced_at",
+          "id, quickbooks_invoice_doc_number, invoice_date, due_date, subtotal, total, balance, is_voided, link_source, last_synced_at",
         )
         .eq("client_id", clientId)
         .order("invoice_date", { ascending: false });

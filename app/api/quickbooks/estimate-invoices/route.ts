@@ -114,7 +114,7 @@ export async function GET(request: NextRequest) {
     const { data: invoices, error } = await supabaseAdmin
       .from("quickbooks_estimate_invoices")
       .select(
-        "id, quickbooks_invoice_doc_number, invoice_date, due_date, subtotal",
+        "id, quickbooks_invoice_doc_number, invoice_date, due_date, subtotal, is_voided",
       )
       .eq("estimate_generation_id", generation.id)
       .order("invoice_date", { ascending: true });
@@ -252,19 +252,20 @@ export async function POST(request: NextRequest) {
     const quoteTaxTotal = numberOrNull(estimate?.TxnTaxDetail?.TotalTax) ?? 0;
     const quoteSubtotal =
       quoteTotal === null ? null : quoteTotal - quoteTaxTotal;
-    const invoiceTotal = rows.reduce(
+    const financialRows = rows.filter((row) => !row.is_voided);
+    const invoiceTotal = financialRows.reduce(
       (total, row) => total + (row.total ?? 0),
       0,
     );
-    const invoiceSubtotal = rows.reduce(
+    const invoiceSubtotal = financialRows.reduce(
       (total, row) => total + (row.subtotal ?? 0),
       0,
     );
-    const totalBalance = rows.reduce(
+    const totalBalance = financialRows.reduce(
       (total, row) => total + (row.balance ?? 0),
       0,
     );
-    const invoicePaymentLabel = !rows.length
+    const invoicePaymentLabel = !financialRows.length
       ? null
       : Math.abs(totalBalance) < 0.005
         ? await getSystemLabel(

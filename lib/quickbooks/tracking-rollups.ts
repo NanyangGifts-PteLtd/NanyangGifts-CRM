@@ -39,13 +39,13 @@ export async function refreshClientTrackingRollups(clientId: string) {
     quoteIds.length
       ? supabaseAdmin
           .from("quickbooks_estimate_invoices")
-          .select("quickbooks_invoice_doc_number, invoice_date, total, balance")
+          .select("estimate_generation_id, quickbooks_invoice_doc_number, invoice_date, total, balance, is_voided")
           .in("estimate_generation_id", quoteIds)
           .order("invoice_date", { ascending: false })
       : Promise.resolve({ data: [], error: null }),
     supabaseAdmin
       .from("quickbooks_client_invoices")
-      .select("quickbooks_invoice_doc_number, invoice_date, total, balance")
+      .select("quickbooks_invoice_doc_number, invoice_date, total, balance, is_voided")
       .eq("client_id", clientId)
       .order("invoice_date", { ascending: false }),
   ]);
@@ -63,10 +63,18 @@ export async function refreshClientTrackingRollups(clientId: string) {
     ),
   ).join(", ");
 
-  const paymentIds: Array<string | null> = activeQuotes.map((quote) =>
-    String(quote.invoice_payment_status_option_id ?? "") || null,
+  const quoteIdsWithActiveInvoices = new Set(
+    (quoteInvoicesResult.data ?? [])
+      .filter((invoice) => !invoice.is_voided)
+      .map((invoice) => invoice.estimate_generation_id),
   );
+  const paymentIds: Array<string | null> = activeQuotes
+    .filter((quote) => quoteIdsWithActiveInvoices.has(quote.id))
+    .map(
+      (quote) => String(quote.invoice_payment_status_option_id ?? "") || null,
+    );
   for (const invoice of directInvoicesResult.data ?? []) {
+    if (invoice.is_voided) continue;
     const total = Number(invoice.total ?? 0);
     const balance = Number(invoice.balance ?? 0);
     paymentIds.push(

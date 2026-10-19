@@ -147,13 +147,14 @@ export async function GET(request: NextRequest) {
           .upsert(rows, { onConflict: "estimate_generation_id,quickbooks_invoice_id" });
         if (error) throw error;
       }
-      const invoiceTotal = rows.reduce((sum, row) => sum + (row.total ?? 0), 0);
-      const invoiceSubtotal = rows.reduce((sum, row) => sum + (row.subtotal ?? 0), 0);
-      const totalBalance = rows.reduce((sum, row) => sum + (row.balance ?? 0), 0);
+      const financialRows = rows.filter((row) => !row.is_voided);
+      const invoiceTotal = financialRows.reduce((sum, row) => sum + (row.total ?? 0), 0);
+      const invoiceSubtotal = financialRows.reduce((sum, row) => sum + (row.subtotal ?? 0), 0);
+      const totalBalance = financialRows.reduce((sum, row) => sum + (row.balance ?? 0), 0);
       const quoteTotal = numberOrNull(estimate?.TotalAmt);
       const quoteTaxTotal = numberOrNull(estimate?.TxnTaxDetail?.TotalTax) ?? 0;
       const quoteSubtotal = quoteTotal === null ? null : quoteTotal - quoteTaxTotal;
-      const invoicePaymentLabel = !rows.length
+      const invoicePaymentLabel = !financialRows.length
         ? null
         : Math.abs(totalBalance) < 0.005
           ? paidPaymentLabel

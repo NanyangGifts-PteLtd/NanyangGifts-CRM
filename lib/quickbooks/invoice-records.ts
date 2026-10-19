@@ -7,11 +7,16 @@ export type QuickBooksInvoiceRecord = {
   DueDate?: string;
   TotalAmt?: number | string;
   Balance?: number | string;
+  PrivateNote?: string;
   TxnTaxDetail?: { TotalTax?: number | string };
   LinkedTxn?: Array<{ TxnId?: string; TxnType?: string }>;
   Line?: Array<{ LinkedTxn?: Array<{ TxnId?: string; TxnType?: string }> }>;
   [key: string]: unknown;
 };
+
+export function isVoidedInvoice(invoice: QuickBooksInvoiceRecord) {
+  return /^\s*voided(?:\b|:)/i.test(String(invoice.PrivateNote ?? ""));
+}
 
 export function numberOrNull(value: unknown) {
   const parsed = Number(value);
@@ -56,6 +61,7 @@ export function invoiceSnapshot(invoice: QuickBooksInvoiceRecord) {
     tax_total: numberOrNull(invoice.TxnTaxDetail?.TotalTax),
     total,
     balance: numberOrNull(invoice.Balance),
+    is_voided: isVoidedInvoice(invoice),
     raw_payload: invoice,
     last_synced_at: new Date().toISOString(),
   };

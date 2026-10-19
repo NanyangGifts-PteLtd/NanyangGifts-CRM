@@ -8,6 +8,7 @@ import { refreshClientTrackingRollups } from "@/lib/quickbooks/tracking-rollups"
 import {
   invoiceEstimateIds,
   invoiceSnapshot,
+  isVoidedInvoice,
   numberOrNull,
   type QuickBooksInvoiceRecord,
 } from "@/lib/quickbooks/invoice-records";
@@ -131,7 +132,9 @@ function previewTransaction(transaction: QboTransaction, includeBalance: boolean
     ].filter(Boolean).join(", ") || null,
     date: transaction?.TxnDate ?? null,
     dueDate: transaction?.DueDate ?? null,
-    status: transaction?.TxnStatus ?? transaction?.EmailStatus ?? null,
+    status: isVoidedInvoice(transaction)
+      ? "Voided"
+      : transaction?.TxnStatus ?? transaction?.EmailStatus ?? "Active",
     terms: transaction?.SalesTermRef?.name ?? null,
     memo: transaction?.CustomerMemo?.value ?? transaction?.PrivateNote ?? null,
     tax,
@@ -329,22 +332,14 @@ export async function POST(request: NextRequest) {
     const invoice = await lookupInvoice(number, generation);
     if (phase === "lookup") return NextResponse.json({ preview: previewInvoice(invoice) });
 
-    const total = numberOrNull(invoice.TotalAmt);
-    const tax = numberOrNull(invoice.TxnTaxDetail?.TotalTax) ?? 0;
-    const subtotal = total === null ? null : total - tax;
+    const snapshot = invoiceSnapshot(invoice);
     const { error: linkError } = await supabaseAdmin
       .from("quickbooks_estimate_invoices")
       .insert({
         estimate_generation_id: generation.id,
-        quickbooks_invoice_id: String(invoice.Id),
-        quickbooks_invoice_doc_number: invoice.DocNumber ?? number,
-        invoice_date: invoice.TxnDate ?? null,
-        due_date: invoice.DueDate ?? null,
-        subtotal,
-        tax_total: numberOrNull(invoice.TxnTaxDetail?.TotalTax),
-        total,
-        balance: numberOrNull(invoice.Balance),
-        raw_payload: invoice,
+        ...snapshot,
+        quickbooks_invoice_doc_number:
+          snapshot.quickbooks_invoice_doc_number ?? number,
         link_source: "manual",
         manually_linked_at: new Date().toISOString(),
         manually_linked_by: user.id,
@@ -354,14 +349,17 @@ export async function POST(request: NextRequest) {
 
     const { data: allInvoices, error: allInvoicesError } = await supabaseAdmin
       .from("quickbooks_estimate_invoices")
-      .select("total, subtotal, balance")
+      .select("total, subtotal, balance, is_voided")
       .eq("estimate_generation_id", generation.id);
     if (allInvoicesError) throw allInvoicesError;
     const invoices = allInvoices ?? [];
-    const invoiceTotal = invoices.reduce((sum, row) => sum + (numberOrNull(row.total) ?? 0), 0);
-    const invoiceSubtotal = invoices.reduce((sum, row) => sum + (numberOrNull(row.subtotal) ?? 0), 0);
-    const totalBalance = invoices.reduce((sum, row) => sum + (numberOrNull(row.balance) ?? 0), 0);
-    const payment = Math.abs(totalBalance) < 0.005
+    const financialInvoices = invoices.filter((row) => !row.is_voided);
+    const invoiceTotal = financialInvoices.reduce((sum, row) => sum + (numberOrNull(row.total) ?? 0), 0);
+    const invoiceSubtotal = financialInvoices.reduce((sum, row) => sum + (numberOrNull(row.subtotal) ?? 0), 0);
+    const totalBalance = financialInvoices.reduce((sum, row) => sum + (numberOrNull(row.balance) ?? 0), 0);
+    const payment = !financialInvoices.length
+      ? null
+      : Math.abs(totalBalance) < 0.005
       ? await getSystemLabel("tracking_invoice_payment_status", "tracking_invoice_payment_status_paid")
       : totalBalance < invoiceTotal
         ? await getSystemLabel("tracking_invoice_payment_status", "tracking_invoice_payment_status_partially_paid")
@@ -371,7 +369,8 @@ export async function POST(request: NextRequest) {
       invoice_total: invoiceTotal,
       invoice_subtotal: invoiceSubtotal,
       total_balance: totalBalance,
-      ...(payment ? { invoice_payment_status: payment.value, invoice_payment_status_option_id: payment.id } : {}),
+      invoice_payment_status: payment?.value ?? null,
+      invoice_payment_status_option_id: payment?.id ?? null,
       last_invoice_synced_at: new Date().toISOString(),
     }).eq("id", generation.id);
     if (updateError) throw updateError;
@@ -483,14 +482,15 @@ export async function DELETE(request: NextRequest) {
 
     const { data: remainingInvoices, error: remainingInvoicesError } = await supabaseAdmin
       .from("quickbooks_estimate_invoices")
-      .select("total, subtotal, balance")
+      .select("total, subtotal, balance, is_voided")
       .eq("estimate_generation_id", estimateGenerationId);
     if (remainingInvoicesError) throw remainingInvoicesError;
     const remaining = remainingInvoices ?? [];
-    const invoiceTotal = remaining.reduce((sum, row) => sum + (numberOrNull(row.total) ?? 0), 0);
-    const invoiceSubtotal = remaining.reduce((sum, row) => sum + (numberOrNull(row.subtotal) ?? 0), 0);
-    const totalBalance = remaining.reduce((sum, row) => sum + (numberOrNull(row.balance) ?? 0), 0);
-    const payment = !remaining.length
+    const financialRemaining = remaining.filter((row) => !row.is_voided);
+    const invoiceTotal = financialRemaining.reduce((sum, row) => sum + (numberOrNull(row.total) ?? 0), 0);
+    const invoiceSubtotal = financialRemaining.reduce((sum, row) => sum + (numberOrNull(row.subtotal) ?? 0), 0);
+    const totalBalance = financialRemaining.reduce((sum, row) => sum + (numberOrNull(row.balance) ?? 0), 0);
+    const payment = !financialRemaining.length
       ? null
       : Math.abs(totalBalance) < 0.005
         ? await getSystemLabel("tracking_invoice_payment_status", "tracking_invoice_payment_status_paid")

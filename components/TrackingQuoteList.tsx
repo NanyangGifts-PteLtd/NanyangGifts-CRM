@@ -45,12 +45,13 @@ const QUOTE_COLUMN_DEFINITIONS = [
 ] as const;
 
 const INVOICE_COLUMN_DEFINITIONS = [
-  { key: "number", width: 550, minWidth: 220 },
-  { key: "date", width: 275, minWidth: 120 },
-  { key: "dueDate", width: 275, minWidth: 120 },
-  { key: "subtotal", width: 275, minWidth: 170 },
-  { key: "total", width: 320, minWidth: 130 },
-  { key: "balance", width: 275, minWidth: 120 },
+  { key: "number", width: 450, minWidth: 220 },
+  { key: "date", width: 240, minWidth: 120 },
+  { key: "dueDate", width: 240, minWidth: 120 },
+  { key: "subtotal", width: 240, minWidth: 170 },
+  { key: "total", width: 275, minWidth: 130 },
+  { key: "balance", width: 240, minWidth: 120 },
+  { key: "status", width: 170, minWidth: 110 },
   { key: "actions", width: 135, minWidth: 115 },
 ] as const;
 
@@ -112,6 +113,7 @@ type Invoice = {
   subtotal: number | null;
   total: number | null;
   balance: number | null;
+  is_voided: boolean;
   link_source: "quickbooks" | "manual" | null;
   last_synced_at?: string | null;
 };
@@ -908,6 +910,7 @@ export function TrackingQuoteList({
                         "Invoice total before GST",
                         "Invoice total",
                         "Balance",
+                        "Status",
                         "Actions",
                       ].map((label, index) => {
                         const column = INVOICE_COLUMN_DEFINITIONS[index];
@@ -954,6 +957,9 @@ export function TrackingQuoteList({
                         </span>
                         <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">
                           {amount(invoice.balance)}
+                        </span>
+                        <span className={`border-l border-[#d0d4e4] px-3 py-2 text-center font-medium ${invoice.is_voided ? "text-red-600" : "text-emerald-700"}`}>
+                          {invoice.is_voided ? "Voided" : "Active"}
                         </span>
                         <div className="flex items-center justify-center border-l border-[#d0d4e4] px-2">
                           {invoice.link_source === "manual" && (
@@ -1023,6 +1029,7 @@ export function TrackingQuoteList({
               "Invoice total before GST",
               "Invoice total",
               "Balance",
+              "Status",
               "Actions",
             ].map((label, index) => (
               <span
@@ -1058,6 +1065,9 @@ export function TrackingQuoteList({
                 <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">{amount(invoice.subtotal)}</span>
                 <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">{amount(invoice.total)}</span>
                 <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">{amount(invoice.balance)}</span>
+                <span className={`border-l border-[#d0d4e4] px-3 py-2 text-center font-medium ${invoice.is_voided ? "text-red-600" : "text-emerald-700"}`}>
+                  {invoice.is_voided ? "Voided" : "Active"}
+                </span>
                 <div className="flex items-center justify-center gap-1 border-l border-[#d0d4e4] px-1">
                   <button
                     type="button"
