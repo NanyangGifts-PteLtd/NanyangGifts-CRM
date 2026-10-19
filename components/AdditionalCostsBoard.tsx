@@ -254,7 +254,7 @@ export function AdditionalCostsBoard({
   const [labelOptions, setLabelOptions] = useState<
     Record<string, LabelOption[]>
   >({});
-  const [columns, setColumns] = useState(allVoucherColumns);
+  const columns = allVoucherColumns;
   const [voucherColumnLayouts, setVoucherColumnLayouts] = useState<
     Record<VoucherGroupId, VoucherColumnLayout>
   >({
@@ -1121,12 +1121,12 @@ export function AdditionalCostsBoard({
     closeBillPreview();
     const generatingToast = toast.loading("Generating QuickBooks bill");
     try {
-      const { attachments: _attachments, ...billDraftValues } = draft;
+      const { attachments, ...billDraftValues } = draft;
       const bill = {
         ...billDraftValues,
-        attachmentFiles: draft.attachments.length
+        attachmentFiles: attachments.length
           ? await uploadCrmFiles(
-            draft.attachments,
+            attachments,
             `payment-vouchers/${existingVoucher?.id ?? "new"}/quickbooks-bills`,
             { clientId },
           )
@@ -1141,7 +1141,7 @@ export function AdditionalCostsBoard({
             : { clientId, voucher: voucherDraft, bill },
         ),
       );
-      draft.attachments.forEach((attachment) =>
+      attachments.forEach((attachment) =>
         payload.append("attachments", attachment, attachment.name),
       );
       const response = await fetch("/api/quickbooks/generate-bill", {
@@ -1231,12 +1231,12 @@ export function AdditionalCostsBoard({
     closeBillPreview();
     const generatingToast = toast.loading("Generating QuickBooks bill");
     try {
-      const { attachments: _attachments, ...billDraftValues } = draft;
+      const { attachments, ...billDraftValues } = draft;
       const bill = {
         ...billDraftValues,
-        attachmentFiles: draft.attachments.length
+        attachmentFiles: attachments.length
           ? await uploadCrmFiles(
-            draft.attachments,
+            attachments,
             existingVoucher?.voucher_group === "quickbooks_bills_only" ||
               !existingVoucher
               ? "quickbooks-bills-only"
@@ -1259,7 +1259,7 @@ export function AdditionalCostsBoard({
           bill,
         }),
       );
-      draft.attachments.forEach((attachment) =>
+      attachments.forEach((attachment) =>
         payload.append("attachments", attachment, attachment.name),
       );
       const response = await fetch("/api/quickbooks/generate-bill-only", {
@@ -1513,11 +1513,11 @@ export function AdditionalCostsBoard({
   const updateQuickBooksBill = async (voucher: AdditionalCost) => {
     setCreatingFor(voucher.id);
     try {
-      const { attachments: _attachments, ...billDraftValues } = billDraft;
+      const { attachments, ...billDraftValues } = billDraft;
       const payload = new FormData();
-      const attachmentFiles = billDraft.attachments.length
+      const attachmentFiles = attachments.length
         ? await uploadCrmFiles(
-          billDraft.attachments,
+          attachments,
           voucher.voucher_group === "quickbooks_bills_only"
             ? "quickbooks-bills-only"
             : `payment-vouchers/${voucher.id}/quickbooks-bills`,
@@ -1536,7 +1536,7 @@ export function AdditionalCostsBoard({
           bill: { ...billDraftValues, attachmentFiles },
         }),
       );
-      billDraft.attachments.forEach((attachment) =>
+      attachments.forEach((attachment) =>
         payload.append("attachments", attachment, attachment.name),
       );
       const response = await fetch("/api/quickbooks/bill", {
@@ -1696,6 +1696,7 @@ export function AdditionalCostsBoard({
         "Document fields were prefilled. Please review every value before creating the Bill.",
       );
     } catch (extractionError) {
+      console.warn("Could not prefill QuickBooks Bill fields from the document", extractionError);
       setPrefillFileSignature(null);
       setSupplierExtraction(null);
       setBillDocumentPreview((current) =>
@@ -2737,7 +2738,7 @@ export function AdditionalCostsBoard({
             className="grid bg-slate-50 text-xs font-semibold text-slate-500"
             style={{ gridTemplateColumns }}
           >
-            {columns.map((column, index) => (
+            {columns.map((column) => (
               <div
                 key={column.key}
                 className="relative h-11 whitespace-nowrap border-b border-r border-slate-200 px-2 leading-[44px]"
@@ -3067,6 +3068,8 @@ export function AdditionalCostsBoard({
                 />
               ) : (
                 <div className="min-h-0 flex-1 overflow-auto p-2">
+                  {/* Object URLs are browser-local uploads and cannot use Next's image optimiser. */}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={billDocumentPreview.url}
                     alt="Uploaded receipt or invoice"
