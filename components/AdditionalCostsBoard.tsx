@@ -37,6 +37,12 @@ import { FilePreview } from "@/components/ui/file-preview";
 type AdditionalCost = {
   id: string;
   client_id: string;
+  linkedClient?: {
+    id: string;
+    name: string;
+    displayId: string;
+    deletedAt?: string | null;
+  } | null;
   date_sent: string | null;
   people_id: string | null;
   people_ids?: string[];
@@ -178,6 +184,8 @@ const cellClass =
   "h-10 min-w-0 bg-white px-2 text-sm text-slate-700 outline-none focus:bg-sky-50 focus:ring-1 focus:ring-inset focus:ring-sky-400";
 const hiddenBillGstCodeNames = new Set(["sr9%", "txrc-ess"]);
 const clientLabel = (client: Client) =>
+  `${client.name || "Unnamed client"}${client.displayId ? ` · ${client.displayId}` : ""}`;
+const linkedClientLabel = (client: NonNullable<AdditionalCost["linkedClient"]>) =>
   `${client.name || "Unnamed client"}${client.displayId ? ` · ${client.displayId}` : ""}`;
 // Keep chooser order consistent with the CRM Board's default client sort:
 // newest created clients first within each group.
@@ -503,6 +511,23 @@ export function AdditionalCostsBoard({
   const clientsById = useMemo(
     () => new Map(clients.map((client) => [client.id, client])),
     [clients],
+  );
+  const projectForVoucher = useCallback(
+    (row: AdditionalCost) => {
+      const boardClient = clientsById.get(row.client_id);
+      if (boardClient) {
+        return { id: boardClient.id, label: clientLabel(boardClient), deleted: false };
+      }
+      if (row.linkedClient) {
+        return {
+          id: row.linkedClient.id,
+          label: linkedClientLabel(row.linkedClient),
+          deleted: Boolean(row.linkedClient.deletedAt),
+        };
+      }
+      return null;
+    },
+    [clientsById],
   );
   const closeBillPreview = () => {
     setPickerOpen(false);
@@ -2169,6 +2194,7 @@ export function AdditionalCostsBoard({
                 ) : (
                   group.rows.map((row) => {
                     const client = clientsById.get(row.client_id);
+                    const project = projectForVoucher(row);
                     return (
                       <tr
                         key={row.id}
@@ -2195,14 +2221,14 @@ export function AdditionalCostsBoard({
                           data-voucher-col="project"
                           className="border-b border-r border-slate-200 px-3 py-2 font-medium text-slate-700"
                         >
-                          {client ? (
+                          {project && !project.deleted ? (
                             <button
                               type="button"
-                              onClick={() => onOpenProject?.(client.id)}
+                              onClick={() => onOpenProject?.(project.id)}
                               className="max-w-full truncate text-left text-sky-700 hover:underline"
-                              title={`Open ${clientLabel(client)} on the CRM Board`}
+                              title={`Open ${project.label} on the CRM Board`}
                             >
-                              {clientLabel(client)}
+                              {project.label}
                             </button>
                           ) : (
                             "Deleted client"
@@ -2720,7 +2746,7 @@ export function AdditionalCostsBoard({
             </div>
           ) : null}
           {rows.map((row) => {
-            const client = clientsById.get(row.client_id);
+            const project = projectForVoucher(row);
             return (
               <div
                 key={row.id}
@@ -2729,7 +2755,7 @@ export function AdditionalCostsBoard({
               >
                 {cell(
                   <div className="flex h-10 items-center truncate px-2 text-sm font-medium text-slate-700">
-                    {client ? clientLabel(client) : "Deleted client"}
+                    {project && !project.deleted ? project.label : "Deleted client"}
                   </div>,
                   "project",
                 )}

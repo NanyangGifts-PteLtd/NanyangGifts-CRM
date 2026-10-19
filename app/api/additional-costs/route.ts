@@ -72,6 +72,38 @@ async function resolveLabel(code: string, value: unknown) {
 const ADDITIONAL_COST_STATUS = "[Variation] Cost Difference";
 const ADDITIONAL_COST_STATUS_KEY = "subitem_status_variation_cost_difference";
 
+type VoucherWithClientId = { client_id: string };
+
+/**
+ * Payment Voucher is its own workspace, while the CRM Board only hydrates the
+ * current pages of clients. Include the small project display payload here so
+ * a valid, off-page client is never presented as a deleted client.
+ */
+async function attachLinkedClients<T extends VoucherWithClientId>(rows: T[]) {
+  const clientIds = [...new Set(rows.map((row) => row.client_id).filter(Boolean))];
+  if (!clientIds.length) return rows.map((row) => ({ ...row, linkedClient: null }));
+  const { data: clients, error } = await supabaseAdmin
+    .from("clients")
+    .select("id, name, display_id, deleted_at")
+    .in("id", clientIds);
+  if (error) throw error;
+  const clientsById = new Map((clients ?? []).map((client) => [client.id, client]));
+  return rows.map((row) => {
+    const client = clientsById.get(row.client_id);
+    return {
+      ...row,
+      linkedClient: client
+        ? {
+            id: client.id,
+            name: client.name ?? "",
+            displayId: client.display_id ?? "",
+            deletedAt: client.deleted_at,
+          }
+        : null,
+    };
+  });
+}
+
 async function nextPaymentVoucherReference() {
   const { data, error } = await supabaseAdmin.rpc(
     "next_payment_voucher_reference_id",
@@ -169,7 +201,7 @@ export async function GET() {
       .is("deleted_at", null)
       .order("created_at", { ascending: false });
     if (error) throw error;
-    return NextResponse.json({ rows: data ?? [] });
+    return NextResponse.json({ rows: await attachLinkedClients(data ?? []) });
   } catch (error) {
     return failure(error);
   }
@@ -367,7 +399,8 @@ export async function POST(request: NextRequest) {
       action: "created",
       title: "created this Payment Voucher",
     });
-    return NextResponse.json({ row: data }, { status: 201 });
+    const [row] = await attachLinkedClients([data]);
+    return NextResponse.json({ row }, { status: 201 });
   } catch (error) {
     return failure(error);
   }
@@ -595,7 +628,8 @@ export async function PATCH(request: NextRequest) {
         .from("additional_cost_activity_log").insert(activityRows);
       if (activityError) console.error("Payment Voucher activity log failed", activityError);
     }
-    return NextResponse.json({ row: data });
+    const [row] = await attachLinkedClients([data]);
+    return NextResponse.json({ row });
   } catch (error) {
     return failure(error);
   }
