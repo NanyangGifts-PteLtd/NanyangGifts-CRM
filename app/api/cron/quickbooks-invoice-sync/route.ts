@@ -4,6 +4,11 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { qboQuery, qboRequest } from "@/lib/quickbooks/api";
 import { getSystemLabel } from "@/lib/system-labels";
 import { refreshClientTrackingRollups } from "@/lib/quickbooks/tracking-rollups";
+import {
+  invoiceSnapshot,
+  isMissingQuickBooksObject,
+  type QuickBooksInvoiceRecord,
+} from "@/lib/quickbooks/invoice-records";
 
 type QuickBooksInvoice = {
   Id?: string;
@@ -48,8 +53,6 @@ export async function GET(request: NextRequest) {
   if (generationsError) return NextResponse.json({ error: generationsError.message }, { status: 500 });
 
   const activeGenerations = generations ?? [];
-  if (!activeGenerations.length)
-    return NextResponse.json({ ok: true, eligible: 0, synced: 0, failed: 0 });
 
   let paidPaymentLabel;
   let partiallyPaidPaymentLabel;
@@ -78,6 +81,9 @@ export async function GET(request: NextRequest) {
 
   let synced = 0;
   let failed = 0;
+  let removedQuotes = 0;
+  let directInvoicesSynced = 0;
+  let directInvoicesRemoved = 0;
   const syncedClientIds = new Set<string>();
   const failures: Array<{ clientId: string; quoteId: string; error: string }> = [];
 
@@ -106,27 +112,29 @@ export async function GET(request: NextRequest) {
           invoice.Id &&
           (linksToEstimate(invoice, String(generation.quickbooks_estimate_id)) ||
             manualInvoiceIds.has(String(invoice.Id))),
-      );
-      const rows = linked.map((invoice) => {
-        const total = numberOrNull(invoice.TotalAmt);
-        const taxTotal = numberOrNull(invoice.TxnTaxDetail?.TotalTax) ?? 0;
-        return {
+      ) as QuickBooksInvoiceRecord[];
+      for (const invoiceId of manualInvoiceIds) {
+        if (linked.some((invoice) => String(invoice.Id) === invoiceId)) continue;
+        try {
+          const invoiceResult = await qboRequest(
+            `/invoice/${encodeURIComponent(invoiceId)}`,
+            { method: "GET" },
+          );
+          if (invoiceResult?.Invoice?.Id)
+            linked.push(invoiceResult.Invoice as QuickBooksInvoiceRecord);
+        } catch (error) {
+          if (!isMissingQuickBooksObject(error)) throw error;
+        }
+      }
+      const rows = linked.map((invoice) => ({
           estimate_generation_id: generation.id,
-          quickbooks_invoice_id: String(invoice.Id),
-          quickbooks_invoice_doc_number: invoice.DocNumber ?? null,
-          invoice_date: invoice.TxnDate ?? null,
-          due_date: invoice.DueDate ?? null,
-          subtotal: total === null ? null : total - taxTotal,
-          tax_total: numberOrNull(invoice.TxnTaxDetail?.TotalTax),
-          total,
-          balance: numberOrNull(invoice.Balance),
-          raw_payload: invoice,
-          last_synced_at: new Date().toISOString(),
-        };
-      });
+          ...invoiceSnapshot(invoice),
+          link_source: manualInvoiceIds.has(String(invoice.Id))
+            ? "manual"
+            : "quickbooks",
+        }));
       const ids = new Set(rows.map((row) => row.quickbooks_invoice_id));
       const staleIds = (stored ?? [])
-        .filter((row) => row.link_source !== "manual")
         .map((row) => row.quickbooks_invoice_id)
         .filter((id) => !ids.has(id));
       if (staleIds.length) {
@@ -162,12 +170,8 @@ export async function GET(request: NextRequest) {
           invoice_total: invoiceTotal,
           invoice_subtotal: invoiceSubtotal,
           total_balance: totalBalance,
-          ...(invoicePaymentLabel
-            ? {
-                invoice_payment_status: invoicePaymentLabel.value,
-                invoice_payment_status_option_id: invoicePaymentLabel.id,
-              }
-            : {}),
+          invoice_payment_status: invoicePaymentLabel?.value ?? null,
+          invoice_payment_status_option_id: invoicePaymentLabel?.id ?? null,
           last_invoice_synced_at: syncedAt,
         })
         .eq("id", generation.id);
@@ -176,12 +180,71 @@ export async function GET(request: NextRequest) {
       syncedClientIds.add(generation.client_id);
       synced += 1;
     } catch (error) {
+      if (isMissingQuickBooksObject(error)) {
+        const { error: archiveError } = await supabaseAdmin
+          .from("estimate_generations")
+          .update({ archived_at: new Date().toISOString() })
+          .eq("id", generation.id);
+        if (!archiveError) {
+          syncedClientIds.add(generation.client_id);
+          removedQuotes += 1;
+          continue;
+        }
+      }
       failed += 1;
       failures.push({
         clientId: generation.client_id,
         quoteId: generation.id,
         error: error instanceof Error ? error.message : "Invoice sync failed",
       });
+    }
+  }
+
+  const { data: directInvoices, error: directInvoicesError } = await supabaseAdmin
+    .from("quickbooks_client_invoices")
+    .select("id, client_id, quickbooks_invoice_id");
+  if (directInvoicesError) {
+    failed += 1;
+    failures.push({
+      clientId: "direct-invoices",
+      quoteId: "direct-invoices",
+      error: directInvoicesError.message,
+    });
+  } else {
+    for (const storedInvoice of directInvoices ?? []) {
+      try {
+        const invoiceResult = await qboRequest(
+          `/invoice/${encodeURIComponent(storedInvoice.quickbooks_invoice_id)}`,
+          { method: "GET" },
+        );
+        const invoice = invoiceResult?.Invoice as QuickBooksInvoiceRecord | undefined;
+        if (!invoice?.Id) throw new Error("QuickBooks returned an invalid invoice.");
+        const { error: updateError } = await supabaseAdmin
+          .from("quickbooks_client_invoices")
+          .update(invoiceSnapshot(invoice))
+          .eq("id", storedInvoice.id);
+        if (updateError) throw updateError;
+        syncedClientIds.add(storedInvoice.client_id);
+        directInvoicesSynced += 1;
+      } catch (error) {
+        if (isMissingQuickBooksObject(error)) {
+          const { error: deleteError } = await supabaseAdmin
+            .from("quickbooks_client_invoices")
+            .delete()
+            .eq("id", storedInvoice.id);
+          if (!deleteError) {
+            syncedClientIds.add(storedInvoice.client_id);
+            directInvoicesRemoved += 1;
+            continue;
+          }
+        }
+        failed += 1;
+        failures.push({
+          clientId: storedInvoice.client_id,
+          quoteId: `direct-invoice:${storedInvoice.id}`,
+          error: error instanceof Error ? error.message : "Direct invoice sync failed",
+        });
+      }
     }
   }
 
@@ -205,6 +268,9 @@ export async function GET(request: NextRequest) {
     ok: failed === 0,
     eligible: activeGenerations.length,
     synced,
+    removedQuotes,
+    directInvoicesSynced,
+    directInvoicesRemoved,
     failed,
     failures,
   });

@@ -5,11 +5,17 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { canEditClient } from "@/lib/client-access";
 import { getSystemLabel } from "@/lib/system-labels";
 import { refreshClientTrackingRollups } from "@/lib/quickbooks/tracking-rollups";
+import {
+  invoiceEstimateIds,
+  invoiceSnapshot,
+  numberOrNull,
+  type QuickBooksInvoiceRecord,
+} from "@/lib/quickbooks/invoice-records";
 
-type LinkKind = "quote" | "invoice";
+type LinkKind = "quote" | "invoice" | "direct-invoice";
 
 type QboLink = { TxnId?: string; TxnType?: string };
-type QboInvoice = {
+type QboInvoice = QuickBooksInvoiceRecord & {
   Id?: string;
   DocNumber?: string;
   TxnDate?: string;
@@ -34,22 +40,38 @@ type QboLine = {
   };
 };
 
-const numberOrNull = (value: unknown) => {
-  const number = Number(value);
-  return Number.isFinite(number) ? number : null;
+type QboTransaction = {
+  Id?: string;
+  DocNumber?: string;
+  CustomerRef?: { value?: string; name?: string };
+  BillEmail?: { Address?: string };
+  BillAddr?: {
+    Line1?: string;
+    Line2?: string;
+    City?: string;
+    CountrySubDivisionCode?: string;
+    PostalCode?: string;
+  };
+  TxnDate?: string;
+  DueDate?: string;
+  TxnStatus?: string;
+  EmailStatus?: string;
+  SalesTermRef?: { name?: string };
+  CustomerMemo?: { value?: string };
+  PrivateNote?: string;
+  TxnTaxDetail?: { TotalTax?: number | string };
+  TotalAmt?: number | string;
+  Balance?: number | string;
+  Line?: QboLine[];
+};
+
+type EstimateGeneration = {
+  id: string;
+  quickbooks_estimate_id: string | null;
 };
 
 const escapeQueryValue = (value: string) =>
   value.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
-
-function invoiceEstimateIds(invoice: QboInvoice) {
-  return [
-    ...(invoice.LinkedTxn ?? []),
-    ...(invoice.Line ?? []).flatMap((line) => line.LinkedTxn ?? []),
-  ]
-    .filter((link) => link.TxnType?.toLowerCase() === "estimate" && link.TxnId)
-    .map((link) => String(link.TxnId));
-}
 
 async function authorize(clientId: string) {
   const supabase = await createClient();
@@ -61,9 +83,25 @@ async function authorize(clientId: string) {
   return { supabase, user };
 }
 
+function previewableLines(lines: QboLine[] | undefined) {
+  return (lines ?? []).filter((line) => {
+    const detailType = line.DetailType?.toLowerCase() ?? "";
+    if (
+      detailType === "subtotalline" ||
+      detailType === "subtotallinedetail" ||
+      detailType === "discountlinedetail"
+    ) {
+      return false;
+    }
+    return Boolean(
+      line.Description?.trim() ||
+        line.SalesItemLineDetail?.ItemRef?.name?.trim(),
+    );
+  });
+}
+
 function previewLines(lines: QboLine[] | undefined) {
-  return (lines ?? [])
-    .filter((line) => line.DetailType !== "SubTotalLine")
+  return previewableLines(lines)
     .slice(0, 12)
     .map((line) => ({
       description:
@@ -75,9 +113,10 @@ function previewLines(lines: QboLine[] | undefined) {
     }));
 }
 
-function previewTransaction(transaction: any, includeBalance: boolean) {
+function previewTransaction(transaction: QboTransaction, includeBalance: boolean) {
   const total = numberOrNull(transaction?.TotalAmt);
   const tax = numberOrNull(transaction?.TxnTaxDetail?.TotalTax) ?? 0;
+  const displayLines = previewableLines(transaction?.Line);
   return {
     id: String(transaction?.Id ?? ""),
     number: String(transaction?.DocNumber ?? ""),
@@ -99,12 +138,12 @@ function previewTransaction(transaction: any, includeBalance: boolean) {
     total,
     subtotal: total === null ? null : total - tax,
     balance: includeBalance ? numberOrNull(transaction?.Balance) : undefined,
-    lines: previewLines(transaction?.Line),
-    additionalLineCount: Math.max((transaction?.Line?.length ?? 0) - 12, 0),
+    lines: previewLines(displayLines),
+    additionalLineCount: Math.max(displayLines.length - 12, 0),
   };
 }
 
-function previewQuote(quote: any) {
+function previewQuote(quote: QboTransaction) {
   return previewTransaction(quote, false);
 }
 
@@ -140,7 +179,7 @@ async function lookupQuote(number: string) {
   return quote;
 }
 
-async function lookupInvoice(number: string, generation: any) {
+async function lookupInvoice(number: string, generation?: EstimateGeneration) {
   const { data: existing, error } = await supabaseAdmin
     .from("quickbooks_estimate_invoices")
     .select("id")
@@ -148,6 +187,14 @@ async function lookupInvoice(number: string, generation: any) {
     .limit(1);
   if (error) throw error;
   if (existing?.length) throw new Error("This QuickBooks invoice number is already linked to a quote.");
+  const { data: directExisting, error: directExistingError } = await supabaseAdmin
+    .from("quickbooks_client_invoices")
+    .select("id")
+    .eq("quickbooks_invoice_doc_number", number)
+    .limit(1);
+  if (directExistingError) throw directExistingError;
+  if (directExisting?.length)
+    throw new Error("This QuickBooks invoice number is already linked directly to a client.");
 
   const result = await qboQuery(
     `SELECT * FROM Invoice WHERE DocNumber = '${escapeQueryValue(number)}'`,
@@ -163,9 +210,25 @@ async function lookupInvoice(number: string, generation: any) {
     .limit(1);
   if (idMatchError) throw idMatchError;
   if (idMatch?.length) throw new Error("This QuickBooks invoice is already linked to a quote.");
+  const { data: directIdMatch, error: directIdMatchError } = await supabaseAdmin
+    .from("quickbooks_client_invoices")
+    .select("id")
+    .eq("quickbooks_invoice_id", String(invoice.Id))
+    .limit(1);
+  if (directIdMatchError) throw directIdMatchError;
+  if (directIdMatch?.length)
+    throw new Error("This QuickBooks invoice is already linked directly to a client.");
 
   const linkedEstimateIds = invoiceEstimateIds(invoice);
-  if (linkedEstimateIds.some((id) => id !== String(generation.quickbooks_estimate_id))) {
+  if (!generation && linkedEstimateIds.length) {
+    throw new Error(
+      "This invoice is linked to a QuickBooks quote. Link that quote to the client instead.",
+    );
+  }
+  if (
+    generation &&
+    linkedEstimateIds.some((id) => id !== String(generation.quickbooks_estimate_id))
+  ) {
     throw new Error("This invoice is already linked to a different QuickBooks quote.");
   }
   return invoice;
@@ -179,7 +242,7 @@ export async function POST(request: NextRequest) {
     const number = String(body.number ?? "").trim();
     const clientId = String(body.clientId ?? "").trim();
     const estimateGenerationId = String(body.estimateGenerationId ?? "").trim();
-    if (!(["quote", "invoice"] as string[]).includes(kind) || !(["lookup", "confirm"] as string[]).includes(phase) || !number || !clientId) {
+    if (!(["quote", "invoice", "direct-invoice"] as string[]).includes(kind) || !(["lookup", "confirm"] as string[]).includes(phase) || !number || !clientId) {
       return NextResponse.json({ error: "A link type, number, and client are required." }, { status: 400 });
     }
     const { user } = await authorize(clientId);
@@ -217,6 +280,37 @@ export async function POST(request: NextRequest) {
       if (error) throw error;
       await refreshClientTrackingRollups(clientId);
       return NextResponse.json({ linked: true, estimateGenerationId: generation.id });
+    }
+
+    if (kind === "direct-invoice") {
+      const invoice = await lookupInvoice(number);
+      if (phase === "lookup")
+        return NextResponse.json({ preview: previewInvoice(invoice) });
+      const snapshot = invoiceSnapshot(invoice);
+      const { data: duplicate } = await supabaseAdmin
+        .from("quickbooks_client_invoices")
+        .select("id")
+        .eq("quickbooks_invoice_id", snapshot.quickbooks_invoice_id)
+        .limit(1);
+      if (duplicate?.length)
+        return NextResponse.json(
+          { error: "This QuickBooks invoice was just linked by another user." },
+          { status: 409 },
+        );
+      const { data: linked, error: linkError } = await supabaseAdmin
+        .from("quickbooks_client_invoices")
+        .insert({
+          client_id: clientId,
+          ...snapshot,
+          link_source: "manual",
+          manually_linked_at: new Date().toISOString(),
+          manually_linked_by: user.id,
+        })
+        .select("id")
+        .single();
+      if (linkError) throw linkError;
+      await refreshClientTrackingRollups(clientId);
+      return NextResponse.json({ linked: true, directInvoiceId: linked.id });
     }
 
     if (!estimateGenerationId) {
@@ -298,7 +392,7 @@ export async function DELETE(request: NextRequest) {
     const estimateGenerationId = String(body.estimateGenerationId ?? "").trim();
     const invoiceId = String(body.invoiceId ?? "").trim();
 
-    if (!(["quote", "invoice"] as string[]).includes(kind) || !clientId) {
+    if (!(["quote", "invoice", "direct-invoice"] as string[]).includes(kind) || !clientId) {
       return NextResponse.json({ error: "A link type and client are required." }, { status: 400 });
     }
     await authorize(clientId);
@@ -330,6 +424,35 @@ export async function DELETE(request: NextRequest) {
         .update({ archived_at: new Date().toISOString() })
         .eq("id", quote.id);
       if (archiveError) throw archiveError;
+      await refreshClientTrackingRollups(clientId);
+      return NextResponse.json({ unlinked: true });
+    }
+
+    if (kind === "direct-invoice") {
+      if (!invoiceId)
+        return NextResponse.json(
+          { error: "Select an invoice to unlink." },
+          { status: 400 },
+        );
+      const { data: directInvoice, error: directInvoiceError } =
+        await supabaseAdmin
+          .from("quickbooks_client_invoices")
+          .select("id, link_source")
+          .eq("id", invoiceId)
+          .eq("client_id", clientId)
+          .maybeSingle();
+      if (directInvoiceError) throw directInvoiceError;
+      if (!directInvoice || directInvoice.link_source !== "manual")
+        return NextResponse.json(
+          { error: "Only manually linked invoices can be unlinked." },
+          { status: 400 },
+        );
+      const { error: deleteError } = await supabaseAdmin
+        .from("quickbooks_client_invoices")
+        .delete()
+        .eq("id", directInvoice.id)
+        .eq("client_id", clientId);
+      if (deleteError) throw deleteError;
       await refreshClientTrackingRollups(clientId);
       return NextResponse.json({ unlinked: true });
     }

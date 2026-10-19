@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { supabaseAdmin } from "@/lib/supabase/admin";
 
 export async function GET(request: NextRequest) {
   try {
@@ -42,11 +43,22 @@ export async function GET(request: NextRequest) {
       invoicesByQuote.set(invoice.estimate_generation_id, rows);
     }
 
+    const { data: directInvoices, error: directInvoicesError } =
+      await supabaseAdmin
+        .from("quickbooks_client_invoices")
+        .select(
+          "id, quickbooks_invoice_doc_number, invoice_date, due_date, subtotal, total, balance, link_source, last_synced_at",
+        )
+        .eq("client_id", clientId)
+        .order("invoice_date", { ascending: false });
+    if (directInvoicesError) throw directInvoicesError;
+
     return NextResponse.json({
       quotes: (generations ?? []).map((quote) => ({
         ...quote,
         invoices: invoicesByQuote.get(quote.id) ?? [],
       })),
+      directInvoices: directInvoices ?? [],
     });
   } catch (error) {
     return NextResponse.json(

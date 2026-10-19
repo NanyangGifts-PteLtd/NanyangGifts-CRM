@@ -3440,7 +3440,7 @@ export function ClientRow({
                     : "border-slate-200 bg-white text-slate-600 hover:border-sky-300 hover:bg-sky-50 hover:text-sky-700"
                 }`}
               >
-                Quotes
+                Quote & Invoice
               </button>
             )}
             {/* Invoice synchronization is now quote-specific. The legacy

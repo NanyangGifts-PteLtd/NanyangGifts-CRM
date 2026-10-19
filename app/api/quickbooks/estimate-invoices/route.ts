@@ -4,6 +4,11 @@ import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getSystemLabel } from "@/lib/system-labels";
 import { refreshClientTrackingRollups } from "@/lib/quickbooks/tracking-rollups";
+import {
+  invoiceSnapshot,
+  isMissingQuickBooksObject,
+  type QuickBooksInvoiceRecord,
+} from "@/lib/quickbooks/invoice-records";
 
 type QuickBooksLink = {
   TxnId?: string;
@@ -22,6 +27,12 @@ type QuickBooksInvoice = {
   Line?: Array<{
     LinkedTxn?: QuickBooksLink[];
   }>;
+};
+
+type QuickBooksEstimate = {
+  TotalAmt?: number | string;
+  TxnTaxDetail?: { TotalTax?: number | string };
+  CustomerRef?: { value?: string };
 };
 
 function numberOrNull(value: unknown) {
@@ -43,16 +54,6 @@ function invoiceLinksToEstimate(
       link.TxnType?.toLowerCase() === "estimate" &&
       String(link.TxnId) === estimateId,
   );
-}
-
-function isMissingQuickBooksObject(error: unknown) {
-  const message = error instanceof Error ? error.message : String(error ?? "");
-  try {
-    const payload = JSON.parse(message.slice(message.indexOf("{")));
-    return String(payload?.Fault?.Error?.[0]?.code) === "610";
-  } catch {
-    return false;
-  }
 }
 
 async function authorizeInvoiceAccess(
@@ -140,7 +141,7 @@ export async function POST(request: NextRequest) {
       estimateGenerationId,
     );
 
-    let estimate: any;
+    let estimate: QuickBooksEstimate | undefined;
     try {
       const result = await qboRequest(
         `/estimate/${generation.quickbooks_estimate_id}`,
@@ -149,6 +150,12 @@ export async function POST(request: NextRequest) {
       estimate = result.Estimate;
     } catch (error) {
       if (isMissingQuickBooksObject(error)) {
+        const { error: archiveError } = await supabaseAdmin
+          .from("estimate_generations")
+          .update({ archived_at: new Date().toISOString() })
+          .eq("id", generation.id);
+        if (archiveError) throw archiveError;
+        await refreshClientTrackingRollups(generation.client_id);
         return NextResponse.json(
           {
             estimateMissing: true,
@@ -180,8 +187,6 @@ export async function POST(request: NextRequest) {
       .select("quickbooks_invoice_id, link_source")
       .eq("estimate_generation_id", generation.id);
     if (storedInvoicesError) throw storedInvoicesError;
-    // Manual CRM links deliberately remain linked even if QuickBooks itself
-    // does not have an Estimate LinkedTxn for the invoice.
     const manualInvoiceIds = new Set(
       (storedInvoices ?? [])
         .filter((invoice) => invoice.link_source === "manual")
@@ -191,34 +196,38 @@ export async function POST(request: NextRequest) {
       (invoice) =>
         invoiceLinksToEstimate(invoice, generation.quickbooks_estimate_id) ||
         (invoice.Id && manualInvoiceIds.has(String(invoice.Id))),
-    );
+    ) as QuickBooksInvoiceRecord[];
+
+    // A customer query can omit a manually linked invoice after customer
+    // reassignment. Verify every absent manual link by its stable QuickBooks ID.
+    for (const invoiceId of manualInvoiceIds) {
+      if (linkedInvoices.some((invoice) => String(invoice.Id) === invoiceId))
+        continue;
+      try {
+        const result = await qboRequest(`/invoice/${encodeURIComponent(invoiceId)}`, {
+          method: "GET",
+        });
+        if (result?.Invoice?.Id)
+          linkedInvoices.push(result.Invoice as QuickBooksInvoiceRecord);
+      } catch (error) {
+        if (!isMissingQuickBooksObject(error)) throw error;
+      }
+    }
 
     const rows = linkedInvoices
       .filter((invoice) => invoice.Id)
-      .map((invoice) => {
-        const total = numberOrNull(invoice.TotalAmt);
-        const taxTotal = numberOrNull(invoice.TxnTaxDetail?.TotalTax) ?? 0;
-
-        return {
+      .map((invoice) => ({
           estimate_generation_id: generation.id,
-          quickbooks_invoice_id: String(invoice.Id),
-          quickbooks_invoice_doc_number: invoice.DocNumber ?? null,
-          invoice_date: invoice.TxnDate ?? null,
-          due_date: invoice.DueDate ?? null,
-          subtotal: total === null ? null : total - taxTotal,
-          tax_total: numberOrNull(invoice.TxnTaxDetail?.TotalTax),
-          total,
-          balance: numberOrNull(invoice.Balance),
-          raw_payload: invoice,
-          last_synced_at: new Date().toISOString(),
-        };
-      });
+          ...invoiceSnapshot(invoice),
+          link_source: manualInvoiceIds.has(String(invoice.Id))
+            ? "manual"
+            : "quickbooks",
+        }));
 
     const linkedInvoiceIds = new Set(
       rows.map((row) => row.quickbooks_invoice_id),
     );
     const staleInvoiceIds = (storedInvoices ?? [])
-      .filter((invoice) => invoice.link_source !== "manual")
       .map((invoice) => invoice.quickbooks_invoice_id)
       .filter((invoiceId) => !linkedInvoiceIds.has(invoiceId));
     if (staleInvoiceIds.length) {
@@ -280,12 +289,8 @@ export async function POST(request: NextRequest) {
         invoice_total: invoiceTotal,
         invoice_subtotal: invoiceSubtotal,
         total_balance: totalBalance,
-        ...(invoicePaymentLabel
-          ? {
-              invoice_payment_status: invoicePaymentLabel.value,
-              invoice_payment_status_option_id: invoicePaymentLabel.id,
-            }
-          : {}),
+        invoice_payment_status: invoicePaymentLabel?.value ?? null,
+        invoice_payment_status_option_id: invoicePaymentLabel?.id ?? null,
         last_invoice_synced_at: new Date().toISOString(),
       })
       .eq("id", generation.id);

@@ -113,6 +113,7 @@ type Invoice = {
   total: number | null;
   balance: number | null;
   link_source: "quickbooks" | "manual" | null;
+  last_synced_at?: string | null;
 };
 
 type Quote = {
@@ -196,15 +197,19 @@ export function TrackingQuoteList({
   expandAllInvoices = false,
 }: TrackingQuoteListProps) {
   const [quotes, setQuotes] = useState<Quote[]>([]);
+  const [directInvoices, setDirectInvoices] = useState<Invoice[]>([]);
   const [openQuoteIds, setOpenQuoteIds] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [reloadVersion, setReloadVersion] = useState(0);
   const [syncingQuoteId, setSyncingQuoteId] = useState<string | null>(null);
+  const [syncingDirectInvoiceId, setSyncingDirectInvoiceId] = useState<string | null>(null);
   const [linkInvoiceQuoteId, setLinkInvoiceQuoteId] = useState<string | null>(null);
+  const [linkDirectInvoiceOpen, setLinkDirectInvoiceOpen] = useState(false);
   const [unlinkTarget, setUnlinkTarget] = useState<
     | { kind: "quote"; quoteId: string; label: string }
     | { kind: "invoice"; quoteId: string; invoiceId: string; label: string }
+    | { kind: "direct-invoice"; invoiceId: string; label: string }
     | null
   >(null);
   const [unlinking, setUnlinking] = useState(false);
@@ -350,7 +355,10 @@ export function TrackingQuoteList({
         const result = await response.json();
         if (!response.ok)
           throw new Error(result?.error ?? "Could not load quotes");
-        if (active) setQuotes(result.quotes ?? []);
+        if (active) {
+          setQuotes(result.quotes ?? []);
+          setDirectInvoices(result.directInvoices ?? []);
+        }
       })
       .catch((loadError) => {
         if (active)
@@ -379,6 +387,11 @@ export function TrackingQuoteList({
         body: JSON.stringify({ estimateGenerationId: quoteId }),
       });
       const result = await response.json();
+      if (result?.estimateMissing) {
+        setReloadVersion((version) => version + 1);
+        onQuotesChanged?.();
+        return;
+      }
       if (!response.ok)
         throw new Error(result?.error ?? "Could not synchronize invoices");
       setReloadVersion((version) => version + 1);
@@ -393,6 +406,32 @@ export function TrackingQuoteList({
     }
   };
 
+  const syncDirectInvoice = async (invoiceId: string) => {
+    if (!canEdit) return;
+    setSyncingDirectInvoiceId(invoiceId);
+    setError(null);
+    try {
+      const response = await fetch("/api/quickbooks/direct-invoices", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clientId, invoiceId }),
+      });
+      const result = await response.json();
+      if (!response.ok)
+        throw new Error(result?.error ?? "Could not synchronize invoice");
+      setReloadVersion((version) => version + 1);
+      onQuotesChanged?.();
+    } catch (syncError) {
+      setError(
+        syncError instanceof Error
+          ? syncError.message
+          : "Could not synchronize invoice",
+      );
+    } finally {
+      setSyncingDirectInvoiceId(null);
+    }
+  };
+
   const unlink = async () => {
     if (!unlinkTarget || !canEdit) return;
     setUnlinking(true);
@@ -404,8 +443,10 @@ export function TrackingQuoteList({
         body: JSON.stringify({
           kind: unlinkTarget.kind,
           clientId,
-          estimateGenerationId: unlinkTarget.quoteId,
-          ...(unlinkTarget.kind === "invoice"
+          ...("quoteId" in unlinkTarget
+            ? { estimateGenerationId: unlinkTarget.quoteId }
+            : {}),
+          ...(unlinkTarget.kind !== "quote"
             ? { invoiceId: unlinkTarget.invoiceId }
             : {}),
         }),
@@ -548,13 +589,6 @@ export function TrackingQuoteList({
     );
   if (error)
     return <p className="px-3 py-3 text-[12.6px] text-red-600">{error}</p>;
-  if (!quotes.length)
-    return (
-      <p className="px-3 py-3 text-[12.6px] text-slate-500">
-        No QuickBooks quotes have been created for this client.
-      </p>
-    );
-
   return (
     <div
       className="overflow-visible border border-[#d0d4e4] bg-white text-[12.6px]"
@@ -600,6 +634,11 @@ export function TrackingQuoteList({
         })}
       </div>
 
+      {!quotes.length && (
+        <p className="border-b border-[#d0d4e4] px-3 py-3 text-slate-500">
+          No QuickBooks quotes have been created for this client.
+        </p>
+      )}
       {quotes.map((quote) => {
         const open = openQuoteIds.has(quote.id);
         const quoteLabel =
@@ -879,6 +918,101 @@ export function TrackingQuoteList({
           </div>
         );
       })}
+      <div className="border-t border-[#d0d4e4] bg-[#f7fbfc] p-3">
+        <div className="mb-2 flex items-center justify-between">
+          <div>
+            <div className="font-semibold text-slate-700">Invoice only</div>
+          </div>
+          <button
+            type="button"
+            disabled={!canEdit}
+            onClick={() => setLinkDirectInvoiceOpen(true)}
+            className="rounded border border-emerald-300 bg-emerald-50 px-2 py-1 font-semibold text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Link Invoice
+          </button>
+        </div>
+        <div
+          className="inline-block overflow-hidden border border-[#d0d4e4] bg-white align-top"
+          style={{ minWidth: invoiceTableWidth }}
+        >
+          <div
+            className="grid border-b border-[#d0d4e4] font-medium text-slate-600"
+            style={{ gridTemplateColumns: invoiceGridColumns }}
+          >
+            {[
+              "Invoice number",
+              "Invoice date",
+              "Due date",
+              "Invoice total before GST",
+              "Invoice total",
+              "Balance",
+              "Actions",
+            ].map((label, index) => (
+              <span
+                key={INVOICE_COLUMN_DEFINITIONS[index].key}
+                className={`relative px-3 py-2 text-center ${
+                  index > 0 ? "border-l border-[#d0d4e4]" : ""
+                }`}
+              >
+                {label}
+                <ColumnResizeHandle
+                  label={label}
+                  onPointerDown={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    resizeColumn("invoice", INVOICE_COLUMN_DEFINITIONS[index], event.clientX);
+                  }}
+                />
+              </span>
+            ))}
+          </div>
+          {directInvoices.length ? (
+            directInvoices.map((invoice) => (
+              <div
+                key={invoice.id}
+                className="grid min-h-[36px] border-b border-[#d0d4e4] text-slate-700 last:border-b-0"
+                style={{ gridTemplateColumns: invoiceGridColumns }}
+              >
+                <span className="px-3 py-2 text-center font-medium">
+                  {invoice.quickbooks_invoice_doc_number || "—"}
+                </span>
+                <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">{invoice.invoice_date || "—"}</span>
+                <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">{invoice.due_date || "—"}</span>
+                <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">{amount(invoice.subtotal)}</span>
+                <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">{amount(invoice.total)}</span>
+                <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">{amount(invoice.balance)}</span>
+                <div className="flex items-center justify-center gap-1 border-l border-[#d0d4e4] px-1">
+                  <button
+                    type="button"
+                    disabled={!canEdit || syncingDirectInvoiceId === invoice.id}
+                    onClick={() => void syncDirectInvoice(invoice.id)}
+                    className="rounded border border-sky-300 bg-sky-50 px-2 py-1 font-semibold text-sky-700 hover:bg-sky-100 disabled:opacity-50"
+                  >
+                    {syncingDirectInvoiceId === invoice.id ? "Syncing…" : "Sync"}
+                  </button>
+                  {invoice.link_source === "manual" && (
+                    <button
+                      type="button"
+                      disabled={!canEdit}
+                      onClick={() => setUnlinkTarget({
+                        kind: "direct-invoice",
+                        invoiceId: invoice.id,
+                        label: invoice.quickbooks_invoice_doc_number ?? "this invoice",
+                      })}
+                      className="rounded border border-red-300 bg-red-50 px-2 py-1 font-semibold text-red-700 hover:bg-red-100 disabled:opacity-50"
+                    >
+                      Unlink
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))
+          ) : (
+            <p className="px-3 py-3 text-slate-500">No invoice-only records are linked to this client.</p>
+          )}
+        </div>
+      </div>
       <ManualTrackingLinkDialog
         open={canEdit && Boolean(linkInvoiceQuoteId)}
         onOpenChange={(open) => {
@@ -887,6 +1021,16 @@ export function TrackingQuoteList({
         kind="invoice"
         clientId={clientId}
         estimateGenerationId={linkInvoiceQuoteId ?? undefined}
+        onLinked={() => {
+          setReloadVersion((version) => version + 1);
+          onQuotesChanged?.();
+        }}
+      />
+      <ManualTrackingLinkDialog
+        open={canEdit && linkDirectInvoiceOpen}
+        onOpenChange={setLinkDirectInvoiceOpen}
+        kind="direct-invoice"
+        clientId={clientId}
         onLinked={() => {
           setReloadVersion((version) => version + 1);
           onQuotesChanged?.();

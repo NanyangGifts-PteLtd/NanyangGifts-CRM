@@ -35,25 +35,48 @@ export async function refreshClientTrackingRollups(clientId: string) {
   const activeQuotes = quotes ?? [];
 
   const quoteIds = activeQuotes.map((quote) => quote.id);
-  const { data: invoices, error: invoicesError } = quoteIds.length
-    ? await supabaseAdmin
-        .from("quickbooks_estimate_invoices")
-        .select("quickbooks_invoice_doc_number, invoice_date")
-        .in("estimate_generation_id", quoteIds)
-        .order("invoice_date", { ascending: false })
-    : { data: [], error: null };
-  if (invoicesError) throw invoicesError;
+  const [quoteInvoicesResult, directInvoicesResult] = await Promise.all([
+    quoteIds.length
+      ? supabaseAdmin
+          .from("quickbooks_estimate_invoices")
+          .select("quickbooks_invoice_doc_number, invoice_date, total, balance")
+          .in("estimate_generation_id", quoteIds)
+          .order("invoice_date", { ascending: false })
+      : Promise.resolve({ data: [], error: null }),
+    supabaseAdmin
+      .from("quickbooks_client_invoices")
+      .select("quickbooks_invoice_doc_number, invoice_date, total, balance")
+      .eq("client_id", clientId)
+      .order("invoice_date", { ascending: false }),
+  ]);
+  if (quoteInvoicesResult.error) throw quoteInvoicesResult.error;
+  if (directInvoicesResult.error) throw directInvoicesResult.error;
+  const invoices = [
+    ...(quoteInvoicesResult.data ?? []),
+    ...(directInvoicesResult.data ?? []),
+  ];
   const invoiceNumbers = Array.from(
     new Set(
-      (invoices ?? [])
+      invoices
         .map((invoice) => invoice.quickbooks_invoice_doc_number?.trim())
         .filter((number): number is string => Boolean(number)),
     ),
   ).join(", ");
 
-  const paymentIds = activeQuotes.map((quote) =>
+  const paymentIds: Array<string | null> = activeQuotes.map((quote) =>
     String(quote.invoice_payment_status_option_id ?? "") || null,
   );
+  for (const invoice of directInvoicesResult.data ?? []) {
+    const total = Number(invoice.total ?? 0);
+    const balance = Number(invoice.balance ?? 0);
+    paymentIds.push(
+      Math.abs(balance) < 0.005
+        ? labels.paid.id
+        : balance < total
+          ? labels.partiallyPaid.id
+          : null,
+    );
+  }
 
   let overallPayment: NullableLabel = null;
   if (

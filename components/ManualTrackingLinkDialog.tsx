@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
-type LinkKind = "quote" | "invoice";
+type LinkKind = "quote" | "invoice" | "direct-invoice";
 type Preview = {
   number: string; customer: string | null; customerEmail?: string | null; billingAddress?: string | null;
   date: string | null; dueDate?: string | null; status?: string | null; terms?: string | null; memo?: string | null;
