@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getSystemLabel } from "@/lib/system-labels";
+import { AWARDED_OR_LATER_SUBITEM_STATUS_SYSTEM_KEYS } from "@/lib/board-labels";
 
 const INTERNAL_ROLES = new Set(["sales", "pm", "admin", "director", "dev"]);
 const EDITABLE_FIELDS = new Set([
@@ -164,6 +165,20 @@ async function ensureAdditionalCostStatus() {
   return created;
 }
 
+async function assertAwardedOrLaterRelatedSubitems(
+  subitems: Array<{ status_option_id: string | null }>,
+) {
+  const eligibleLabels = await Promise.all(
+    AWARDED_OR_LATER_SUBITEM_STATUS_SYSTEM_KEYS.map((systemKey) =>
+      getSystemLabel("subitem_status", systemKey),
+    ),
+  );
+  const eligibleIds = new Set(eligibleLabels.map((label) => label.id));
+  if (subitems.some((subitem) => !eligibleIds.has(subitem.status_option_id ?? ""))) {
+    throw new Error("Related subitems must have an Awarded-or-later status.");
+  }
+}
+
 async function addActivityLog(params: {
   clientId: string;
   subitemId: string | null;
@@ -260,7 +275,7 @@ export async function POST(request: NextRequest) {
     const { data: relatedSubitems, error: relatedSubitemsError } =
       await supabaseAdmin
         .from("subitems")
-        .select("id, name, custom_fields")
+        .select("id, name, custom_fields, status_option_id")
         .eq("client_id", client.id)
         .is("deleted_at", null)
         .in("id", relatedSubitemIds);
@@ -272,6 +287,7 @@ export async function POST(request: NextRequest) {
       )
     )
       throw new Error("One or more selected Related Subitems are unavailable.");
+    await assertAwardedOrLaterRelatedSubitems(relatedSubitems ?? []);
     const relatedNameById = new Map(
       (relatedSubitems ?? []).map((subitem) => [subitem.id, subitem.name]),
     );
@@ -527,7 +543,7 @@ export async function PATCH(request: NextRequest) {
       const { data: relatedSubitems, error: relatedSubitemsError } =
         await supabaseAdmin
           .from("subitems")
-          .select("id, name, custom_fields")
+          .select("id, name, custom_fields, status_option_id")
           .eq("client_id", existing.client_id)
           .is("deleted_at", null)
           .in("id", ids);
@@ -539,6 +555,7 @@ export async function PATCH(request: NextRequest) {
         )
       )
         throw new Error("One or more selected Related Subitems are unavailable.");
+      await assertAwardedOrLaterRelatedSubitems(relatedSubitems ?? []);
       const names = new Map((relatedSubitems ?? []).map((subitem) => [subitem.id, subitem.name]));
       values.items_sent = ids.map((id) => names.get(id) ?? "").filter(Boolean).join(", ");
       delete values.relatedSubitemIds;

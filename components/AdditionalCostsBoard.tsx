@@ -33,6 +33,7 @@ import {
 import { createClient as createSupabaseClient } from "@/lib/supabase/client";
 import { uploadCrmFiles } from "@/lib/crm-files";
 import { FilePreview } from "@/components/ui/file-preview";
+import { AWARDED_OR_LATER_SUBITEM_STATUS_SYSTEM_KEYS } from "@/lib/board-labels";
 
 type AdditionalCost = {
   id: string;
@@ -673,6 +674,20 @@ export function AdditionalCostsBoard({
           .filter((id): id is string => Boolean(id)),
       ),
     [labelOptions.additional_cost_courier],
+  );
+  const awardedOrLaterSubitemStatusIds = useMemo(
+    () =>
+      new Set(
+        (labelOptions.subitem_status ?? [])
+          .filter((option) =>
+            AWARDED_OR_LATER_SUBITEM_STATUS_SYSTEM_KEYS.includes(
+              option.systemKey as (typeof AWARDED_OR_LATER_SUBITEM_STATUS_SYSTEM_KEYS)[number],
+            ),
+          )
+          .map((option) => option.id)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    [labelOptions.subitem_status],
   );
   // The group-two table can be edited without opening the creation dialog,
   // so its QuickBooks supplier selector needs its options up front.
@@ -1798,7 +1813,9 @@ export function AdditionalCostsBoard({
   }, [filteredClients, groups]);
   const renderRelatedSubitemSelector = (clientId: string) => {
     const subitems = (clientsById.get(clientId)?.subitems ?? []).filter(
-      (subitem) => !subitem.customFields?.additionalCostId,
+      (subitem) =>
+        !subitem.customFields?.additionalCostId &&
+        awardedOrLaterSubitemStatusIds.has(subitem.statusOptionId ?? ""),
     );
     const selected = subitems.filter((subitem) =>
       voucherDraft.relatedSubitemIds.includes(subitem.id),
@@ -1848,7 +1865,7 @@ export function AdditionalCostsBoard({
             ))
           ) : (
             <p className="px-2 py-3 text-sm text-slate-500">
-              This client has no subitems.
+              This client has no Awarded-or-later subitems.
             </p>
           )}
         </div>
@@ -1860,7 +1877,9 @@ export function AdditionalCostsBoard({
     client: Client | undefined,
   ) => {
     const subitems = (client?.subitems ?? []).filter(
-      (subitem) => !subitem.customFields?.additionalCostId,
+      (subitem) =>
+        !subitem.customFields?.additionalCostId &&
+        awardedOrLaterSubitemStatusIds.has(subitem.statusOptionId ?? ""),
     );
     const selectedNames = new Set(
       row.items_sent

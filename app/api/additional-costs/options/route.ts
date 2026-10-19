@@ -2,7 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
-const CODES = new Set([
+const READ_CODES = new Set([
+  "additional_cost_status",
+  "additional_cost_reason",
+  "additional_cost_courier",
+  // Read-only in this route; its option IDs define Related Subitem eligibility.
+  "subitem_status",
+]);
+const MUTABLE_CODES = new Set([
   "additional_cost_status",
   "additional_cost_reason",
   "additional_cost_courier",
@@ -43,7 +50,7 @@ export async function GET() {
     const { data: groups, error } = await supabaseAdmin
       .from("option_groups")
       .select("id, code")
-      .in("code", [...CODES]);
+      .in("code", [...READ_CODES]);
     if (error) throw error;
     const ids = (groups ?? []).map((group) => group.id);
     const { data: values, error: valueError } = ids.length
@@ -73,7 +80,7 @@ export async function POST(request: NextRequest) {
       color?: string;
     };
     const code = body.code ?? "";
-    if (!CODES.has(code)) throw new Error("Invalid label group.");
+    if (!MUTABLE_CODES.has(code)) throw new Error("Invalid label group.");
     const { data: group } = await supabaseAdmin
       .from("option_groups")
       .select("id")
