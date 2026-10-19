@@ -201,6 +201,8 @@ export function TrackingQuoteList({
   const [openQuoteIds, setOpenQuoteIds] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [syncingAll, setSyncingAll] = useState(false);
+  const [syncWarning, setSyncWarning] = useState<string | null>(null);
   const [reloadVersion, setReloadVersion] = useState(0);
   const [syncingQuoteId, setSyncingQuoteId] = useState<string | null>(null);
   const [syncingDirectInvoiceId, setSyncingDirectInvoiceId] = useState<string | null>(null);
@@ -220,6 +222,8 @@ export function TrackingQuoteList({
     Record<string, number>
   >(() => defaultWidths(INVOICE_COLUMN_DEFINITIONS));
   const latestQuoteUpdate = useRef(new Map<string, number>());
+  const autoSyncStarted = useRef(false);
+  const hasLoaded = useRef(false);
 
   useEffect(() => {
     if (!expandAllInvoices) {
@@ -348,33 +352,94 @@ export function TrackingQuoteList({
 
   useEffect(() => {
     let active = true;
-    setLoading(true);
+    if (!hasLoaded.current) setLoading(true);
     setError(null);
-    fetch(`/api/quickbooks/tracking-quotes?clientId=${encodeURIComponent(clientId)}`)
-      .then(async (response) => {
+    const load = async () => {
+      try {
+        const response = await fetch(
+          `/api/quickbooks/tracking-quotes?clientId=${encodeURIComponent(clientId)}`,
+        );
         const result = await response.json();
         if (!response.ok)
           throw new Error(result?.error ?? "Could not load quotes");
+        const loadedQuotes = (result.quotes ?? []) as Quote[];
+        const loadedDirectInvoices = (result.directInvoices ?? []) as Invoice[];
         if (active) {
-          setQuotes(result.quotes ?? []);
-          setDirectInvoices(result.directInvoices ?? []);
+          setQuotes(loadedQuotes);
+          setDirectInvoices(loadedDirectInvoices);
         }
-      })
-      .catch((loadError) => {
+
+        if (canEdit && !autoSyncStarted.current) {
+          autoSyncStarted.current = true;
+          if (active) {
+            setSyncingAll(true);
+            setSyncWarning(null);
+          }
+          let failureCount = 0;
+
+          for (const quote of loadedQuotes) {
+            try {
+              const syncResponse = await fetch(
+                "/api/quickbooks/estimate-invoices",
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ estimateGenerationId: quote.id }),
+                },
+              );
+              const syncResult = await syncResponse.json();
+              if (!syncResponse.ok && !syncResult?.estimateMissing)
+                throw new Error(syncResult?.error ?? "Quote sync failed");
+            } catch {
+              failureCount += 1;
+            }
+          }
+
+          for (const invoice of loadedDirectInvoices) {
+            try {
+              const syncResponse = await fetch(
+                "/api/quickbooks/direct-invoices",
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ clientId, invoiceId: invoice.id }),
+                },
+              );
+              if (!syncResponse.ok) throw new Error("Invoice sync failed");
+            } catch {
+              failureCount += 1;
+            }
+          }
+
+          if (active) {
+            setSyncingAll(false);
+            setSyncWarning(
+              failureCount
+                ? `${failureCount} QuickBooks record${failureCount === 1 ? "" : "s"} could not be synchronized. The remaining records were updated.`
+                : null,
+            );
+            setReloadVersion((version) => version + 1);
+          }
+        }
+      } catch (loadError) {
         if (active)
           setError(
             loadError instanceof Error
               ? loadError.message
               : "Could not load quotes",
           );
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
+      } finally {
+        if (active) {
+          hasLoaded.current = true;
+          setLoading(false);
+        }
+      }
+    };
+    void load();
     return () => {
       active = false;
     };
-  }, [clientId, reloadVersion]);
+  }, [canEdit, clientId, reloadVersion]);
 
   const syncQuoteInvoices = async (quoteId: string) => {
     if (!canEdit) return;
@@ -594,6 +659,17 @@ export function TrackingQuoteList({
       className="overflow-visible border border-[#d0d4e4] bg-white text-[12.6px]"
       style={{ minWidth: quoteTableWidth }}
     >
+      {syncingAll && (
+        <div className="flex items-center gap-2 border-b border-sky-200 bg-sky-50 px-3 py-2 font-medium text-sky-700">
+          <LoaderCircle size={14} className="animate-spin" />
+          Syncing this client&apos;s quotes and invoices with QuickBooks…
+        </div>
+      )}
+      {syncWarning && (
+        <div className="border-b border-amber-200 bg-amber-50 px-3 py-2 text-amber-800">
+          {syncWarning}
+        </div>
+      )}
       <div
         className="grid border-b border-[#d0d4e4] bg-white text-[12.6px] font-medium text-slate-600"
         style={{ gridTemplateColumns: quoteGridColumns }}
