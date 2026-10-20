@@ -613,12 +613,9 @@ export function SubitemsTable({
         "payment_status_resolved",
         "Resolved",
       );
-      if (
-        resolvedOption.id &&
-        subitem.paymentStatusOptionId === resolvedOption.id
-      ) {
-        return;
-      }
+      const hasResolvedOverride =
+        Boolean(resolvedOption.id) &&
+        subitem.paymentStatusOptionId === resolvedOption.id;
 
       const rows = paymentRowsBySubitemRef.current.get(subitemId) ?? [];
       const currencyMultiplier = sgdToCurrencyMultiplier(
@@ -637,22 +634,36 @@ export function SubitemsTable({
       const amountReceived = rows
         .filter((row) => row.paymentReceived === true)
         .reduce((sum, row) => sum + parseNumber(row.amount), 0);
-      const isPaid = Math.abs(amountReceived - totalToPay) < 0.005;
+      const difference = amountReceived - totalToPay;
+      const isPaid = Math.abs(difference) < 0.005;
       const nextOption = findSystemOption(
         paymentStatusOptions,
         isPaid ? "payment_status_paid" : "payment_status_mismatch",
         isPaid ? "✅" : "MISMATCH",
       );
 
-      if (
-        subitem.paymentStatus === nextOption.value &&
-        subitem.paymentStatusOptionId === (nextOption.id ?? null)
-      ) {
+      const paymentAmountChanged =
+        Math.abs(parseNumber(subitem.paymentAmount) - amountReceived) >= 0.005;
+      const differenceChanged =
+        Math.abs(parseNumber(subitem.difference) - difference) >= 0.005;
+      const paymentStatusChanged =
+        !hasResolvedOverride &&
+        (subitem.paymentStatus !== nextOption.value ||
+          subitem.paymentStatusOptionId !== (nextOption.id ?? null));
+
+      if (!paymentAmountChanged && !differenceChanged && !paymentStatusChanged)
         return;
-      }
       onUpdateSubitem(subitemId, {
-        paymentStatus: nextOption.value,
-        paymentStatusOptionId: nextOption.id ?? null,
+        ...(paymentAmountChanged
+          ? { paymentAmount: formatMoney(amountReceived) }
+          : {}),
+        ...(differenceChanged ? { difference: formatMoney(difference) } : {}),
+        ...(paymentStatusChanged
+          ? {
+              paymentStatus: nextOption.value,
+              paymentStatusOptionId: nextOption.id ?? null,
+            }
+          : {}),
       });
     },
     [currencyOptions, onUpdateSubitem, paymentStatusOptions],
