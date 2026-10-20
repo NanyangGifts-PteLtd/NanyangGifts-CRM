@@ -3506,13 +3506,15 @@ export function ClientRow({
                 </Tooltip.Root>
               </Tooltip.Provider>
             )}
-            {showActivityLog && (
-              <div
-                data-activity-log
-                className="fixed inset-0 z-modal flex items-center justify-center bg-black/30"
-                onPointerDown={(event) => event.stopPropagation()}
-                onDragStart={(event) => event.stopPropagation()}
-              >
+            {showActivityLog &&
+              typeof document !== "undefined" &&
+              createPortal(
+                <div
+                  data-activity-log
+                  className="fixed inset-0 z-modal flex items-center justify-center bg-black/30"
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onDragStart={(event) => event.stopPropagation()}
+                >
                 <div
                   className="w-full max-w-2xl rounded-xl bg-white p-4 shadow-xl"
                   onPointerDown={(event) => event.stopPropagation()}
@@ -3725,8 +3727,9 @@ export function ClientRow({
                     })()}
                   </div>
                 </div>
-              </div>
-            )}
+                </div>,
+                document.body,
+              )}
             {!trackingMode && (
               <Tooltip.Provider>
                 <Tooltip.Root>

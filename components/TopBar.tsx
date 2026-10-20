@@ -664,7 +664,7 @@ export default function TopBar({
   }, []);
 
   return (
-    <div className="h-16 bg-[#ffffff] flex items-center px-4 gap-3 border-b border-[#f2f8ff] flex-shrink-0 overflow-visible sticky top-0 z-sticky">
+    <div className="h-16 bg-[#ffffff] flex items-center px-4 gap-3 border-b border-[#f2f8ff] flex-shrink-0 overflow-visible sticky top-0 z-menu">
       <div ref={searchRef} className="relative flex-1 max-w-90">
         <SearchBar
           value={value}
