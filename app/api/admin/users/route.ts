@@ -37,5 +37,19 @@ export async function PATCH(request: Request) {
         app_metadata: { ...(targetUser.user.app_metadata ?? {}), suspended },
     });
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+    // The allocation RPC deliberately only considers active pool entries. Do
+    // not re-enable an entry on account reactivation: a manager may have
+    // disabled it separately for a legitimate scheduling reason.
+    if (suspended) {
+        const { error: poolError } = await supabaseAdmin
+            .from("sales_round_robin_pool")
+            .update({ is_active: false })
+            .eq("user_id", userId);
+        if (poolError) {
+            return NextResponse.json({
+                error: `Account was deactivated, but could not be removed from Round Robin: ${poolError.message}`,
+            }, { status: 500 });
+        }
+    }
     return NextResponse.json({ ok: true, userId, suspended });
 }

@@ -207,6 +207,22 @@ async function updateIngestion(id: string, values: Record<string, unknown>) {
   return data as IngestionRow;
 }
 
+async function disableSuspendedRoundRobinUsers() {
+  // Suspension now disables the pool immediately. This reconciliation covers
+  // accounts that had already been suspended before that safeguard existed.
+  const { data, error } = await supabaseAdmin.auth.admin.listUsers({ page: 1, perPage: 1000 });
+  if (error) throw new InboundLeadError(error.message);
+  const suspendedUserIds = (data.users ?? [])
+    .filter((user) => user.app_metadata?.suspended === true)
+    .map((user) => user.id);
+  if (!suspendedUserIds.length) return;
+  const { error: deactivateError } = await supabaseAdmin
+    .from("sales_round_robin_pool")
+    .update({ is_active: false })
+    .in("user_id", suspendedUserIds);
+  if (deactivateError) throw new InboundLeadError(deactivateError.message);
+}
+
 async function createSubitems(clientId: string, lead: NormalizedInboundLead) {
   if (!lead.subitems.length) return 0;
   const { data: existing, error: existingError } = await supabaseAdmin.from("subitems").select("id").eq("client_id", clientId).is("deleted_at", null).contains("custom_fields", { inbound_source: lead.source, inbound_external_id: lead.externalId }).limit(1);
@@ -257,6 +273,7 @@ export async function ingestLead(lead: NormalizedInboundLead): Promise<InboundRe
 
   try {
     if (!ingestion.assigned_user_id) {
+      await disableSuspendedRoundRobinUsers();
       const { data, error } = await supabaseAdmin.rpc("assign_lead_ingestion_sales_user", { ingestion_id: ingestion.id });
       if (error) throw new InboundLeadError(error.message);
       if (typeof data !== "string" || !data) throw new InboundLeadError("No sales assignee returned from Round Robin");

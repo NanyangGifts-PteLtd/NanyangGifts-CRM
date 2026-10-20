@@ -6290,7 +6290,10 @@ export function CRMBoard({
   const searchScopedGroups = trackingView
     ? groupedClients.filter(({ group }) => /^closed leads\s*-/i.test(group.name))
     : groupedClients;
-  const boardVisibleGroups = boardSearchActive
+  // Filtering, like text search, should not leave empty group shells behind.
+  // The server-side group total is used because a matching client may be on a
+  // page that has not been loaded into the board yet.
+  const boardVisibleGroups = shouldExpandGroupsForResults
     ? searchScopedGroups.filter(
         ({ group, clients: groupClients }) =>
           groupClients.length > 0 ||
@@ -6298,7 +6301,7 @@ export function CRMBoard({
       )
     : visibleSearchGroups(searchScopedGroups, false);
   const noBoardSearchResults =
-    boardSearchActive && boardVisibleGroups.length === 0;
+    shouldExpandGroupsForResults && boardVisibleGroups.length === 0;
 
   const parentClientOptions = useMemo(
     () =>
