@@ -3146,7 +3146,7 @@ export function ClientRow({
         style={{ width: boardWidth, minWidth: boardWidth }}
         className={`relative box-border border-b flex text-[15px] items-center flex-shrink-0 border-r border-[#D0D4E4] group transition-colors focus-within:z-[70] ${
           isSelected
-            ? "bg-sky-50/70 shadow-[inset_0_0_0_1px_rgba(56,189,248,0.35)]"
+            ? "bg-sky-100/80 shadow-[inset_0_0_0_1px_rgba(14,165,233,0.5)]"
             : "bg-white"
         }`}
       >
@@ -3287,11 +3287,11 @@ export function ClientRow({
             </div>
             <div
               data-client-column="trackingInvoiceSubtotal"
-              className="tracking-client-cell overflow-hidden border-r border-[#D0D4E4] py-1"
+              className="tracking-client-cell overflow-hidden border-r border-[#D0D4E4] bg-amber-50 py-1"
               style={{ height: 30, minWidth: colWidth.trackingInvoiceSubtotal, width: colWidth.trackingInvoiceSubtotal, order: columnOrderMap.trackingInvoiceSubtotal }}
               title="Sum of all linked invoice totals before GST"
             >
-              <span className="block px-2 text-center text-[12.6px] font-medium text-slate-700">{trackingAmount(client.trackingInvoiceSubtotal)}</span>
+              <span className="block px-2 text-center text-[12.6px] font-medium text-amber-950">{trackingAmount(client.trackingInvoiceSubtotal)}</span>
             </div>
             <div
               data-client-column="trackingInvoiceTotal"

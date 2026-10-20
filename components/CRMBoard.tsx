@@ -296,18 +296,18 @@ const CLIENT_HEADER_COLS: HeaderCol[] = [
   { key: "progress", label: "Progress", width: 110, minWidth: 7 },
   { key: "trackingRemarks", label: "Remarks", width: 240, minWidth: 140 },
   {
-    key: "trackingTotalPrice",
-    label: "Total Price",
-    width: 130,
-    minWidth: 110,
-  },
-  {
     key: "trackingQuoteSubtotal",
     label: "Quote total before GST",
     width: 190,
     minWidth: 150,
   },
   { key: "trackingQuoteTotal", label: "Quote total", width: 130, minWidth: 110 },
+  {
+    key: "trackingTotalPrice",
+    label: "Total Price in system",
+    width: 130,
+    minWidth: 110,
+  },
   {
     key: "trackingInvoiceSubtotal",
     label: "Invoice total before GST",
@@ -392,18 +392,18 @@ const TRACKING_HEADER_COLS: HeaderCol[] = [
   { key: "progress", label: "Progress", width: 110, minWidth: 7 },
   { key: "trackingRemarks", label: "Remarks", width: 240, minWidth: 140 },
   {
-    key: "trackingTotalPrice",
-    label: "Total Price",
-    width: 130,
-    minWidth: 110,
-  },
-  {
     key: "trackingQuoteSubtotal",
     label: "Quote total before GST",
     width: 190,
     minWidth: 150,
   },
   { key: "trackingQuoteTotal", label: "Quote total", width: 130, minWidth: 110 },
+  {
+    key: "trackingTotalPrice",
+    label: "Total Price in system",
+    width: 130,
+    minWidth: 110,
+  },
   {
     key: "trackingInvoiceSubtotal",
     label: "Invoice total before GST",
@@ -2286,6 +2286,14 @@ export function CRMBoard({
               "trackingInvoiceTotal",
               "trackingInvoiceNumbers",
             );
+          }
+          // Keep the system total immediately beside the corresponding
+          // before-GST invoice value for existing saved Tracking layouts.
+          const totalPriceIndex = next.indexOf("trackingTotalPrice");
+          const invoiceSubtotalIndex = next.indexOf("trackingInvoiceSubtotal");
+          if (totalPriceIndex >= 0 && invoiceSubtotalIndex >= 0) {
+            next.splice(totalPriceIndex, 1);
+            next.splice(next.indexOf("trackingInvoiceSubtotal"), 0, "trackingTotalPrice");
           }
           // Saved Tracking layouts predate the migration-only verified-invoice
           // column. Keep it immediately after Quote Actions, never after the

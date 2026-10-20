@@ -4364,7 +4364,7 @@ export function SubitemsTable({
                       );
                     }
                   }}
-                  className={`relative group border-b border-r border-[#D0D4E4] hover:bg-blue-50/30 focus-within:z-[70] ${selectedSubitemIds.includes(sub.id) ? "bg-sky-50/70 shadow-[inset_0_0_0_1px_rgba(56,189,248,0.35)]" : ""} ${subitemDropMarker?.subitemId === sub.id ? (subitemDropMarker.edge === "top" ? "shadow-[inset_0_3px_0_#0f8da8]" : "shadow-[inset_0_-3px_0_#0f8da8]") : ""}`}
+                  className={`relative group border-b border-r border-[#D0D4E4] hover:bg-blue-50/30 focus-within:z-[70] ${selectedSubitemIds.includes(sub.id) ? "bg-sky-100/80 [&>td]:!bg-sky-100/80 shadow-[inset_0_0_0_1px_rgba(14,165,233,0.5)]" : ""} ${subitemDropMarker?.subitemId === sub.id ? (subitemDropMarker.edge === "top" ? "shadow-[inset_0_3px_0_#0f8da8]" : "shadow-[inset_0_-3px_0_#0f8da8]") : ""}`}
                 >
                   <td className="group relative h-[33.1px] overflow-visible align-middle border-r border-[#D0D4E4] px-2 py-1 text-center">
                     <svg
