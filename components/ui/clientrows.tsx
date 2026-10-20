@@ -357,6 +357,7 @@ export type ClientRowProps = {
   trackingPaymentStatusOptions: OptionEntry[];
   trackingPriceInvoiceMatchOptions: OptionEntry[];
   trackingInvoicePaymentStatusOptions: OptionEntry[];
+  trackingVerifiedInvoiceMondayOptions: OptionEntry[];
   onAddTrackingOption?: (code: string, name: string) => void | Promise<void>;
   onDeleteTrackingOption?: (code: string, name: string) => void | Promise<void>;
   onAddSubitemSubprogress: (name: string) => void | Promise<void>;
@@ -527,6 +528,8 @@ export function ClientRow({
   trackingPriceInvoiceMatchOptions: trackingPriceInvoiceMatchLabelOptions,
   trackingInvoicePaymentStatusOptions:
     trackingInvoicePaymentStatusLabelOptions,
+  trackingVerifiedInvoiceMondayOptions:
+    trackingVerifiedInvoiceMondayLabelOptions,
   onAddTrackingOption,
   onDeleteTrackingOption,
   onAddSubitemSubprogress,
@@ -1972,6 +1975,11 @@ export function ClientRow({
   const moonCakeOption = moonCakeOptions.find(
     (option) => option.id === client.customFields?.moonCakeOptionId,
   );
+  const trackingVerifiedInvoiceMondayOption =
+    trackingVerifiedInvoiceMondayLabelOptions.find(
+      (option) =>
+        option.id === client.customFields?.trackingVerifiedInvoiceMondayOptionId,
+    );
 
   // activity log text
   function displayLogValue(value: unknown) {
@@ -3375,6 +3383,56 @@ export function ClientRow({
               >
                 Link Quote
               </button>
+            </div>
+            <div
+              data-client-column="trackingVerifiedInvoiceMonday"
+              className="tracking-client-cell overflow-hidden border-r border-[#D0D4E4] p-0"
+              style={{
+                height: 30,
+                minWidth: colWidth.trackingVerifiedInvoiceMonday,
+                width: colWidth.trackingVerifiedInvoiceMonday,
+                order: columnOrderMap.trackingVerifiedInvoiceMonday,
+              }}
+            >
+              <StatusBadge
+                value={trackingVerifiedInvoiceMondayOption?.value ?? ""}
+                onChange={(_value, option) =>
+                  onUpdate({
+                    customFields: {
+                      ...(client.customFields ?? {}),
+                      trackingVerifiedInvoiceMondayOptionId: option?.id ?? "",
+                    },
+                  })
+                }
+                options={trackingVerifiedInvoiceMondayLabelOptions}
+                onAddOption={(name) =>
+                  onAddTrackingOption?.("tracking_verified_invoice_monday", name)
+                }
+                onDeleteOption={(name) =>
+                  onDeleteTrackingOption?.("tracking_verified_invoice_monday", name)
+                }
+                onUpdateOptionColor={(name, color, optionId) =>
+                  onUpdateOptionColor?.(
+                    "tracking_verified_invoice_monday",
+                    name,
+                    color,
+                    optionId,
+                  )
+                }
+                onRenameOption={(oldName, newName, optionId) =>
+                  onRenameOption?.(
+                    "tracking_verified_invoice_monday",
+                    oldName,
+                    newName,
+                    optionId,
+                  )
+                }
+                onReorderOptions={(layout) =>
+                  onReorderOptions?.("tracking_verified_invoice_monday", layout)
+                }
+                readOnly={!canEditClient}
+                manageLabel="verified invoice (Monday)"
+              />
             </div>
           </>
         )}

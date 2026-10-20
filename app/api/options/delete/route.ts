@@ -111,6 +111,7 @@ const TRACKING_CUSTOM_FIELD_BY_CODE: Record<string, string> = {
 // string. This keeps renames and recolours independent from client data.
 const CLIENT_CUSTOM_OPTION_ID_FIELD_BY_CODE: Record<string, string> = {
   moon_cake: "moonCakeOptionId",
+  tracking_verified_invoice_monday: "trackingVerifiedInvoiceMondayOptionId",
 };
 async function canManageLabels() {
   const caller = await createClient();

@@ -193,6 +193,7 @@ const BOARD_OPTION_GROUP_CODES = [
   "tracking_payment_status",
   "tracking_price_invoice_match",
   "tracking_invoice_payment_status",
+  "tracking_verified_invoice_monday",
   "moon_cake",
 ] as const;
 const normalizeBlacklistPhone = (value: string) => value.replace(/\D/g, "");
@@ -343,6 +344,14 @@ const CLIENT_HEADER_COLS: HeaderCol[] = [
     width: 125,
     minWidth: 125,
   },
+  // Tracking-only at render time, but it must also be present in the shared
+  // width/order model so row cells and Tracking headers cannot diverge.
+  {
+    key: "trackingVerifiedInvoiceMonday",
+    label: "Verified Invoice (Monday)",
+    width: 175,
+    minWidth: 145,
+  },
   { key: "moonCake", label: "Mooncake", width: 100, minWidth: 80 },
   { key: "dateCreated", label: "Date Created", width: 90, minWidth: 7 },
   { key: "closedDate", label: "Closed Date", width: 90, minWidth: 7 },
@@ -431,6 +440,12 @@ const TRACKING_HEADER_COLS: HeaderCol[] = [
     width: 125,
     minWidth: 125,
   },
+  {
+    key: "trackingVerifiedInvoiceMonday",
+    label: "Verified Invoice (Monday)",
+    width: 175,
+    minWidth: 145,
+  },
   { key: "empty", label: "", width: 44, minWidth: 44 },
 ];
 const TRACKING_CLIENT_COLUMN_KEYS = new Set(
@@ -447,6 +462,7 @@ const TRACKING_ONLY_CLIENT_COLUMN_KEYS = new Set([
   "trackingOverallPriceInvoiceMatch",
   "trackingOverallInvoicePaymentStatus",
   "trackingQuoteActions",
+  "trackingVerifiedInvoiceMonday",
 ]);
 
 interface CRMBoardProps {
@@ -1422,6 +1438,10 @@ export function CRMBoard({
     setTrackingPriceInvoiceMatchEntries,
   ] = useState<OptionEntry[]>([]);
   const [
+    trackingVerifiedInvoiceMondayEntries,
+    setTrackingVerifiedInvoiceMondayEntries,
+  ] = useState<OptionEntry[]>([]);
+  const [
     trackingInvoicePaymentStatusEntries,
     setTrackingInvoicePaymentStatusEntries,
   ] = useState<OptionEntry[]>([]);
@@ -2267,6 +2287,17 @@ export function CRMBoard({
               "trackingInvoiceNumbers",
             );
           }
+          // Saved Tracking layouts predate the migration-only verified-invoice
+          // column. Keep it immediately after Quote Actions, never after the
+          // trailing spacer cell.
+          if (!next.includes("trackingVerifiedInvoiceMonday")) {
+            const quoteActionsIndex = next.indexOf("trackingQuoteActions");
+            next.splice(
+              quoteActionsIndex >= 0 ? quoteActionsIndex + 1 : next.length,
+              0,
+              "trackingVerifiedInvoiceMonday",
+            );
+          }
           return next;
         })()
       : base.map((column) => column.key);
@@ -3038,6 +3069,9 @@ export function CRMBoard({
       setTrackingInvoicePaymentStatusEntries(
         optionsFor("tracking_invoice_payment_status"),
       );
+      setTrackingVerifiedInvoiceMondayEntries(
+        optionsFor("tracking_verified_invoice_monday"),
+      );
     };
 
     void loadBoardOptions();
@@ -3457,6 +3491,8 @@ export function CRMBoard({
         tracking_price_invoice_match: setTrackingPriceInvoiceMatchEntries,
         tracking_invoice_payment_status:
           setTrackingInvoicePaymentStatusEntries,
+        tracking_verified_invoice_monday:
+          setTrackingVerifiedInvoiceMondayEntries,
       };
       const setEntries = setters[code];
       let targetOptionId = optionId;
@@ -3540,6 +3576,8 @@ export function CRMBoard({
         tracking_price_invoice_match: setTrackingPriceInvoiceMatchEntries,
         tracking_invoice_payment_status:
           setTrackingInvoicePaymentStatusEntries,
+        tracking_verified_invoice_monday:
+          setTrackingVerifiedInvoiceMondayEntries,
       };
       const setEntries = setters[code];
       if (!setEntries) return;
@@ -3863,6 +3901,8 @@ export function CRMBoard({
         tracking_price_invoice_match: setTrackingPriceInvoiceMatchEntries,
         tracking_invoice_payment_status:
           setTrackingInvoicePaymentStatusEntries,
+        tracking_verified_invoice_monday:
+          setTrackingVerifiedInvoiceMondayEntries,
       };
       setters[code]?.((previous) =>
         previous.map((entry) =>
@@ -3962,6 +4002,7 @@ export function CRMBoard({
     tracking_payment_status: trackingPaymentStatusEntries,
     tracking_price_invoice_match: trackingPriceInvoiceMatchEntries,
     tracking_invoice_payment_status: trackingInvoicePaymentStatusEntries,
+    tracking_verified_invoice_monday: trackingVerifiedInvoiceMondayEntries,
   };
   const trackingOptionSetters: Record<
     string,
@@ -3973,6 +4014,7 @@ export function CRMBoard({
     tracking_payment_status: setTrackingPaymentStatusEntries,
     tracking_price_invoice_match: setTrackingPriceInvoiceMatchEntries,
     tracking_invoice_payment_status: setTrackingInvoicePaymentStatusEntries,
+    tracking_verified_invoice_monday: setTrackingVerifiedInvoiceMondayEntries,
   };
   const handleAddTrackingOption = async (code: string, name: string) => {
     const entries = trackingOptionEntries[code];
@@ -9418,7 +9460,7 @@ export function CRMBoard({
 
   return (
     <div
-      className="crm-board box-border flex min-h-full flex-col bg-white pl-14"
+      className="crm-board box-border flex min-h-full min-w-0 flex-col bg-white pl-14"
       // The page-level scroller owns horizontal scrolling. Give the shell the
       // same full width as the grid so group/header backgrounds do not end at
       // the viewport edge while the user is scrolled to the right.
@@ -13044,6 +13086,9 @@ export function CRMBoard({
                           }
                           trackingInvoicePaymentStatusOptions={
                             trackingInvoicePaymentStatusEntries
+                          }
+                          trackingVerifiedInvoiceMondayOptions={
+                            trackingVerifiedInvoiceMondayEntries
                           }
                           onAddTrackingOption={handleAddTrackingOption}
                           onDeleteTrackingOption={handleDeleteTrackingOption}
