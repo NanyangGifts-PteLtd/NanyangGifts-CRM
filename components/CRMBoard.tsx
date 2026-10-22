@@ -1687,10 +1687,10 @@ export function CRMBoard({
     if (!scrollViewport) return;
 
     const updateWidth = () => {
-      // The board shell reserves 3.5rem on the left. Measure the real scroll
-      // viewport so the toolbar also responds to sidebar transitions and
-      // monitor/browser resizing without extending beyond the visible edge.
-      setBoardToolbarWidth(Math.max(0, scrollViewport.clientWidth - 56));
+      // The Board content is indented by 3.5rem for its group rails. The
+      // toolbar cancels that indent with -ml-14, so its own measured viewport
+      // width also needs the same 3.5rem added back to reach the right edge.
+      setBoardToolbarWidth(Math.max(0, scrollViewport.clientWidth));
     };
 
     updateWidth();
@@ -10440,7 +10440,7 @@ export function CRMBoard({
       </AlertDialog>
       <div
         ref={boardToolbarRef}
-        className="sticky left-14 top-0 z-[80] flex flex-shrink-0 items-center gap-2 border-b border-gray-200 bg-white px-2 py-1 shadow-[0_1px_0_rgba(226,232,240,0.75)]"
+        className="sticky left-0 top-0 z-[80] -ml-14 flex flex-shrink-0 items-center gap-2 border-b border-gray-200 bg-white px-2 py-1 shadow-[0_1px_0_rgba(226,232,240,0.75)]"
         style={
           boardToolbarWidth === null
             ? undefined
@@ -10833,13 +10833,24 @@ export function CRMBoard({
               type="button"
               onClick={() => {
                 setFocusedFilterColumn(null);
+                const advancedIsOpen =
+                  showFilter && filterMode === "advanced";
                 setFilterMode("advanced");
-                setShowFilter(true);
+                setShowFilter(!advancedIsOpen);
                 setShowSortMenu(false);
               }}
               className="rounded-r-md px-1.5 transition-colors hover:bg-slate-100"
-              title="Open advanced filters"
-              aria-label="Open advanced filters"
+              title={
+                showFilter && filterMode === "advanced"
+                  ? "Close advanced filters"
+                  : "Open advanced filters"
+              }
+              aria-label={
+                showFilter && filterMode === "advanced"
+                  ? "Close advanced filters"
+                  : "Open advanced filters"
+              }
+              aria-expanded={showFilter && filterMode === "advanced"}
             >
               <ChevronDown size={11} />
             </button>
