@@ -333,6 +333,12 @@ const CLIENT_HEADER_COLS: HeaderCol[] = [
     minWidth: 150,
   },
   {
+    key: "trackingVerifiedMismatchRemarks",
+    label: "Remarks (Verified Mismatch)",
+    width: 240,
+    minWidth: 140,
+  },
+  {
     key: "trackingOverallInvoicePaymentStatus",
     label: "Payment Status",
     width: 165,
@@ -388,6 +394,7 @@ const TRACKING_HEADER_COLS: HeaderCol[] = [
   { key: "selectCheckbox", label: "", width: 76, minWidth: 7 },
   { key: "client", label: "Client", width: 250, minWidth: 7 },
   { key: "people", label: "People", width: 90, minWidth: 7 },
+  { key: "company", label: "Company", width: 150, minWidth: 100 },
   { key: "channel", label: "Channel", width: 110, minWidth: 7 },
   { key: "progress", label: "Progress", width: 110, minWidth: 7 },
   { key: "trackingRemarks", label: "Remarks", width: 240, minWidth: 140 },
@@ -429,6 +436,12 @@ const TRACKING_HEADER_COLS: HeaderCol[] = [
     minWidth: 150,
   },
   {
+    key: "trackingVerifiedMismatchRemarks",
+    label: "Remarks (Verified Mismatch)",
+    width: 240,
+    minWidth: 140,
+  },
+  {
     key: "trackingOverallInvoicePaymentStatus",
     label: "Payment Status",
     width: 165,
@@ -460,6 +473,7 @@ const TRACKING_ONLY_CLIENT_COLUMN_KEYS = new Set([
   "trackingInvoiceTotal",
   "trackingInvoiceNumbers",
   "trackingOverallPriceInvoiceMatch",
+  "trackingVerifiedMismatchRemarks",
   "trackingOverallInvoicePaymentStatus",
   "trackingQuoteActions",
   "trackingVerifiedInvoiceMonday",
@@ -2274,6 +2288,12 @@ export function CRMBoard({
             const channelIndex = next.indexOf("channel");
             next.splice(channelIndex >= 0 ? channelIndex + 1 : next.length, 0, "progress");
           }
+          // Existing Tracking layouts predate Company. Keep it beside the
+          // assignees rather than appending it at the end of a saved layout.
+          if (!next.includes("company")) {
+            const peopleIndex = next.indexOf("people");
+            next.splice(peopleIndex >= 0 ? peopleIndex + 1 : next.length, 0, "company");
+          }
           if (!next.includes("trackingTotalPrice")) {
             const anchorIndex = next.indexOf("trackingRemarks");
             next.splice(
@@ -2304,6 +2324,16 @@ export function CRMBoard({
               quoteActionsIndex >= 0 ? quoteActionsIndex + 1 : next.length,
               0,
               "trackingVerifiedInvoiceMonday",
+            );
+          }
+          // A verified mismatch needs its note directly beside the calculated
+          // match result, including for staff with a saved older layout.
+          if (!next.includes("trackingVerifiedMismatchRemarks")) {
+            const matchIndex = next.indexOf("trackingOverallPriceInvoiceMatch");
+            next.splice(
+              matchIndex >= 0 ? matchIndex + 1 : next.length,
+              0,
+              "trackingVerifiedMismatchRemarks",
             );
           }
           return next;

@@ -2144,7 +2144,7 @@ export function ClientRow({
         )
         .join(
           "",
-        )} ${trackingMode ? `[data-client-id="${client.id}"] [data-client-column]{flex-grow:0!important;flex-shrink:0!important}[data-client-id="${client.id}"] [data-client-column]:not([data-client-column="selectCheckbox"]):not([data-client-column="client"]):not([data-client-column="people"]):not([data-client-column="channel"]):not([data-client-column="progress"]):not([data-client-column^="custom:"]):not(.tracking-client-cell){display:none!important}` : ""}`}</style>
+        )} ${trackingMode ? `[data-client-id="${client.id}"] [data-client-column]{flex-grow:0!important;flex-shrink:0!important}[data-client-id="${client.id}"] [data-client-column]:not([data-client-column="selectCheckbox"]):not([data-client-column="client"]):not([data-client-column="people"]):not([data-client-column="company"]):not([data-client-column="channel"]):not([data-client-column="progress"]):not([data-client-column^="custom:"]):not(.tracking-client-cell){display:none!important}` : ""}`}</style>
       {permissionNotice && (
         <div
           role="alert"
@@ -3338,6 +3338,35 @@ export function ClientRow({
                 readOnly={!canVerifyTrackingMatch}
                 readOnlyReason="Only directors and developers can verify this calculated match"
                 manageLabel="price and invoice match"
+              />
+            </div>
+            <div
+              data-client-column="trackingVerifiedMismatchRemarks"
+              className="tracking-client-cell relative overflow-visible border-r border-[#D0D4E4] p-0 focus-within:z-[80]"
+              style={{
+                height: 30,
+                minWidth: colWidth.trackingVerifiedMismatchRemarks,
+                width: colWidth.trackingVerifiedMismatchRemarks,
+                order: columnOrderMap.trackingVerifiedMismatchRemarks,
+              }}
+            >
+              <EditableCell
+                value={
+                  client.customFields?.trackingVerifiedMismatchRemarks ?? ""
+                }
+                onChange={(value) =>
+                  onUpdate({
+                    customFields: {
+                      ...(client.customFields ?? {}),
+                      trackingVerifiedMismatchRemarks: value,
+                    },
+                  })
+                }
+                readOnly={!canEditClient}
+                readOnlyReason="You can only edit items that are assigned to you"
+                multiline
+                resizableMultiline
+                className="!justify-start"
               />
             </div>
             <div
