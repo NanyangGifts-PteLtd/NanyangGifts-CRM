@@ -620,7 +620,8 @@ export default function Page() {
   );
 
   const searchAllCrmRecords = useCallback(
-    (query: string) => searchCrmClients(query),
+    (query: string, offset = 0, limit = 40) =>
+      searchCrmClients(query, offset, limit),
     [],
   );
 

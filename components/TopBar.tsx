@@ -29,6 +29,7 @@ import {
   SearchResult,
   SubitemAssigneeMap,
 } from "../app/types";
+import type { UniversalSearchClientPage } from "@/lib/crm";
 
 interface TopBarProps {
   value?: string;
@@ -44,7 +45,11 @@ interface TopBarProps {
   clientPmAssignees: ClientAssigneeMap;
   subitemAssignees: SubitemAssigneeMap;
   profiles: Profile[];
-  searchClients?: (query: string) => Promise<Client[]>;
+  searchClients?: (
+    query: string,
+    offset?: number,
+    limit?: number,
+  ) => Promise<UniversalSearchClientPage>;
   onSelectSearchResult?: (result: SearchResult) => void;
 }
 
@@ -344,8 +349,7 @@ function searchResults(
     }
   }
   return results
-    .sort((first, second) => (second.score ?? 0) - (first.score ?? 0))
-    .slice(0, 30);
+    .sort((first, second) => (second.score ?? 0) - (first.score ?? 0));
 }
 
 const notifIcon = (type: Notification["type"]) => {
@@ -504,6 +508,11 @@ export default function TopBar({
   const [hasNewNotification, setHasNewNotification] = useState(false);
   const [serverSearchClients, setServerSearchClients] = useState<Client[]>([]);
   const [serverSearchLoading, setServerSearchLoading] = useState(false);
+  const [serverSearchLoadingMore, setServerSearchLoadingMore] = useState(false);
+  const [serverSearchTotalClients, setServerSearchTotalClients] = useState(0);
+  const [serverSearchHasMore, setServerSearchHasMore] = useState(false);
+  const [serverSearchNextOffset, setServerSearchNextOffset] = useState(0);
+  const [visibleSearchResultLimit, setVisibleSearchResultLimit] = useState(30);
   const searchRequestRef = useRef(0);
   const searchableClients = useMemo(() => {
     const byId = new Map<string, Client>();
@@ -527,18 +536,32 @@ export default function TopBar({
   const searchOverlayInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    const request = ++searchRequestRef.current;
+    setServerSearchLoadingMore(false);
     if (!searchClients || !value.trim()) {
       setServerSearchClients([]);
       setServerSearchLoading(false);
+      setServerSearchTotalClients(0);
+      setServerSearchHasMore(false);
+      setServerSearchNextOffset(0);
+      setVisibleSearchResultLimit(30);
       return;
     }
-    const request = ++searchRequestRef.current;
+    setServerSearchClients([]);
+    setServerSearchTotalClients(0);
+    setServerSearchHasMore(false);
+    setServerSearchNextOffset(0);
+    setVisibleSearchResultLimit(30);
     const timer = window.setTimeout(() => {
       setServerSearchLoading(true);
-      void searchClients(value)
-        .then((nextClients) => {
-          if (request === searchRequestRef.current)
-            setServerSearchClients(nextClients);
+      void searchClients(value, 0, 40)
+        .then((page) => {
+          if (request === searchRequestRef.current) {
+            setServerSearchClients(page.clients);
+            setServerSearchTotalClients(page.totalClients);
+            setServerSearchHasMore(page.hasMore);
+            setServerSearchNextOffset(page.nextOffset);
+          }
         })
         .catch((error) => {
           console.error("Universal CRM search failed", error);
@@ -551,6 +574,39 @@ export default function TopBar({
     }, 250);
     return () => window.clearTimeout(timer);
   }, [searchClients, value]);
+
+  const visibleResults = results.slice(0, visibleSearchResultLimit);
+  const hasMoreLocalResults = visibleSearchResultLimit < results.length;
+  const canLoadMoreSearchResults =
+    hasMoreLocalResults || serverSearchHasMore;
+  const loadMoreSearchResults = async () => {
+    if (serverSearchLoadingMore) return;
+    if (hasMoreLocalResults) {
+      setVisibleSearchResultLimit((current) => current + 30);
+      return;
+    }
+    if (!searchClients || !serverSearchHasMore) return;
+    const request = searchRequestRef.current;
+    setServerSearchLoadingMore(true);
+    try {
+      const page = await searchClients(value, serverSearchNextOffset, 40);
+      if (request !== searchRequestRef.current) return;
+      setServerSearchClients((current) => {
+        const byId = new Map(current.map((client) => [client.id, client]));
+        for (const client of page.clients) byId.set(client.id, client);
+        return [...byId.values()];
+      });
+      setServerSearchTotalClients(page.totalClients);
+      setServerSearchHasMore(page.hasMore);
+      setServerSearchNextOffset(page.nextOffset);
+      setVisibleSearchResultLimit((current) => current + 30);
+    } catch (error) {
+      console.error("Could not load more universal CRM search results", error);
+    } finally {
+      if (request === searchRequestRef.current)
+        setServerSearchLoadingMore(false);
+    }
+  };
 
   useEffect(() => {
     try {
@@ -815,18 +871,26 @@ export default function TopBar({
                             Searching…
                           </>
                         ) : (
-                          results.length
+                          canLoadMoreSearchResults
+                            ? `${Math.min(visibleResults.length, results.length)}+`
+                            : visibleResults.length
                         )}
                       </span>
                     </div>
                     <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-                      {results.length === 0 ? (
+                      {results.length === 0 && serverSearchLoading ? (
+                        <div className="flex items-center justify-center gap-2 px-5 py-14 text-sm text-slate-500">
+                          <LoaderCircle size={16} className="animate-spin" />
+                          Searching across the CRM…
+                        </div>
+                      ) : results.length === 0 ? (
                         <div className="px-5 py-14 text-center text-sm text-slate-400">
                           No matching clients, subitems, payments, timeline
                           values, or people.
                         </div>
                       ) : (
-                        results.map((result) => {
+                        <>
+                        {visibleResults.map((result) => {
                           const matchIndex = result.value
                             .toLowerCase()
                             .indexOf(result.query.trim().toLowerCase());
@@ -875,7 +939,28 @@ export default function TopBar({
                               />
                             </button>
                           );
-                        })
+                        })}
+                        {canLoadMoreSearchResults && (
+                          <div className="border-t border-slate-100 bg-slate-50/60 p-3 text-center">
+                            <button
+                              type="button"
+                              disabled={serverSearchLoadingMore}
+                              onClick={() => void loadMoreSearchResults()}
+                              className="inline-flex min-w-32 items-center justify-center gap-2 rounded-md border border-sky-300 bg-white px-4 py-2 text-sm font-semibold text-sky-700 hover:bg-sky-50 disabled:cursor-wait disabled:opacity-60"
+                            >
+                              {serverSearchLoadingMore && (
+                                <LoaderCircle size={14} className="animate-spin" />
+                              )}
+                              Load more
+                            </button>
+                            {serverSearchTotalClients > 0 && (
+                              <div className="mt-1.5 text-[11px] text-slate-500">
+                                Searching across {serverSearchTotalClients} matching client{serverSearchTotalClients === 1 ? "" : "s"}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        </>
                       )}
                     </div>
                   </div>

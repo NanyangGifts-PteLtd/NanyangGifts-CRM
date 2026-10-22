@@ -1668,29 +1668,58 @@ export async function fetchHydratedClientGroupPage(
   };
 }
 
-/** Finds CRM records globally for the universal search overlay. */
-export async function searchCrmClients(query: string, limit = 40) {
+export type UniversalSearchClientPage = {
+  clients: Client[];
+  totalClients: number;
+  hasMore: boolean;
+  nextOffset: number;
+};
+
+/** Finds one ranked page of CRM records for the universal search overlay. */
+export async function searchCrmClients(
+  query: string,
+  offset = 0,
+  limit = 40,
+): Promise<UniversalSearchClientPage> {
   const trimmedQuery = query.trim();
-  if (!trimmedQuery) return [] as Client[];
-  const { data, error } = await supabase.rpc("crm_universal_search_clients", {
-    p_search: trimmedQuery,
-    p_limit: limit,
-  });
+  if (!trimmedQuery)
+    return { clients: [], totalClients: 0, hasMore: false, nextOffset: 0 };
+  const { data, error } = await supabase.rpc(
+    "crm_universal_search_clients_indexed_v1",
+    {
+      p_search: trimmedQuery,
+      p_limit: limit,
+      p_offset: offset,
+    },
+  );
   if (error) throw error;
   const clientIds: string[] = (data ?? []).map((row: { client_id: string }) =>
     String(row.client_id),
   );
-  if (!clientIds.length) return [];
+  const totalClients = Number(data?.[0]?.total_count ?? 0);
+  if (!clientIds.length)
+    return {
+      clients: [],
+      totalClients,
+      hasMore: false,
+      nextOffset: offset,
+    };
   const hydratedClients: Client[] = await fetchClientsWithSubitems({
     clientIds,
   });
   const clientsById = new Map(
     hydratedClients.map((client) => [client.id, client]),
   );
-  return clientIds.flatMap((clientId) => {
+  const clients = clientIds.flatMap((clientId) => {
     const client = clientsById.get(clientId);
     return client ? [client] : [];
   });
+  return {
+    clients,
+    totalClients,
+    hasMore: offset + clientIds.length < totalClients,
+    nextOffset: offset + clientIds.length,
+  };
 }
 
 /** Lightweight metadata for collapsed CRM group headers. */
