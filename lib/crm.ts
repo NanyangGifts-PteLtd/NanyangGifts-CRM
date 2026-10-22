@@ -1695,44 +1695,35 @@ export async function searchCrmClients(query: string, limit = 40) {
 
 /** Lightweight metadata for collapsed CRM group headers. */
 export async function fetchClientGroupCounts(query: CrmBoardQuery = {}) {
-  if (Object.keys(query).length) {
-    const { data, error } = await supabase.rpc(
-      "crm_board_client_group_counts_v3",
-      {
-        p_search: query.search?.trim() || null,
-        p_search_columns: query.searchColumns ?? null,
-        p_advanced_rules: query.advancedRules ?? [],
-        p_advanced_join: query.advancedJoin ?? "and",
-        p_status_option_id: query.statusOptionId ?? null,
-        p_importance_option_id: query.importanceOptionId ?? null,
-        p_reply_status_option_id: query.replyStatusOptionId ?? null,
-        p_channel_option_id: query.channelOptionId ?? null,
-        p_subitem_status_option_id: query.subitemStatusOptionId ?? null,
-        p_payment_option_id: query.paymentOptionId ?? null,
-        p_payment_status_option_id: query.paymentStatusOptionId ?? null,
-        p_subprogress_option_id: query.subprogressOptionId ?? null,
-        p_person_id: query.personId ?? null,
-      },
-    );
-    if (error) throw error;
-    const rows = (data ?? []) as Array<{
-      group_id: string | null;
-      total_count: number | string | null;
-    }>;
-    return rows.reduce<Record<string, number>>((counts, row) => {
-      const groupId = String(row.group_id ?? "");
-      if (groupId) counts[groupId] = Number(row.total_count ?? 0);
-      return counts;
-    }, {});
-  }
-  const { data, error } = await supabase
-    .from("clients")
-    .select("group_id")
-    .is("deleted_at", null);
+  // This RPC returns one aggregate row per group. The former unfiltered path
+  // selected every client's group_id into the browser and counted it locally;
+  // that becomes both stale and unnecessarily expensive during a bulk import.
+  const { data, error } = await supabase.rpc(
+    "crm_board_client_group_counts_v3",
+    {
+      p_search: query.search?.trim() || null,
+      p_search_columns: query.searchColumns ?? null,
+      p_advanced_rules: query.advancedRules ?? [],
+      p_advanced_join: query.advancedJoin ?? "and",
+      p_status_option_id: query.statusOptionId ?? null,
+      p_importance_option_id: query.importanceOptionId ?? null,
+      p_reply_status_option_id: query.replyStatusOptionId ?? null,
+      p_channel_option_id: query.channelOptionId ?? null,
+      p_subitem_status_option_id: query.subitemStatusOptionId ?? null,
+      p_payment_option_id: query.paymentOptionId ?? null,
+      p_payment_status_option_id: query.paymentStatusOptionId ?? null,
+      p_subprogress_option_id: query.subprogressOptionId ?? null,
+      p_person_id: query.personId ?? null,
+    },
+  );
   if (error) throw error;
-  return (data ?? []).reduce<Record<string, number>>((counts, row) => {
+  const rows = (data ?? []) as Array<{
+    group_id: string | null;
+    total_count: number | string | null;
+  }>;
+  return rows.reduce<Record<string, number>>((counts, row) => {
     const groupId = String(row.group_id ?? "");
-    if (groupId) counts[groupId] = (counts[groupId] ?? 0) + 1;
+    if (groupId) counts[groupId] = Number(row.total_count ?? 0);
     return counts;
   }, {});
 }

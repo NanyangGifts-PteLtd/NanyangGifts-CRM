@@ -8905,6 +8905,12 @@ export function CRMBoard({
         return;
       }
       setIsMovingClients(true);
+      const clientIds = [...selectedIds];
+      const originalClientsById = new Map(
+        clients
+          .filter((client) => clientIds.includes(client.id))
+          .map((client) => [client.id, client]),
+      );
       try {
         const updates: Partial<Client> = { groupId: targetGroupId };
         if (targetGroup?.name.trim().toLowerCase().startsWith("closed leads")) {
@@ -8915,29 +8921,47 @@ export function CRMBoard({
           closedClientStatus?.id != null &&
           updates.statusOptionId === closedClientStatus.id
         ) {
-          if (selectedIds.size !== 1) {
+          if (clientIds.length !== 1) {
             toast.error("Close leads one at a time", {
               description:
                 "Each lead requires its own purchase order, signed quotation, proof of payment, and OCF confirmation.",
             });
             return;
           }
-          await updateClient([...selectedIds][0], updates);
+          await updateClient(clientIds[0], updates);
           return;
         }
+        // Keep both the source and destination groups stable in place. A
+        // complete Board reconciliation after a normal move remounts every
+        // loaded group, which is especially disruptive while other people are
+        // editing rows elsewhere on the Board.
+        setClients((current) =>
+          current.map((client) =>
+            clientIds.includes(client.id) ? { ...client, ...updates } : client,
+          ),
+        );
         await Promise.all(
-          [...selectedIds].map((clientId) =>
+          clientIds.map((clientId) =>
             enqueueBoardWrite("client", clientId, () =>
               updateClientRow(clientId, updates),
             ),
           ),
         );
-        await reloadClients({ preservePagination: false });
         toast.success("Clients moved", {
-          description: `${selectedIds.size} selected client${selectedIds.size === 1 ? "" : "s"} were moved to the chosen group.`,
+          description: `${clientIds.length} selected client${clientIds.length === 1 ? "" : "s"} were moved to the chosen group.`,
         });
         setSelectedIds(new Set());
       } catch (error) {
+        // Roll back only the rows this action changed. A full reload here can
+        // erase another user's just-arrived realtime edits.
+        setClients((current) =>
+          current.map((client) => {
+            const original = originalClientsById.get(client.id);
+            return original && client.groupId === targetGroupId
+              ? original
+              : client;
+          }),
+        );
         await reloadClients();
         toast.error("Clients could not be moved", {
           description:
@@ -8953,11 +8977,16 @@ export function CRMBoard({
     },
     [
       canEditClientRecord,
+      closedClientStatus?.id,
+      closedClientStatus?.value,
       clients,
       groups,
       reloadClients,
       selectedIds,
+      setClients,
       showAssignmentPermissionError,
+      unqualifiedClientStatus?.id,
+      unqualifiedClientStatus?.value,
       updateClient,
     ],
   );
@@ -9141,17 +9170,82 @@ export function CRMBoard({
         return;
       }
       setIsMovingSubitems(true);
+      const movedSubitems = clients.flatMap((client) =>
+        client.subitems
+          .filter((subitem) => subitemIds.includes(subitem.id))
+          .map((subitem) => ({ clientId: client.id, subitem })),
+      );
+      const releaseMoveProtections = movedSubitems.map(({ subitem }) =>
+        holdBoardRecordProtection("subitem", subitem.id),
+      );
       try {
+        // Move the actual row locally before persistence. The realtime echo is
+        // held through its short settle window, so it cannot replace every
+        // loaded Board group just to show the same move again.
+        setClients((current) =>
+          current.map((client) => {
+            const leaving = movedSubitems
+              .filter(({ clientId }) => clientId === client.id)
+              .map(({ subitem }) => subitem.id);
+            if (client.id === targetClientId) {
+              const arriving = movedSubitems
+                .filter(({ clientId }) => clientId !== targetClientId)
+                .map(({ subitem }) => subitem);
+              return arriving.length
+                ? {
+                    ...client,
+                    subitems: [...client.subitems, ...arriving].sort(
+                      (left, right) => (left.position ?? 0) - (right.position ?? 0),
+                    ),
+                  }
+                : client;
+            }
+            return leaving.length
+              ? {
+                  ...client,
+                  subitems: client.subitems.filter(
+                    (subitem) => !leaving.includes(subitem.id),
+                  ),
+                }
+              : client;
+          }),
+        );
         await Promise.all(
           subitemIds.map((subitemId) =>
             moveSubitemRow(subitemId, targetClientId),
           ),
         );
-        await reloadClients({ preservePagination: false });
         toast.success("Subitems moved", {
           description: `${subitemIds.length} subitem${subitemIds.length === 1 ? "" : "s"} moved to the selected client.`,
         });
       } catch (error) {
+        setClients((current) =>
+          current.map((client) => {
+            const sourceRows = movedSubitems
+              .filter(({ clientId }) => clientId === client.id)
+              .map(({ subitem }) => subitem);
+            if (sourceRows.length) {
+              const remaining = client.subitems.filter(
+                (subitem) => !subitemIds.includes(subitem.id),
+              );
+              return {
+                ...client,
+                subitems: [...remaining, ...sourceRows].sort(
+                  (left, right) => (left.position ?? 0) - (right.position ?? 0),
+                ),
+              };
+            }
+            if (client.id === targetClientId) {
+              return {
+                ...client,
+                subitems: client.subitems.filter(
+                  (subitem) => !subitemIds.includes(subitem.id),
+                ),
+              };
+            }
+            return client;
+          }),
+        );
         await reloadClients();
         toast.error("Subitems could not be moved", {
           description:
@@ -9160,6 +9254,7 @@ export function CRMBoard({
               : "The subitems were not moved.",
         });
       } finally {
+        releaseMoveProtections.forEach((release) => release());
         setIsMovingSubitems(false);
       }
     },
@@ -9168,6 +9263,7 @@ export function CRMBoard({
       canEditSubitemRecord,
       clients,
       reloadClients,
+      setClients,
       showAssignmentPermissionError,
     ],
   );

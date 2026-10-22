@@ -273,6 +273,7 @@ export default function Page() {
   const mainScrollRef = useRef<HTMLElement | null>(null);
   const searchViewportAnchorClientIdRef = useRef<string | null>(null);
   const reconciliationTimer = useRef<number | null>(null);
+  const groupCountsRefreshTimer = useRef<number | null>(null);
   const recordsRefreshSequence = useRef(0);
   const ganttRefreshSequence = useRef(0);
   const ganttPageLoadInFlightRef = useRef(false);
@@ -1295,6 +1296,57 @@ export default function Page() {
     }
   }, [boardQuery, cacheBoardQuerySnapshot]);
 
+  const scheduleGroupCountsRefresh = useCallback(() => {
+    // Realtime inserts can arrive in a large burst. Counts are still useful
+    // metadata, but one aggregate query per inserted row would recreate the
+    // same pressure we just removed from row hydration. Use a *trailing*
+    // refresh: a continuous import therefore causes no Board-state updates,
+    // and totals reconcile once the stream becomes quiet.
+    if (groupCountsRefreshTimer.current !== null)
+      window.clearTimeout(groupCountsRefreshTimer.current);
+    groupCountsRefreshTimer.current = window.setTimeout(() => {
+      groupCountsRefreshTimer.current = null;
+      void fetchClientGroupCounts(boardQuery)
+        .then((nextGroupCounts) => {
+          setGroupPageState((current) => {
+            const next = { ...current };
+            let changed = false;
+            for (const [groupId, total] of Object.entries(nextGroupCounts)) {
+              const state = current[groupId];
+              const hasMore = (state?.loadedCount ?? 0) < total;
+              if (
+                state?.total === total &&
+                state.hasMore === hasMore &&
+                state.loading === false
+              ) {
+                continue;
+              }
+              changed = true;
+              next[groupId] = {
+                total,
+                hasMore,
+                loading: state?.loading ?? false,
+                loaded: state?.loaded ?? false,
+                loadedCount: state?.loadedCount ?? 0,
+              };
+            }
+            return changed ? next : current;
+          });
+        })
+        .catch((error) =>
+          console.warn("Could not refresh CRM group counts", error),
+        );
+    }, 2_000);
+  }, [boardQuery]);
+
+  useEffect(
+    () => () => {
+      if (groupCountsRefreshTimer.current !== null)
+        window.clearTimeout(groupCountsRefreshTimer.current);
+    },
+    [],
+  );
+
   const refreshRecordsInPlace = useCallback(
     async (changes: LiveRecordChange[]) => {
       if (!changes.length) return;
@@ -1388,11 +1440,12 @@ export default function Page() {
           ) {
             targetGroupIds.add(nextGroupId);
           }
-          // A move can put a client into or out of the default Board's
-          // excluded groups, and changes the source/destination page order.
-          // Reconcile the page rather than retaining a misplaced local row.
+          // Reconcile only the source and destination pages for a move. The
+          // prior implementation escalated this to a complete Board reload,
+          // which made unrelated expanded groups blink.
           if (localGroupId && nextGroupId && localGroupId !== nextGroupId) {
-            requiresFilteredFallback = true;
+            targetGroupIds.add(localGroupId);
+            targetGroupIds.add(nextGroupId);
           }
         }
         if (change.table === "subitems") {
@@ -1402,7 +1455,9 @@ export default function Page() {
               "",
           );
           if (localClientId && localClientId !== clientId) {
-            requiresFilteredFallback = true;
+            // Both parents are explicitly hydrated below. No global Board
+            // reconciliation is necessary for a subitem move.
+            targetClientIds.add(localClientId);
           }
         }
         if (knownClients.has(clientId)) targetClientIds.add(clientId);
@@ -1413,8 +1468,7 @@ export default function Page() {
       // the guarded full reconciliation for that correctness-sensitive case.
       if (
         (Object.keys(boardQuery).length && hasNonRemovalChange) ||
-        requiresFilteredFallback ||
-        targetGroupIds.size > 0
+        requiresFilteredFallback
       ) {
         // `preservePagination` only merges incoming rows over existing ones;
         // that is intentionally unsuitable for moves because it would retain
@@ -1426,6 +1480,25 @@ export default function Page() {
           // replacing the query snapshot is required for correctness.
           preservePagination: false,
         });
+        return;
+      }
+
+      // A newly inserted client which is not already in this browser's loaded
+      // pages is intentionally not hydrated here. Bulk imports may create
+      // thousands of these rows; repeatedly hydrating their group page causes
+      // database timeouts and disrupts unrelated users. The row appears on
+      // the Board through its normal group expansion/pagination request.
+
+      // There is no visible row to reconcile for a remote insert outside the
+      // loaded pages. Avoid even the global count/facet requests here: during
+      // an import that would turn one harmless realtime notification per row
+      // into a sustained query storm.
+      if (
+        targetClientIds.size === 0 &&
+        deletedClientIds.size === 0 &&
+        deletedSubitemIds.size === 0
+      ) {
+        scheduleGroupCountsRefresh();
         return;
       }
 
@@ -1594,6 +1667,7 @@ export default function Page() {
       expandedClientIds,
       groups,
       reloadClients,
+      scheduleGroupCountsRefresh,
     ],
   );
 
