@@ -982,7 +982,14 @@ export default function Page() {
       // The indicator is only useful before the first global result exists.
       setQuickFilterCountsLoading(!cachedQuickFilterCounts);
 
-      const quickFilterCountsPromise = hasFreshQuickFilterCounts
+      // Quick-filter badges are whole-board reference data. Re-querying them
+      // while an advanced Board filter is evaluating adds an unrelated heavy
+      // query to the same database connection, so retain the cached badges
+      // until that focused query has produced its page.
+      const hasActiveBoardQuery = Object.keys(boardQuery).length > 0;
+      const quickFilterCountsPromise = hasActiveBoardQuery
+        ? Promise.resolve(quickFilterCountsForSnapshot)
+        : hasFreshQuickFilterCounts
         ? Promise.resolve(cachedQuickFilterCounts.data)
         : (quickFilterCountsRequestRef.current ??
           (() => {
@@ -1004,7 +1011,11 @@ export default function Page() {
             quickFilterCountsRequestRef.current = request;
             return request;
           })());
-      const [initialPage, groupCounts, targetedGroupPages] = await Promise.all([
+      // Advanced rules currently use the compatibility matcher, which has to
+      // inspect a client's related rows. Do not run a second full matcher for
+      // group totals alongside the page request: on a migrated Board that can
+      // exceed Postgres's statement timeout before either result is returned.
+      const [initialPage, targetedGroupPages] = await Promise.all([
           fetchHydratedClientGroupPage(null, 0, 30, boardQuery, {
             // Preserve the landing-page policy previously implemented by
             // fetchInitialCrmClientBundle, without a preliminary ID query.
@@ -1012,13 +1023,24 @@ export default function Page() {
               ? undefined
               : ["Failed", "Unqualified Lead", "To Delete"],
           }),
-          fetchClientGroupCounts(boardQuery),
           Promise.all(
             targetGroupIds.map((groupId) =>
               fetchHydratedClientGroupPage(groupId, 0, 30, boardQuery),
             ),
           ),
         ]);
+      let groupCounts: Record<string, number>;
+      let hasExactGroupCounts = true;
+      try {
+        groupCounts = await fetchClientGroupCounts(boardQuery);
+      } catch (error) {
+        // Rows are the primary result of a Board query. Keep them usable when
+        // optional per-group totals are temporarily too expensive; expanding
+        // a group will still obtain that group's exact total normally.
+        console.warn("Could not load CRM group counts", error);
+        groupCounts = {};
+        hasExactGroupCounts = false;
+      }
       const targetedPagesByGroupId = new Map(
         targetGroupIds.map((groupId, index) => [
           groupId,
@@ -1210,6 +1232,16 @@ export default function Page() {
         }
         return next;
       });
+      // A flexible page can be useful even when the optional exact count scan
+      // timed out. Keep the groups represented by that page visible rather
+      // than treating the absence of metadata as an empty search result.
+      if (!Object.keys(groupCounts).length && rows.length) {
+        groupCounts = rows.reduce<Record<string, number>>((counts, client) => {
+          if (client.groupId)
+            counts[client.groupId] = (counts[client.groupId] ?? 0) + 1;
+          return counts;
+        }, {});
+      }
       const nextGroupPageState: GroupPageState = Object.fromEntries(
         Object.entries(groupCounts).map(([groupId, total]) => [
           groupId,
@@ -1217,7 +1249,13 @@ export default function Page() {
             total,
             hasMore:
               targetedPagesByGroupId.get(groupId)?.hasMore ??
-              rows.filter((client) => client.groupId === groupId).length < total,
+              (hasExactGroupCounts
+                ? rows.filter((client) => client.groupId === groupId).length <
+                  total
+                // A fast filter page only proves that there may be more
+                // matching rows. Keep paging enabled until the group's own
+                // look-ahead query says otherwise.
+                : true),
             loading: false,
             loaded: targetedPagesByGroupId.has(groupId),
             loadedCount:

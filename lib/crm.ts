@@ -1628,7 +1628,7 @@ export async function fetchHydratedClientGroupPage(
         p_offset: offset,
         p_exclude_group_names: options?.excludeGroupNames ?? null,
       })
-    : await supabase.rpc("crm_board_client_page_hydrated_v3", {
+    : await supabase.rpc("crm_board_client_page_hydrated_indexed_v1", {
       p_group_id: groupId,
       p_limit: limit,
       p_offset: offset,
@@ -1699,7 +1699,7 @@ export async function fetchClientGroupCounts(query: CrmBoardQuery = {}) {
   // selected every client's group_id into the browser and counted it locally;
   // that becomes both stale and unnecessarily expensive during a bulk import.
   const { data, error } = await supabase.rpc(
-    "crm_board_client_group_counts_v3",
+    "crm_board_client_group_counts_indexed_v1",
     {
       p_search: query.search?.trim() || null,
       p_search_columns: query.searchColumns ?? null,

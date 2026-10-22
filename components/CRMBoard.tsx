@@ -5727,7 +5727,9 @@ export function CRMBoard({
   // --- Filtering ---
   const optionIdForValue = (options: OptionEntry[], value: string) =>
     options.find((option) => option.value === value)?.id ?? null;
-  const displayedClients = clients.filter((client) => {
+  const locallyFilteredClients = onServerQueryChange
+    ? clients
+    : clients.filter((client) => {
     // A universal-search selection must remain navigable even when the board
     // is currently narrowed by an unrelated board search or quick filter.
     if (searchTarget?.clientId === client.id) return true;
@@ -5807,7 +5809,12 @@ export function CRMBoard({
       matchesSubprogress &&
       matchesAdvanced
     );
-  });
+      });
+  // Paged Board data has already been searched and filtered by the indexed
+  // server query. Applying the same rules again to only the hydrated page can
+  // disagree with server-derived fields and produce a group whose exact
+  // count is non-zero but whose locally rendered rows are all removed.
+  const displayedClients = locallyFilteredClients;
 
   const clientSortColumns = mergedHeaderCols.filter(
     (column) =>
