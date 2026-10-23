@@ -3092,7 +3092,13 @@ export function ClientRow({
         onContextMenu={(event) => {
           event.preventDefault();
           window.dispatchEvent(
-            new CustomEvent("crm:client-actions", { detail: client.id }),
+            new CustomEvent("crm:client-actions", {
+              detail: {
+                id: client.id,
+                clientX: event.clientX,
+                clientY: event.clientY,
+              },
+            }),
           );
         }}
         onMouseMove={(event) => {

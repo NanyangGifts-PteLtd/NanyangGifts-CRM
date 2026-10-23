@@ -4339,7 +4339,11 @@ export function SubitemsTable({
                     event.preventDefault();
                     window.dispatchEvent(
                       new CustomEvent("crm:subitem-actions", {
-                        detail: sub.id,
+                        detail: {
+                          id: sub.id,
+                          clientX: event.clientX,
+                          clientY: event.clientY,
+                        },
                       }),
                     );
                   }}

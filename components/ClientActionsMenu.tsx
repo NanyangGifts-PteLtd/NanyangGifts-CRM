@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   Copy,
   ExternalLink,
@@ -44,8 +45,13 @@ export function ClientActionsMenu({
   align?: "left" | "right";
 }) {
   const [open, setOpen] = useState(false);
+  const [menuPosition, setMenuPosition] = useState<{
+    left: number;
+    top: number;
+  } | null>(null);
   const [moving, setMoving] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const [search, setSearch] = useState("");
   const [processing, setProcessing] = useState<"duplicate" | "move" | null>(
     null,
@@ -63,9 +69,27 @@ export function ClientActionsMenu({
       setOpen(false);
     }
   };
+
+  const clampMenuPosition = (left: number, top: number) => ({
+    left: Math.max(8, Math.min(left, window.innerWidth - 184)),
+    top: Math.max(8, Math.min(top, window.innerHeight - 248)),
+  });
+
   useEffect(() => {
     const handler = (event: Event) => {
-      if ((event as CustomEvent<string>).detail === clientId) setOpen(true);
+      const detail = (event as CustomEvent<
+        string | { id: string; clientX?: number; clientY?: number }
+      >).detail;
+      const targetId = typeof detail === "string" ? detail : detail?.id;
+      if (targetId !== clientId) return;
+      if (
+        typeof detail !== "string" &&
+        typeof detail.clientX === "number" &&
+        typeof detail.clientY === "number"
+      ) {
+        setMenuPosition(clampMenuPosition(detail.clientX, detail.clientY));
+      }
+      setOpen(true);
     };
     window.addEventListener("crm:client-actions", handler);
     return () => window.removeEventListener("crm:client-actions", handler);
@@ -74,7 +98,10 @@ export function ClientActionsMenu({
     if (!open) return;
 
     const closeOnClickAway = (event: PointerEvent) => {
-      if (!menuRef.current?.contains(event.target as Node)) {
+      if (
+        !menuRef.current?.contains(event.target as Node) &&
+        !triggerRef.current?.contains(event.target as Node)
+      ) {
         setMoving(false);
         setOpen(false);
       }
@@ -88,22 +115,37 @@ export function ClientActionsMenu({
       ref={menuRef}
       data-client-action-menu
       data-detail-action-menu={!onOpen || undefined}
-      className={`relative ${className} ${open ? "z-menu" : ""}`}
+      className={`relative ${className}`}
     >
       <button
+        ref={triggerRef}
         type="button"
         onClick={(event) => {
           event.stopPropagation();
-          setOpen((value) => !value);
+          const rect = event.currentTarget.getBoundingClientRect();
+          setOpen((value) => {
+            if (!value) {
+              setMenuPosition(
+                clampMenuPosition(
+                  align === "left" ? rect.left : rect.right - 176,
+                  rect.bottom + 4,
+                ),
+              );
+            }
+            return !value;
+          });
         }}
         className={`rounded bg-white/90 p-1 text-slate-400 shadow-sm hover:text-slate-700 ${triggerClassName}`}
         title={`Client actions for ${clientName}`}
       >
         <MoreHorizontal size={15} />
       </button>
-      {open && (
+      {open && menuPosition &&
+        createPortal(
         <div
-          className={`absolute top-full z-menu mt-1 w-44 rounded-md border border-slate-200 bg-white p-1 text-left shadow-xl ${align === "left" ? "left-0" : "right-0"}`}
+          ref={menuRef}
+          className="fixed z-menu w-44 rounded-md border border-slate-200 bg-white p-1 text-left shadow-xl"
+          style={menuPosition}
         >
           {onOpen && (
             <button
@@ -226,7 +268,8 @@ export function ClientActionsMenu({
           >
             <Trash2 size={14} /> Delete
           </button>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

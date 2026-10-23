@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   Copy,
   ChevronDown,
@@ -49,8 +50,13 @@ export function SubitemActionsMenu({
   triggerOffsetPx?: number;
 }) {
   const [open, setOpen] = useState(false);
+  const [menuPosition, setMenuPosition] = useState<{
+    left: number;
+    top: number;
+  } | null>(null);
   const [moving, setMoving] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const [search, setSearch] = useState("");
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [processing, setProcessing] = useState<"duplicate" | "move" | null>(
@@ -69,9 +75,27 @@ export function SubitemActionsMenu({
       setOpen(false);
     }
   };
+
+  const clampMenuPosition = (left: number, top: number) => ({
+    left: Math.max(8, Math.min(left, window.innerWidth - 184)),
+    top: Math.max(8, Math.min(top, window.innerHeight - 248)),
+  });
+
   useEffect(() => {
     const handler = (event: Event) => {
-      if ((event as CustomEvent<string>).detail === subitemId) setOpen(true);
+      const detail = (event as CustomEvent<
+        string | { id: string; clientX?: number; clientY?: number }
+      >).detail;
+      const targetId = typeof detail === "string" ? detail : detail?.id;
+      if (targetId !== subitemId) return;
+      if (
+        typeof detail !== "string" &&
+        typeof detail.clientX === "number" &&
+        typeof detail.clientY === "number"
+      ) {
+        setMenuPosition(clampMenuPosition(detail.clientX, detail.clientY));
+      }
+      setOpen(true);
     };
     window.addEventListener("crm:subitem-actions", handler);
     return () => window.removeEventListener("crm:subitem-actions", handler);
@@ -80,7 +104,10 @@ export function SubitemActionsMenu({
     if (!open) return;
 
     const closeOnClickAway = (event: PointerEvent) => {
-      if (!menuRef.current?.contains(event.target as Node)) {
+      if (
+        !menuRef.current?.contains(event.target as Node) &&
+        !triggerRef.current?.contains(event.target as Node)
+      ) {
         setMoving(false);
         setOpen(false);
       }
@@ -94,22 +121,34 @@ export function SubitemActionsMenu({
       ref={menuRef}
       data-subitem-action-menu
       data-detail-action-menu={!onOpen || undefined}
-      className={`${onOpen ? "absolute top-1/2 -translate-y-1/2" : "relative"} ${open ? "z-menu" : "z-30"}`}
+      className={`${onOpen ? "absolute top-1/2 -translate-y-1/2" : "relative"} z-30`}
       style={onOpen ? { left: triggerOffsetPx } : undefined}
     >
       <button
+        ref={triggerRef}
         type="button"
         onClick={(event) => {
           event.stopPropagation();
-          setOpen((value) => !value);
+          const rect = event.currentTarget.getBoundingClientRect();
+          setOpen((value) => {
+            if (!value) {
+              setMenuPosition(clampMenuPosition(rect.left, rect.bottom + 4));
+            }
+            return !value;
+          });
         }}
         className={`rounded bg-white/90 p-1 text-slate-400 shadow-sm transition-opacity hover:text-slate-700 ${alwaysVisible || !onOpen ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
         title={`Subitem actions for ${subitemName}`}
       >
         <MoreHorizontal size={14} />
       </button>
-      {open && (
-        <div className="absolute left-0 top-full z-menu mt-1 w-44 rounded-md border border-slate-200 bg-white p-1 text-left shadow-xl">
+      {open && menuPosition &&
+        createPortal(
+        <div
+          ref={menuRef}
+          className="fixed z-menu w-44 rounded-md border border-slate-200 bg-white p-1 text-left shadow-xl"
+          style={menuPosition}
+        >
           {onOpen && (
             <button
               type="button"
@@ -278,7 +317,8 @@ export function SubitemActionsMenu({
           >
             <Trash2 size={14} /> Delete
           </button>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
