@@ -34,6 +34,7 @@ import { createClient as createSupabaseClient } from "@/lib/supabase/client";
 import { uploadCrmFiles } from "@/lib/crm-files";
 import { FilePreview } from "@/components/ui/file-preview";
 import { AWARDED_OR_LATER_SUBITEM_STATUS_SYSTEM_KEYS } from "@/lib/board-labels";
+import { fetchHydratedClientGroupPage } from "@/lib/crm";
 
 type AdditionalCost = {
   id: string;
@@ -193,6 +194,7 @@ const linkedClientLabel = (client: NonNullable<AdditionalCost["linkedClient"]>) 
 const compareByDefaultClientBoardOrder = (first: Client, second: Client) =>
   new Date(second.createdAt || 0).getTime() -
   new Date(first.createdAt || 0).getTime();
+const PAYMENT_VOUCHER_CLIENT_PAGE_SIZE = 30;
 const supplierSearchKey = (value: string) =>
   value.toLocaleLowerCase().replace(/[^a-z0-9]/g, "");
 const levenshteinDistance = (first: string, second: string) => {
@@ -284,6 +286,19 @@ export function AdditionalCostsBoard({
     width: number;
   } | null>(null);
   const [pickerQuery, setPickerQuery] = useState("");
+  const [pickerClients, setPickerClients] = useState<Client[]>([]);
+  const [pickerClientAssignees, setPickerClientAssignees] = useState<
+    Record<string, string[]>
+  >({});
+  const [pickerClientPmAssignees, setPickerClientPmAssignees] = useState<
+    Record<string, string[]>
+  >({});
+  const [pickerClientTotal, setPickerClientTotal] = useState(0);
+  const [pickerClientOffset, setPickerClientOffset] = useState(0);
+  const [pickerClientsLoading, setPickerClientsLoading] = useState(false);
+  const [pickerClientsLoadingMore, setPickerClientsLoadingMore] =
+    useState(false);
+  const pickerClientRequest = useRef(0);
   const [expandedPickerGroups, setExpandedPickerGroups] = useState<Set<string>>(
     new Set(),
   );
@@ -509,10 +524,11 @@ export function AdditionalCostsBoard({
   const gridTemplateColumns = columns
     .map((column) => `${column.width}px`)
     .join(" ");
-  const clientsById = useMemo(
-    () => new Map(clients.map((client) => [client.id, client])),
-    [clients],
-  );
+  const clientsById = useMemo(() => {
+    const entries = new Map(clients.map((client) => [client.id, client]));
+    for (const client of pickerClients) entries.set(client.id, client);
+    return entries;
+  }, [clients, pickerClients]);
   const projectForVoucher = useCallback(
     (row: AdditionalCost) => {
       const boardClient = clientsById.get(row.client_id);
@@ -1745,8 +1761,12 @@ export function AdditionalCostsBoard({
     const role = String(currentUserRole ?? "").toLowerCase();
     const isAssigned =
       !!currentUserId &&
-      ((clientAssignees[client.id] ?? []).includes(currentUserId) ||
-        (clientPmAssignees[client.id] ?? []).includes(currentUserId));
+      ((pickerClientAssignees[client.id] ??
+        clientAssignees[client.id] ??
+        []).includes(currentUserId) ||
+        (pickerClientPmAssignees[client.id] ??
+          clientPmAssignees[client.id] ??
+          []).includes(currentUserId));
     if (!["admin", "director"].includes(role) && !isAssigned) {
       return "You can only link an additional cost to a client assigned to you as People or PM.";
     }
@@ -1781,23 +1801,18 @@ export function AdditionalCostsBoard({
       setDeletingId(null);
     }
   };
-  const filteredClients = clients.filter((client) =>
-    clientLabel(client)
-      .toLowerCase()
-      .includes(pickerQuery.trim().toLowerCase()),
-  );
   const clientSections = useMemo(() => {
     const sections = [...groups]
       .sort((first, second) => first.sort_order - second.sort_order)
       .map((group) => ({
         id: group.id,
         label: group.name,
-        clients: filteredClients
+        clients: pickerClients
           .filter((client) => client.groupId === group.id)
           .sort(compareByDefaultClientBoardOrder),
       }))
       .filter((section) => section.clients.length);
-    const ungrouped = filteredClients
+    const ungrouped = pickerClients
       .filter(
         (client) =>
           !client.groupId ||
@@ -1811,7 +1826,74 @@ export function AdditionalCostsBoard({
         clients: ungrouped,
       });
     return sections;
-  }, [filteredClients, groups]);
+  }, [pickerClients, groups]);
+  const loadPickerClientPage = useCallback(
+    async (offset: number, append: boolean, query: string) => {
+      const request = append
+        ? pickerClientRequest.current
+        : ++pickerClientRequest.current;
+      if (append) setPickerClientsLoadingMore(true);
+      else {
+        setPickerClientsLoading(true);
+        setPickerClients([]);
+        setPickerClientTotal(0);
+        setPickerClientOffset(0);
+      }
+      try {
+        const page = await fetchHydratedClientGroupPage(
+          null,
+          offset,
+          PAYMENT_VOUCHER_CLIENT_PAGE_SIZE,
+          {
+            search: query.trim() || undefined,
+            sortCategory: "client",
+            sortColumn: "dateCreated",
+            sortValueType: "date",
+            sortDirection: "desc",
+          },
+        );
+        if (request !== pickerClientRequest.current) return;
+        setPickerClients((current) => {
+          if (!append) return page.clients;
+          const next = new Map(current.map((client) => [client.id, client]));
+          for (const client of page.clients) next.set(client.id, client);
+          return Array.from(next.values());
+        });
+        setPickerClientAssignees((current) =>
+          append
+            ? { ...current, ...page.clientAssignees }
+            : page.clientAssignees,
+        );
+        setPickerClientPmAssignees((current) =>
+          append
+            ? { ...current, ...page.clientPmAssignees }
+            : page.clientPmAssignees,
+        );
+        setPickerClientTotal(page.total);
+        setPickerClientOffset(page.nextOffset);
+      } catch (loadError) {
+        if (request !== pickerClientRequest.current) return;
+        console.error("Failed to load Payment Voucher clients", loadError);
+        toast.error("Could not load clients", {
+          description: "Please close the picker and try again.",
+        });
+      } finally {
+        if (request === pickerClientRequest.current) {
+          setPickerClientsLoading(false);
+          setPickerClientsLoadingMore(false);
+        }
+      }
+    },
+    [],
+  );
+  useEffect(() => {
+    if (!pickerOpen || selectedVoucherClientId) return;
+    const timer = window.setTimeout(
+      () => void loadPickerClientPage(0, false, pickerQuery),
+      220,
+    );
+    return () => window.clearTimeout(timer);
+  }, [loadPickerClientPage, pickerOpen, pickerQuery, selectedVoucherClientId]);
   const renderRelatedSubitemSelector = (clientId: string) => {
     const subitems = (clientsById.get(clientId)?.subitems ?? []).filter(
       (subitem) =>
@@ -2009,7 +2091,10 @@ export function AdditionalCostsBoard({
       : []),
   ];
   const openVoucherCreator = (groupId: (typeof voucherGroups)[number]["id"]) => {
-    setExpandedPickerGroups(new Set(clientSections.map((section) => section.id)));
+    setPickerQuery("");
+    setExpandedPickerGroups(
+      new Set([...groups.map((group) => group.id), "ungrouped"]),
+    );
     setVoucherCreationGroup(groupId);
     setQuickBooksBillOnlyMode(groupId === "quickbooks_bills_only");
     setSelectedVoucherClientId(null);
@@ -2655,8 +2740,12 @@ export function AdditionalCostsBoard({
             <button
               type="button"
               onClick={() => {
+                setPickerQuery("");
                 setExpandedPickerGroups(
-                  new Set(clientSections.map((section) => section.id)),
+                  new Set([
+                    ...groups.map((section) => section.id),
+                    "ungrouped",
+                  ]),
                 );
                 setVoucherCreationGroup(group.id);
                 setQuickBooksBillOnlyMode(group.id === "quickbooks_bills_only");
@@ -4301,8 +4390,30 @@ export function AdditionalCostsBoard({
                   })}
                   {!clientSections.length ? (
                     <p className="px-3 py-8 text-center text-sm text-slate-400">
-                      No matching clients.
+                      {pickerClientsLoading
+                        ? "Loading clients…"
+                        : "No matching clients."}
                     </p>
+                  ) : null}
+                  {pickerClientOffset < pickerClientTotal ? (
+                    <div className="p-3 text-center">
+                      <button
+                        type="button"
+                        disabled={pickerClientsLoadingMore}
+                        onClick={() =>
+                          void loadPickerClientPage(
+                            pickerClientOffset,
+                            true,
+                            pickerQuery,
+                          )
+                        }
+                        className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                      >
+                        {pickerClientsLoadingMore
+                          ? "Loading…"
+                          : `Load more (${pickerClients.length} of ${pickerClientTotal})`}
+                      </button>
+                    </div>
                   ) : null}
                 </div>
               </>
