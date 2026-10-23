@@ -322,6 +322,31 @@ function isGanttEligibleSubitem(subitem: Subitem) {
   return GANTT_ELIGIBLE_SUBITEM_STATUSES.has(normalizedStatus);
 }
 
+function isCompletedTimelineProcess(
+  row: TimelineRow,
+  progressById: Map<
+    string,
+    { systemKey: string | null }
+  >,
+) {
+  const systemKey = progressById.get(row.subProgressOptionId ?? "")?.systemKey;
+  if (
+    systemKey === "subitem_subprogress_done" ||
+    systemKey === "subitem_subprogress_delivered"
+  ) {
+    return true;
+  }
+  const displayValue = String(row.subProgress ?? "").trim().toLowerCase();
+  return displayValue === "done" || displayValue === "delivered";
+}
+
+function isDefaultFreightProcess(row: TimelineRow) {
+  return (
+    row.isCustom !== true &&
+    String(row.name ?? "").trim().toLowerCase().startsWith("sea/air freight")
+  );
+}
+
 function buildSchedulerData(
   clients: Client[],
   groups: CRMGroup[],
@@ -367,9 +392,22 @@ function buildSchedulerData(
           ? subitem.timelineGroups
           : [{ id: "default", rows: subitem.timelineRows ?? [] }];
         return timelines.flatMap((timeline, timelineIndex) => {
-        const timelineRows = (timeline.rows ?? []).filter(
+        const storedTimelineRows = (timeline.rows ?? []).filter(
           (row): row is TimelineRow => !!row && typeof row === "object",
         );
+        if (
+          storedTimelineRows.some(
+            (row) =>
+              isDefaultFreightProcess(row) &&
+              isCompletedTimelineProcess(row, progressById),
+          )
+        ) {
+          return [];
+        }
+        const timelineRows = storedTimelineRows.filter(
+          (row) => !isCompletedTimelineProcess(row, progressById),
+        );
+        if (!timelineRows.length) return [];
         const resourceId = `${client.id}::${subitem.id}::${timeline.id}`;
         const items = timelineRows.flatMap((row): SchedulerItem[] => {
           const progress = progressById.get(row.subProgressOptionId ?? "");
@@ -402,6 +440,7 @@ function buildSchedulerData(
             },
           ];
         });
+        if (!items.length) return [];
 
         const processNames = timelineRows.map(
           (row) => row.name || "Untitled Process",
