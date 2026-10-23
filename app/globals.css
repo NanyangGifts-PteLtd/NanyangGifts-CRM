@@ -41,7 +41,7 @@
   min-height: 34px;
 }
 
-.crm-board [data-client-group] > div {
+.crm-board [data-client-header] > div {
   min-height: 32px;
 }
 

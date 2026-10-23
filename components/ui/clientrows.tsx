@@ -65,6 +65,12 @@ import {
 import { overallPaymentStatus as calculateOverallPaymentStatus } from "@/lib/payment-status";
 import { InlineDatePicker } from "./inline-date-picker";
 
+// Manual visual tuning point for the solid accent on every client row.
+// Use a negative value to move the client-row rail left, or a positive value
+// to move it right. The client header is aligned to the row's border edge in
+// CRMBoard.tsx.
+const CLIENT_ROW_ACCENT_LEFT_OFFSET_PX = -0.2;
+
 type AttachmentItem = {
   id: string;
   kind: "file" | "link";
@@ -259,6 +265,7 @@ export type ClientRowProps = {
   isSelected: boolean;
   canSelect?: boolean;
   isExpanded: boolean;
+  hasTopBorder?: boolean;
   groupAccentColor: string;
   onToggleExpand: () => void;
   onToggleSelect: () => void;
@@ -453,6 +460,7 @@ export function ClientRow({
   isSelected,
   canSelect = true,
   isExpanded,
+  hasTopBorder = false,
   groupAccentColor,
   onToggleExpand,
   onToggleSelect,
@@ -3144,7 +3152,7 @@ export function ClientRow({
           }
         }}
         style={{ width: boardWidth, minWidth: boardWidth }}
-        className={`relative box-border border-b flex text-[15px] items-center flex-shrink-0 border-r border-[#D0D4E4] group transition-colors focus-within:z-[70] ${
+        className={`relative box-border border-b ${hasTopBorder ? "border-t" : ""} flex text-[15px] items-center flex-shrink-0 border-r border-[#D0D4E4] group transition-colors focus-within:z-[70] ${
           isSelected
             ? "bg-sky-100/80 shadow-[inset_0_0_0_1px_rgba(14,165,233,0.5)]"
             : "bg-white"
@@ -3152,8 +3160,11 @@ export function ClientRow({
       >
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute -top-px -bottom-px left-0 z-20 w-[5px]"
-          style={{ backgroundColor: groupAccentColor }}
+          className="pointer-events-none absolute -top-px -bottom-px z-20 w-[5px]"
+          style={{
+            left: CLIENT_ROW_ACCENT_LEFT_OFFSET_PX,
+            backgroundColor: groupAccentColor,
+          }}
         />
         <div
           data-client-column="selectCheckbox"

@@ -3929,7 +3929,7 @@ export function SubitemsTable({
       <div className="relative w-full overflow-visible">
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute top-0 z-40 w-[6px] rounded-tl-md"
+          className="pointer-events-none absolute top-0 z-[75] w-[6px] rounded-tl-md"
           style={{
             left: SUBITEM_ACCENT_RAIL_LEFT_OFFSET_PX,
             bottom: SUBITEM_ADD_ROW_HEIGHT_PX,
@@ -3938,7 +3938,7 @@ export function SubitemsTable({
         />
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute bottom-0 z-50 w-[6px] rounded-bl-md"
+          className="pointer-events-none absolute bottom-0 z-[75] w-[6px] rounded-bl-md"
           style={{
             left: SUBITEM_ACCENT_RAIL_LEFT_OFFSET_PX,
             height: SUBITEM_ADD_ROW_HEIGHT_PX,
@@ -3961,9 +3961,17 @@ export function SubitemsTable({
             <col style={{ width: 32 }} />
           </colgroup>
 
-          <thead>
+          <thead className="sticky top-[calc(var(--crm-board-toolbar-height,40px)+28px)] z-[77] shadow-[0_1px_0_rgba(148,163,184,0.35)]">
             <tr className="border-b border-t border-r border-[#D0D4E4] bg-gray-50">
-              <th className="h-[33.1px] w-11 align-middle px-2 py-1 text-center">
+              <th className="relative h-[33.1px] w-11 bg-gray-50 align-middle px-2 py-1 text-center">
+                <div
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-y-0 z-10 w-[6px] rounded-tl-md"
+                  style={{
+                    left: SUBITEM_ACCENT_RAIL_LEFT_OFFSET_PX,
+                    backgroundColor: clientColor,
+                  }}
+                />
                 <input
                   type="checkbox"
                   checked={
@@ -4079,7 +4087,7 @@ export function SubitemsTable({
                       setDragOverColumnKey(null);
                       setDragOverColumnEdge(null);
                     }}
-                    className={`group overflow-visible relative border-r border-[#D0D4E4] text-center text-[12.6px] font-semibold whitespace-nowrap text-gray-500 ${tableMode === "payment" && PAYMENT_QUANTITY_HEADER_FIELDS.has(col.key) ? "bg-slate-200" : ""} ${isDragging ? "opacity-60" : ""} ${isDragTarget ? (draggedColumnKey ? "cursor-grabbing" : "cursor-grab") : ""}`}
+                    className={`group overflow-visible relative border-r border-[#D0D4E4] text-center text-[12.6px] font-semibold whitespace-nowrap text-gray-500 ${tableMode === "payment" && PAYMENT_QUANTITY_HEADER_FIELDS.has(col.key) ? "bg-slate-200" : "bg-gray-50"} ${isDragging ? "opacity-60" : ""} ${isDragTarget ? (draggedColumnKey ? "cursor-grabbing" : "cursor-grab") : ""}`}
                   >
                     <div className="flex items-center justify-center gap-1 overflow-hidden px-2">
                       <span className="truncate">{col.label}</span>
@@ -4300,7 +4308,7 @@ export function SubitemsTable({
               ))}
 
               <th
-                className="border-r border-[#D0D4E4] px-1 text-center"
+                className="border-r border-[#D0D4E4] bg-gray-50 px-1 text-center"
                 style={{ width: 32 }}
               >
                 {canCreateCustomColumns && (

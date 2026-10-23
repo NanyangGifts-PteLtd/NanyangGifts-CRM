@@ -2063,7 +2063,7 @@ export function AdditionalCostsBoard({
     return (
       <section
         key={group.id}
-        className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm"
+        className="relative rounded-lg border border-slate-200 bg-white shadow-sm"
       >
       <div
         className="flex w-full cursor-pointer items-center border-l-4 hover:bg-slate-50"
@@ -2099,13 +2099,13 @@ export function AdditionalCostsBoard({
         )}
       </div>
         {!collapsedVoucherGroups[group.id] && (
-          <div className="overflow-x-auto">
+          <div className="overflow-visible">
             <table
               data-voucher-group={group.id}
               className="min-w-full border-collapse text-sm"
             >
               <style>{`[data-voucher-group="${group.id}"] .payment-voucher-row>[data-voucher-col]{display:none;align-items:center;} ${tableColumns.map((column, index) => `[data-voucher-group="${group.id}"] .payment-voucher-row [data-voucher-col="${column.key}"]{display:flex;order:${index};}`).join("")} .deactivated-voucher-row [data-voucher-col]:not([data-voucher-col="activity"]):not([data-voucher-col="trip_id"]):not([data-voucher-col="actions"]){text-decoration:line-through;}`}</style>
-              <thead className="bg-slate-50 text-left text-xs font-semibold text-slate-500">
+              <thead className="sticky top-0 z-[77] bg-slate-50 text-left text-xs font-semibold text-slate-500 shadow-[0_1px_0_rgba(148,163,184,0.35)]">
                 <tr
                   className="grid"
                   style={{ gridTemplateColumns: columnGrid }}

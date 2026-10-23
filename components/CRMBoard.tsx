@@ -534,6 +534,11 @@ interface CRMBoardProps {
 // Keep the draft outside the Board's top-level state. The Board can contain
 // hundreds of rows, and making the add-client input controlled by CRMBoard
 // caused every keystroke to rerender all currently open rows.
+// The add-row has a full border, so -1 aligns its lighter accent with the
+// solid client-row rail. Decrease this to move it left; increase it to move it
+// right without affecting the solid rail.
+const CLIENT_ADD_ROW_ACCENT_LEFT_OFFSET_PX = -1;
+
 const AddClientInput = React.memo(function AddClientInput({
   groupId,
   groupName,
@@ -585,8 +590,11 @@ const AddClientInput = React.memo(function AddClientInput({
     <div className="group/add-client relative min-h-[34px] rounded-bl-md border border-[#D0D4E4] bg-white px-2 py-1 hover:bg-[#f5fbff] focus-within:bg-[#f5fbff]">
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-y-0 left-0 z-[60] w-[5px] rounded-bl-md"
-        style={{ backgroundColor: `${accentColor}80` }}
+        className="pointer-events-none absolute inset-y-0 z-[60] w-[5px] rounded-bl-md"
+        style={{
+          left: CLIENT_ADD_ROW_ACCENT_LEFT_OFFSET_PX,
+          backgroundColor: `${accentColor}80`,
+        }}
       />
       {pendingClients.map((pendingClient) => (
         <div
@@ -1701,24 +1709,27 @@ export function CRMBoard({
   const [boardToolbarWidth, setBoardToolbarWidth] = useState<number | null>(
     null,
   );
+  const [boardToolbarHeight, setBoardToolbarHeight] = useState(40);
   const [boardSort, setBoardSort] =
     useState<BoardSortSetting>(DEFAULT_BOARD_SORT);
 
   useLayoutEffect(() => {
     const toolbar = boardToolbarRef.current;
     const scrollViewport = toolbar?.closest("main");
-    if (!scrollViewport) return;
+    if (!toolbar || !scrollViewport) return;
 
     const updateWidth = () => {
       // The Board content is indented by 3.5rem for its group rails. The
       // toolbar cancels that indent with -ml-14, so its own measured viewport
       // width also needs the same 3.5rem added back to reach the right edge.
       setBoardToolbarWidth(Math.max(0, scrollViewport.clientWidth));
+      setBoardToolbarHeight(Math.ceil(toolbar.getBoundingClientRect().height));
     };
 
     updateWidth();
     const observer = new ResizeObserver(updateWidth);
     observer.observe(scrollViewport);
+    observer.observe(toolbar);
     return () => observer.disconnect();
   }, []);
 
@@ -9628,7 +9639,10 @@ export function CRMBoard({
       // The page-level scroller owns horizontal scrolling. Give the shell the
       // same full width as the grid so group/header backgrounds do not end at
       // the viewport edge while the user is scrolled to the right.
-      style={{ minWidth: totalMinWidth + 56 }}
+      style={{
+        minWidth: totalMinWidth + 56,
+        "--crm-board-toolbar-height": `${boardToolbarHeight}px`,
+      } as React.CSSProperties}
     >
       {detailSubitem &&
         (() => {
@@ -12497,7 +12511,11 @@ export function CRMBoard({
               const showGroupSkeleton = isGroupExpanding && groupClients.length === 0;
 
               return (
-                <React.Fragment key={group.id}>
+                <div
+                  key={group.id}
+                  data-client-group={group.id}
+                  className="relative"
+                >
                   {groupDragOverId === group.id &&
                     groupDragOverEdge === "top" && (
                       <div className="pointer-events-none h-1 w-full bg-[#0f8da8] shadow-[0_0_5px_rgba(15,141,168,0.6)]" />
@@ -12759,7 +12777,7 @@ export function CRMBoard({
 
                   {!collapsedGroups[group.id] && !showGroupSkeleton && (
                     <div
-                      data-client-group={group.id}
+                      data-client-header
                       onDragOver={(event) =>
                         handleDragOver(event, group.id, "top")
                       }
@@ -12768,21 +12786,21 @@ export function CRMBoard({
                         setDragOverGroupId(null);
                         setDragOverGroupEdge(null);
                       }}
-                      className="relative rounded-bl-md"
+                      className="contents"
                       style={{ minWidth: groupTotalMinWidth }}
                     >
                       <div
-                        aria-hidden="true"
-                        className="pointer-events-none absolute inset-y-0 left-0 z-40 w-[5px] rounded-tl-md"
-                        style={{ backgroundColor: groupAccentColor(group) }}
-                      />
-                      <div
-                          className={`relative flex min-w-0 flex-shrink-0 items-center ${trackingView ? "justify-start" : "justify-center"} overflow-visible rounded-tl-md border border-[#D0D4E4] bg-white text-[12.6px]`}
+                          className={`sticky top-[var(--crm-board-toolbar-height)] z-[79] flex min-w-0 flex-shrink-0 items-center ${trackingView ? "justify-start" : "justify-center"} overflow-visible rounded-tl-md border border-[#D0D4E4] bg-white text-[12.6px] shadow-[0_1px_0_rgba(148,163,184,0.35)]`}
                         style={{
                           minWidth: groupTotalMinWidth,
                           width: groupTotalMinWidth,
                         }}
                       >
+                        <div
+                          aria-hidden="true"
+                          className="pointer-events-none absolute inset-y-0 -left-px z-10 w-[5px] rounded-tl-md"
+                          style={{ backgroundColor: groupAccentColor(group) }}
+                        />
                         {groupClientHeaderCols.map((col) => {
                           const fixedKeys = new Set([
                             "selectCheckbox",
@@ -13102,7 +13120,7 @@ export function CRMBoard({
                         className="pointer-events-none absolute -top-px bottom-[34px] left-0 z-50 w-px"
                         style={{ backgroundColor: groupAccentColor(group) }}
                       />
-                      {groupClients.map((client) => (
+                      {groupClients.map((client, clientIndex) => (
                         <ClientRow
                           key={client.id}
                           client={client}
@@ -13116,6 +13134,12 @@ export function CRMBoard({
                               ))
                           }
                           isExpanded={expandedIdSet.has(client.id)}
+                          hasTopBorder={
+                            clientIndex > 0 &&
+                            expandedIdSet.has(
+                              groupClients[clientIndex - 1].id,
+                            )
+                          }
                           autoEditName={autoEditClientNameId === client.id}
                           onAutoEditNameStarted={() =>
                             setAutoEditClientNameId(null)
@@ -13586,7 +13610,7 @@ export function CRMBoard({
                         )}
                     </div>
                   )}
-                </React.Fragment>
+                </div>
               );
             })
           )}
