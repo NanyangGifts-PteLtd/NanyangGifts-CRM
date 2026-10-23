@@ -1034,6 +1034,12 @@ export default function Page() {
       let hasExactGroupCounts = true;
       try {
         groupCounts = await fetchClientGroupCounts(boardQuery);
+        // The aggregate RPC omits groups with no matching clients. Treat an
+        // omitted known group as an authoritative zero rather than retaining
+        // its previous total after a delete or bulk cleanup.
+        for (const group of groups) {
+          if (!(group.id in groupCounts)) groupCounts[group.id] = 0;
+        }
       } catch (error) {
         // Rows are the primary result of a Board query. Keep them usable when
         // optional per-group totals are temporarily too expensive; expanding
@@ -1333,7 +1339,7 @@ export default function Page() {
       setQuickFilterCountsLoading(false);
       console.error("Failed to load clients", error);
     }
-  }, [boardQuery, cacheBoardQuerySnapshot]);
+  }, [boardQuery, cacheBoardQuerySnapshot, groups]);
 
   const scheduleGroupCountsRefresh = useCallback(() => {
     // Realtime inserts can arrive in a large burst. Counts are still useful
@@ -1350,7 +1356,12 @@ export default function Page() {
           setGroupPageState((current) => {
             const next = { ...current };
             let changed = false;
-            for (const [groupId, total] of Object.entries(nextGroupCounts)) {
+            // The RPC has no row for a zero-count group. Include every known
+            // group so a stale total is actively cleared without requiring a
+            // user to expand that group.
+            for (const group of groups) {
+              const groupId = group.id;
+              const total = nextGroupCounts[groupId] ?? 0;
               const state = current[groupId];
               const hasMore = (state?.loadedCount ?? 0) < total;
               if (
@@ -1376,7 +1387,7 @@ export default function Page() {
           console.warn("Could not refresh CRM group counts", error),
         );
     }, 2_000);
-  }, [boardQuery]);
+  }, [boardQuery, groups]);
 
   useEffect(
     () => () => {
@@ -1675,7 +1686,11 @@ export default function Page() {
         if (refreshSequence !== recordsRefreshSequence.current) return;
         setGroupPageState((current) => {
           const next = { ...current };
-          for (const [groupId, total] of Object.entries(nextGroupCounts)) {
+          // See the matching background count refresh: no RPC row means the
+          // group has zero visible clients for this query.
+          for (const group of groups) {
+            const groupId = group.id;
+            const total = nextGroupCounts[groupId] ?? 0;
             const state = next[groupId];
             next[groupId] = {
               total,
