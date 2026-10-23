@@ -1630,7 +1630,7 @@ export function CustomerProfilesPanel({
           </button>
           <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.25fr)_minmax(420px,0.75fr)]">
             <div>
-              <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+              <section className="overflow-visible rounded-2xl border border-slate-200 bg-white shadow-sm">
                 <header className="flex items-center gap-4 border-b border-slate-200 px-6 py-5">
                   <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-violet-50 text-violet-600">
                     <Building2 size={23} />
