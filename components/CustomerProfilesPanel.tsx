@@ -31,6 +31,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import type { Client } from "@/app/types";
+import { fetchHydratedClientBundle } from "@/lib/crm";
 import { useEscapeClose } from "./hooks/use-escape-close";
 
 type ClientPhoneNumber = {
@@ -68,18 +69,6 @@ type CompanyProfile = {
   organization_type: string | null;
   remarks: string | null;
 };
-type ProfileLeadLink = {
-  id?: string;
-  client_id: string;
-  client_profile_id: string | null;
-  company_profile_id: string | null;
-  is_primary_client?: boolean;
-  is_primary_company?: boolean;
-};
-let profileLeadLinksSnapshot: ProfileLeadLink[] = [];
-let clientProfileIdByPhoneSnapshot = new Map<string, string>();
-let companyProfileIdByNameSnapshot = new Map<string, string>();
-
 const inputClass =
   "h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-800 outline-none focus:border-[#16a5c4] focus:ring-2 focus:ring-[#16a5c4]/15";
 const customPaymentTermOption = "Others (specify)";
@@ -915,67 +904,59 @@ function normalizeProfilePhone(value: string) {
   return value.replace(/\D/g, "");
 }
 
-function normalizeCompanyName(value: string) {
-  return value.trim().replace(/\s+/g, " ").toLocaleLowerCase();
-}
-
 function ProfileLeads({
   type,
-  matchValue,
-  boardClients,
+  profileId,
   onOpenLead,
 }: {
   type: "client" | "company";
-  matchValue: string | string[];
-  boardClients: Client[];
+  profileId: string;
   onOpenLead: (clientId: string) => void;
 }) {
-  const matchingLeads = useMemo(() => {
-    const matchValues = Array.isArray(matchValue) ? matchValue : [matchValue];
-    const normalizedMatches = new Set(
-      matchValues
-        .map((value) =>
-          type === "client"
-            ? normalizeProfilePhone(value)
-            : normalizeCompanyName(value),
-        )
-        .filter(Boolean),
-    );
-    if (!normalizedMatches.size) return [];
-    const profileId = matchValues
-      .map((value) =>
-        type === "client"
-          ? clientProfileIdByPhoneSnapshot.get(normalizeProfilePhone(value))
-          : companyProfileIdByNameSnapshot.get(normalizeCompanyName(value)),
-      )
-      .find(Boolean);
-    const explicitlyLinked = new Set(
-      profileLeadLinksSnapshot
-        .filter(
-          (link) =>
-            profileId &&
-            (type === "client"
-              ? link.client_profile_id
-              : link.company_profile_id) === profileId,
-        )
-        .map((link) => link.client_id),
-    );
-    return boardClients
-      .filter(
-        (client) =>
-          explicitlyLinked.has(client.id) ||
-          normalizedMatches.has(
-            type === "client"
-              ? normalizeProfilePhone(client.phone ?? "")
-              : normalizeCompanyName(client.company ?? ""),
+  const [matchingLeads, setMatchingLeads] = useState<Client[]>([]);
+  const [loadingLeads, setLoadingLeads] = useState(true);
+  const [leadLoadError, setLeadLoadError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    setLoadingLeads(true);
+    setLeadLoadError(null);
+    void (async () => {
+      try {
+        const response = await fetch(
+          `/api/customer-profiles/related-leads?type=${encodeURIComponent(type)}&id=${encodeURIComponent(profileId)}`,
+        );
+        const result = await response.json();
+        if (!response.ok)
+          throw new Error(result.error ?? "Could not load related leads.");
+        const clientIds = Array.isArray(result.clientIds)
+          ? result.clientIds.map(String)
+          : [];
+        const hydration = clientIds.length
+          ? await fetchHydratedClientBundle(clientIds)
+          : { clients: [] as Client[] };
+        if (!active) return;
+        setMatchingLeads(
+          [...hydration.clients].sort(
+            (a, b) =>
+              new Date(b.createdAt || 0).getTime() -
+              new Date(a.createdAt || 0).getTime(),
           ),
-      )
-      .sort(
-        (a, b) =>
-          new Date(b.createdAt || 0).getTime() -
-          new Date(a.createdAt || 0).getTime(),
-      );
-  }, [boardClients, matchValue, type]);
+        );
+      } catch (error) {
+        if (!active) return;
+        setMatchingLeads([]);
+        setLeadLoadError(
+          error instanceof Error ? error.message : "Could not load related leads.",
+        );
+      } finally {
+        if (active) setLoadingLeads(false);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [profileId, type]);
 
   return (
     <section className="mt-5 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm xl:mt-0">
@@ -995,7 +976,17 @@ function ProfileLeads({
         </span>
       </header>
       <div className="divide-y divide-slate-100">
-        {matchingLeads.map((lead) => (
+        {loadingLeads ? (
+          <p className="px-6 py-10 text-center text-sm text-slate-400">
+            Loading related leads…
+          </p>
+        ) : null}
+        {!loadingLeads && leadLoadError ? (
+          <p className="px-6 py-10 text-center text-sm text-red-500">
+            {leadLoadError}
+          </p>
+        ) : null}
+        {!loadingLeads && !leadLoadError && matchingLeads.map((lead) => (
           <button
             key={lead.id}
             type="button"
@@ -1025,7 +1016,7 @@ function ProfileLeads({
             <ChevronRight size={18} className="shrink-0 text-slate-300" />
           </button>
         ))}
-        {!matchingLeads.length && (
+        {!loadingLeads && !leadLoadError && !matchingLeads.length && (
           <p className="px-6 py-10 text-center text-sm text-slate-400">
             No matching leads were found on the CRM Board.
           </p>
@@ -1037,14 +1028,12 @@ function ProfileLeads({
 
 export function CustomerProfilesPanel({
   currentUserRole,
-  boardClients,
   onOpenLead,
   initialProfile,
   onInitialProfileHandled,
   onProfileChange,
 }: {
   currentUserRole?: string | null;
-  boardClients: Client[];
   onOpenLead: (clientId: string) => void;
   initialProfile?: { type: "client" | "company"; id: string } | null;
   onInitialProfileHandled?: () => void;
@@ -1054,7 +1043,6 @@ export function CustomerProfilesPanel({
 }) {
   const [clients, setClients] = useState<ClientProfile[]>([]);
   const [companies, setCompanies] = useState<CompanyProfile[]>([]);
-  const [links, setLinks] = useState<ProfileLeadLink[]>([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState<"client" | "company" | null>(null);
   const [saving, setSaving] = useState(false);
@@ -1108,21 +1096,6 @@ export function CustomerProfilesPanel({
         )
       : companies;
   }, [companies, companySearch]);
-  profileLeadLinksSnapshot = links;
-  clientProfileIdByPhoneSnapshot = new Map(
-    clients.flatMap((profile) =>
-      clientPhoneNumbers(profile).map(
-        (phone) =>
-          [normalizeProfilePhone(phone.phone_number), profile.id] as const,
-      ),
-    ),
-  );
-  companyProfileIdByNameSnapshot = new Map(
-    companies.map(
-      (profile) => [normalizeCompanyName(profile.name), profile.id] as const,
-    ),
-  );
-
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -1137,7 +1110,6 @@ export function CustomerProfilesPanel({
         })),
       );
       setCompanies(result.companies ?? []);
-      setLinks(result.links ?? []);
     } catch (error) {
       toast.error(
         error instanceof Error
@@ -1572,10 +1544,7 @@ export function CustomerProfilesPanel({
             </div>
             <ProfileLeads
               type="client"
-              matchValue={clientPhoneNumbers(client).map(
-                (phone) => phone.phone_number,
-              )}
-              boardClients={boardClients}
+              profileId={client.id}
               onOpenLead={onOpenLead}
             />
           </div>
@@ -1765,8 +1734,7 @@ export function CustomerProfilesPanel({
             </div>
             <ProfileLeads
               type="company"
-              matchValue={company.name}
-              boardClients={boardClients}
+              profileId={company.id}
               onOpenLead={onOpenLead}
             />
           </div>

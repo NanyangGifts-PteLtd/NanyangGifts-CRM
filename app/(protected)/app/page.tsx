@@ -56,10 +56,6 @@ const GanttChart = dynamic(() => import("@/components/Gantt-Chart"), {
   ssr: false,
   loading: PanelLoading,
 });
-const ReportsPanel = dynamic(
-  () => import("@/components/ReportsPanel").then((module) => module.ReportsPanel),
-  { ssr: false, loading: PanelLoading },
-);
 const RoundRobinAdminPanel = dynamic(
   () =>
     import("@/components/RoundRobinPanel").then(
@@ -2462,7 +2458,7 @@ export default function Page() {
       case "reports":
         return (
           <div className="flex h-full items-center justify-center text-sm text-gray-500">
-            <ReportsPanel clients={clients} />
+            Reports &amp; KPIs are temporarily unavailable.
           </div>
         );
 
@@ -2484,7 +2480,6 @@ export default function Page() {
         return (
           <CustomerProfilesPanel
             currentUserRole={currentUserRole}
-            boardClients={clients}
             initialProfile={customerProfileTarget}
             onProfileChange={updateCustomerProfileLink}
             onOpenLead={(clientId) => {
