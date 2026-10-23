@@ -505,6 +505,7 @@ interface CRMBoardProps {
   quickFilterCountsLoading?: boolean;
   onLoadMoreGroup?: (groupId: string) => Promise<void> | void;
   onPrimeGroup?: (groupId: string) => Promise<void> | void;
+  onVisibleGroupsChange?: (groupIds: string[]) => void;
   onServerQueryChange?: (query: CrmBoardQuery) => void;
   search?: string;
   currentUserRole?: string | null;
@@ -748,6 +749,7 @@ export function CRMBoard({
   quickFilterCountsLoading = false,
   onLoadMoreGroup,
   onPrimeGroup,
+  onVisibleGroupsChange,
   onServerQueryChange,
   search = "",
   currentUserRole,
@@ -918,6 +920,7 @@ export function CRMBoard({
   const [collapsedGroups, setCollapsedGroups] = useState<
     Record<string, boolean>
   >({});
+
   const clientDetailHydrationRequestsRef = useRef(new Map<string, Promise<void>>());
   const hydratedClientCustomFieldsRef = useRef(new Set<string>());
   // Custom fields are stored as one JSON object. Keep a local, merged source
@@ -1573,6 +1576,26 @@ export function CRMBoard({
   );
 
   const [groups, setGroups] = useState<CRMGroup[]>([]);
+
+  // Let the page-level Realtime reconciler know which groups are actually
+  // visible. It can then update only an open group's loaded page window when
+  // another user inserts, moves or removes a client, instead of reloading the
+  // entire Board.
+  useEffect(() => {
+    onVisibleGroupsChange?.(
+      groups
+        .filter((group) => !collapsedGroups[group.id])
+        .map((group) => group.id),
+    );
+  }, [collapsedGroups, groups, onVisibleGroupsChange]);
+
+  useEffect(
+    () => () => {
+      onVisibleGroupsChange?.([]);
+    },
+    [onVisibleGroupsChange],
+  );
+
   const allGroupsCollapsed =
     groups.length > 0 && groups.every((group) => collapsedGroups[group.id]);
   const [groupToDelete, setGroupToDelete] = useState<CRMGroup | null>(null);

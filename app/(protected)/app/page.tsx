@@ -274,6 +274,11 @@ export default function Page() {
   const searchViewportAnchorClientIdRef = useRef<string | null>(null);
   const reconciliationTimer = useRef<number | null>(null);
   const groupCountsRefreshTimer = useRef<number | null>(null);
+  // CRMBoard owns the visual collapsed/expanded state. Keep just the visible
+  // group IDs here so Realtime can reconcile a row into a group the user is
+  // actually looking at, without turning every remote insert into a Board
+  // reload (or an import-time query storm).
+  const visibleCrmGroupIdsRef = useRef<Set<string>>(new Set());
   const recordsRefreshSequence = useRef(0);
   const ganttRefreshSequence = useRef(0);
   const ganttPageLoadInFlightRef = useRef(false);
@@ -1418,6 +1423,7 @@ export default function Page() {
       const deletedClientIds = new Set<string>();
       const deletedSubitemIds = new Set<string>();
       const targetGroupIds = new Set<string>();
+      const visibleGroupReconcileIds = new Set<string>();
       const initiallyExcludedGroupIds = new Set(
         groups
           .filter((group) =>
@@ -1427,6 +1433,13 @@ export default function Page() {
       );
       let requiresFilteredFallback = false;
       let hasNonRemovalChange = false;
+
+      const shouldReconcileVisibleGroup = (groupId: string | null) =>
+        Boolean(
+          groupId &&
+            visibleCrmGroupIdsRef.current.has(groupId) &&
+            groupPageState[groupId]?.loaded,
+        );
 
       for (const change of changes) {
         const currentRow = change.new;
@@ -1463,6 +1476,13 @@ export default function Page() {
         }
         if (change.table === "clients" && isRemoval) {
           deletedClientIds.add(clientId);
+          const previousGroupId =
+            knownClients.get(clientId)?.groupId ??
+            (typeof previousRow.group_id === "string"
+              ? previousRow.group_id
+              : null);
+          if (previousGroupId && shouldReconcileVisibleGroup(previousGroupId))
+            visibleGroupReconcileIds.add(previousGroupId);
           continue;
         }
         if (change.table === "subitems" && isRemoval) {
@@ -1496,6 +1516,25 @@ export default function Page() {
           if (localGroupId && nextGroupId && localGroupId !== nextGroupId) {
             targetGroupIds.add(localGroupId);
             targetGroupIds.add(nextGroupId);
+          }
+          // For a row entering, leaving, or moving through a group that is
+          // already open on this screen, reconcile only that group's loaded
+          // page window. This preserves the server-defined ordering and lets
+          // a remote row appear/disappear immediately without a full Board
+          // refresh or a group-level loading flash.
+          if (
+            (!knownClients.has(clientId) || localGroupId !== nextGroupId) &&
+            nextGroupId &&
+            shouldReconcileVisibleGroup(nextGroupId)
+          ) {
+            visibleGroupReconcileIds.add(nextGroupId);
+          }
+          if (
+            localGroupId &&
+            localGroupId !== nextGroupId &&
+            shouldReconcileVisibleGroup(localGroupId)
+          ) {
+            visibleGroupReconcileIds.add(localGroupId);
           }
         }
         if (change.table === "subitems") {
@@ -1533,29 +1572,42 @@ export default function Page() {
         return;
       }
 
-      // A newly inserted client which is not already in this browser's loaded
-      // pages is intentionally not hydrated here. Bulk imports may create
-      // thousands of these rows; repeatedly hydrating their group page causes
-      // database timeouts and disrupts unrelated users. The row appears on
-      // the Board through its normal group expansion/pagination request.
-
-      // There is no visible row to reconcile for a remote insert outside the
-      // loaded pages. Avoid even the global count/facet requests here: during
-      // an import that would turn one harmless realtime notification per row
-      // into a sustained query storm.
+      // There is no visible row to reconcile for a remote insert outside an
+      // already-loaded group. Avoid even the global count/facet requests here:
+      // during an import that would turn one harmless realtime notification
+      // per row into a sustained query storm.
       if (
         targetClientIds.size === 0 &&
         deletedClientIds.size === 0 &&
-        deletedSubitemIds.size === 0
+        deletedSubitemIds.size === 0 &&
+        visibleGroupReconcileIds.size === 0
       ) {
         scheduleGroupCountsRefresh();
         return;
       }
 
       try {
-        const refreshClientIds = [...targetClientIds].filter(
-          (clientId) => !deletedClientIds.has(clientId),
+        const reconciledGroupIds = [...visibleGroupReconcileIds];
+        const reconciledGroupIdSet = new Set(reconciledGroupIds);
+        // A group page is authoritative for client ordering. Fetch exactly
+        // the part of that group already loaded by this browser; no unrelated
+        // group is touched, and this does not reset pagination or show a
+        // loading skeleton.
+        const visibleGroupPagesPromise = Promise.all(
+          reconciledGroupIds.map((groupId) =>
+            fetchHydratedClientGroupPage(
+              groupId,
+              0,
+              Math.max(30, groupPageState[groupId]?.loadedCount ?? 0),
+              boardQuery,
+            ),
+          ),
         );
+        const refreshClientIds = [...targetClientIds].filter((clientId) => {
+          if (deletedClientIds.has(clientId)) return false;
+          const localGroupId = knownClients.get(clientId)?.groupId;
+          return !localGroupId || !reconciledGroupIdSet.has(localGroupId);
+        });
         // Lean hydration deliberately omits timeline, payment, sample, and
         // attachment metadata until a Board row is opened. Replacing an
         // already expanded row with that lean shape makes its nested table
@@ -1571,10 +1623,33 @@ export default function Page() {
         const leanRefreshClientIds = refreshClientIds.filter(
           (clientId) => !expandedClientIdSet.has(clientId),
         );
-        const [leanHydration, expandedHydration] = await Promise.all([
+        const [leanHydration, expandedHydration, visibleGroupPages] = await Promise.all([
           fetchLeanBoardClientBundle(leanRefreshClientIds),
           fetchHydratedClientBundle(expandedRefreshClientIds),
+          visibleGroupPagesPromise,
         ]);
+        // Page hydration is intentionally lean. Preserve the richer payload
+        // for a client whose subitem details are already open, so a remote
+        // insert/move cannot remount that row's timeline, payments or files.
+        const visibleGroupPageClients = visibleGroupPages.flatMap(
+          (page) => page.clients,
+        );
+        const detailClientIds = visibleGroupPageClients
+          .filter((client) =>
+            knownClients
+              .get(client.id)
+              ?.subitems.some((subitem) => subitem.detailsHydrated),
+          )
+          .map((client) => client.id);
+        const detailHydration = detailClientIds.length
+          ? await fetchHydratedClientBundle(detailClientIds)
+          : null;
+        const detailedClientsById = new Map(
+          detailHydration?.clients.map((client) => [client.id, client]) ?? [],
+        );
+        const hydratedVisibleGroupPageClients = visibleGroupPageClients.map(
+          (client) => detailedClientsById.get(client.id) ?? client,
+        );
         const refreshedClientsById = new Map(
           [...leanHydration.clients, ...expandedHydration.clients].map(
             (client) => [client.id, client],
@@ -1603,10 +1678,20 @@ export default function Page() {
         const incomingClients = new Map(
           hydrated.clients.map((client) => [client.id, client]),
         );
-        setClients((current) =>
-          current.flatMap((client) => {
+        setClients((current) => {
+          const retained = current.flatMap((client) => {
             if (deletedClientIds.has(client.id)) {
               return isBoardRecordProtected("client", client.id) ? [client] : [];
+            }
+            if (
+              client.groupId &&
+              reconciledGroupIdSet.has(client.groupId) &&
+              !isBoardRecordProtected("client", client.id)
+            ) {
+              // The refreshed page supplies this group's exact currently
+              // visible order, including rows that shifted because another
+              // user added, moved, or deleted a client.
+              return [];
             }
             const remainingSubitems = deletedSubitemIds.size
               ? client.subitems.filter(
@@ -1624,32 +1709,64 @@ export default function Page() {
               ];
             }
             return [incoming];
-          }),
+          });
+          const retainedIds = new Set(retained.map((client) => client.id));
+          return [
+            ...retained,
+            ...hydratedVisibleGroupPageClients.filter(
+              (client) => !retainedIds.has(client.id),
+            ),
+          ];
+        });
+        const allHydratedClients = [
+          ...hydrated.clients,
+          ...hydratedVisibleGroupPageClients,
+        ];
+        const visibleGroupAssignees = Object.assign(
+          {},
+          ...visibleGroupPages.map((page) => page.clientAssignees),
+          detailHydration?.clientAssignees ?? {},
+        );
+        const visibleGroupPmAssignees = Object.assign(
+          {},
+          ...visibleGroupPages.map((page) => page.clientPmAssignees),
+          detailHydration?.clientPmAssignees ?? {},
+        );
+        const visibleGroupSubitemAssignees = Object.assign(
+          {},
+          ...visibleGroupPages.map((page) => page.subitemAssignees),
+          detailHydration?.subitemAssignees ?? {},
         );
         setClientAssignees((current) => {
           const next = { ...current };
-          for (const client of hydrated.clients) {
-            if (hydrated.clientAssignees[client.id])
-              next[client.id] = hydrated.clientAssignees[client.id];
+          for (const client of allHydratedClients) {
+            const assignees =
+              hydrated.clientAssignees[client.id] ??
+              visibleGroupAssignees[client.id];
+            if (assignees) next[client.id] = assignees;
             else delete next[client.id];
           }
           return next;
         });
         setClientPmAssignees((current) => {
           const next = { ...current };
-          for (const client of hydrated.clients) {
-            if (hydrated.clientPmAssignees[client.id])
-              next[client.id] = hydrated.clientPmAssignees[client.id];
+          for (const client of allHydratedClients) {
+            const assignees =
+              hydrated.clientPmAssignees[client.id] ??
+              visibleGroupPmAssignees[client.id];
+            if (assignees) next[client.id] = assignees;
             else delete next[client.id];
           }
           return next;
         });
         setSubitemAssignees((current) => {
           const next = { ...current };
-          for (const client of hydrated.clients) {
+          for (const client of allHydratedClients) {
             for (const subitem of client.subitems) {
-              if (hydrated.subitemAssignees[subitem.id])
-                next[subitem.id] = hydrated.subitemAssignees[subitem.id];
+              const assignees =
+                hydrated.subitemAssignees[subitem.id] ??
+                visibleGroupSubitemAssignees[subitem.id];
+              if (assignees) next[subitem.id] = assignees;
               else delete next[subitem.id];
             }
           }
@@ -1719,6 +1836,7 @@ export default function Page() {
       boardQuery,
       clients,
       expandedClientIds,
+      groupPageState,
       groups,
       reloadClients,
       scheduleGroupCountsRefresh,
@@ -1771,6 +1889,10 @@ export default function Page() {
       quickFilterCounts,
     ],
   );
+
+  const handleVisibleCrmGroupsChange = useCallback((groupIds: string[]) => {
+    visibleCrmGroupIdsRef.current = new Set(groupIds);
+  }, []);
 
   const mergeAssignmentDataForClients = useCallback(
     (
@@ -2261,6 +2383,7 @@ export default function Page() {
             quickFilterCountsLoading={quickFilterCountsLoading}
             onLoadMoreGroup={loadMoreClientsForGroup}
             onPrimeGroup={primeClientPagesForGroup}
+            onVisibleGroupsChange={handleVisibleCrmGroupsChange}
             onServerQueryChange={handleServerQueryChange}
             search={search}
             currentUserRole={currentUserRole}
