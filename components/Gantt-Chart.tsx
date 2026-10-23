@@ -58,7 +58,6 @@ const RESOURCE_PANEL_WIDTH = 570;
 const PROCESS_LEGEND = [
   { label: "Pending / not started", color: "#94a3b8" },
   { label: "Started / shipped out", color: "#eab308" },
-  { label: "Done / delivered", color: "#22c55e" },
   { label: "Late", color: "#dc2626" },
 ] as const;
 
