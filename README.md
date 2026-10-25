@@ -61,6 +61,44 @@
   <img width="800" height="337" alt="ScreenRecording2026-07-29145758-ezgif com-video-to-gif-converter" src="https://github.com/user-attachments/assets/ddedb8d9-fd4e-44b2-9e14-e459fe7fb4e7" />
 
 - When a new client is created, the client is auto-assigned to the user with the current pointer in the pool.
+
+#### Adding a new Sales or Director user to Round Robin
+
+Creating an account with the `sales` or `director` role does **not** automatically add that person to the Round Robin pool. The user must also have a `sales_round_robin_pool` record before their position can be saved or they can receive automatic lead assignments.
+
+For each new Sales or Director account:
+
+1. Create and activate the account, then confirm the profile has the intended `sales` or `director` role.
+2. Add a pool entry in Supabase, initially **Out of Rotation** and inactive. This prevents an unexpected automatic lead assignment while the manager decides when to enrol the person.
+3. Refresh the Round Robin page. The user will appear in **Out of Rotation**.
+4. An authorised admin, director, or developer can drag the user into **Sales round robin** (or **Whatsapp**) and set their position. Only users placed in the Sales list are eligible for automatic sales lead assignment.
+
+Run the following targeted SQL in the Supabase SQL Editor, replacing the email address. It is idempotent: it adds a record only when that user does not already have one.
+
+```sql
+insert into public.sales_round_robin_pool (
+  user_id,
+  position,
+  is_active,
+  list_name
+)
+select
+  p.id,
+  coalesce((select max(position) + 1 from public.sales_round_robin_pool), 0),
+  false,
+  'out'
+from public.profiles p
+where lower(p.email) = lower('new.user@nanyanggifts.com')
+  and p.role in ('sales', 'director')
+  and not exists (
+    select 1
+    from public.sales_round_robin_pool rr
+    where rr.user_id = p.id
+  )
+returning user_id, position, is_active, list_name;
+```
+
+If the query returns no row, check the email address and role before retrying. Do not insert a duplicate pool record. A user shown on the Round Robin page without a pool entry is only a display placeholder; moves for that user cannot persist.
   
 ### Activity logging
 
