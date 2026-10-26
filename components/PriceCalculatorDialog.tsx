@@ -52,8 +52,13 @@ const TIERS = [
   ...Array.from({ length: 20 }, (_, index) => (index + 1) * 250),
   ...Array.from({ length: 10 }, (_, index) => 5500 + index * 500),
 ];
-const fmt = (n: number | null | undefined) =>
-  n == null || !Number.isFinite(n) ? "—" : n.toFixed(2);
+// Keep cents when they are meaningful, but avoid visually noisy `.00` on
+// whole-dollar monetary values throughout the calculator.
+const fmt = (n: number | null | undefined) => {
+  if (n == null || !Number.isFinite(n)) return "—";
+  const rounded = Number(n.toFixed(2));
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(2);
+};
 const pct = (n: number | null) => (n == null ? "—" : `${n.toFixed(1)}%`);
 const grid =
   "grid min-w-[980px] grid-cols-[minmax(190px,1.4fr)_100px_repeat(6,minmax(76px,1fr))_110px] gap-3";
