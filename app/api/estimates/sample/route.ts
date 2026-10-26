@@ -38,6 +38,15 @@ function safeText(value: unknown) {
     .replace(/[–—]/g, "-")
     .replace(/[^\x20-\x7E]/g, "");
 }
+function safeMultilineText(value: unknown) {
+  // Keep intentional description line breaks while applying the same
+  // Standard-PDF-font character safety as safeText.
+  return String(value ?? "")
+    .replace(/\r\n?/g, "\n")
+    .replace(/[\u2013\u2014]/g, "-")
+    .replace(/[^\x20-\x7E\n]/g, "");
+}
+
 function numberValue(value: unknown) {
   const parsed = Number(
     String(value ?? "")
@@ -74,15 +83,22 @@ function fit(image: PDFImage, maxWidth: number, maxHeight: number) {
 }
 function wrap(value: string, font: PDFFont, size: number, maxWidth: number) {
   const lines: string[] = [];
-  let current = "";
-  for (const word of safeText(value).split(/\s+/).filter(Boolean)) {
-    const next = current ? `${current} ${word}` : word;
-    if (current && font.widthOfTextAtSize(next, size) > maxWidth) {
-      lines.push(current);
-      current = word;
-    } else current = next;
+  for (const paragraph of safeMultilineText(value).split("\n")) {
+    let current = "";
+    const words = paragraph.split(/\s+/).filter(Boolean);
+    if (!words.length) {
+      lines.push("");
+      continue;
+    }
+    for (const word of words) {
+      const next = current ? `${current} ${word}` : word;
+      if (current && font.widthOfTextAtSize(next, size) > maxWidth) {
+        lines.push(current);
+        current = word;
+      } else current = next;
+    }
+    if (current) lines.push(current);
   }
-  if (current) lines.push(current);
   return lines;
 }
 
@@ -302,9 +318,9 @@ async function makePdf({
     names.forEach((item, index) =>
       text(item, 22, top + 15 + index * 11, 8.5, index === 0),
     );
-    details.forEach((item, index) =>
-      text(item, cols[1] + 5, top + 15 + index * 10, 7.5),
-    );
+    details.forEach((item, index) => {
+      if (item) text(item, cols[1] + 5, top + 15 + index * 10, 7.5);
+    });
     centeredText(
       row.qty.toLocaleString("en-SG"),
       cols[2],
