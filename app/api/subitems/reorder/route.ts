@@ -30,44 +30,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { data: activeSubitems, error: subitemsError } = await supabaseAdmin
-      .from("subitems")
-      .select("id")
-      .eq("client_id", clientId)
-      .is("deleted_at", null);
-    if (subitemsError) throw subitemsError;
-
-    const activeIds = new Set((activeSubitems ?? []).map((subitem) => subitem.id));
-    if (
-      activeIds.size !== orderedSubitemIds.length ||
-      orderedSubitemIds.some((id) => !activeIds.has(id))
-    ) {
-      return NextResponse.json(
-        { error: "The subitem list changed. Refresh the board and try again." },
-        { status: 409 },
-      );
-    }
-
-    // Move rows through a temporary range first. This works even when the
-    // database enforces unique positions per client, avoiding transient clashes.
-    const temporaryBase = 1_000_000_000;
-    for (const [index, id] of orderedSubitemIds.entries()) {
-      const { error } = await supabaseAdmin
-        .from("subitems")
-        .update({ position: temporaryBase + index })
-        .eq("id", id)
-        .eq("client_id", clientId)
-        .is("deleted_at", null);
-      if (error) throw error;
-    }
-    for (const [index, id] of orderedSubitemIds.entries()) {
-      const { error } = await supabaseAdmin
-        .from("subitems")
-        .update({ position: index })
-        .eq("id", id)
-        .eq("client_id", clientId)
-        .is("deleted_at", null);
-      if (error) throw error;
+    const { error: reorderError } = await supabaseAdmin.rpc(
+      "crm_reorder_subitems_v1",
+      {
+        p_client_id: clientId,
+        p_ordered_subitem_ids: orderedSubitemIds,
+      },
+    );
+    if (reorderError) {
+      if (reorderError.code === "P0001") {
+        return NextResponse.json({ error: reorderError.message }, { status: 409 });
+      }
+      throw reorderError;
     }
 
     return NextResponse.json({ ok: true });

@@ -663,6 +663,40 @@ function mapClients(row: Clients): Client {
   };
 }
 
+let activityActorNameRequest: Promise<string> | null = null;
+
+async function getActivityActorName() {
+  // Logging is frequently part of create, duplicate, and move flows. The
+  // authenticated actor does not change during a loaded Board session, so
+  // share the auth/profile lookup across those writes.
+  if (!activityActorNameRequest) {
+    activityActorNameRequest = (async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      const { data: actorProfile } = user
+        ? await supabase
+            .from("profiles")
+            .select("full_name, email")
+            .eq("id", user.id)
+            .maybeSingle()
+        : { data: null };
+      return (
+        actorProfile?.full_name?.trim() ||
+        actorProfile?.email ||
+        user?.email ||
+        "Unknown user"
+      );
+    })().catch((error) => {
+      // Do not permanently retain a failed authentication lookup. The next
+      // activity write can retry after a transient session refresh.
+      activityActorNameRequest = null;
+      throw error;
+    });
+  }
+  return activityActorNameRequest;
+}
+
 async function insertActivityLog(params: {
   clientId: string;
   subitemId?: string | null;
@@ -693,22 +727,7 @@ async function insertActivityLog(params: {
   description?: string | null;
   meta?: Record<string, any> | null;
 }) {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  const { data: actorProfile } = user
-    ? await supabase
-        .from("profiles")
-        .select("full_name, email")
-        .eq("id", user.id)
-        .maybeSingle()
-    : { data: null };
-  const actorName =
-    actorProfile?.full_name?.trim() ||
-    actorProfile?.email ||
-    user?.email ||
-    "Unknown user";
+  const actorName = await getActivityActorName();
 
   const { data, error } = await supabase
     .from("activity_log")
@@ -3435,11 +3454,22 @@ export async function moveSubitemRow(
   }
   if (existing.client_id === targetClientId) return;
 
-  const { data: clients, error: clientsError } = await supabase
-    .from("clients")
-    .select("id, name")
-    .in("id", [existing.client_id, targetClientId])
-    .is("deleted_at", null);
+  const [clientsResult, lastTargetSubitemResult] = await Promise.all([
+    supabase
+      .from("clients")
+      .select("id, name")
+      .in("id", [existing.client_id, targetClientId])
+      .is("deleted_at", null),
+    supabase
+      .from("subitems")
+      .select("position")
+      .eq("client_id", targetClientId)
+      .is("deleted_at", null)
+      .order("position", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
+  const { data: clients, error: clientsError } = clientsResult;
   if (clientsError) throw clientsError;
   if ((clients ?? []).length !== 2) {
     throw new Error("The source or target client is no longer available.");
@@ -3452,15 +3482,10 @@ export async function moveSubitemRow(
     clients?.find((client) => client.id === targetClientId)?.name ??
     targetClientId;
 
-  const { data: lastTargetSubitem, error: lastTargetSubitemError } =
-    await supabase
-      .from("subitems")
-      .select("position")
-      .eq("client_id", targetClientId)
-      .is("deleted_at", null)
-      .order("position", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+  const {
+    data: lastTargetSubitem,
+    error: lastTargetSubitemError,
+  } = lastTargetSubitemResult;
   if (lastTargetSubitemError) throw lastTargetSubitemError;
 
   const { error } = await supabase
@@ -3473,38 +3498,38 @@ export async function moveSubitemRow(
 
   if (error) throw error;
 
-  const { error: activityMoveError } = await supabase
-    .from("activity_log")
-    .update({ client_id: targetClientId })
-    .eq("subitem_id", subitemId);
-  if (activityMoveError) throw activityMoveError;
-
-  await insertActivityLog({
-    clientId: existing.client_id,
-    subitemId: null,
-    subitemName: existing.name,
-    action: "subitem_deleted",
-    oldValue: { id: existing.id, name: existing.name },
-    description: `Subitem moved to ${newClientName}`,
-  });
-
-  await insertActivityLog({
-    clientId: targetClientId,
-    subitemId,
-    subitemName: existing.name,
-    action: "subitem_added",
-    description: `Subitem moved from ${oldClientName}`,
-  });
-  await insertActivityLog({
-    clientId: targetClientId,
-    subitemId,
-    subitemName: existing.name,
-    action: "subitem_field_changed",
-    fieldName: "parentClient",
-    oldValue: oldClientName,
-    newValue: newClientName,
-    meta: { oldClientId: existing.client_id, newClientId: targetClientId },
-  });
+  const [activityMoveResult] = await Promise.all([
+    supabase
+      .from("activity_log")
+      .update({ client_id: targetClientId })
+      .eq("subitem_id", subitemId),
+    insertActivityLog({
+      clientId: existing.client_id,
+      subitemId: null,
+      subitemName: existing.name,
+      action: "subitem_deleted",
+      oldValue: { id: existing.id, name: existing.name },
+      description: `Subitem moved to ${newClientName}`,
+    }),
+    insertActivityLog({
+      clientId: targetClientId,
+      subitemId,
+      subitemName: existing.name,
+      action: "subitem_added",
+      description: `Subitem moved from ${oldClientName}`,
+    }),
+    insertActivityLog({
+      clientId: targetClientId,
+      subitemId,
+      subitemName: existing.name,
+      action: "subitem_field_changed",
+      fieldName: "parentClient",
+      oldValue: oldClientName,
+      newValue: newClientName,
+      meta: { oldClientId: existing.client_id, newClientId: targetClientId },
+    }),
+  ]);
+  if (activityMoveResult.error) throw activityMoveResult.error;
 }
 
 export async function deleteSubitemRow(subitemId: string, deactivationReason?: string) {
