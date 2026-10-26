@@ -19,6 +19,30 @@ import { capitaliseFirstCharacter } from "./text-format";
 
 const supabase = createClient();
 
+type SupabaseReadResult = {
+  error: { code?: string | null } | null;
+};
+
+// A busy production database can cancel a read at statement_timeout even
+// though the same indexed query succeeds once a competing realtime or
+// aggregate request has settled. Space retries far enough apart to avoid a
+// synchronized retry stampede between open CRM sessions. Writes are
+// intentionally excluded because their commit outcome can be ambiguous after
+// a timeout.
+async function retryTimedOutRead<T extends SupabaseReadResult>(
+  operation: () => PromiseLike<T>,
+): Promise<T> {
+  let result = await operation();
+  for (let attempt = 0; result.error?.code === "57014" && attempt < 2; attempt += 1) {
+    const baseDelay = attempt === 0 ? 750 : 1_600;
+    await new Promise((resolve) =>
+      setTimeout(resolve, baseDelay + Math.floor(Math.random() * 500)),
+    );
+    result = await operation();
+  }
+  return result;
+}
+
 // Supplier cells occasionally hold a contact/link rather than a supplier
 // identity. Those values must stay as Board text only, never as profiles.
 const supplierValueContainsUrl = (value: string) =>
@@ -1108,9 +1132,9 @@ export async function fetchHydratedClientBundle(
     };
   }
 
-  const { data, error } = await supabase.rpc("crm_hydrate_clients_v1", {
-    p_client_ids: orderedIds,
-  });
+  const { data, error } = await retryTimedOutRead(() =>
+    supabase.rpc("crm_hydrate_clients_v1", { p_client_ids: orderedIds }),
+  );
   if (error) throw error;
 
   const clientAssignees: ClientAssigneeMap = {};
@@ -1167,9 +1191,9 @@ export async function fetchLeanBoardClientBundle(
     };
   }
 
-  const { data, error } = await supabase.rpc("crm_hydrate_board_clients_v1", {
-    p_client_ids: orderedIds,
-  });
+  const { data, error } = await retryTimedOutRead(() =>
+    supabase.rpc("crm_hydrate_board_clients_v1", { p_client_ids: orderedIds }),
+  );
   if (error) throw error;
 
   return hydrateBoardAttachmentMetadata(mapHydratedClientRpcRows(
@@ -1456,33 +1480,67 @@ export type GanttResourcePage = {
   nextCursor: GanttResourceCursor | null;
 };
 
+type GanttResourceApiResult = {
+  data: unknown[] | null;
+  error: { code?: string | null; message?: string | null } | null;
+};
+
+async function requestGanttResourcePage(
+  query: GanttServerQuery,
+  cursor: GanttResourceCursor | null,
+  limit: number,
+): Promise<GanttResourceApiResult> {
+  const response = await fetch("/api/gantt/resources", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      limit,
+      afterGroupSort: cursor?.groupSort ?? null,
+      afterClientCreatedAt: cursor?.clientCreatedAt ?? null,
+      afterClientId: cursor?.clientId ?? null,
+      afterSubitemPosition: cursor?.subitemPosition ?? null,
+      afterSubitemId: cursor?.subitemId ?? null,
+      afterTimelineIndex: cursor?.timelineIndex ?? null,
+      search: query.search.trim() || null,
+      searchScope: query.searchScope,
+      groupIds: query.groupIds.length ? query.groupIds : null,
+      clientIds: query.clientIds.length ? query.clientIds : null,
+      pmIds: query.pmIds.length ? query.pmIds : null,
+      peopleIds: query.peopleIds.length ? query.peopleIds : null,
+      processStatuses: query.processStatuses.length
+        ? query.processStatuses
+        : null,
+      dateFrom: query.dateFrom || null,
+      dateTo: query.dateTo || null,
+    }),
+  });
+  const payload = (await response.json().catch(() => null)) as {
+    data?: unknown[];
+    error?: string;
+    code?: string;
+  } | null;
+  if (response.ok) return { data: payload?.data ?? [], error: null };
+  return {
+    data: null,
+    error: {
+      code: payload?.code ?? null,
+      message: payload?.error ?? `Gantt request failed (${response.status})`,
+    },
+  };
+}
+
 export async function fetchGanttResourcePage(
   query: GanttServerQuery,
   cursor: GanttResourceCursor | null = null,
   limit = 30,
 ): Promise<GanttResourcePage> {
-  const { data, error } = await supabase.rpc("gantt_resource_page", {
+  const { data, error } = await retryTimedOutRead(() => requestGanttResourcePage(
+    query,
+    cursor,
     // Ask for one look-ahead row so cursor pagination can determine whether
     // another page exists without a separate count/offset calculation.
-    p_limit: limit + 1,
-    p_after_group_sort: cursor?.groupSort ?? null,
-    p_after_client_created_at: cursor?.clientCreatedAt ?? null,
-    p_after_client_id: cursor?.clientId ?? null,
-    p_after_subitem_position: cursor?.subitemPosition ?? null,
-    p_after_subitem_id: cursor?.subitemId ?? null,
-    p_after_timeline_index: cursor?.timelineIndex ?? null,
-    p_search: query.search.trim() || null,
-    p_search_scope: query.searchScope,
-    p_group_ids: query.groupIds.length ? query.groupIds : null,
-    p_client_ids: query.clientIds.length ? query.clientIds : null,
-    p_pm_ids: query.pmIds.length ? query.pmIds : null,
-    p_people_ids: query.peopleIds.length ? query.peopleIds : null,
-    p_process_statuses: query.processStatuses.length
-      ? query.processStatuses
-      : null,
-    p_date_from: query.dateFrom || null,
-    p_date_to: query.dateTo || null,
-  });
+    limit + 1,
+  ));
   if (error) throw error;
 
   const responseRows = (data ?? []) as Array<{
@@ -1530,7 +1588,9 @@ export async function fetchGanttResourcePage(
 export async function fetchGanttClientFilterOptions(): Promise<
   Array<{ value: string; label: string }>
 > {
-  const { data, error } = await supabase.rpc("gantt_client_filter_options");
+  const { data, error } = await retryTimedOutRead(() =>
+    supabase.rpc("gantt_client_filter_options"),
+  );
   if (error) throw error;
   return (data ?? []).map((row: {
     client_id: string;
@@ -1546,9 +1606,8 @@ export async function fetchGanttClientFilterOptions(): Promise<
 // facets of the active search/filter context, so never send Board query
 // parameters to the count RPC.
 export async function fetchCrmBoardQuickFilterCounts(): Promise<CrmQuickFilterCounts> {
-  const { data, error } = await supabase.rpc(
-    "crm_board_quick_filter_counts_v2",
-    {},
+  const { data, error } = await retryTimedOutRead(() =>
+    supabase.rpc("crm_board_quick_filter_counts_v2", {}),
   );
   if (error) throw error;
   const counts: CrmQuickFilterCounts = {};
@@ -1622,13 +1681,13 @@ export async function fetchHydratedClientGroupPage(
   options?: { excludeGroupNames?: string[] },
 ) {
   const useInitialPageRpc = Boolean(options?.excludeGroupNames?.length);
-  const response = useInitialPageRpc
-    ? await supabase.rpc("crm_board_initial_page_hydrated_v1", {
+  const response = await retryTimedOutRead(() => useInitialPageRpc
+    ? supabase.rpc("crm_board_initial_page_hydrated_v1", {
         p_limit: limit,
         p_offset: offset,
         p_exclude_group_names: options?.excludeGroupNames ?? null,
       })
-    : await supabase.rpc("crm_board_client_page_hydrated_indexed_v1", {
+    : supabase.rpc("crm_board_client_page_hydrated_indexed_v1", {
       p_group_id: groupId,
       p_limit: limit,
       p_offset: offset,
@@ -1649,7 +1708,7 @@ export async function fetchHydratedClientGroupPage(
       p_payment_status_option_id: query.paymentStatusOptionId ?? null,
       p_subprogress_option_id: query.subprogressOptionId ?? null,
       p_person_id: query.personId ?? null,
-    });
+    }));
   const { data, error } = response;
   if (error) throw error;
 
@@ -1684,14 +1743,14 @@ export async function searchCrmClients(
   const trimmedQuery = query.trim();
   if (!trimmedQuery)
     return { clients: [], totalClients: 0, hasMore: false, nextOffset: 0 };
-  const { data, error } = await supabase.rpc(
+  const { data, error } = await retryTimedOutRead(() => supabase.rpc(
     "crm_universal_search_clients_indexed_v1",
     {
       p_search: trimmedQuery,
       p_limit: limit,
       p_offset: offset,
     },
-  );
+  ));
   if (error) throw error;
   const clientIds: string[] = (data ?? []).map((row: { client_id: string }) =>
     String(row.client_id),

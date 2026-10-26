@@ -249,6 +249,11 @@ export default function Page() {
   const [quickFilterCountsLoading, setQuickFilterCountsLoading] =
     useState(false);
   const [activePanel, setActivePanel] = useState<SidePanel>("crm");
+  // Whole-board CRM badge counts are optional background work. Keep the
+  // current panel in a ref so a scheduled refresh can stand down if the user
+  // navigates to Gantt before it reaches the database.
+  const activePanelRef = useRef<SidePanel>(activePanel);
+  activePanelRef.current = activePanel;
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [expandedClientIds, setExpandedClientIds] = useState<string[]>([]);
   const [clientAssignees, setClientAssignees] = useState<ClientAssigneeMap>({});
@@ -995,12 +1000,25 @@ export default function Page() {
         ? Promise.resolve(cachedQuickFilterCounts.data)
         : (quickFilterCountsRequestRef.current ??
           (() => {
-            const request = fetchCrmBoardQuickFilterCounts()
+            // Let the primary Board page settle first. If the user opens
+            // Gantt in the meantime, do not begin an unrelated whole-board
+            // aggregate that can contend with the Gantt resource page.
+            const request = new Promise<void>((resolve) => {
+              window.setTimeout(resolve, 1_500);
+            })
+              .then(() => {
+                if (activePanelRef.current !== "crm") {
+                  return quickFilterCountsCacheRef.current?.data ?? {};
+                }
+                return fetchCrmBoardQuickFilterCounts();
+              })
               .then((counts) => {
-                quickFilterCountsCacheRef.current = {
-                  data: counts,
-                  cachedAt: Date.now(),
-                };
+                if (activePanelRef.current === "crm") {
+                  quickFilterCountsCacheRef.current = {
+                    data: counts,
+                    cachedAt: Date.now(),
+                  };
+                }
                 return counts;
               })
               .catch((error) => {
@@ -1789,12 +1807,40 @@ export default function Page() {
           });
         }
 
-        // Header totals and quick-filter badges are small global metadata
-        // queries. Refresh each once per coalesced event batch, without
-        // replacing Board rows or resetting pagination.
+        // Header totals change with every row event, but whole-board quick
+        // facets are considerably more expensive on the migrated dataset.
+        // Reuse their existing one-minute cache during realtime bursts and
+        // share any refresh already in flight across all open reconciliation
+        // paths. This prevents every browser from launching the same global
+        // aggregate after each coalesced event batch.
+        const cachedQuickFilterCounts = quickFilterCountsCacheRef.current;
+        const hasFreshQuickFilterCounts =
+          cachedQuickFilterCounts !== null &&
+          Date.now() - cachedQuickFilterCounts.cachedAt <
+            QUICK_FILTER_COUNTS_CACHE_TTL_MS;
+        const quickCountsPromise = hasFreshQuickFilterCounts
+          ? Promise.resolve(cachedQuickFilterCounts.data)
+          : activePanelRef.current !== "crm"
+            ? Promise.resolve(cachedQuickFilterCounts?.data ?? {})
+          : (quickFilterCountsRequestRef.current ??
+            (() => {
+              const request = fetchCrmBoardQuickFilterCounts()
+                .then((counts) => {
+                  quickFilterCountsCacheRef.current = {
+                    data: counts,
+                    cachedAt: Date.now(),
+                  };
+                  return counts;
+                })
+                .finally(() => {
+                  quickFilterCountsRequestRef.current = null;
+                });
+              quickFilterCountsRequestRef.current = request;
+              return request;
+            })());
         const [nextGroupCounts, nextQuickFilterCounts] = await Promise.all([
           fetchClientGroupCounts(boardQuery),
-          fetchCrmBoardQuickFilterCounts(),
+          quickCountsPromise,
         ]);
         if (refreshSequence !== recordsRefreshSequence.current) return;
         setGroupPageState((current) => {
