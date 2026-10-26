@@ -500,6 +500,7 @@ interface CRMBoardProps {
       loading: boolean;
       loaded: boolean;
       loadedCount: number;
+      isCountExact: boolean;
     }
   >;
   quickFilterCounts?: CrmQuickFilterCounts;
@@ -12751,13 +12752,22 @@ export function CRMBoard({
                             : "opacity-0 transition-opacity group-hover:opacity-100"
                         }`}
                       >
-                        {clientsLoaded ? (
+                        {clientsLoaded && groupPageState[group.id]?.isCountExact ? (
                           <>
                             {groupPageState[group.id]?.total ?? groupClients.length}{" "}
                             {(groupPageState[group.id]?.total ?? groupClients.length) === 1
                               ? "Client"
                               : "Clients"}
                           </>
+                        ) : clientsLoaded ? (
+                          <span className="inline-flex items-center gap-1" aria-live="polite">
+                            <LoaderCircle
+                              size={13}
+                              className="animate-spin"
+                              aria-label={`Loading ${group.name} client count`}
+                            />
+                            Loading count
+                          </span>
                         ) : (
                           <span className="inline-flex items-center gap-1">
                             <LoaderCircle

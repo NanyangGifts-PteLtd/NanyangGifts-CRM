@@ -126,6 +126,9 @@ type GroupPageState = Record<
     hasMore: boolean;
     loading: boolean;
     loaded: boolean;
+      // A page can prove matching rows exist, but not the group's full total.
+      // Keep provisional page rows out of the count displayed to the user.
+      isCountExact: boolean;
     // This intentionally counts only rows received through the paged RPC.
     // A client injected for universal-search navigation must not advance the
     // next offset and cause a normal row to be skipped.
@@ -1355,6 +1358,8 @@ export default function Page() {
           groupId,
           {
             total,
+            isCountExact:
+              hasExactGroupCounts || targetedPagesByGroupId.has(groupId),
             hasMore:
               targetedPagesByGroupId.get(groupId)?.hasMore ??
               (hasExactGroupCounts
@@ -1386,6 +1391,7 @@ export default function Page() {
                 ...existing,
                 total: state.total,
                 hasMore: existing.loadedCount < state.total,
+                isCountExact: existing.isCountExact || state.isCountExact,
               }
             : state;
         }
@@ -1512,7 +1518,8 @@ export default function Page() {
               if (
                 state?.total === total &&
                 state.hasMore === hasMore &&
-                state.loading === false
+                state.loading === false &&
+                state.isCountExact === true
               ) {
                 continue;
               }
@@ -1523,6 +1530,7 @@ export default function Page() {
                 loading: state?.loading ?? false,
                 loaded: state?.loaded ?? false,
                 loadedCount: state?.loadedCount ?? 0,
+                isCountExact: true,
               };
             }
             return changed ? next : current;
@@ -2114,6 +2122,7 @@ export default function Page() {
       ...current,
       [groupId]: {
         total: current[groupId]?.total ?? 0,
+        isCountExact: current[groupId]?.isCountExact ?? false,
         hasMore: current[groupId]?.hasMore ?? true,
         loading: true,
         loaded: current[groupId]?.loaded ?? false,
@@ -2142,6 +2151,7 @@ export default function Page() {
         ...current,
         [groupId]: {
           total: page.total,
+          isCountExact: true,
           hasMore: page.hasMore,
           loading: false,
           loaded: true,
@@ -2173,6 +2183,7 @@ export default function Page() {
       ...current,
       [groupId]: {
         total: current[groupId]?.total ?? 0,
+        isCountExact: current[groupId]?.isCountExact ?? false,
         hasMore: current[groupId]?.hasMore ?? true,
         loading: true,
         loaded: current[groupId]?.loaded ?? false,
@@ -2207,6 +2218,7 @@ export default function Page() {
           ...current,
           [groupId]: {
             total: page.total,
+            isCountExact: true,
             hasMore: page.hasMore,
             loading: page.hasMore && pageNumber < pagesToFetch - 1,
             loaded: true,
