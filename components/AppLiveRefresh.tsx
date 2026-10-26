@@ -48,6 +48,8 @@ export function AppLiveRefresh({
     const supabase = createClient();
     let disposed = false;
     const hiddenRefreshKinds = new Set<RefreshKind>();
+    const canRefreshNow = () =>
+      document.visibilityState === "visible" && document.hasFocus();
     const runRefresh = (kind: RefreshKind) => {
       if (kind === "records") {
         const changes = pendingRecordChanges.current.splice(0);
@@ -83,7 +85,7 @@ export function AppLiveRefresh({
         // Background tabs still receive Realtime events. Defer their database
         // follow-up work and coalesce it into one refresh per kind when the
         // user returns, instead of letting every open tab query in parallel.
-        if (document.visibilityState !== "visible") {
+        if (!canRefreshNow()) {
           hiddenRefreshKinds.add(kind);
           return;
         }
@@ -117,12 +119,13 @@ export function AppLiveRefresh({
     };
     window.addEventListener("crm:board-write-settled", handleBoardWriteSettled);
     const flushHiddenRefreshes = () => {
-      if (document.visibilityState !== "visible" || disposed) return;
+      if (!canRefreshNow() || disposed) return;
       const kinds = Array.from(hiddenRefreshKinds);
       hiddenRefreshKinds.clear();
       for (const kind of kinds) schedule(kind);
     };
     document.addEventListener("visibilitychange", flushHiddenRefreshes);
+    window.addEventListener("focus", flushHiddenRefreshes);
     const scheduleRecordChange = (
       table: LiveRecordChange["table"],
       payload: {
@@ -217,6 +220,7 @@ export function AppLiveRefresh({
       hiddenRefreshKinds.clear();
       window.removeEventListener("crm:board-write-settled", handleBoardWriteSettled);
       document.removeEventListener("visibilitychange", flushHiddenRefreshes);
+      window.removeEventListener("focus", flushHiddenRefreshes);
       if (channel) supabase.removeChannel(channel);
     };
   }, [onBoardMetadataRefresh, onGanttRecordsRefresh, onGroupsRefresh, onLabelOptionsRefresh, onNotificationsRefresh, onProfilesRefresh, onRecordsRefresh, onRoundRobinRefresh]);

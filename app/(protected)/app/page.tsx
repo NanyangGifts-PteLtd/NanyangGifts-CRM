@@ -2284,11 +2284,15 @@ export default function Page() {
     // catch-up covers a browser that suspended its socket without leaving a
     // one-minute polling loop running in every open tab.
     const refreshWhenVisible = () => {
-      if (document.visibilityState === "visible") void loadNotifications();
+      if (document.visibilityState === "visible" && document.hasFocus())
+        void loadNotifications();
     };
     document.addEventListener("visibilitychange", refreshWhenVisible);
-    return () =>
+    window.addEventListener("focus", refreshWhenVisible);
+    return () => {
       document.removeEventListener("visibilitychange", refreshWhenVisible);
+      window.removeEventListener("focus", refreshWhenVisible);
+    };
   }, [loadNotifications]);
 
   const markNotificationRead = useCallback(async (id: string) => {

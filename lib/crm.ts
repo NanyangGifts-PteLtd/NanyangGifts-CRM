@@ -31,9 +31,14 @@ type SupabaseReadResult = {
 // a timeout.
 async function retryTimedOutRead<T extends SupabaseReadResult>(
   operation: () => PromiseLike<T>,
+  maxRetries = 2,
 ): Promise<T> {
   let result = await operation();
-  for (let attempt = 0; result.error?.code === "57014" && attempt < 2; attempt += 1) {
+  for (
+    let attempt = 0;
+    result.error?.code === "57014" && attempt < maxRetries;
+    attempt += 1
+  ) {
     const baseDelay = attempt === 0 ? 750 : 1_600;
     await new Promise((resolve) =>
       setTimeout(resolve, baseDelay + Math.floor(Math.random() * 500)),
@@ -1608,6 +1613,10 @@ export async function fetchGanttClientFilterOptions(): Promise<
 export async function fetchCrmBoardQuickFilterCounts(): Promise<CrmQuickFilterCounts> {
   const { data, error } = await retryTimedOutRead(() =>
     supabase.rpc("crm_board_quick_filter_counts_v2", {}),
+    // At roughly six seconds per call in production, an immediate retry adds
+    // pressure to the same saturated interval. Its next staggered background
+    // refresh is safer than turning one timeout into three full-board scans.
+    0,
   );
   if (error) throw error;
   const counts: CrmQuickFilterCounts = {};
@@ -1681,34 +1690,40 @@ export async function fetchHydratedClientGroupPage(
   options?: { excludeGroupNames?: string[] },
 ) {
   const useInitialPageRpc = Boolean(options?.excludeGroupNames?.length);
-  const response = await retryTimedOutRead(() => useInitialPageRpc
-    ? supabase.rpc("crm_board_initial_page_hydrated_v1", {
-        p_limit: limit,
-        p_offset: offset,
-        p_exclude_group_names: options?.excludeGroupNames ?? null,
-      })
-    : supabase.rpc("crm_board_client_page_hydrated_indexed_v1", {
-      p_group_id: groupId,
-      p_limit: limit,
-      p_offset: offset,
-      p_search: query.search?.trim() || null,
-      p_search_columns: query.searchColumns ?? null,
-      p_sort_category: query.sortCategory ?? "client",
-      p_sort_column: query.sortColumn ?? "dateCreated",
-      p_sort_value_type: query.sortValueType ?? "date",
-      p_sort_direction: query.sortDirection ?? "desc",
-      p_advanced_rules: query.advancedRules ?? [],
-      p_advanced_join: query.advancedJoin ?? "and",
-      p_status_option_id: query.statusOptionId ?? null,
-      p_importance_option_id: query.importanceOptionId ?? null,
-      p_reply_status_option_id: query.replyStatusOptionId ?? null,
-      p_channel_option_id: query.channelOptionId ?? null,
-      p_subitem_status_option_id: query.subitemStatusOptionId ?? null,
-      p_payment_option_id: query.paymentOptionId ?? null,
-      p_payment_status_option_id: query.paymentStatusOptionId ?? null,
-      p_subprogress_option_id: query.subprogressOptionId ?? null,
-      p_person_id: query.personId ?? null,
-    }));
+  const response = await retryTimedOutRead(
+    () =>
+      useInitialPageRpc
+        ? supabase.rpc("crm_board_initial_page_hydrated_v1", {
+            p_limit: limit,
+            p_offset: offset,
+            p_exclude_group_names: options?.excludeGroupNames ?? null,
+          })
+        : supabase.rpc("crm_board_client_page_hydrated_indexed_v1", {
+            p_group_id: groupId,
+            p_limit: limit,
+            p_offset: offset,
+            p_search: query.search?.trim() || null,
+            p_search_columns: query.searchColumns ?? null,
+            p_sort_category: query.sortCategory ?? "client",
+            p_sort_column: query.sortColumn ?? "dateCreated",
+            p_sort_value_type: query.sortValueType ?? "date",
+            p_sort_direction: query.sortDirection ?? "desc",
+            p_advanced_rules: query.advancedRules ?? [],
+            p_advanced_join: query.advancedJoin ?? "and",
+            p_status_option_id: query.statusOptionId ?? null,
+            p_importance_option_id: query.importanceOptionId ?? null,
+            p_reply_status_option_id: query.replyStatusOptionId ?? null,
+            p_channel_option_id: query.channelOptionId ?? null,
+            p_subitem_status_option_id: query.subitemStatusOptionId ?? null,
+            p_payment_option_id: query.paymentOptionId ?? null,
+            p_payment_status_option_id: query.paymentStatusOptionId ?? null,
+            p_subprogress_option_id: query.subprogressOptionId ?? null,
+            p_person_id: query.personId ?? null,
+          }),
+    // Keep one recovery attempt for a transient collision, but do not allow a
+    // single page load to occupy three consecutive timeout windows.
+    1,
+  );
   const { data, error } = response;
   if (error) throw error;
 
