@@ -1614,13 +1614,22 @@ export async function fetchGanttClientFilterOptions(): Promise<
 // facets of the active search/filter context, so never send Board query
 // parameters to the count RPC.
 export async function fetchCrmBoardQuickFilterCounts(): Promise<CrmQuickFilterCounts> {
-  const { data, error } = await retryTimedOutRead(() =>
-    supabase.rpc("crm_board_quick_filter_counts_v2", {}),
+  let { data, error } = await retryTimedOutRead(() =>
+    supabase.rpc("crm_board_quick_filter_counts_cached_v1", {}),
     // At roughly six seconds per call in production, an immediate retry adds
     // pressure to the same saturated interval. Its next staggered background
     // refresh is safer than turning one timeout into three full-board scans.
     0,
   );
+  // Retain a harmless deployment fallback while PostgREST refreshes its
+  // schema cache. Once the migration is visible, all browsers share the DB
+  // cache rather than each evaluating the whole-board aggregate.
+  if (error && ["PGRST202", "42883"].includes(error.code ?? "")) {
+    ({ data, error } = await retryTimedOutRead(
+      () => supabase.rpc("crm_board_quick_filter_counts_v2", {}),
+      0,
+    ));
+  }
   if (error) throw error;
   const counts: CrmQuickFilterCounts = {};
   for (const row of data ?? []) {
@@ -1693,6 +1702,32 @@ export async function fetchHydratedClientGroupPage(
   options?: { excludeGroupNames?: string[]; signal?: AbortSignal },
 ) {
   const useInitialPageRpc = Boolean(options?.excludeGroupNames?.length);
+  const hasStandardQuickFilter = Boolean(
+    query.statusOptionId ||
+      query.importanceOptionId ||
+      query.replyStatusOptionId ||
+      query.channelOptionId ||
+      query.subitemStatusOptionId ||
+      query.paymentOptionId ||
+      query.paymentStatusOptionId ||
+      query.subprogressOptionId ||
+      query.personId,
+  );
+  // Standard quick filters have fixed relational semantics. Route those
+  // common Board requests through the set-based RPC, while preserving the
+  // indexed compatibility matcher for searches, custom sorts, and Advanced
+  // Filter rules whose semantics are more flexible.
+  const useStandardFilterFastPath = Boolean(
+    !useInitialPageRpc &&
+      hasStandardQuickFilter &&
+      !query.search?.trim() &&
+      !query.searchColumns?.length &&
+      !query.advancedRules?.length &&
+      (query.sortCategory ?? "client") === "client" &&
+      (query.sortColumn ?? "dateCreated") === "dateCreated" &&
+      (query.sortValueType ?? "date") === "date" &&
+      (query.sortDirection ?? "desc") === "desc",
+  );
   const useFastGroupPageRpc = Boolean(
     !useInitialPageRpc &&
       groupId &&
@@ -1737,6 +1772,23 @@ export async function fetchHydratedClientGroupPage(
         p_person_id: query.personId ?? null,
       })
       .abortSignal(options?.signal ?? new AbortController().signal);
+  const requestStandardFilterPage = () =>
+    supabase
+      .rpc("crm_board_standard_filter_page_hydrated_v1", {
+        p_group_id: groupId,
+        p_limit: limit,
+        p_offset: offset,
+        p_status_option_id: query.statusOptionId ?? null,
+        p_importance_option_id: query.importanceOptionId ?? null,
+        p_reply_status_option_id: query.replyStatusOptionId ?? null,
+        p_channel_option_id: query.channelOptionId ?? null,
+        p_subitem_status_option_id: query.subitemStatusOptionId ?? null,
+        p_payment_option_id: query.paymentOptionId ?? null,
+        p_payment_status_option_id: query.paymentStatusOptionId ?? null,
+        p_subprogress_option_id: query.subprogressOptionId ?? null,
+        p_person_id: query.personId ?? null,
+      })
+      .abortSignal(options?.signal ?? new AbortController().signal);
   let response = await retryTimedOutRead(
     () =>
       useInitialPageRpc
@@ -1755,6 +1807,8 @@ export async function fetchHydratedClientGroupPage(
                 p_offset: offset,
               })
               .abortSignal(options?.signal ?? new AbortController().signal)
+        : useStandardFilterFastPath
+          ? requestStandardFilterPage()
         : requestIndexedPage(),
     // Keep one recovery attempt for a transient collision, but do not allow a
     // single page load to occupy three consecutive timeout windows.
@@ -1764,7 +1818,7 @@ export async function fetchHydratedClientGroupPage(
   // is applied. Keep deployment ordering harmless by falling back only when
   // the new function itself is unavailable; real database errors still surface.
   if (
-    useFastGroupPageRpc &&
+    (useFastGroupPageRpc || useStandardFilterFastPath) &&
     response.error &&
     ["PGRST202", "42883"].includes(response.error.code ?? "")
   ) {
@@ -1851,7 +1905,44 @@ export async function fetchClientGroupCounts(
   // This RPC returns one aggregate row per group. The former unfiltered path
   // selected every client's group_id into the browser and counted it locally;
   // that becomes both stale and unnecessarily expensive during a bulk import.
-  let request = supabase.rpc("crm_board_client_group_counts_indexed_v1", {
+  const hasStandardQuickFilter = Boolean(
+    query.statusOptionId ||
+      query.importanceOptionId ||
+      query.replyStatusOptionId ||
+      query.channelOptionId ||
+      query.subitemStatusOptionId ||
+      query.paymentOptionId ||
+      query.paymentStatusOptionId ||
+      query.subprogressOptionId ||
+      query.personId,
+  );
+  const useStandardFilterFastPath = Boolean(
+    hasStandardQuickFilter &&
+      !query.search?.trim() &&
+      !query.searchColumns?.length &&
+      !query.advancedRules?.length &&
+      (query.sortCategory ?? "client") === "client" &&
+      (query.sortColumn ?? "dateCreated") === "dateCreated" &&
+      (query.sortValueType ?? "date") === "date" &&
+      (query.sortDirection ?? "desc") === "desc",
+  );
+  let request = supabase.rpc(
+    useStandardFilterFastPath
+      ? "crm_board_standard_filter_group_counts_v1"
+      : "crm_board_client_group_counts_indexed_v1",
+    useStandardFilterFastPath
+      ? {
+          p_status_option_id: query.statusOptionId ?? null,
+          p_importance_option_id: query.importanceOptionId ?? null,
+          p_reply_status_option_id: query.replyStatusOptionId ?? null,
+          p_channel_option_id: query.channelOptionId ?? null,
+          p_subitem_status_option_id: query.subitemStatusOptionId ?? null,
+          p_payment_option_id: query.paymentOptionId ?? null,
+          p_payment_status_option_id: query.paymentStatusOptionId ?? null,
+          p_subprogress_option_id: query.subprogressOptionId ?? null,
+          p_person_id: query.personId ?? null,
+        }
+      : {
       p_search: query.search?.trim() || null,
       p_search_columns: query.searchColumns ?? null,
       p_advanced_rules: query.advancedRules ?? [],
@@ -1865,9 +1956,35 @@ export async function fetchClientGroupCounts(
       p_payment_status_option_id: query.paymentStatusOptionId ?? null,
       p_subprogress_option_id: query.subprogressOptionId ?? null,
       p_person_id: query.personId ?? null,
-  });
+        },
+  );
   if (signal) request = request.abortSignal(signal);
-  const { data, error } = await request;
+  let { data, error } = await request;
+  // Make deployment ordering harmless: a browser that reaches the deployed
+  // app before PostgREST exposes the new RPC simply uses the existing path.
+  if (
+    useStandardFilterFastPath &&
+    error &&
+    ["PGRST202", "42883"].includes(error.code ?? "")
+  ) {
+    let fallbackRequest = supabase.rpc("crm_board_client_group_counts_indexed_v1", {
+      p_search: query.search?.trim() || null,
+      p_search_columns: query.searchColumns ?? null,
+      p_advanced_rules: query.advancedRules ?? [],
+      p_advanced_join: query.advancedJoin ?? "and",
+      p_status_option_id: query.statusOptionId ?? null,
+      p_importance_option_id: query.importanceOptionId ?? null,
+      p_reply_status_option_id: query.replyStatusOptionId ?? null,
+      p_channel_option_id: query.channelOptionId ?? null,
+      p_subitem_status_option_id: query.subitemStatusOptionId ?? null,
+      p_payment_option_id: query.paymentOptionId ?? null,
+      p_payment_status_option_id: query.paymentStatusOptionId ?? null,
+      p_subprogress_option_id: query.subprogressOptionId ?? null,
+      p_person_id: query.personId ?? null,
+    });
+    if (signal) fallbackRequest = fallbackRequest.abortSignal(signal);
+    ({ data, error } = await fallbackRequest);
+  }
   if (error) throw error;
   const rows = (data ?? []) as Array<{
     group_id: string | null;
