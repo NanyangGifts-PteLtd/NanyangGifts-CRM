@@ -43,27 +43,77 @@ export function AppLiveRefresh({
   // Keep protected echoes out of the active edit, but retain them for one
   // quiet, targeted reconciliation when the write's settle window ends.
   const deferredProtectedRecordChanges = useRef<LiveRecordChange[]>([]);
+  // Board callbacks close over frequently changing row/filter state. Keep the
+  // active handlers in a ref so those renders do not tear down and recreate
+  // the Supabase Realtime channel (including a new auth/session lookup).
+  const handlers = useRef({
+    onRecordsRefresh,
+    onGanttRecordsRefresh,
+    onProfilesRefresh,
+    onGroupsRefresh,
+    onNotificationsRefresh,
+    onBoardMetadataRefresh,
+    onLabelOptionsRefresh,
+    onRoundRobinRefresh,
+  });
+  handlers.current = {
+    onRecordsRefresh,
+    onGanttRecordsRefresh,
+    onProfilesRefresh,
+    onGroupsRefresh,
+    onNotificationsRefresh,
+    onBoardMetadataRefresh,
+    onLabelOptionsRefresh,
+    onRoundRobinRefresh,
+  };
 
   useEffect(() => {
     const supabase = createClient();
     let disposed = false;
+    let recordsRefreshInFlight = false;
+    let recordsRefreshQueued = false;
     const hiddenRefreshKinds = new Set<RefreshKind>();
     const canRefreshNow = () =>
       document.visibilityState === "visible" && document.hasFocus();
     const runRefresh = (kind: RefreshKind) => {
       if (kind === "records") {
+        if (recordsRefreshInFlight) {
+          recordsRefreshQueued = true;
+          return;
+        }
         const changes = pendingRecordChanges.current.splice(0);
         if (changes.length) {
-          void onRecordsRefresh(changes);
-          void onGanttRecordsRefresh(changes);
+          recordsRefreshInFlight = true;
+          recordsRefreshQueued = false;
+          const currentHandlers = handlers.current;
+          void Promise.allSettled([
+            currentHandlers.onRecordsRefresh(changes),
+            currentHandlers.onGanttRecordsRefresh(changes),
+          ]).finally(() => {
+            recordsRefreshInFlight = false;
+            if (
+              !disposed &&
+              (recordsRefreshQueued || pendingRecordChanges.current.length)
+            ) {
+              // Changes received during the active reconciliation remain in
+              // the queue. Give them one normal debounce window, then process
+              // them with the latest Board state instead of launching an
+              // overlapping page/count/hydration request.
+              schedule("records");
+            }
+          });
+        } else {
+          recordsRefreshQueued = false;
         }
       }
-      if (kind === "profiles") void onProfilesRefresh();
-      if (kind === "groups") void onGroupsRefresh();
-      if (kind === "notifications") void onNotificationsRefresh();
-      if (kind === "boardMetadata") onBoardMetadataRefresh();
-      if (kind === "labelOptions") onLabelOptionsRefresh();
-      if (kind === "roundRobin") onRoundRobinRefresh();
+      if (kind === "profiles") void handlers.current.onProfilesRefresh();
+      if (kind === "groups") void handlers.current.onGroupsRefresh();
+      if (kind === "notifications")
+        void handlers.current.onNotificationsRefresh();
+      if (kind === "boardMetadata")
+        handlers.current.onBoardMetadataRefresh();
+      if (kind === "labelOptions") handlers.current.onLabelOptionsRefresh();
+      if (kind === "roundRobin") handlers.current.onRoundRobinRefresh();
     };
     const schedule = (kind: RefreshKind) => {
       const current = timers.current[kind];
@@ -223,7 +273,7 @@ export function AppLiveRefresh({
       window.removeEventListener("focus", flushHiddenRefreshes);
       if (channel) supabase.removeChannel(channel);
     };
-  }, [onBoardMetadataRefresh, onGanttRecordsRefresh, onGroupsRefresh, onLabelOptionsRefresh, onNotificationsRefresh, onProfilesRefresh, onRecordsRefresh, onRoundRobinRefresh]);
+  }, []);
 
   return null;
 }
