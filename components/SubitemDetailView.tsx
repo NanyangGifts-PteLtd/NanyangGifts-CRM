@@ -124,6 +124,7 @@ export function SubitemDetailView({
   onDuplicate,
   onMove,
   onDelete,
+  onSearchMoveTargets,
 }: {
   subitem: Subitem;
   clientId: string;
@@ -162,6 +163,10 @@ export function SubitemDetailView({
   onDuplicate: () => void | Promise<void>;
   onMove: (clientId: string) => void | Promise<void>;
   onDelete: () => void;
+  onSearchMoveTargets?: (query: string) => Promise<Array<{
+    id: string; name: string; displayId?: string; company?: string; email?: string;
+    subitems?: string[]; canMoveHere?: boolean; groupName: string;
+  }>>;
 }) {
   const [tab, setTab] = useState<Tab>("overview");
   const [hoverName, setHoverName] = useState(false);
@@ -538,6 +543,7 @@ export function SubitemDetailView({
             onDuplicate={onDuplicate}
             onMove={onMove}
             onDelete={onDelete}
+            onSearchMoveTargets={onSearchMoveTargets}
           />
           <button
             onClick={onClose}

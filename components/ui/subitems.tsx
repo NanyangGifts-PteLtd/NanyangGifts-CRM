@@ -444,6 +444,10 @@ type SubitemProps = {
     subitemId: string,
     targetClientId: string,
   ) => void | Promise<void>;
+  onSearchMoveTargets?: (query: string) => Promise<Array<{
+    id: string; name: string; displayId?: string; company?: string; email?: string;
+    subitems?: string[]; canMoveHere?: boolean; groupName: string;
+  }>>;
   onOpenSubitemDetail?: (subitemId: string) => void;
   onPaymentRowsChanged?: (
     subitemId: string,
@@ -566,6 +570,7 @@ export function SubitemsTable({
   moveTargetGroups,
   onDuplicateSubitemAction,
   onMoveSubitemAction,
+  onSearchMoveTargets,
   onOpenSubitemDetail,
   onPaymentRowsChanged,
 }: SubitemProps) {
@@ -4405,6 +4410,7 @@ export function SubitemsTable({
                       onMove={(targetClientId) =>
                         onMoveSubitemAction(sub.id, targetClientId)
                       }
+                      onSearchMoveTargets={onSearchMoveTargets}
                       onDelete={() => onDeleteSubitem(sub.id)}
                       hideMoveAndDuplicate={isAdditionalCostSubitem(sub)}
                       triggerOffsetPx={-70}

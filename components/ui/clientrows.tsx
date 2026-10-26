@@ -442,6 +442,10 @@ export type ClientRowProps = {
     subitemId: string,
     targetClientId: string,
   ) => void | Promise<void>;
+  onSearchMoveTargets?: (query: string) => Promise<Array<{
+    id: string; name: string; displayId?: string; company?: string; email?: string;
+    subitems?: string[]; canMoveHere?: boolean; groupName: string;
+  }>>;
   onOpenSubitemDetail?: (subitemId: string) => void;
   onPaymentRowsChanged?: (
     subitemId: string,
@@ -584,6 +588,7 @@ export function ClientRow({
   subitemMoveTargetGroups,
   onDuplicateSubitemAction,
   onMoveSubitemAction,
+  onSearchMoveTargets,
   onOpenSubitemDetail,
   onPaymentRowsChanged,
   trackingMode = false,
@@ -5166,6 +5171,7 @@ export function ClientRow({
           moveTargetGroups={subitemMoveTargetGroups}
           onDuplicateSubitemAction={onDuplicateSubitemAction}
           onMoveSubitemAction={onMoveSubitemAction}
+          onSearchMoveTargets={onSearchMoveTargets}
           onOpenSubitemDetail={onOpenSubitemDetail}
           onPaymentRowsChanged={onPaymentRowsChanged}
         />

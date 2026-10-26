@@ -86,6 +86,7 @@ import {
   type CrmQuickFilterCounts,
   fetchSubitemDetailPayloads,
   fetchClientCustomFields,
+  searchCrmClients,
 } from "@/lib/crm";
 import { fetchClientAssignmentMaps } from "@/lib/assignments";
 import { GenerateOcfModal } from "./Generate-OCF-Modal";
@@ -1028,6 +1029,13 @@ export function CRMBoard({
   const [loadingCombinedPush, setLoadingCombinedPush] = useState(false);
   const [showSubitemMoveMenu, setShowSubitemMoveMenu] = useState(false);
   const [subitemMoveSearch, setSubitemMoveSearch] = useState("");
+  const [subitemMoveSearchTargets, setSubitemMoveSearchTargets] = useState<
+    Array<{
+      id: string; name: string; displayId: string; company: string; email: string;
+      subitems: string[]; canMoveHere: boolean; groupName: string;
+    }>
+  >([]);
+  const [searchingSubitemMoveTargets, setSearchingSubitemMoveTargets] = useState(false);
   const [expandedSubitemMoveGroups, setExpandedSubitemMoveGroups] = useState<
     Set<string>
   >(new Set());
@@ -6429,9 +6437,9 @@ export function CRMBoard({
       [...clients].sort(compareClients).map((client) => ({
         id: client.id,
         name: client.name || "Unnamed client",
-        displayId: client.displayId,
-        company: client.company,
-        email: client.email,
+        displayId: client.displayId ?? "",
+        company: client.company ?? "",
+        email: client.email ?? "",
         subitems: client.subitems.map((subitem) => subitem.name),
         canMoveHere: canEditClientRecord(client.id),
         groupName:
@@ -6440,6 +6448,56 @@ export function CRMBoard({
       })),
     [canEditClientRecord, clients, groups],
   );
+  const searchMoveTargets = useCallback(
+    async (query: string) => {
+      const result = await searchCrmClients(query, 0, 50);
+      const targetIds = result.clients.map((client) => client.id);
+      const assignments = await fetchClientAssignmentMaps(targetIds);
+      setClients((current) => {
+        const knownIds = new Set(current.map((client) => client.id));
+        const missing = result.clients.filter((client) => !knownIds.has(client.id));
+        return missing.length ? [...current, ...missing] : current;
+      });
+      setClientAssignees((current) => ({ ...current, ...assignments.people }));
+      setClientPmAssignees((current) => ({ ...current, ...assignments.pm }));
+      const isManager = ["admin", "director", "dev"].includes(
+        String(currentUserRole ?? "").trim().toLowerCase(),
+      );
+      return result.clients.map((client) => ({
+        id: client.id,
+        name: client.name || "Unnamed client",
+        displayId: client.displayId,
+        company: client.company,
+        email: client.email,
+        subitems: client.subitems.map((subitem) => subitem.name),
+        canMoveHere:
+          isManager ||
+          (!!currentUserId &&
+            ((assignments.people[client.id] ?? []).includes(currentUserId) ||
+              (assignments.pm[client.id] ?? []).includes(currentUserId))),
+        groupName:
+          groups.find((group) => group.id === client.groupId)?.name || "Ungrouped",
+      }));
+    },
+    [currentUserId, currentUserRole, groups, setClientAssignees, setClientPmAssignees, setClients],
+  );
+  useEffect(() => {
+    const query = subitemMoveSearch.trim();
+    if (!showSubitemMoveMenu || !query) {
+      setSubitemMoveSearchTargets([]);
+      setSearchingSubitemMoveTargets(false);
+      return;
+    }
+    let active = true;
+    const timer = window.setTimeout(() => {
+      setSearchingSubitemMoveTargets(true);
+      void searchMoveTargets(query)
+        .then((targets) => { if (active) setSubitemMoveSearchTargets(targets); })
+        .catch(() => { if (active) setSubitemMoveSearchTargets([]); })
+        .finally(() => { if (active) setSearchingSubitemMoveTargets(false); });
+    }, 250);
+    return () => { active = false; window.clearTimeout(timer); };
+  }, [searchMoveTargets, showSubitemMoveMenu, subitemMoveSearch]);
 
   const selectedSubitems = useMemo(
     () =>
@@ -6776,10 +6834,14 @@ export function CRMBoard({
     [clients, contributesToAwardedOrLaterTotals, currencyEntries, selectedIds],
   );
   const orderedMoveGroups = useMemo(() => {
+    const allOptions = [...parentClientOptions];
+    for (const client of subitemMoveSearchTargets) {
+      if (!allOptions.some((option) => option.id === client.id)) allOptions.push(client);
+    }
     const orderedGroups = groups
       .map((group) => ({
         name: group.name,
-        clients: parentClientOptions.filter(
+        clients: allOptions.filter(
           (client) =>
             client.groupName === group.name &&
             (!subitemMoveSearch.trim() ||
@@ -6789,7 +6851,7 @@ export function CRMBoard({
         ),
       }))
       .filter((group) => group.clients.length > 0);
-    const ungroupedClients = parentClientOptions.filter(
+    const ungroupedClients = allOptions.filter(
       (client) =>
         client.groupName === "Ungrouped" &&
         (!subitemMoveSearch.trim() ||
@@ -6800,7 +6862,7 @@ export function CRMBoard({
     return ungroupedClients.length
       ? [...orderedGroups, { name: "Ungrouped", clients: ungroupedClients }]
       : orderedGroups;
-  }, [groups, parentClientOptions, subitemMoveSearch]);
+  }, [groups, parentClientOptions, subitemMoveSearch, subitemMoveSearchTargets]);
 
   const filteredClients = displayedClients;
   const selectableFilteredClients = useMemo(
@@ -9717,6 +9779,7 @@ export function CRMBoard({
               onMove={(targetClientId) =>
                 moveSubitemAction(subitem.id, targetClientId)
               }
+              onSearchMoveTargets={searchMoveTargets}
               onDelete={() => {
                 setDetailSubitem(null);
                 setPendingDeleteSubitem({
@@ -10373,7 +10436,12 @@ export function CRMBoard({
                         ))}
                     </div>
                   ))}
-                  {orderedMoveGroups.length === 0 && (
+                  {searchingSubitemMoveTargets && (
+                    <div className="px-2 py-2 text-center text-sm text-slate-400">
+                      Searching all clients…
+                    </div>
+                  )}
+                  {!searchingSubitemMoveTargets && orderedMoveGroups.length === 0 && (
                     <div className="px-2 py-5 text-center text-sm text-slate-400">
                       No clients found.
                     </div>
@@ -13391,6 +13459,7 @@ export function CRMBoard({
                           )}
                           onDuplicateSubitemAction={duplicateSubitemAction}
                           onMoveSubitemAction={moveSubitemAction}
+                          onSearchMoveTargets={searchMoveTargets}
                           onOpenSubitemDetail={(subitemId) => {
                             clearAllSelections();
                             void hydrateClientSubitemDetails(client.id).finally(

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   Copy,
@@ -25,6 +25,7 @@ export function SubitemActionsMenu({
   hideMoveAndDuplicate = false,
   alwaysVisible = false,
   triggerOffsetPx = -28,
+  onSearchMoveTargets,
 }: {
   subitemId: string;
   subitemName: string;
@@ -48,6 +49,16 @@ export function SubitemActionsMenu({
   hideMoveAndDuplicate?: boolean;
   alwaysVisible?: boolean;
   triggerOffsetPx?: number;
+  onSearchMoveTargets?: (query: string) => Promise<Array<{
+    id: string;
+    name: string;
+    displayId?: string;
+    company?: string;
+    email?: string;
+    subitems?: string[];
+    canMoveHere?: boolean;
+    groupName: string;
+  }>>;
 }) {
   const [open, setOpen] = useState(false);
   const [menuPosition, setMenuPosition] = useState<{
@@ -58,6 +69,17 @@ export function SubitemActionsMenu({
   const menuRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const [search, setSearch] = useState("");
+  const [searchedTargets, setSearchedTargets] = useState<Array<{
+    id: string;
+    name: string;
+    displayId?: string;
+    company?: string;
+    email?: string;
+    subitems?: string[];
+    canMoveHere?: boolean;
+    groupName: string;
+  }>>([]);
+  const [searchingTargets, setSearchingTargets] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [processing, setProcessing] = useState<"duplicate" | "move" | null>(
     null,
@@ -116,6 +138,41 @@ export function SubitemActionsMenu({
     document.addEventListener("pointerdown", closeOnClickAway);
     return () => document.removeEventListener("pointerdown", closeOnClickAway);
   }, [open]);
+  useEffect(() => {
+    const query = search.trim();
+    if (!moving || !query || !onSearchMoveTargets) {
+      setSearchedTargets([]);
+      setSearchingTargets(false);
+      return;
+    }
+    let active = true;
+    const timer = window.setTimeout(() => {
+      setSearchingTargets(true);
+      void onSearchMoveTargets(query)
+        .then((targets) => {
+          if (active) setSearchedTargets(targets);
+        })
+        .catch(() => {
+          if (active) setSearchedTargets([]);
+        })
+        .finally(() => {
+          if (active) setSearchingTargets(false);
+        });
+    }, 250);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [moving, onSearchMoveTargets, search]);
+  const visibleTargetGroups = useMemo(() => {
+    const byGroup = new Map(targetGroups.map((group) => [group.name, [...group.clients]]));
+    for (const client of searchedTargets) {
+      const entries = byGroup.get(client.groupName) ?? [];
+      if (!entries.some((entry) => entry.id === client.id)) entries.push(client);
+      byGroup.set(client.groupName, entries);
+    }
+    return [...byGroup].map(([name, clients]) => ({ name, clients }));
+  }, [searchedTargets, targetGroups]);
   return (
     <div
       ref={menuRef}
@@ -219,7 +276,7 @@ export function SubitemActionsMenu({
                       className="h-9 w-full rounded border border-slate-200 pl-8 pr-2 text-xs outline-none focus:border-sky-400"
                     />
                   </div>
-                  {targetGroups.map((group) => {
+                  {visibleTargetGroups.map((group) => {
                     const clients = group.clients.filter((client) =>
                       `${client.name} ${client.displayId ?? ""} ${client.company ?? ""} ${client.email ?? ""}`
                         .toLowerCase()
@@ -286,7 +343,12 @@ export function SubitemActionsMenu({
                       </div>
                     ) : null;
                   })}
-                  {!targetGroups.some((group) =>
+                  {searchingTargets && (
+                    <p className="px-2 py-2 text-center text-xs text-slate-400">
+                      Searching all clients…
+                    </p>
+                  )}
+                  {!searchingTargets && !visibleTargetGroups.some((group) =>
                     group.clients.some((client) =>
                       `${client.name} ${client.displayId ?? ""} ${client.company ?? ""} ${client.email ?? ""}`
                         .toLowerCase()
