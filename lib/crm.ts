@@ -1220,14 +1220,17 @@ const BOARD_ATTACHMENT_CUSTOM_FIELD_KEYS = [
 
 async function hydrateBoardAttachmentMetadata(
   hydration: HydratedClientBundle,
+  signal?: AbortSignal,
 ): Promise<HydratedClientBundle> {
   const clientIds = hydration.clients.map((client) => client.id);
   if (!clientIds.length) return hydration;
 
-  const { data, error } = await supabase
+  let request = supabase
     .from("clients")
     .select("id, custom_fields")
     .in("id", clientIds);
+  if (signal) request = request.abortSignal(signal);
+  const { data, error } = await request;
   if (error) throw error;
 
   const attachmentFieldsByClientId = new Map<string, Record<string, string>>();
@@ -1687,39 +1690,43 @@ export async function fetchHydratedClientGroupPage(
   offset = 0,
   limit = 30,
   query: CrmBoardQuery = {},
-  options?: { excludeGroupNames?: string[] },
+  options?: { excludeGroupNames?: string[]; signal?: AbortSignal },
 ) {
   const useInitialPageRpc = Boolean(options?.excludeGroupNames?.length);
   const response = await retryTimedOutRead(
     () =>
       useInitialPageRpc
-        ? supabase.rpc("crm_board_initial_page_hydrated_v1", {
-            p_limit: limit,
-            p_offset: offset,
-            p_exclude_group_names: options?.excludeGroupNames ?? null,
-          })
-        : supabase.rpc("crm_board_client_page_hydrated_indexed_v1", {
-            p_group_id: groupId,
-            p_limit: limit,
-            p_offset: offset,
-            p_search: query.search?.trim() || null,
-            p_search_columns: query.searchColumns ?? null,
-            p_sort_category: query.sortCategory ?? "client",
-            p_sort_column: query.sortColumn ?? "dateCreated",
-            p_sort_value_type: query.sortValueType ?? "date",
-            p_sort_direction: query.sortDirection ?? "desc",
-            p_advanced_rules: query.advancedRules ?? [],
-            p_advanced_join: query.advancedJoin ?? "and",
-            p_status_option_id: query.statusOptionId ?? null,
-            p_importance_option_id: query.importanceOptionId ?? null,
-            p_reply_status_option_id: query.replyStatusOptionId ?? null,
-            p_channel_option_id: query.channelOptionId ?? null,
-            p_subitem_status_option_id: query.subitemStatusOptionId ?? null,
-            p_payment_option_id: query.paymentOptionId ?? null,
-            p_payment_status_option_id: query.paymentStatusOptionId ?? null,
-            p_subprogress_option_id: query.subprogressOptionId ?? null,
-            p_person_id: query.personId ?? null,
-          }),
+        ? supabase
+            .rpc("crm_board_initial_page_hydrated_v1", {
+              p_limit: limit,
+              p_offset: offset,
+              p_exclude_group_names: options?.excludeGroupNames ?? null,
+            })
+            .abortSignal(options?.signal ?? new AbortController().signal)
+        : supabase
+            .rpc("crm_board_client_page_hydrated_indexed_v1", {
+              p_group_id: groupId,
+              p_limit: limit,
+              p_offset: offset,
+              p_search: query.search?.trim() || null,
+              p_search_columns: query.searchColumns ?? null,
+              p_sort_category: query.sortCategory ?? "client",
+              p_sort_column: query.sortColumn ?? "dateCreated",
+              p_sort_value_type: query.sortValueType ?? "date",
+              p_sort_direction: query.sortDirection ?? "desc",
+              p_advanced_rules: query.advancedRules ?? [],
+              p_advanced_join: query.advancedJoin ?? "and",
+              p_status_option_id: query.statusOptionId ?? null,
+              p_importance_option_id: query.importanceOptionId ?? null,
+              p_reply_status_option_id: query.replyStatusOptionId ?? null,
+              p_channel_option_id: query.channelOptionId ?? null,
+              p_subitem_status_option_id: query.subitemStatusOptionId ?? null,
+              p_payment_option_id: query.paymentOptionId ?? null,
+              p_payment_status_option_id: query.paymentStatusOptionId ?? null,
+              p_subprogress_option_id: query.subprogressOptionId ?? null,
+              p_person_id: query.personId ?? null,
+            })
+            .abortSignal(options?.signal ?? new AbortController().signal),
     // Keep one recovery attempt for a transient collision, but do not allow a
     // single page load to occupy three consecutive timeout windows.
     1,
@@ -1731,6 +1738,7 @@ export async function fetchHydratedClientGroupPage(
   const orderedIds = rows.map((row) => String(row.client_id));
   const hydration = await hydrateBoardAttachmentMetadata(
     mapHydratedClientRpcRows(rows, orderedIds),
+    options?.signal,
   );
   const total = Number(rows[0]?.total_count ?? 0);
 
@@ -1797,13 +1805,14 @@ export async function searchCrmClients(
 }
 
 /** Lightweight metadata for collapsed CRM group headers. */
-export async function fetchClientGroupCounts(query: CrmBoardQuery = {}) {
+export async function fetchClientGroupCounts(
+  query: CrmBoardQuery = {},
+  signal?: AbortSignal,
+) {
   // This RPC returns one aggregate row per group. The former unfiltered path
   // selected every client's group_id into the browser and counted it locally;
   // that becomes both stale and unnecessarily expensive during a bulk import.
-  const { data, error } = await supabase.rpc(
-    "crm_board_client_group_counts_indexed_v1",
-    {
+  let request = supabase.rpc("crm_board_client_group_counts_indexed_v1", {
       p_search: query.search?.trim() || null,
       p_search_columns: query.searchColumns ?? null,
       p_advanced_rules: query.advancedRules ?? [],
@@ -1817,8 +1826,9 @@ export async function fetchClientGroupCounts(query: CrmBoardQuery = {}) {
       p_payment_status_option_id: query.paymentStatusOptionId ?? null,
       p_subprogress_option_id: query.subprogressOptionId ?? null,
       p_person_id: query.personId ?? null,
-    },
-  );
+  });
+  if (signal) request = request.abortSignal(signal);
+  const { data, error } = await request;
   if (error) throw error;
   const rows = (data ?? []) as Array<{
     group_id: string | null;

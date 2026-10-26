@@ -193,6 +193,17 @@ function realtimeSubitemId(row: Record<string, unknown>) {
   return realtimeRowId(row);
 }
 
+function isAbortError(error: unknown) {
+  if (error instanceof DOMException && error.name === "AbortError") return true;
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as { name?: unknown; message?: unknown };
+  return (
+    candidate.name === "AbortError" ||
+    (typeof candidate.message === "string" &&
+      candidate.message.toLowerCase().includes("abort"))
+  );
+}
+
 function panelFromSearchParam(value: string | null): SidePanel | null {
   return PANEL_IDS.includes(value as SidePanel) ? (value as SidePanel) : null;
 }
@@ -278,7 +289,9 @@ export default function Page() {
   const searchViewportAnchorClientIdRef = useRef<string | null>(null);
   const reconciliationTimer = useRef<number | null>(null);
   const boardLoadRecoveryTimer = useRef<number | null>(null);
+  const boardLoadAbortController = useRef<AbortController | null>(null);
   const groupCountsRefreshTimer = useRef<number | null>(null);
+  const groupCountsAbortController = useRef<AbortController | null>(null);
   const quickFilterCountsRefreshTimer = useRef<number | null>(null);
   // CRMBoard owns the visual collapsed/expanded state. Keep just the visible
   // group IDs here so Realtime can reconcile a row into a group the user is
@@ -973,6 +986,12 @@ export default function Page() {
       window.clearTimeout(boardLoadRecoveryTimer.current);
       boardLoadRecoveryTimer.current = null;
     }
+    if (groupCountsRefreshTimer.current !== null) {
+      window.clearTimeout(groupCountsRefreshTimer.current);
+      groupCountsRefreshTimer.current = null;
+    }
+    groupCountsAbortController.current?.abort();
+    groupCountsAbortController.current = null;
     // Reconciliation is invoked by many normal Board actions. Keep every page
     // the user has already loaded unless a caller explicitly needs a new
     // result set (for example, a search/filter/sort change).
@@ -982,6 +1001,9 @@ export default function Page() {
     );
     const refreshSequence = ++recordsRefreshSequence.current;
     const writeRevisionAtStart = getBoardWriteRevision();
+    boardLoadAbortController.current?.abort();
+    const abortController = new AbortController();
+    boardLoadAbortController.current = abortController;
     try {
       // Quick-filter badges are intentionally global reference totals. They
       // do not change with the active search/filter context.
@@ -1059,17 +1081,23 @@ export default function Page() {
             excludeGroupNames: Object.keys(boardQuery).length
               ? undefined
               : ["Failed", "Unqualified Lead", "To Delete"],
+            signal: abortController.signal,
           }),
           Promise.all(
             targetGroupIds.map((groupId) =>
-              fetchHydratedClientGroupPage(groupId, 0, 30, boardQuery),
+              fetchHydratedClientGroupPage(groupId, 0, 30, boardQuery, {
+                signal: abortController.signal,
+              }),
             ),
           ),
         ]);
       let groupCounts: Record<string, number>;
       let hasExactGroupCounts = true;
       try {
-        groupCounts = await fetchClientGroupCounts(boardQuery);
+        groupCounts = await fetchClientGroupCounts(
+          boardQuery,
+          abortController.signal,
+        );
         // The aggregate RPC omits groups with no matching clients. Treat an
         // omitted known group as an authoritative zero rather than retaining
         // its previous total after a delete or bulk cleanup.
@@ -1373,6 +1401,7 @@ export default function Page() {
       }
     } catch (error) {
       setQuickFilterCountsLoading(false);
+      if (isAbortError(error)) return;
       console.error("Failed to load clients", error);
       if (
         !options.recoveryAttempt &&
@@ -1395,6 +1424,9 @@ export default function Page() {
           });
         }, 20_000 + Math.floor(Math.random() * 20_000));
       }
+    } finally {
+      if (boardLoadAbortController.current === abortController)
+        boardLoadAbortController.current = null;
     }
   }, [boardQuery, cacheBoardQuerySnapshot, groups]);
 
@@ -1408,7 +1440,10 @@ export default function Page() {
       window.clearTimeout(groupCountsRefreshTimer.current);
     groupCountsRefreshTimer.current = window.setTimeout(() => {
       groupCountsRefreshTimer.current = null;
-      void fetchClientGroupCounts(boardQuery)
+      groupCountsAbortController.current?.abort();
+      const abortController = new AbortController();
+      groupCountsAbortController.current = abortController;
+      void fetchClientGroupCounts(boardQuery, abortController.signal)
         .then((nextGroupCounts) => {
           setGroupPageState((current) => {
             const next = { ...current };
@@ -1440,9 +1475,14 @@ export default function Page() {
             return changed ? next : current;
           });
         })
-        .catch((error) =>
-          console.warn("Could not refresh CRM group counts", error),
-        );
+        .catch((error) => {
+          if (!isAbortError(error))
+            console.warn("Could not refresh CRM group counts", error);
+        })
+        .finally(() => {
+          if (groupCountsAbortController.current === abortController)
+            groupCountsAbortController.current = null;
+        });
     }, 5_000 + Math.floor(Math.random() * 10_000));
   }, [boardQuery, groups]);
 
@@ -1496,6 +1536,8 @@ export default function Page() {
         window.clearTimeout(quickFilterCountsRefreshTimer.current);
       if (boardLoadRecoveryTimer.current !== null)
         window.clearTimeout(boardLoadRecoveryTimer.current);
+      boardLoadAbortController.current?.abort();
+      groupCountsAbortController.current?.abort();
     },
     [],
   );
