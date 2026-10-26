@@ -142,6 +142,7 @@ type BoardQuerySnapshot = {
 
 const BOARD_QUERY_CACHE_TTL_MS = 2 * 60 * 1000;
 const BOARD_QUERY_CACHE_LIMIT = 12;
+const GROUP_COUNTS_CACHE_TTL_MS = 60 * 1000;
 const QUICK_FILTER_COUNTS_CACHE_TTL_MS = 60 * 1000;
 const EMPTY_GANTT_QUERY: GanttServerQuery = {
   search: "",
@@ -157,6 +158,11 @@ const EMPTY_GANTT_QUERY: GanttServerQuery = {
 
 type QuickFilterCountsCache = {
   data: CrmQuickFilterCounts;
+  cachedAt: number;
+};
+
+type GroupCountsCache = {
+  data: Record<string, number>;
   cachedAt: number;
 };
 
@@ -292,6 +298,10 @@ export default function Page() {
   const boardLoadAbortController = useRef<AbortController | null>(null);
   const groupCountsRefreshTimer = useRef<number | null>(null);
   const groupCountsAbortController = useRef<AbortController | null>(null);
+  const groupPageStateRef = useRef<GroupPageState>(groupPageState);
+  groupPageStateRef.current = groupPageState;
+  const groupCountsCacheRef = useRef(new Map<string, GroupCountsCache>());
+  const scheduleGroupCountsRefreshRef = useRef<() => void>(() => {});
   const quickFilterCountsRefreshTimer = useRef<number | null>(null);
   // CRMBoard owns the visual collapsed/expanded state. Keep just the visible
   // group IDs here so Realtime can reconcile a row into a group the user is
@@ -1091,27 +1101,31 @@ export default function Page() {
             ),
           ),
         ]);
-      let groupCounts: Record<string, number>;
-      let hasExactGroupCounts = true;
-      try {
-        groupCounts = await fetchClientGroupCounts(
-          boardQuery,
-          abortController.signal,
-        );
-        // The aggregate RPC omits groups with no matching clients. Treat an
-        // omitted known group as an authoritative zero rather than retaining
-        // its previous total after a delete or bulk cleanup.
-        for (const group of groups) {
-          if (!(group.id in groupCounts)) groupCounts[group.id] = 0;
-        }
-      } catch (error) {
-        // Rows are the primary result of a Board query. Keep them usable when
-        // optional per-group totals are temporarily too expensive; expanding
-        // a group will still obtain that group's exact total normally.
-        console.warn("Could not load CRM group counts", error);
-        groupCounts = {};
-        hasExactGroupCounts = false;
-      }
+      // Exact group totals are useful metadata, but the production statement
+      // report showed this aggregate running thousands of times and delaying
+      // otherwise-ready Board pages. Install the page immediately using a
+      // fresh per-query cache or safe lower bounds, then reconcile exact totals
+      // through the staggered background loader below.
+      const groupCountsQueryKey = JSON.stringify(boardQuery);
+      const cachedGroupCounts = groupCountsCacheRef.current.get(
+        groupCountsQueryKey,
+      );
+      const hasFreshGroupCounts = Boolean(
+        cachedGroupCounts &&
+          Date.now() - cachedGroupCounts.cachedAt < GROUP_COUNTS_CACHE_TTL_MS,
+      );
+      const canReuseDisplayedCounts =
+        displayedBoardQueryKeyRef.current === groupCountsQueryKey;
+      let groupCounts: Record<string, number> = hasFreshGroupCounts
+        ? { ...cachedGroupCounts!.data }
+        : canReuseDisplayedCounts
+          ? Object.fromEntries(
+              Object.entries(groupPageStateRef.current).map(
+                ([groupId, state]) => [groupId, state.total],
+              ),
+            )
+          : {};
+      const hasExactGroupCounts = hasFreshGroupCounts;
       const targetedPagesByGroupId = new Map(
         targetGroupIds.map((groupId, index) => [
           groupId,
@@ -1126,6 +1140,29 @@ export default function Page() {
           ].map((client) => [client.id, client]),
         ).values(),
       );
+      const loadedCounts = rows.reduce<Record<string, number>>(
+        (counts, client) => {
+          if (client.groupId)
+            counts[client.groupId] = (counts[client.groupId] ?? 0) + 1;
+          return counts;
+        },
+        {},
+      );
+      for (const [groupId, loadedCount] of Object.entries(loadedCounts)) {
+        groupCounts[groupId] = Math.max(
+          groupCounts[groupId] ?? 0,
+          loadedCount,
+        );
+      }
+      for (const [groupId, page] of targetedPagesByGroupId) {
+        groupCounts[groupId] = page.total;
+      }
+      if (hasFreshGroupCounts) {
+        // The aggregate RPC omits zero-count groups.
+        for (const group of groups) {
+          if (!(group.id in groupCounts)) groupCounts[group.id] = 0;
+        }
+      }
       const clientAssignmentMaps = {
         people: Object.assign(
           {},
@@ -1354,6 +1391,9 @@ export default function Page() {
         }
         return next;
       });
+      if (!hasFreshGroupCounts) {
+        scheduleGroupCountsRefreshRef.current();
+      }
       const resolvedQueryKey = JSON.stringify(boardQuery);
       displayedBoardQueryKeyRef.current = resolvedQueryKey;
       if (!preservePagination) {
@@ -1440,11 +1480,24 @@ export default function Page() {
       window.clearTimeout(groupCountsRefreshTimer.current);
     groupCountsRefreshTimer.current = window.setTimeout(() => {
       groupCountsRefreshTimer.current = null;
+      if (
+        document.visibilityState !== "visible" ||
+        !document.hasFocus() ||
+        activePanelRef.current !== "crm"
+      )
+        return;
+      const queryKey = JSON.stringify(boardQuery);
+      if (boardQueryKeyRef.current !== queryKey) return;
       groupCountsAbortController.current?.abort();
       const abortController = new AbortController();
       groupCountsAbortController.current = abortController;
       void fetchClientGroupCounts(boardQuery, abortController.signal)
         .then((nextGroupCounts) => {
+          if (boardQueryKeyRef.current !== queryKey) return;
+          groupCountsCacheRef.current.set(queryKey, {
+            data: nextGroupCounts,
+            cachedAt: Date.now(),
+          });
           setGroupPageState((current) => {
             const next = { ...current };
             let changed = false;
@@ -1485,6 +1538,7 @@ export default function Page() {
         });
     }, 5_000 + Math.floor(Math.random() * 10_000));
   }, [boardQuery, groups]);
+  scheduleGroupCountsRefreshRef.current = scheduleGroupCountsRefresh;
 
   const scheduleQuickFilterCountsRefresh = useCallback(() => {
     if (quickFilterCountsRefreshTimer.current !== null)
