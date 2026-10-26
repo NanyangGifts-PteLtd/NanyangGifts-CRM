@@ -1693,7 +1693,51 @@ export async function fetchHydratedClientGroupPage(
   options?: { excludeGroupNames?: string[]; signal?: AbortSignal },
 ) {
   const useInitialPageRpc = Boolean(options?.excludeGroupNames?.length);
-  const response = await retryTimedOutRead(
+  const useFastGroupPageRpc = Boolean(
+    !useInitialPageRpc &&
+      groupId &&
+      !query.search?.trim() &&
+      !query.searchColumns?.length &&
+      !query.advancedRules?.length &&
+      !query.statusOptionId &&
+      !query.importanceOptionId &&
+      !query.replyStatusOptionId &&
+      !query.channelOptionId &&
+      !query.subitemStatusOptionId &&
+      !query.paymentOptionId &&
+      !query.paymentStatusOptionId &&
+      !query.subprogressOptionId &&
+      !query.personId &&
+      (query.sortCategory ?? "client") === "client" &&
+      (query.sortColumn ?? "dateCreated") === "dateCreated" &&
+      (query.sortDirection ?? "desc") === "desc",
+  );
+  const requestIndexedPage = () =>
+    supabase
+      .rpc("crm_board_client_page_hydrated_indexed_v1", {
+        p_group_id: groupId,
+        p_limit: limit,
+        p_offset: offset,
+        p_search: query.search?.trim() || null,
+        p_search_columns: query.searchColumns ?? null,
+        p_sort_category: query.sortCategory ?? "client",
+        p_sort_column: query.sortColumn ?? "dateCreated",
+        p_sort_value_type: query.sortValueType ?? "date",
+        p_sort_direction: query.sortDirection ?? "desc",
+        p_advanced_rules: query.advancedRules ?? [],
+        p_advanced_join: query.advancedJoin ?? "and",
+        p_status_option_id: query.statusOptionId ?? null,
+        p_importance_option_id: query.importanceOptionId ?? null,
+        p_reply_status_option_id: query.replyStatusOptionId ?? null,
+        p_channel_option_id: query.channelOptionId ?? null,
+        p_subitem_status_option_id: query.subitemStatusOptionId ?? null,
+        p_payment_option_id: query.paymentOptionId ?? null,
+        p_payment_status_option_id: query.paymentStatusOptionId ?? null,
+        p_subprogress_option_id: query.subprogressOptionId ?? null,
+        p_person_id: query.personId ?? null,
+      })
+      .abortSignal(options?.signal ?? new AbortController().signal);
+  let response = await retryTimedOutRead(
     () =>
       useInitialPageRpc
         ? supabase
@@ -1703,34 +1747,29 @@ export async function fetchHydratedClientGroupPage(
               p_exclude_group_names: options?.excludeGroupNames ?? null,
             })
             .abortSignal(options?.signal ?? new AbortController().signal)
-        : supabase
-            .rpc("crm_board_client_page_hydrated_indexed_v1", {
-              p_group_id: groupId,
-              p_limit: limit,
-              p_offset: offset,
-              p_search: query.search?.trim() || null,
-              p_search_columns: query.searchColumns ?? null,
-              p_sort_category: query.sortCategory ?? "client",
-              p_sort_column: query.sortColumn ?? "dateCreated",
-              p_sort_value_type: query.sortValueType ?? "date",
-              p_sort_direction: query.sortDirection ?? "desc",
-              p_advanced_rules: query.advancedRules ?? [],
-              p_advanced_join: query.advancedJoin ?? "and",
-              p_status_option_id: query.statusOptionId ?? null,
-              p_importance_option_id: query.importanceOptionId ?? null,
-              p_reply_status_option_id: query.replyStatusOptionId ?? null,
-              p_channel_option_id: query.channelOptionId ?? null,
-              p_subitem_status_option_id: query.subitemStatusOptionId ?? null,
-              p_payment_option_id: query.paymentOptionId ?? null,
-              p_payment_status_option_id: query.paymentStatusOptionId ?? null,
-              p_subprogress_option_id: query.subprogressOptionId ?? null,
-              p_person_id: query.personId ?? null,
-            })
-            .abortSignal(options?.signal ?? new AbortController().signal),
+        : useFastGroupPageRpc
+          ? supabase
+              .rpc("crm_board_group_page_hydrated_fast_v1", {
+                p_group_id: groupId,
+                p_limit: limit,
+                p_offset: offset,
+              })
+              .abortSignal(options?.signal ?? new AbortController().signal)
+        : requestIndexedPage(),
     // Keep one recovery attempt for a transient collision, but do not allow a
     // single page load to occupy three consecutive timeout windows.
     1,
   );
+  // PostgREST can briefly retain its previous schema cache after the migration
+  // is applied. Keep deployment ordering harmless by falling back only when
+  // the new function itself is unavailable; real database errors still surface.
+  if (
+    useFastGroupPageRpc &&
+    response.error &&
+    ["PGRST202", "42883"].includes(response.error.code ?? "")
+  ) {
+    response = await retryTimedOutRead(requestIndexedPage, 1);
+  }
   const { data, error } = response;
   if (error) throw error;
 
