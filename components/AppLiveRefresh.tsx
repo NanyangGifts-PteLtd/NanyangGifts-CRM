@@ -47,6 +47,22 @@ export function AppLiveRefresh({
   useEffect(() => {
     const supabase = createClient();
     let disposed = false;
+    const hiddenRefreshKinds = new Set<RefreshKind>();
+    const runRefresh = (kind: RefreshKind) => {
+      if (kind === "records") {
+        const changes = pendingRecordChanges.current.splice(0);
+        if (changes.length) {
+          void onRecordsRefresh(changes);
+          void onGanttRecordsRefresh(changes);
+        }
+      }
+      if (kind === "profiles") void onProfilesRefresh();
+      if (kind === "groups") void onGroupsRefresh();
+      if (kind === "notifications") void onNotificationsRefresh();
+      if (kind === "boardMetadata") onBoardMetadataRefresh();
+      if (kind === "labelOptions") onLabelOptionsRefresh();
+      if (kind === "roundRobin") onRoundRobinRefresh();
+    };
     const schedule = (kind: RefreshKind) => {
       const current = timers.current[kind];
       if (current !== undefined) window.clearTimeout(current);
@@ -64,19 +80,14 @@ export function AppLiveRefresh({
       timers.current[kind] = window.setTimeout(() => {
         delete timers.current[kind];
         if (disposed) return;
-        if (kind === "records") {
-          const changes = pendingRecordChanges.current.splice(0);
-          if (changes.length) {
-            void onRecordsRefresh(changes);
-            void onGanttRecordsRefresh(changes);
-          }
+        // Background tabs still receive Realtime events. Defer their database
+        // follow-up work and coalesce it into one refresh per kind when the
+        // user returns, instead of letting every open tab query in parallel.
+        if (document.visibilityState !== "visible") {
+          hiddenRefreshKinds.add(kind);
+          return;
         }
-        if (kind === "profiles") void onProfilesRefresh();
-        if (kind === "groups") void onGroupsRefresh();
-        if (kind === "notifications") void onNotificationsRefresh();
-        if (kind === "boardMetadata") onBoardMetadataRefresh();
-        if (kind === "labelOptions") onLabelOptionsRefresh();
-        if (kind === "roundRobin") onRoundRobinRefresh();
+        runRefresh(kind);
       }, delay);
     };
     const scheduleDeferredProtectedRecords = () => {
@@ -105,6 +116,13 @@ export function AppLiveRefresh({
         scheduleDeferredProtectedRecords();
     };
     window.addEventListener("crm:board-write-settled", handleBoardWriteSettled);
+    const flushHiddenRefreshes = () => {
+      if (document.visibilityState !== "visible" || disposed) return;
+      const kinds = Array.from(hiddenRefreshKinds);
+      hiddenRefreshKinds.clear();
+      for (const kind of kinds) schedule(kind);
+    };
+    document.addEventListener("visibilitychange", flushHiddenRefreshes);
     const scheduleRecordChange = (
       table: LiveRecordChange["table"],
       payload: {
@@ -196,7 +214,9 @@ export function AppLiveRefresh({
       timers.current = {};
       pendingRecordChanges.current = [];
       deferredProtectedRecordChanges.current = [];
+      hiddenRefreshKinds.clear();
       window.removeEventListener("crm:board-write-settled", handleBoardWriteSettled);
+      document.removeEventListener("visibilitychange", flushHiddenRefreshes);
       if (channel) supabase.removeChannel(channel);
     };
   }, [onBoardMetadataRefresh, onGanttRecordsRefresh, onGroupsRefresh, onLabelOptionsRefresh, onNotificationsRefresh, onProfilesRefresh, onRecordsRefresh, onRoundRobinRefresh]);

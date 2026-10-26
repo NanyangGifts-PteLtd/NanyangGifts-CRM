@@ -275,6 +275,7 @@ export default function Page() {
   const searchViewportAnchorClientIdRef = useRef<string | null>(null);
   const reconciliationTimer = useRef<number | null>(null);
   const groupCountsRefreshTimer = useRef<number | null>(null);
+  const quickFilterCountsRefreshTimer = useRef<number | null>(null);
   // CRMBoard owns the visual collapsed/expanded state. Keep just the visible
   // group IDs here so Realtime can reconcile a row into a group the user is
   // actually looking at, without turning every remote insert into a Board
@@ -1004,7 +1005,13 @@ export default function Page() {
             // Gantt in the meantime, do not begin an unrelated whole-board
             // aggregate that can contend with the Gantt resource page.
             const request = new Promise<void>((resolve) => {
-              window.setTimeout(resolve, 1_500);
+              // A fixed delay made every morning login/tab refresh launch the
+              // six-second aggregate at nearly the same instant. Stagger it
+              // across sessions so Board pages retain database headroom.
+              window.setTimeout(
+                resolve,
+                3_000 + Math.floor(Math.random() * 12_000),
+              );
             })
               .then(() => {
                 if (activePanelRef.current !== "crm") {
@@ -1405,13 +1412,55 @@ export default function Page() {
         .catch((error) =>
           console.warn("Could not refresh CRM group counts", error),
         );
-    }, 2_000);
+    }, 5_000 + Math.floor(Math.random() * 10_000));
   }, [boardQuery, groups]);
+
+  const scheduleQuickFilterCountsRefresh = useCallback(() => {
+    if (quickFilterCountsRefreshTimer.current !== null)
+      window.clearTimeout(quickFilterCountsRefreshTimer.current);
+    // This whole-board aggregate is the most expensive routine in the
+    // production query report. Keep it out of row reconciliation and spread
+    // separate browsers over a wider trailing window.
+    quickFilterCountsRefreshTimer.current = window.setTimeout(() => {
+      quickFilterCountsRefreshTimer.current = null;
+      if (
+        document.visibilityState !== "visible" ||
+        activePanelRef.current !== "crm"
+      )
+        return;
+      const cached = quickFilterCountsCacheRef.current;
+      if (
+        cached &&
+        Date.now() - cached.cachedAt < QUICK_FILTER_COUNTS_CACHE_TTL_MS
+      )
+        return;
+      const request =
+        quickFilterCountsRequestRef.current ?? fetchCrmBoardQuickFilterCounts();
+      quickFilterCountsRequestRef.current = request;
+      void request
+        .then((counts) => {
+          quickFilterCountsCacheRef.current = {
+            data: counts,
+            cachedAt: Date.now(),
+          };
+          setQuickFilterCounts(counts);
+        })
+        .catch((error) =>
+          console.warn("Could not refresh CRM quick-filter counts", error),
+        )
+        .finally(() => {
+          if (quickFilterCountsRequestRef.current === request)
+            quickFilterCountsRequestRef.current = null;
+        });
+    }, 15_000 + Math.floor(Math.random() * 15_000));
+  }, []);
 
   useEffect(
     () => () => {
       if (groupCountsRefreshTimer.current !== null)
         window.clearTimeout(groupCountsRefreshTimer.current);
+      if (quickFilterCountsRefreshTimer.current !== null)
+        window.clearTimeout(quickFilterCountsRefreshTimer.current);
     },
     [],
   );
@@ -1807,65 +1856,10 @@ export default function Page() {
           });
         }
 
-        // Header totals change with every row event, but whole-board quick
-        // facets are considerably more expensive on the migrated dataset.
-        // Reuse their existing one-minute cache during realtime bursts and
-        // share any refresh already in flight across all open reconciliation
-        // paths. This prevents every browser from launching the same global
-        // aggregate after each coalesced event batch.
-        const cachedQuickFilterCounts = quickFilterCountsCacheRef.current;
-        const hasFreshQuickFilterCounts =
-          cachedQuickFilterCounts !== null &&
-          Date.now() - cachedQuickFilterCounts.cachedAt <
-            QUICK_FILTER_COUNTS_CACHE_TTL_MS;
-        const quickCountsPromise = hasFreshQuickFilterCounts
-          ? Promise.resolve(cachedQuickFilterCounts.data)
-          : activePanelRef.current !== "crm"
-            ? Promise.resolve(cachedQuickFilterCounts?.data ?? {})
-          : (quickFilterCountsRequestRef.current ??
-            (() => {
-              const request = fetchCrmBoardQuickFilterCounts()
-                .then((counts) => {
-                  quickFilterCountsCacheRef.current = {
-                    data: counts,
-                    cachedAt: Date.now(),
-                  };
-                  return counts;
-                })
-                .finally(() => {
-                  quickFilterCountsRequestRef.current = null;
-                });
-              quickFilterCountsRequestRef.current = request;
-              return request;
-            })());
-        const [nextGroupCounts, nextQuickFilterCounts] = await Promise.all([
-          fetchClientGroupCounts(boardQuery),
-          quickCountsPromise,
-        ]);
-        if (refreshSequence !== recordsRefreshSequence.current) return;
-        setGroupPageState((current) => {
-          const next = { ...current };
-          // See the matching background count refresh: no RPC row means the
-          // group has zero visible clients for this query.
-          for (const group of groups) {
-            const groupId = group.id;
-            const total = nextGroupCounts[groupId] ?? 0;
-            const state = next[groupId];
-            next[groupId] = {
-              total,
-              hasMore: (state?.loadedCount ?? 0) < total,
-              loading: state?.loading ?? false,
-              loaded: state?.loaded ?? false,
-              loadedCount: state?.loadedCount ?? 0,
-            };
-          }
-          return next;
-        });
-        quickFilterCountsCacheRef.current = {
-          data: nextQuickFilterCounts,
-          cachedAt: Date.now(),
-        };
-        setQuickFilterCounts(nextQuickFilterCounts);
+        // Global aggregates must not hold up a targeted row reconciliation.
+        // Refresh them independently after the edit burst becomes quiet.
+        scheduleGroupCountsRefresh();
+        scheduleQuickFilterCountsRefresh();
         setQuickFilterCountsLoading(false);
       } catch (error) {
         console.warn("Could not reconcile targeted realtime changes", error);
@@ -1882,6 +1876,7 @@ export default function Page() {
       groups,
       reloadClients,
       scheduleGroupCountsRefresh,
+      scheduleQuickFilterCountsRefresh,
     ],
   );
 
@@ -2285,8 +2280,15 @@ export default function Page() {
 
   useEffect(() => {
     void loadNotifications();
-    const interval = window.setInterval(() => void loadNotifications(), 60_000);
-    return () => window.clearInterval(interval);
+    // Realtime already refreshes notifications as they change. A visibility
+    // catch-up covers a browser that suspended its socket without leaving a
+    // one-minute polling loop running in every open tab.
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") void loadNotifications();
+    };
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () =>
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
   }, [loadNotifications]);
 
   const markNotificationRead = useCallback(async (id: string) => {
