@@ -166,6 +166,9 @@ type ReloadClientsOptions = {
   // row outside the global initial page. Prime its destination group as part
   // of the same reconciliation so its updated count and visible rows agree.
   targetGroupIds?: string[];
+  // Internal guard: a failed load gets one delayed recovery attempt, rather
+  // than recursively scheduling retries for the duration of an outage.
+  recoveryAttempt?: boolean;
 };
 
 type SearchViewportAnchor = {
@@ -274,6 +277,7 @@ export default function Page() {
   const mainScrollRef = useRef<HTMLElement | null>(null);
   const searchViewportAnchorClientIdRef = useRef<string | null>(null);
   const reconciliationTimer = useRef<number | null>(null);
+  const boardLoadRecoveryTimer = useRef<number | null>(null);
   const groupCountsRefreshTimer = useRef<number | null>(null);
   const quickFilterCountsRefreshTimer = useRef<number | null>(null);
   // CRMBoard owns the visual collapsed/expanded state. Keep just the visible
@@ -298,6 +302,7 @@ export default function Page() {
   const quickFilterCountsRequestRef = useRef<Promise<CrmQuickFilterCounts> | null>(
     null,
   );
+  const scheduleQuickFilterCountsRefreshRef = useRef<() => void>(() => {});
 
   const captureSearchViewportAnchor = useCallback((): SearchViewportAnchor | null => {
     const clientId = searchViewportAnchorClientIdRef.current;
@@ -964,6 +969,10 @@ export default function Page() {
   );
 
   const reloadClients = useCallback(async (options: ReloadClientsOptions = {}) => {
+    if (!options.recoveryAttempt && boardLoadRecoveryTimer.current !== null) {
+      window.clearTimeout(boardLoadRecoveryTimer.current);
+      boardLoadRecoveryTimer.current = null;
+    }
     // Reconciliation is invoked by many normal Board actions. Keep every page
     // the user has already loaded unless a caller explicitly needs a new
     // result set (for example, a search/filter/sort change).
@@ -1030,6 +1039,7 @@ export default function Page() {
               })
               .catch((error) => {
                 console.warn("Could not load full CRM quick-filter counts", error);
+                scheduleQuickFilterCountsRefreshRef.current();
                 return quickFilterCountsCacheRef.current?.data ?? {};
               })
               .finally(() => {
@@ -1364,6 +1374,27 @@ export default function Page() {
     } catch (error) {
       setQuickFilterCountsLoading(false);
       console.error("Failed to load clients", error);
+      if (
+        !options.recoveryAttempt &&
+        refreshSequence === recordsRefreshSequence.current
+      ) {
+        const failedQueryKey = JSON.stringify(boardQuery);
+        if (boardLoadRecoveryTimer.current !== null)
+          window.clearTimeout(boardLoadRecoveryTimer.current);
+        boardLoadRecoveryTimer.current = window.setTimeout(() => {
+          boardLoadRecoveryTimer.current = null;
+          if (
+            document.visibilityState !== "visible" ||
+            !document.hasFocus() ||
+            boardQueryKeyRef.current !== failedQueryKey
+          )
+            return;
+          void reloadClients({
+            ...options,
+            recoveryAttempt: true,
+          });
+        }, 20_000 + Math.floor(Math.random() * 20_000));
+      }
     }
   }, [boardQuery, cacheBoardQuerySnapshot, groups]);
 
@@ -1454,6 +1485,8 @@ export default function Page() {
         });
     }, 15_000 + Math.floor(Math.random() * 15_000));
   }, []);
+  scheduleQuickFilterCountsRefreshRef.current =
+    scheduleQuickFilterCountsRefresh;
 
   useEffect(
     () => () => {
@@ -1461,6 +1494,8 @@ export default function Page() {
         window.clearTimeout(groupCountsRefreshTimer.current);
       if (quickFilterCountsRefreshTimer.current !== null)
         window.clearTimeout(quickFilterCountsRefreshTimer.current);
+      if (boardLoadRecoveryTimer.current !== null)
+        window.clearTimeout(boardLoadRecoveryTimer.current);
     },
     [],
   );
