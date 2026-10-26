@@ -4468,8 +4468,11 @@ export function CRMBoard({
       }
       try {
         const supabase = createSupabaseClient();
+        // Use a value immediately before the current first group so the new
+        // group appears at the top without renumbering every existing group.
+        // The drag-reorder path can still normalize the sequence later.
         const nextSort = groups.length
-          ? Math.max(...groups.map((g) => g.sort_order ?? 0)) + 1
+          ? Math.min(...groups.map((g) => g.sort_order ?? 0)) - 1
           : 0;
         const { data, error } = await supabase
           .from("crm_groups")
@@ -4482,7 +4485,9 @@ export function CRMBoard({
           .select("id, name, color, sort_order")
           .single();
         if (error) throw error;
-        setGroups((prev) => [...prev, data]);
+        setGroups((prev) => [...prev, data].sort((a, b) =>
+          (a.sort_order ?? 0) - (b.sort_order ?? 0),
+        ));
         setCollapsedGroups((prev) => ({ ...prev, [data.id]: true }));
         notifyChange(
           "Group added",
