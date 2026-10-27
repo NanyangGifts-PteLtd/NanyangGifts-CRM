@@ -153,7 +153,20 @@ export async function POST(request: NextRequest) {
       .insert([...copiedAssignments.values()]);
     if (assignmentInsertError) throw assignmentInsertError;
 
-    for (const sourceSubitem of includeSubitems ? sourceSubitemsResult.data ?? [] : []) {
+    const sourceSubitems = includeSubitems
+      ? sourceSubitemsResult.data ?? []
+      : [];
+    if (sourceSubitems.length) {
+      const { data: sourceAssignees, error: sourceAssigneesError } = await supabaseAdmin
+        .from("subitem_assignees")
+        .select("subitem_id, user_id")
+        .in("subitem_id", sourceSubitems.map((subitem) => subitem.id));
+      if (sourceAssigneesError) throw sourceAssigneesError;
+
+      // Assign fresh contiguous positions while retaining the source order.
+      // This gives each bulk-inserted row a stable source-to-copy mapping even
+      // when old records contain position gaps.
+      const copies = sourceSubitems.map((sourceSubitem, position) => {
       const subitemCopy = duplicateValues(sourceSubitem, [
         "id",
         "display_id",
@@ -183,51 +196,64 @@ export async function POST(request: NextRequest) {
               : group.rows,
           }))
         : subitemCopy.timeline_groups;
-      const { data: duplicateSubitem, error: subitemInsertError } = await supabaseAdmin
-        .from("subitems")
-        .insert({
+        return {
           ...subitemCopy,
           client_id: duplicate.id,
+          position,
           timeline_rows: timelineRows,
           timeline_groups: timelineGroups,
           custom_fields: withoutFileCustomFields(sourceSubitem.custom_fields),
-        })
-        .select("id")
-        .single();
-      if (subitemInsertError || !duplicateSubitem) {
-        throw subitemInsertError ?? new Error("Could not copy subitem");
+        };
+      });
+      const { data: duplicateSubitems, error: subitemInsertError } = await supabaseAdmin
+        .from("subitems")
+        .insert(copies)
+        .select("id, position");
+      if (subitemInsertError || !duplicateSubitems?.length) {
+        throw subitemInsertError ?? new Error("Could not copy subitems");
       }
-
-      const { error: initialPaymentRowError } = await supabaseAdmin
-        .from("subitem_payment_rows")
-        .insert({
-          subitem_id: duplicateSubitem.id,
-          position: 0,
-          amount: "",
-          order_number: "",
-          payment_received: null,
-          mode_of_payment: "",
-          mode_of_payment_option_id: null,
-        });
-      if (initialPaymentRowError) throw initialPaymentRowError;
-
-      const { data: sourceAssignees, error: sourceAssigneesError } = await supabaseAdmin
-        .from("subitem_assignees")
-        .select("user_id")
-        .eq("subitem_id", sourceSubitem.id);
-      if (sourceAssigneesError) throw sourceAssigneesError;
-      if (sourceAssignees?.length) {
-        const { error: subitemAssigneeInsertError } = await supabaseAdmin
-          .from("subitem_assignees")
-          .insert(
-            sourceAssignees.map((assignee) => ({
-              subitem_id: duplicateSubitem.id,
+      const copiedIdByPosition = new Map(
+        duplicateSubitems.map((subitem) => [Number(subitem.position), subitem.id]),
+      );
+      if (copiedIdByPosition.size !== sourceSubitems.length) {
+        throw new Error("Could not match copied subitems to their source rows");
+      }
+      const sourcePositionById = new Map(
+        sourceSubitems.map((subitem, position) => [subitem.id, position]),
+      );
+      const copiedAssignees = (sourceAssignees ?? []).flatMap((assignee) => {
+        const position = sourcePositionById.get(assignee.subitem_id);
+        const copiedSubitemId = position === undefined
+          ? undefined
+          : copiedIdByPosition.get(position);
+        return copiedSubitemId
+          ? [{
+              subitem_id: copiedSubitemId,
               user_id: assignee.user_id,
               assigned_by: user.id,
+            }]
+          : [];
+      });
+      const [paymentRowsResult, assigneesResult] = await Promise.all([
+        supabaseAdmin
+          .from("subitem_payment_rows")
+          .insert(
+            [...copiedIdByPosition.values()].map((subitemId) => ({
+              subitem_id: subitemId,
+              position: 0,
+              amount: "",
+              order_number: "",
+              payment_received: null,
+              mode_of_payment: "",
+              mode_of_payment_option_id: null,
             })),
-          );
-        if (subitemAssigneeInsertError) throw subitemAssigneeInsertError;
-      }
+          ),
+        copiedAssignees.length
+          ? supabaseAdmin.from("subitem_assignees").insert(copiedAssignees)
+          : Promise.resolve({ error: null }),
+      ]);
+      if (paymentRowsResult.error) throw paymentRowsResult.error;
+      if (assigneesResult.error) throw assigneesResult.error;
     }
 
     const actorName = profile?.full_name?.trim() || profile?.email || user.email || "CRM user";

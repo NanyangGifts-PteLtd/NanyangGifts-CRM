@@ -2941,6 +2941,19 @@ export async function duplicateSubitemRow(subitemId: string) {
   return { subitem: duplicate, setup };
 }
 
+/** Duplicates selected subitems in one server-side batch while preserving order. */
+export async function duplicateSubitemRows(subitemIds: string[]) {
+  const response = await fetch("/api/subitems/duplicate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ subitemIds }),
+  });
+  const result = await response.json();
+  if (!response.ok)
+    throw new Error(result?.error ?? "Could not duplicate subitems");
+  return (result?.subitems ?? []) as Subitems[];
+}
+
 export async function fetchOptionsByGroupCode(
   code: string,
 ): Promise<{ value: string; color: string }[]> {

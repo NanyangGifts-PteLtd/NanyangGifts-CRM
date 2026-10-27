@@ -75,6 +75,7 @@ import {
   moveSubitemRow,
   reorderSubitemRows,
   duplicateSubitemRow,
+  duplicateSubitemRows,
   duplicateClientRow,
   mapSubitems,
   fetchClientActivityLog,
@@ -9414,49 +9415,35 @@ export function CRMBoard({
     }
     setIsDuplicatingSubitems(true);
     try {
-      // Preserve the board sequence for a multi-item duplication. Running these
-      // sequentially avoids concurrent appends assigning arbitrary positions.
       const orderedIds = clients
         .flatMap((client) => client.subitems.map((subitem) => subitem.id))
         .filter((id) => selectedSubitemIds.includes(id));
-      const sourceClientBySubitemId = new Map(
-        clients.flatMap((client) =>
-          client.subitems.map((subitem) => [subitem.id, client.id] as const),
-        ),
+      const duplicates = await duplicateSubitemRows(orderedIds);
+      const releaseDuplicateProtections = duplicates.map((subitem) =>
+        holdBoardRecordProtection("subitem", subitem.id),
       );
-      for (const subitemId of orderedIds) {
-        const { subitem, setup } = await duplicateSubitemRow(subitemId);
-        const clientId = sourceClientBySubitemId.get(subitemId);
-        const releaseDuplicateProtection = holdBoardRecordProtection(
-          "subitem",
-          subitem.id,
-        );
-        if (clientId) {
-          const mappedDuplicate = mapSubitems(subitem);
-          setClients((previous) =>
-            previous.map((client) =>
-              client.id !== clientId
-                ? client
-                : {
-                    ...client,
-                    subitems: [...client.subitems, mappedDuplicate].sort(
-                      (first, second) => first.position - second.position,
-                    ),
-                  },
-            ),
-          );
-        }
-        // Wait for this reorder before inserting the next duplicate. The row
-        // above is already visible and editable while this finishes.
-        try {
-          await setup();
-        } finally {
-          releaseDuplicateProtection();
-        }
+      const duplicatesByClientId = new Map<string, Subitem[]>();
+      for (const subitem of duplicates) {
+        const rows = duplicatesByClientId.get(subitem.client_id) ?? [];
+        rows.push(mapSubitems(subitem));
+        duplicatesByClientId.set(subitem.client_id, rows);
       }
+      setClients((previous) =>
+        previous.map((client) => {
+          const clientDuplicates = duplicatesByClientId.get(client.id);
+          return clientDuplicates?.length
+            ? {
+                ...client,
+                subitems: [...client.subitems, ...clientDuplicates].sort(
+                  (first, second) => first.position - second.position,
+                ),
+              }
+            : client;
+        }),
+      );
       void reloadClients().catch((error) =>
         console.error("Failed to reconcile duplicated subitems", error),
-      );
+      ).finally(() => releaseDuplicateProtections.forEach((release) => release()));
       toast.success("Subitems duplicated", {
         description: `${selectedSubitemIds.length} subitem${selectedSubitemIds.length === 1 ? "" : "s"} duplicated.`,
       });
