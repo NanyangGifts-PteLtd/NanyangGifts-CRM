@@ -90,7 +90,7 @@ export async function GET(request: NextRequest) {
 
   if (request.nextUrl.searchParams.get("summary") === "blacklist") {
     const [clientsResult, linksResult] = await Promise.all([
-      supabaseAdmin.from("customer_client_profiles").select("id, phone_number, phone_numbers:customer_client_profile_phone_numbers(phone_number)").eq("is_blacklisted", true),
+      supabaseAdmin.from("customer_client_profiles").select("id, is_blacklisted, phone_number, phone_numbers:customer_client_profile_phone_numbers(phone_number)").eq("is_blacklisted", true),
       supabaseAdmin.from("customer_profile_lead_links").select("client_id, client_profile_id"),
     ]);
     if (clientsResult.error) return NextResponse.json({ error: clientsResult.error.message }, { status: 500 });

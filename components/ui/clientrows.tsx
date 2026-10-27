@@ -24,6 +24,7 @@ import {
   Link as LinkIcon,
   FileText,
   LockKeyhole,
+  Ban,
   X,
 } from "lucide-react";
 import { EditableCell } from "./editablecell";
@@ -3163,7 +3164,7 @@ export function ClientRow({
           }
         }}
         style={{ width: boardWidth, minWidth: boardWidth }}
-        className={`relative box-border border-b ${hasTopBorder ? "border-t" : ""} flex text-[15px] items-center flex-shrink-0 border-r border-[#D0D4E4] group transition-colors focus-within:z-[70] ${
+        className={`relative z-0 box-border border-b ${hasTopBorder ? "border-t" : ""} flex text-[15px] items-center flex-shrink-0 border-r border-[#D0D4E4] group transition-colors focus-within:z-[110] ${
           isSelected
             ? "bg-sky-100/80 shadow-[inset_0_0_0_1px_rgba(14,165,233,0.5)]"
             : "bg-white"
@@ -3251,7 +3252,7 @@ export function ClientRow({
           <>
             <div
               data-client-column="trackingRemarks"
-              className="tracking-client-cell relative overflow-visible border-r border-[#D0D4E4] p-0 focus-within:z-[80]"
+              className="tracking-client-cell relative z-0 overflow-visible border-r border-[#D0D4E4] p-0 focus-within:z-[110]"
               style={{
                 height: 30,
                 minWidth: colWidth.trackingRemarks,
@@ -3364,7 +3365,7 @@ export function ClientRow({
             </div>
             <div
               data-client-column="trackingVerifiedMismatchRemarks"
-              className="tracking-client-cell relative overflow-visible border-r border-[#D0D4E4] p-0 focus-within:z-[80]"
+              className="tracking-client-cell relative z-0 overflow-visible border-r border-[#D0D4E4] p-0 focus-within:z-[110]"
               style={{
                 height: 30,
                 minWidth: colWidth.trackingVerifiedMismatchRemarks,
@@ -3529,6 +3530,16 @@ export function ClientRow({
               className={`!justify-start select-text text-left font-semibold ${isBlacklisted ? "!bg-transparent !text-white !hover:bg-red-800" : "text-gray-800"}`}
             />
           </div>
+          {isBlacklisted && (
+            <span
+              className="ml-1 inline-flex shrink-0 items-center rounded bg-red-800/80 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white"
+              title="This client is in the blacklist"
+              aria-label="This client is in the blacklist"
+            >
+              <Ban size={11} aria-hidden="true" />
+              <span className="sr-only">Blacklisted</span>
+            </span>
+          )}
           <div className="ml-auto flex items-center justify-start gap-1 flex-shrink-0">
             {trackingMode && (
               <button
@@ -4397,7 +4408,7 @@ export function ClientRow({
 
         <div
           data-client-column="requirements"
-          className="relative z-[60] flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-visible whitespace-nowrap text-ellipsis focus-within:z-[80]"
+          className="relative z-0 flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-visible whitespace-nowrap text-ellipsis focus-within:z-[110]"
           style={{
             height: 30,
             minWidth: colWidth.requirements,

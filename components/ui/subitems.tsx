@@ -4451,7 +4451,7 @@ export function SubitemsTable({
                           "paymentRemarks",
                           "supplier",
                         ].includes(col.key)
-                          ? "overflow-visible relative z-20 focus-within:z-[80]"
+                          ? "overflow-visible relative z-0 focus-within:z-[110]"
                           : "overflow-hidden"
                       } ${
                         (tableMode === "payment"

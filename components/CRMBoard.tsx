@@ -1208,7 +1208,11 @@ export function CRMBoard({
   ]);
 
   const refreshBlacklist = useCallback(async () => {
-    const response = await fetch("/api/customer-profiles?summary=blacklist");
+    // The blacklist is safety-critical live UI state. Do not allow a browser
+    // cache to retain the old response after a profile is blacklisted.
+    const response = await fetch("/api/customer-profiles?summary=blacklist", {
+      cache: "no-store",
+    });
     const result = await response.json();
     if (!response.ok)
       throw new Error(result.error || "Unable to load blacklist.");
