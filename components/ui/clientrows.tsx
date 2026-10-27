@@ -3007,11 +3007,17 @@ export function ClientRow({
                   <AlertDialogAction
                     disabled={
                       isGeneratingSample ||
-                      !client.company.trim() ||
                       !selectedDraftQuoteSubitems.length
                     }
                     onClick={(event) => {
                       event.preventDefault();
+                      if (!client.company.trim()) {
+                        toast.error("Company name is required", {
+                          description:
+                            "Add a company name to this client before creating a draft quote.",
+                        });
+                        return;
+                      }
                       void generateSampleEstimate();
                     }}
                   >

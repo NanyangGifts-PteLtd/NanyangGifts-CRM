@@ -1614,9 +1614,6 @@ export function CRMBoard({
     : null;
   const selectedPeopleProfile =
     filterPeople === "All" ? null : peopleProfilesById[filterPeople];
-  const canEditPeopleColors = ["admin", "director", "dev"].includes(
-    String(currentUserRole ?? "").toLowerCase(),
-  );
   const avatarColorForProfile = useCallback(
     (profile: Profile | null | undefined) => {
       if (!profile) return undefined;
@@ -11149,18 +11146,12 @@ export function CRMBoard({
               <div className="mt-3 flex justify-end border-t border-slate-100 pt-3">
                 <button
                   type="button"
-                  disabled={!canEditPeopleColors}
-                  title={
-                    canEditPeopleColors
-                      ? undefined
-                      : "Only admins, directors, and dev users can edit shared user icon colours."
-                  }
                   onClick={() => {
                     setEditingPeopleColors((current) => !current);
                     setEditingPeopleColorId(null);
                     setPeopleColorPalettePosition(null);
                   }}
-                  className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-45"
+                  className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
                 >
                   {editingPeopleColors ? "Done" : "Edit"}
                 </button>

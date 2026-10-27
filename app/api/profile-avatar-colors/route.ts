@@ -3,8 +3,6 @@ import { isAvatarColor } from "@/lib/avatar-colors";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
-const MANAGER_ROLES = new Set(["admin", "director", "dev"]);
-
 export async function PATCH(request: Request) {
   const supabase = await createClient();
   const {
@@ -13,21 +11,6 @@ export async function PATCH(request: Request) {
   } = await supabase.auth.getUser();
   if (authError || !user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  const { data: actor, error: actorError } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single();
-  if (
-    actorError ||
-    !MANAGER_ROLES.has(String(actor?.role ?? "").toLowerCase())
-  ) {
-    return NextResponse.json(
-      { error: "Only admins, directors, and dev users can change user colours." },
-      { status: 403 },
-    );
   }
 
   const body = (await request.json()) as {
