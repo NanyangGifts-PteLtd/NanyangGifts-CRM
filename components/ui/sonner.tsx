@@ -14,14 +14,26 @@ const Toaster = ({ ...props }: ToasterProps) => {
       // success/error notifications does not visually displace an earlier
       // message before its configured lifetime has elapsed.
       visibleToasts={6}
+      // Sonner normally collapses a toast stack and hides the content of every
+      // toast except the front one until the user hovers over it. That makes a
+      // persistent action such as "Refresh now" or "Undo" unreachable on
+      // touch devices and easy to miss whenever another notification arrives.
+      // Actionable notifications must remain visible without a hover gesture.
+      expand
       toastOptions={{
         // Keep routine success/error messages visible long enough to read the
         // server-provided detail, particularly for long-running integrations.
         duration: 12_000,
         classNames: {
-          toast: "!w-[420px] !max-w-[calc(100vw-2rem)] !px-5 !py-4 !text-sm !shadow-2xl",
+          toast:
+            "!w-[420px] !max-w-[calc(100vw-1rem)] !flex-wrap !items-start !gap-2 !px-5 !py-4 !text-sm !shadow-2xl",
+          content: "!min-w-0 !flex-1",
           title: "!text-base !font-semibold",
           description: "!text-sm",
+          actionButton:
+            "!order-last !mt-2 !h-9 !w-full !basis-full !justify-center !whitespace-nowrap !px-3 !ml-0",
+          cancelButton:
+            "!order-last !mt-2 !h-9 !w-full !basis-full !justify-center !whitespace-nowrap !px-3 !ml-0",
         },
       }}
       style={
