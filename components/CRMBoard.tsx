@@ -1730,6 +1730,23 @@ export function CRMBoard({
   const [boardToolbarHeight, setBoardToolbarHeight] = useState(40);
   const [boardSort, setBoardSort] =
     useState<BoardSortSetting>(DEFAULT_BOARD_SORT);
+  // Nested sorting is a presentation concern within already-loaded clients.
+  // Keep the last client sort separately so choosing a subitem/payment column
+  // does not alter the paged server query (and therefore does not reload the
+  // board or collapse/displace the user's current client).
+  const [lastClientBoardSort, setLastClientBoardSort] =
+    useState<BoardSortSetting>(DEFAULT_BOARD_SORT);
+
+  useEffect(() => {
+    if (boardSort.category !== "client") return;
+    setLastClientBoardSort((current) =>
+      current.category === boardSort.category &&
+      current.column === boardSort.column &&
+      current.direction === boardSort.direction
+        ? current
+        : boardSort,
+    );
+  }, [boardSort]);
 
   useLayoutEffect(() => {
     const toolbar = boardToolbarRef.current;
@@ -5929,14 +5946,13 @@ export function CRMBoard({
   )
     ? boardSort
     : DEFAULT_BOARD_SORT;
-  const activeBoardSortFieldType = (() => {
-    const definition = selectedSortColumns.find(
-      (column) => column.key === activeBoardSort.column,
-    );
-    return definition && "field_type" in definition
-      ? definition.field_type
-      : undefined;
-  })();
+  const serverBoardSort =
+    activeBoardSort.category === "client"
+      ? activeBoardSort
+      : lastClientBoardSort;
+  const serverBoardSortFieldType = clientSortColumns.find(
+    (column) => column.key === serverBoardSort.column,
+  )?.field_type;
 
   // Keep pagination authoritative for search, filters and client ordering.
   // Nested subitem/payment ordering still happens after hydration because it
@@ -5965,13 +5981,13 @@ export function CRMBoard({
     const sortValueType: CrmBoardQuery["sortValueType"] = [
       "totalPrice",
       "totalMarkup",
-    ].includes(activeBoardSort.column)
+    ].includes(serverBoardSort.column)
       ? "number"
       : ["dateCreated", "followUp", "nbd", "closedDate"].includes(
-            activeBoardSort.column,
-          ) || activeBoardSortFieldType === "date"
+            serverBoardSort.column,
+          ) || serverBoardSortFieldType === "date"
         ? "date"
-        : activeBoardSortFieldType === "number"
+        : serverBoardSortFieldType === "number"
           ? "number"
           : "text";
     const query: CrmBoardQuery = {
@@ -5981,14 +5997,14 @@ export function CRMBoard({
             searchColumns: selectedSearchColumns,
           }
         : {}),
-      ...(activeBoardSort.category !== DEFAULT_BOARD_SORT.category ||
-      activeBoardSort.column !== DEFAULT_BOARD_SORT.column ||
-      activeBoardSort.direction !== DEFAULT_BOARD_SORT.direction
+      ...(serverBoardSort.category !== DEFAULT_BOARD_SORT.category ||
+      serverBoardSort.column !== DEFAULT_BOARD_SORT.column ||
+      serverBoardSort.direction !== DEFAULT_BOARD_SORT.direction
         ? {
-            sortCategory: activeBoardSort.category,
-            sortColumn: activeBoardSort.column,
+            sortCategory: serverBoardSort.category,
+            sortColumn: serverBoardSort.column,
             sortValueType,
-            sortDirection: activeBoardSort.direction,
+            sortDirection: serverBoardSort.direction,
           }
         : {}),
       ...(populatedRules.length
@@ -6115,7 +6131,8 @@ export function CRMBoard({
     return () => window.clearTimeout(timer);
   }, [
     activeBoardSort,
-    activeBoardSortFieldType,
+    serverBoardSort,
+    serverBoardSortFieldType,
     advancedColumns,
     advancedJoin,
     advancedRules,
