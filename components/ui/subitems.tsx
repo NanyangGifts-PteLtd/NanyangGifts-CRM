@@ -706,6 +706,11 @@ export function SubitemsTable({
           row.id === paymentRowId ? { ...row, ...optimisticRow } : row,
         ),
       );
+      // Keep the parent Amount Paid / Difference / Payment Status in the same
+      // optimistic transaction as the visible subpayment edit. Previously the
+      // rollup only ran after the request completed, so a slow or superseded
+      // request left the parent columns visibly stale.
+      syncAutomaticPaymentStatus(subitemId);
 
       const save = async () => {
         await updateSubitemPaymentRow(subitemId, paymentRowId, updates);
@@ -4593,9 +4598,19 @@ export function SubitemsTable({
                                           ? "Yes"
                                           : "No")
                                     }
-                                    onChange={(value) =>
+                                    onChange={(value, option) =>
                                       savePaymentRow(sub.id, paymentRow.id, {
                                         paymentReceivedLabel: value,
+                                        paymentReceived:
+                                          option?.systemKey ===
+                                          "payment_received_yes"
+                                            ? true
+                                            : option?.systemKey ===
+                                                "payment_received_no"
+                                              ? false
+                                              : null,
+                                        paymentReceivedOptionId:
+                                          option?.id ?? null,
                                       })
                                     }
                                     options={paymentReceivedOptions}

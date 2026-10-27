@@ -34,7 +34,10 @@ import { createClient as createSupabaseClient } from "@/lib/supabase/client";
 import { uploadCrmFiles } from "@/lib/crm-files";
 import { FilePreview } from "@/components/ui/file-preview";
 import { AWARDED_OR_LATER_SUBITEM_STATUS_SYSTEM_KEYS } from "@/lib/board-labels";
-import { fetchHydratedClientGroupPage } from "@/lib/crm";
+import {
+  fetchHydratedClientBundle,
+  fetchHydratedClientGroupPage,
+} from "@/lib/crm";
 
 type AdditionalCost = {
   id: string;
@@ -49,6 +52,9 @@ type AdditionalCost = {
   people_id: string | null;
   people_ids?: string[];
   cost: number | null;
+  order_number?: string | null;
+  mode_of_payment?: string | null;
+  mode_of_payment_option_id?: string | null;
   remarks: string;
   status: string;
   status_option_id?: string | null;
@@ -82,6 +88,8 @@ type AdditionalCost = {
   voucher_group?: "courier" | "other" | "quickbooks_bills_only";
   deactivated_at?: string | null;
   deactivation_reason?: string | null;
+  can_edit?: boolean;
+  can_deactivate?: boolean;
 };
 type LabelOption = {
   id?: string;
@@ -111,7 +119,7 @@ const initialColumns: Column[] = [
   { key: "items_sent", label: "Related Subitems", width: 210 },
   { key: "courier", label: "Courier", width: 140 },
   { key: "created", label: "Date Created", width: 140 },
-  { key: "actions", label: "Deactivate", width: 110 },
+  { key: "actions", label: "Actions", width: 190 },
 ];
 const otherVoucherColumns: Column[] = [
   { key: "activity", label: "", width: 52 },
@@ -313,6 +321,8 @@ export function AdditionalCostsBoard({
   );
   const [billTargetVoucher, setBillTargetVoucher] =
     useState<AdditionalCost | null>(null);
+  const [editingVoucher, setEditingVoucher] =
+    useState<AdditionalCost | null>(null);
   const [editingQuickBooksBill, setEditingQuickBooksBill] = useState(false);
   const [quickBooksBillOnlyMode, setQuickBooksBillOnlyMode] = useState(false);
   const [supplierOptionsOpen, setSupplierOptionsOpen] = useState(false);
@@ -401,6 +411,9 @@ export function AdditionalCostsBoard({
     relatedSubitemIds: [] as string[],
     courier: "",
     remarks: "",
+    orderNumber: "",
+    modeOfPayment: "",
+    modeOfPaymentOptionId: "",
   });
   const relatedSubitemsRef = useRef<HTMLDetailsElement>(null);
   const boardRelatedSubitemsMenuRef = useRef<HTMLDivElement>(null);
@@ -1060,6 +1073,9 @@ export function AdditionalCostsBoard({
         relatedSubitemIds: [],
         courier: "",
         remarks: "",
+        orderNumber: "",
+        modeOfPayment: "",
+        modeOfPaymentOptionId: "",
       });
       toast.success("Payment voucher added");
     } catch (createError) {
@@ -1068,6 +1084,86 @@ export function AdditionalCostsBoard({
           createError instanceof Error
             ? createError.message
             : "Please try again.",
+      });
+    } finally {
+      setCreatingFor(null);
+    }
+  };
+  const openVoucherEditor = async (row: AdditionalCost) => {
+    setCreatingFor(row.id);
+    try {
+      // Payment Voucher rows deliberately contain only a lightweight linked
+      // client display payload. Load the current client bundle here before the
+      // preview opens so its Related Subitems selector is complete even when
+      // the client is not on the currently hydrated CRM Board page.
+      const hydration = await fetchHydratedClientBundle([row.client_id]);
+      const client = hydration.clients[0];
+      if (!client) throw new Error("The linked client is no longer available.");
+      setPickerClients((current) => {
+        const next = new Map(current.map((candidate) => [candidate.id, candidate]));
+        next.set(client.id, client);
+        return Array.from(next.values());
+      });
+      const selectedNames = new Set(
+        row.items_sent.split(",").map((name) => name.trim()).filter(Boolean),
+      );
+      setEditingVoucher(row);
+      setVoucherCreationGroup("courier");
+      setSelectedVoucherClientId(row.client_id);
+      setVoucherDraft({
+        cost: row.cost == null ? "" : String(row.cost),
+        reason: row.reason,
+        reasonOptionId: row.reason_option_id ?? "",
+        relatedSubitemIds: client.subitems
+          .filter((subitem) => selectedNames.has(subitem.name))
+          .map((subitem) => subitem.id),
+        courier: row.courier,
+        remarks: row.remarks,
+        orderNumber: row.order_number ?? "",
+        modeOfPayment: row.mode_of_payment ?? "",
+        modeOfPaymentOptionId: row.mode_of_payment_option_id ?? "",
+      });
+      setPickerOpen(true);
+    } catch (error) {
+      toast.error("Payment voucher could not be opened", {
+        description:
+          error instanceof Error ? error.message : "Please try again.",
+      });
+    } finally {
+      setCreatingFor(null);
+    }
+  };
+  const saveVoucherEdit = async () => {
+    if (!editingVoucher) return;
+    setCreatingFor(editingVoucher.id);
+    try {
+      const response = await fetch("/api/additional-costs", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: editingVoucher.id,
+          values: {
+            cost: voucherDraft.cost,
+            reason: voucherDraft.reason,
+            ...(voucherDraft.relatedSubitemIds.length
+              ? { relatedSubitemIds: voucherDraft.relatedSubitemIds }
+              : {}),
+            courier: voucherDraft.courier,
+            remarks: voucherDraft.remarks,
+            order_number: voucherDraft.orderNumber,
+            mode_of_payment: voucherDraft.modeOfPaymentOptionId,
+          },
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error ?? "Could not save the payment voucher.");
+      setRows((current) => current.map((row) => row.id === editingVoucher.id ? result.row : row));
+      setPickerOpen(false);
+      setEditingVoucher(null);
+      toast.success("Payment voucher updated");
+    } catch (error) {
+      toast.error("Payment voucher could not be saved", {
+        description: error instanceof Error ? error.message : "Please try again.",
       });
     } finally {
       setCreatingFor(null);
@@ -1742,6 +1838,7 @@ export function AdditionalCostsBoard({
     });
   };
   const canDelete = (row: AdditionalCost) => {
+    if (typeof row.can_edit === "boolean") return row.can_edit;
     if (row.deactivated_at) return false;
     const role = String(currentUserRole ?? "").toLowerCase();
     if (row.voucher_group === "quickbooks_bills_only") {
@@ -1752,6 +1849,17 @@ export function AdditionalCostsBoard({
       (!!currentUserId &&
         ((clientAssignees[row.client_id] ?? []).includes(currentUserId) ||
           (clientPmAssignees[row.client_id] ?? []).includes(currentUserId)))
+    );
+  };
+  const canDeactivate = (row: AdditionalCost) => {
+    if (typeof row.can_deactivate === "boolean") return row.can_deactivate;
+    if (row.deactivated_at) return false;
+    const role = String(currentUserRole ?? "").toLowerCase();
+    if (["admin", "director", "dev"].includes(role)) return true;
+    return (
+      !!currentUserId &&
+      ((clientAssignees[row.client_id] ?? []).includes(currentUserId) ||
+        (clientPmAssignees[row.client_id] ?? []).includes(currentUserId))
     );
   };
   const creationRestriction = (client: Client) => {
@@ -1974,12 +2082,13 @@ export function AdditionalCostsBoard({
       .filter((subitem) => selectedNames.has(subitem.name))
       .map((subitem) => subitem.id);
     const menuOpen = boardRelatedSubitemsMenu?.rowId === row.id;
+    const lockedForPreviewEditing = row.voucher_group === "courier";
     return (
       <>
         <button
           type="button"
           data-related-subitems-trigger
-          disabled={!canDelete(row)}
+          disabled={!canDelete(row) || lockedForPreviewEditing}
           onClick={(event) => {
             const rect = event.currentTarget.getBoundingClientRect();
             setBoardRelatedSubitemsMenu(
@@ -2100,6 +2209,7 @@ export function AdditionalCostsBoard({
     setSelectedVoucherClientId(null);
     setOtherBillChoice(groupId === "quickbooks_bills_only" ? "add" : null);
     setBillTargetVoucher(null);
+    setEditingVoucher(null);
     setEditingQuickBooksBill(false);
     setBillDocumentPreview(null);
     setPrefillFileSignature(null);
@@ -2110,6 +2220,9 @@ export function AdditionalCostsBoard({
       relatedSubitemIds: [],
       courier: "",
       remarks: "",
+      orderNumber: "",
+      modeOfPayment: "",
+      modeOfPaymentOptionId: "",
     });
     const today = new Date().toISOString().slice(0, 10);
     setBillDraft({
@@ -2140,15 +2253,23 @@ export function AdditionalCostsBoard({
       .filter((column): column is Column => Boolean(column))
       .map((column) => ({
         ...column,
-        width: layout.widths[column.key] ?? column.width,
+        width:
+          group.id === "courier" && column.key === "actions"
+            ? Math.max(layout.widths[column.key] ?? column.width, 260)
+            : layout.widths[column.key] ?? column.width,
       }));
     const columnGrid = tableColumns
       .map((column) => `${column.width}px`)
       .join(" ");
+    const columnGridWidth = tableColumns.reduce(
+      (total, column) => total + column.width,
+      0,
+    );
     return (
       <section
         key={group.id}
         className="relative rounded-lg border border-slate-200 bg-white shadow-sm"
+        style={{ minWidth: columnGridWidth }}
       >
       <div
         className="flex w-full cursor-pointer items-center border-l-4 hover:bg-slate-50"
@@ -2351,7 +2472,8 @@ export function AdditionalCostsBoard({
                             defaultValue={row.cost ?? ""}
                             disabled={
                               !canDelete(row) ||
-                              String(group.id) === "quickbooks_bills_only"
+                              String(group.id) === "quickbooks_bills_only" ||
+                              String(group.id) === "courier"
                             }
                             onBlur={(event) =>
                               event.target.value !== String(row.cost ?? "") &&
@@ -2420,7 +2542,7 @@ export function AdditionalCostsBoard({
                               reorderLabels("additional_cost_reason", layout)
                             }
                             manageLabel="reason"
-                            readOnly={!canDelete(row)}
+                            readOnly={!canDelete(row) || String(group.id) === "courier"}
                           />
                         </td>
                         <td
@@ -2430,7 +2552,7 @@ export function AdditionalCostsBoard({
                           <input
                             key={`${row.id}-remarks-${row.remarks}`}
                             defaultValue={row.remarks}
-                            disabled={!canDelete(row)}
+                            disabled={!canDelete(row) || String(group.id) === "courier"}
                             onBlur={(event) =>
                               event.target.value !== row.remarks &&
                               void update(row.id, {
@@ -2468,7 +2590,7 @@ export function AdditionalCostsBoard({
                                 )
                               }
                               includeBlankOption={false}
-                              readOnly={!canDelete(row)}
+                              readOnly={!canDelete(row) || String(group.id) === "courier"}
                               onAddOption={(value) =>
                                 manageLabel(
                                   "additional_cost_courier",
@@ -2704,16 +2826,35 @@ export function AdditionalCostsBoard({
                           data-voucher-col="actions"
                           className="border-b border-slate-200 p-0 text-center"
                         >
+                          {String(group.id) === "courier" ? (
+                            <button
+                              type="button"
+                              disabled={!canDelete(row) || creatingFor === row.id}
+                              onClick={() => void openVoucherEditor(row)}
+                              title={
+                                row.deactivated_at
+                                  ? "Deactivated payment vouchers cannot be edited."
+                                  : canDelete(row)
+                                    ? "Edit this payment voucher in the preview."
+                                    : "Only admins, directors, or users currently assigned to this client as People or PM can edit this payment voucher."
+                              }
+                              className="inline-flex h-10 min-w-[150px] flex-1 items-center justify-center whitespace-nowrap bg-sky-50 px-3 text-xs font-semibold text-sky-700 hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-30"
+                            >
+                              {creatingFor === row.id
+                                ? "Loading..."
+                                : "Edit Payment Voucher"}
+                            </button>
+                          ) : null}
                           <button
                             type="button"
                             disabled={
-                              !canDelete(row) ||
+                              !canDeactivate(row) ||
                               deletingId === row.id ||
                               row.isGeneratingQuickBooksBill
                             }
                             onClick={() => setPendingDelete(row)}
                             title={
-                              canDelete(row)
+                              canDeactivate(row)
                                 ? String(group.id) === "quickbooks_bills_only"
                                   ? "Remove this row only; the QuickBooks Bill remains unchanged."
                                   : "Deactivate payment voucher and permanently remove linked subitem"
@@ -2721,7 +2862,7 @@ export function AdditionalCostsBoard({
                                   ? "Only admins, directors, and developers can delete QuickBooks-Bills-only rows."
                                   : "You can only edit payment vouchers for clients assigned to you"
                             }
-                            className="inline-flex h-10 w-full items-center justify-center gap-1 bg-red-50 px-2 text-xs font-semibold text-red-600 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-30"
+                            className={`inline-flex h-10 items-center justify-center gap-1 bg-red-50 px-2 text-xs font-semibold text-red-600 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-30 ${String(group.id) === "courier" ? "min-w-[105px] flex-1 whitespace-nowrap" : "w-full"}`}
                           >
                             <Trash2 size={14} /> Deactivate
                           </button>
@@ -2764,6 +2905,9 @@ export function AdditionalCostsBoard({
                   relatedSubitemIds: [],
                   courier: "",
                   remarks: "",
+                  orderNumber: "",
+                  modeOfPayment: "",
+                  modeOfPaymentOptionId: "",
                 });
                 const today = new Date().toISOString().slice(0, 10);
                 setBillDraft({
@@ -3094,9 +3238,9 @@ export function AdditionalCostsBoard({
                 )}
                 {cell(
                   <button
-                    disabled={deletingId === row.id || !canDelete(row)}
+                    disabled={deletingId === row.id || !canDeactivate(row)}
                     title={
-                      canDelete(row)
+                      canDeactivate(row)
                         ? "Deactivate Payment Voucher"
                         : "Only users assigned to this client can delete it"
                     }
@@ -3199,7 +3343,9 @@ export function AdditionalCostsBoard({
                         (voucherCreationGroup === "other" &&
                           otherBillChoice === "add")
                         ? "Prepare QuickBooks Bill"
-                        : "Payment voucher details"
+                        : editingVoucher
+                          ? "Edit Payment Voucher"
+                          : "Payment voucher details"
                       : "Choose a client"}
                 </h2>
                 {selectedVoucherClientId || quickBooksBillOnlyMode ? (
@@ -3221,6 +3367,7 @@ export function AdditionalCostsBoard({
                 onClick={() => {
                   setPickerOpen(false);
                   setBillTargetVoucher(null);
+                  setEditingVoucher(null);
                   setEditingQuickBooksBill(false);
                   setQuickBooksBillOnlyMode(false);
                   setBillDocumentPreview(null);
@@ -4081,6 +4228,16 @@ export function AdditionalCostsBoard({
                                 selectedVoucherClientId!,
                               )}
                             </label>
+                            <label className="text-sm font-medium text-slate-700">
+                              Order number
+                              <input value={voucherDraft.orderNumber} onChange={(event) => setVoucherDraft((draft) => ({ ...draft, orderNumber: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 px-3 py-2 font-normal" />
+                            </label>
+                            <label className="text-sm font-medium text-slate-700">
+                              Mode of payment
+                              <div className="mt-1 h-10 overflow-hidden rounded border border-slate-300">
+                                <StatusBadge value={voucherDraft.modeOfPayment} onChange={(value, option) => setVoucherDraft((draft) => ({ ...draft, modeOfPayment: value, modeOfPaymentOptionId: option?.id ?? "" }))} options={labelOptions.mode_of_payment ?? []} sectionCount={3} />
+                              </div>
+                            </label>
                           </div>
                           <label className="mt-3 block text-sm font-medium text-slate-700">
                             Remarks
@@ -4155,7 +4312,7 @@ export function AdditionalCostsBoard({
                 </div>
               ) : (
                 <div className="space-y-3 p-4">
-                  <button
+                  {!editingVoucher ? <button
                     type="button"
                     onClick={() => {
                       setSelectedVoucherClientId(null);
@@ -4165,10 +4322,12 @@ export function AdditionalCostsBoard({
                     className="text-sm text-sky-700 hover:underline"
                   >
                     Change project
-                  </button>
+                  </button> : null}
                   <p className="text-sm font-medium text-slate-700">
                     Project:{" "}
-                    {clientLabel(clientsById.get(selectedVoucherClientId!)!)}
+                    {editingVoucher
+                      ? projectForVoucher(editingVoucher)?.label ?? "Linked client"
+                      : clientLabel(clientsById.get(selectedVoucherClientId!)!)}
                   </p>
                   <div className="border-t border-slate-200 pt-3">
                     <p className="text-sm font-semibold text-slate-700">
@@ -4232,6 +4391,16 @@ export function AdditionalCostsBoard({
                         />
                       </div>
                     </label>
+                    <label className="text-sm font-medium text-slate-700">
+                      Order number
+                      <input value={voucherDraft.orderNumber} onChange={(event) => setVoucherDraft((draft) => ({ ...draft, orderNumber: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 px-3 py-2 font-normal" />
+                    </label>
+                    <label className="text-sm font-medium text-slate-700">
+                      Mode of payment
+                      <div className="mt-1 h-10 overflow-hidden rounded border border-slate-300">
+                        <StatusBadge value={voucherDraft.modeOfPayment} onChange={(value, option) => setVoucherDraft((draft) => ({ ...draft, modeOfPayment: value, modeOfPaymentOptionId: option?.id ?? "" }))} options={labelOptions.mode_of_payment ?? []} sectionCount={3} />
+                      </div>
+                    </label>
                   </div>
                   <label className="block text-sm font-medium text-slate-700">
                     Remarks{voucherReasonIsOther ? " * (Specify Reason)" : ""}{" "}
@@ -4252,14 +4421,16 @@ export function AdditionalCostsBoard({
                       creatingFor !== null ||
                       Number(voucherDraft.cost) <= 0 ||
                       !voucherDraft.reason ||
-                      !voucherDraft.relatedSubitemIds.length ||
+                      (!editingVoucher && !voucherDraft.relatedSubitemIds.length) ||
                       !voucherDraft.courier ||
                       (voucherReasonIsOther && !voucherDraft.remarks.trim())
                     }
-                    onClick={() => void create(selectedVoucherClientId!)}
+                    onClick={() => editingVoucher ? void saveVoucherEdit() : void create(selectedVoucherClientId!)}
                     className="rounded bg-[#16a5c4] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
                   >
-                    {creatingFor ? "Creating…" : "Create payment voucher"}
+                    {creatingFor
+                      ? editingVoucher ? "Saving…" : "Creating…"
+                      : editingVoucher ? "Save payment voucher" : "Create payment voucher"}
                   </button>
                 </div>
               )

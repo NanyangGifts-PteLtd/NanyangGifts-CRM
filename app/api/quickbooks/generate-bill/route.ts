@@ -65,6 +65,19 @@ async function resolveLabel(code: string, value: unknown) {
   };
 }
 
+async function resolveOptionalLabelById(code: string, value: unknown) {
+  const optionId = String(value ?? "").trim();
+  if (!optionId) return { id: null, value: "" };
+  const { data, error } = await supabaseAdmin
+    .from("option_values")
+    .select("id, value, option_groups!inner(code)")
+    .eq("id", optionId)
+    .eq("option_groups.code", code)
+    .maybeSingle();
+  if (error || !data) throw new Error("Choose a valid Mode of payment label.");
+  return data;
+}
+
 function money(value: unknown, field: string) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed <= 0)
@@ -100,6 +113,8 @@ export async function POST(request: NextRequest) {
         reason?: unknown;
         remarks?: unknown;
         relatedSubitemIds?: unknown;
+        orderNumber?: unknown;
+        modeOfPaymentOptionId?: unknown;
       };
       bill?: {
         supplierId?: unknown;
@@ -198,6 +213,11 @@ export async function POST(request: NextRequest) {
       ? await resolveLabel("additional_cost_reason", voucher.reason)
       : null;
     const remarks = String(voucher?.remarks ?? "").trim();
+    const orderNumber = String(voucher?.orderNumber ?? "").trim();
+    const modeOfPayment = await resolveOptionalLabelById(
+      "mode_of_payment",
+      voucher?.modeOfPaymentOptionId,
+    );
     const otherReason = await getSystemLabel(
       "additional_cost_reason",
       "additional_cost_reason_other",
@@ -569,6 +589,9 @@ export async function POST(request: NextRequest) {
         quickbooks_overall_gst_override: billGstValue,
         quickbooks_bill_id: String(quickBooksBill.Id),
         quickbooks_attachment_files: uploadedAttachments,
+        order_number: orderNumber,
+        mode_of_payment: modeOfPayment.value,
+        mode_of_payment_option_id: modeOfPayment.id,
       })
       .select("*")
       .single();
@@ -615,6 +638,32 @@ export async function POST(request: NextRequest) {
           assigned_by: user.id,
         });
       if (assigneeError) throw assigneeError;
+      const paymentDone = await getSystemLabel("payment_received", "payment_received_yes");
+      const paidStatus = await getSystemLabel("payment_status", "payment_status_paid");
+      const { error: paymentRowError } = await supabaseAdmin
+        .from("subitem_payment_rows")
+        .insert({
+          subitem_id: subitem.id,
+          position: 0,
+          amount: String(cost),
+          order_number: orderNumber,
+          payment_received: true,
+          payment_received_label: paymentDone.value,
+          payment_received_option_id: paymentDone.id,
+          mode_of_payment: modeOfPayment.value,
+          mode_of_payment_option_id: modeOfPayment.id,
+        });
+      if (paymentRowError) throw paymentRowError;
+      const { error: totalError } = await supabaseAdmin
+        .from("subitems")
+        .update({
+          payment_amount: String(cost),
+          difference: "0",
+          payment_status: paidStatus.value,
+          payment_status_option_id: paidStatus.id,
+        })
+        .eq("id", subitem.id);
+      if (totalError) throw totalError;
     } catch (databaseError) {
       await supabaseAdmin
         .from("additional_costs")

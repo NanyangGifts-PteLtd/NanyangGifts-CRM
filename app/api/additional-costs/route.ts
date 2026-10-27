@@ -20,6 +20,8 @@ const EDITABLE_FIELDS = new Set([
   "qty",
   "verified",
   "discussed",
+  "order_number",
+  "mode_of_payment",
 ]);
 
 async function authorize() {
@@ -70,6 +72,19 @@ async function resolveLabel(code: string, value: unknown) {
   return { value: data.value, id: data.id, systemKey: data.system_key ?? null };
 }
 
+async function resolveLabelById(code: string, optionId: unknown) {
+  const id = String(optionId ?? "").trim();
+  if (!id) return { value: "", id: null, systemKey: null };
+  const { data, error } = await supabaseAdmin
+    .from("option_values")
+    .select("id, value, system_key, option_groups!inner(code)")
+    .eq("id", id)
+    .eq("option_groups.code", code)
+    .maybeSingle();
+  if (error || !data) throw new Error("The selected label is no longer available.");
+  return { value: data.value, id: data.id, systemKey: data.system_key ?? null };
+}
+
 const ADDITIONAL_COST_STATUS = "[Variation] Cost Difference";
 const ADDITIONAL_COST_STATUS_KEY = "subitem_status_variation_cost_difference";
 
@@ -103,6 +118,60 @@ async function attachLinkedClients<T extends VoucherWithClientId>(rows: T[]) {
         : null,
     };
   });
+}
+
+async function attachPermissions<
+  T extends VoucherWithClientId & {
+    voucher_group?: string | null;
+    deactivated_at?: string | null;
+  },
+>(rows: T[], userId: string, role: string) {
+  const privilegedEditor = ["admin", "director"].includes(role);
+  const privilegedDeactivator = ["admin", "director", "dev"].includes(role);
+  const clientIds = [
+    ...new Set(
+      rows
+        .filter((row) => row.voucher_group !== "quickbooks_bills_only")
+        .map((row) => row.client_id)
+        .filter(Boolean),
+    ),
+  ];
+  const assignedClientIds = new Set<string>();
+  if (!privilegedEditor && clientIds.length) {
+    const { data, error } = await supabaseAdmin
+      .from("client_assignees")
+      .select("client_id")
+      .eq("user_id", userId)
+      .in("assignment_type", ["people", "pm"])
+      .in("client_id", clientIds);
+    if (error) throw error;
+    for (const assignment of data ?? []) {
+      assignedClientIds.add(assignment.client_id);
+    }
+  }
+  return rows.map((row) => {
+    const active = !row.deactivated_at;
+    const billOnly = row.voucher_group === "quickbooks_bills_only";
+    const assigned = assignedClientIds.has(row.client_id);
+    return {
+      ...row,
+      can_edit: active && !billOnly && (privilegedEditor || assigned),
+      can_deactivate:
+        active &&
+        (billOnly
+          ? privilegedDeactivator
+          : privilegedDeactivator || assigned),
+    };
+  });
+}
+
+async function prepareRowsForUser<
+  T extends VoucherWithClientId & {
+    voucher_group?: string | null;
+    deactivated_at?: string | null;
+  },
+>(rows: T[], userId: string, role: string) {
+  return attachPermissions(await attachLinkedClients(rows), userId, role);
 }
 
 async function nextPaymentVoucherReference() {
@@ -209,14 +278,16 @@ async function addActivityLog(params: {
 
 export async function GET() {
   try {
-    await authorize();
+    const { user, role } = await authorize();
     const { data, error } = await supabaseAdmin
       .from("additional_costs")
       .select("*")
       .is("deleted_at", null)
       .order("created_at", { ascending: false });
     if (error) throw error;
-    return NextResponse.json({ rows: await attachLinkedClients(data ?? []) });
+    return NextResponse.json({
+      rows: await prepareRowsForUser(data ?? [], user.id, role),
+    });
   } catch (error) {
     return failure(error);
   }
@@ -234,6 +305,8 @@ export async function POST(request: NextRequest) {
         relatedSubitemIds?: unknown;
         courier?: unknown;
         remarks?: unknown;
+        orderNumber?: unknown;
+        modeOfPaymentOptionId?: unknown;
       };
     };
     if (!body.clientId)
@@ -247,6 +320,11 @@ export async function POST(request: NextRequest) {
     const courier = isOtherVoucher
       ? { value: "", id: null }
       : await resolveLabel("additional_cost_courier", body.values?.courier);
+    const modeOfPayment = await resolveLabelById(
+      "mode_of_payment",
+      body.values?.modeOfPaymentOptionId,
+    );
+    const orderNumber = String(body.values?.orderNumber ?? "").trim();
     const relatedSubitemIds = Array.isArray(body.values?.relatedSubitemIds)
       ? [...new Set(body.values.relatedSubitemIds.filter((id): id is string => typeof id === "string" && id.trim().length > 0))]
       : [];
@@ -351,6 +429,9 @@ export async function POST(request: NextRequest) {
         voucher_group: isOtherVoucher ? "other" : "courier",
         remarks: String(body.values?.remarks ?? "").trim(),
         trip_id: nextReference,
+        order_number: orderNumber,
+        mode_of_payment: modeOfPayment.value,
+        mode_of_payment_option_id: modeOfPayment.id,
       })
       .select("*")
       .single();
@@ -394,6 +475,38 @@ export async function POST(request: NextRequest) {
           assigned_by: user.id,
         });
       if (assignmentError) throw assignmentError;
+      const paymentDone = await getSystemLabel(
+        "payment_received",
+        "payment_received_yes",
+      );
+      const paidStatus = await getSystemLabel(
+        "payment_status",
+        "payment_status_paid",
+      );
+      const { error: paymentRowError } = await supabaseAdmin
+        .from("subitem_payment_rows")
+        .insert({
+          subitem_id: subitem.id,
+          position: 0,
+          amount: String(cost),
+          order_number: orderNumber,
+          payment_received: true,
+          payment_received_label: paymentDone.value,
+          payment_received_option_id: paymentDone.id,
+          mode_of_payment: modeOfPayment.value,
+          mode_of_payment_option_id: modeOfPayment.id,
+        });
+      if (paymentRowError) throw paymentRowError;
+      const { error: paymentTotalError } = await supabaseAdmin
+        .from("subitems")
+        .update({
+          payment_amount: String(cost),
+          difference: "0",
+          payment_status: paidStatus.value,
+          payment_status_option_id: paidStatus.id,
+        })
+        .eq("id", subitem.id);
+      if (paymentTotalError) throw paymentTotalError;
       await addActivityLog({
         clientId: client.id,
         subitemId: subitem.id,
@@ -415,7 +528,7 @@ export async function POST(request: NextRequest) {
       action: "created",
       title: "created this Payment Voucher",
     });
-    const [row] = await attachLinkedClients([data]);
+    const [row] = await prepareRowsForUser([data], user.id, role);
     return NextResponse.json({ row }, { status: 201 });
   } catch (error) {
     return failure(error);
@@ -570,6 +683,14 @@ export async function PATCH(request: NextRequest) {
         throw new Error("People must be internal staff.");
       values.people_id = values.people_ids[0] ?? null;
     }
+    if (values.mode_of_payment !== undefined) {
+      const modeOfPayment = await resolveLabelById(
+        "mode_of_payment",
+        values.mode_of_payment,
+      );
+      values.mode_of_payment = modeOfPayment.value;
+      values.mode_of_payment_option_id = modeOfPayment.id;
+    }
     for (const [field, code] of Object.entries(LABEL_CODE_BY_FIELD)) {
       if (values[field] === undefined) continue;
       const label = await resolveLabel(code, values[field]);
@@ -610,6 +731,76 @@ export async function PATCH(request: NextRequest) {
         .eq("id", linkedSubitem.id);
       if (linkedUpdateError) throw linkedUpdateError;
     }
+    if (
+      values.cost !== undefined ||
+      values.order_number !== undefined ||
+      values.mode_of_payment !== undefined
+    ) {
+      const { data: firstPaymentRow, error: firstPaymentRowError } =
+        await supabaseAdmin
+          .from("subitem_payment_rows")
+          .select("id")
+          .eq("subitem_id", linkedSubitem.id)
+          .order("position", { ascending: true })
+          .limit(1)
+          .maybeSingle();
+      if (firstPaymentRowError) throw firstPaymentRowError;
+      if (firstPaymentRow) {
+        const { error: paymentUpdateError } = await supabaseAdmin
+          .from("subitem_payment_rows")
+          .update({
+            ...(values.cost !== undefined ? { amount: String(values.cost) } : {}),
+            ...(values.order_number !== undefined
+              ? { order_number: String(values.order_number ?? "") }
+              : {}),
+            ...(values.mode_of_payment !== undefined
+              ? {
+                  mode_of_payment: String(values.mode_of_payment ?? ""),
+                  mode_of_payment_option_id:
+                    values.mode_of_payment_option_id ?? null,
+                }
+              : {}),
+          })
+          .eq("id", firstPaymentRow.id);
+        if (paymentUpdateError) throw paymentUpdateError;
+      } else {
+        const paymentDone = await getSystemLabel(
+          "payment_received",
+          "payment_received_yes",
+        );
+        const { error: paymentInsertError } = await supabaseAdmin
+          .from("subitem_payment_rows")
+          .insert({
+            subitem_id: linkedSubitem.id,
+            position: 0,
+            amount: String(values.cost ?? linkedSubitem.cost ?? ""),
+            order_number: String(values.order_number ?? ""),
+            payment_received: true,
+            payment_received_label: paymentDone.value,
+            payment_received_option_id: paymentDone.id,
+            mode_of_payment: String(values.mode_of_payment ?? ""),
+            mode_of_payment_option_id:
+              values.mode_of_payment_option_id ?? null,
+          });
+        if (paymentInsertError) throw paymentInsertError;
+      }
+      if (values.cost !== undefined) {
+        const paidStatus = await getSystemLabel(
+          "payment_status",
+          "payment_status_paid",
+        );
+        const { error: paymentTotalError } = await supabaseAdmin
+          .from("subitems")
+          .update({
+            payment_amount: String(values.cost),
+            difference: "0",
+            payment_status: paidStatus.value,
+            payment_status_option_id: paidStatus.id,
+          })
+          .eq("id", linkedSubitem.id);
+        if (paymentTotalError) throw paymentTotalError;
+      }
+    }
     const { data, error } = await supabaseAdmin
       .from("additional_costs")
       .update({ ...values, updated_at: new Date().toISOString() })
@@ -645,7 +836,7 @@ export async function PATCH(request: NextRequest) {
         .from("additional_cost_activity_log").insert(activityRows);
       if (activityError) console.error("Payment Voucher activity log failed", activityError);
     }
-    const [row] = await attachLinkedClients([data]);
+    const [row] = await prepareRowsForUser([data], user.id, role);
     return NextResponse.json({ row });
   } catch (error) {
     return failure(error);
