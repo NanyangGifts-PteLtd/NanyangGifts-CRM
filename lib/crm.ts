@@ -23,6 +23,50 @@ type SupabaseReadResult = {
   error: { code?: string | null } | null;
 };
 
+type BoardPageRpcName =
+  | "crm_board_initial_page_hydrated_v1"
+  | "crm_board_group_page_hydrated_fast_v1"
+  | "crm_board_standard_filter_page_hydrated_v1"
+  | "crm_board_client_page_hydrated_indexed_v1";
+
+async function requestBoardPageSameOrigin(
+  rpc: BoardPageRpcName,
+  params: Record<string, unknown>,
+  signal?: AbortSignal,
+): Promise<{ data: unknown[] | null; error: { code?: string | null; message?: string | null } | null }> {
+  try {
+    const response = await fetch("/api/crm-board/page", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ rpc, params }),
+      signal,
+      cache: "no-store",
+    });
+    const payload = (await response.json().catch(() => null)) as {
+      data?: unknown[];
+      error?: string;
+      code?: string | null;
+    } | null;
+    return response.ok
+      ? { data: payload?.data ?? [], error: null }
+      : {
+          data: null,
+          error: {
+            code: payload?.code ?? null,
+            message: payload?.error ?? `Board page request failed (${response.status})`,
+          },
+        };
+  } catch (error) {
+    return {
+      data: null,
+      error: {
+        code: error instanceof DOMException && error.name === "AbortError" ? "ABORTED" : null,
+        message: error instanceof Error ? error.message : "Board page request failed",
+      },
+    };
+  }
+}
+
 // A busy production database can cancel a read at statement_timeout even
 // though the same indexed query succeeds once a competing realtime or
 // aggregate request has settled. Space retries far enough apart to avoid a
@@ -1766,65 +1810,69 @@ export async function fetchHydratedClientGroupPage(
       (query.sortColumn ?? "dateCreated") === "dateCreated" &&
       (query.sortDirection ?? "desc") === "desc",
   );
+  const indexedPageParams = {
+    p_group_id: groupId,
+    p_limit: limit,
+    p_offset: offset,
+    p_search: query.search?.trim() || null,
+    p_search_columns: query.searchColumns ?? null,
+    p_sort_category: query.sortCategory ?? "client",
+    p_sort_column: query.sortColumn ?? "dateCreated",
+    p_sort_value_type: query.sortValueType ?? "date",
+    p_sort_direction: query.sortDirection ?? "desc",
+    p_advanced_rules: query.advancedRules ?? [],
+    p_advanced_join: query.advancedJoin ?? "and",
+    p_status_option_id: query.statusOptionId ?? null,
+    p_importance_option_id: query.importanceOptionId ?? null,
+    p_reply_status_option_id: query.replyStatusOptionId ?? null,
+    p_channel_option_id: query.channelOptionId ?? null,
+    p_subitem_status_option_id: query.subitemStatusOptionId ?? null,
+    p_payment_option_id: query.paymentOptionId ?? null,
+    p_payment_status_option_id: query.paymentStatusOptionId ?? null,
+    p_subprogress_option_id: query.subprogressOptionId ?? null,
+    p_person_id: query.personId ?? null,
+  };
+  const standardFilterPageParams = {
+    p_group_id: groupId,
+    p_limit: limit,
+    p_offset: offset,
+    p_status_option_id: query.statusOptionId ?? null,
+    p_importance_option_id: query.importanceOptionId ?? null,
+    p_reply_status_option_id: query.replyStatusOptionId ?? null,
+    p_channel_option_id: query.channelOptionId ?? null,
+    p_subitem_status_option_id: query.subitemStatusOptionId ?? null,
+    p_payment_option_id: query.paymentOptionId ?? null,
+    p_payment_status_option_id: query.paymentStatusOptionId ?? null,
+    p_subprogress_option_id: query.subprogressOptionId ?? null,
+    p_person_id: query.personId ?? null,
+  };
+  const initialPageParams = {
+    p_limit: limit,
+    p_offset: offset,
+    p_exclude_group_names: options?.excludeGroupNames ?? null,
+  };
+  const fastGroupPageParams = {
+    p_group_id: groupId,
+    p_limit: limit,
+    p_offset: offset,
+  };
   const requestIndexedPage = () =>
     supabase
-      .rpc("crm_board_client_page_hydrated_indexed_v1", {
-        p_group_id: groupId,
-        p_limit: limit,
-        p_offset: offset,
-        p_search: query.search?.trim() || null,
-        p_search_columns: query.searchColumns ?? null,
-        p_sort_category: query.sortCategory ?? "client",
-        p_sort_column: query.sortColumn ?? "dateCreated",
-        p_sort_value_type: query.sortValueType ?? "date",
-        p_sort_direction: query.sortDirection ?? "desc",
-        p_advanced_rules: query.advancedRules ?? [],
-        p_advanced_join: query.advancedJoin ?? "and",
-        p_status_option_id: query.statusOptionId ?? null,
-        p_importance_option_id: query.importanceOptionId ?? null,
-        p_reply_status_option_id: query.replyStatusOptionId ?? null,
-        p_channel_option_id: query.channelOptionId ?? null,
-        p_subitem_status_option_id: query.subitemStatusOptionId ?? null,
-        p_payment_option_id: query.paymentOptionId ?? null,
-        p_payment_status_option_id: query.paymentStatusOptionId ?? null,
-        p_subprogress_option_id: query.subprogressOptionId ?? null,
-        p_person_id: query.personId ?? null,
-      })
+      .rpc("crm_board_client_page_hydrated_indexed_v1", indexedPageParams)
       .abortSignal(options?.signal ?? new AbortController().signal);
   const requestStandardFilterPage = () =>
     supabase
-      .rpc("crm_board_standard_filter_page_hydrated_v1", {
-        p_group_id: groupId,
-        p_limit: limit,
-        p_offset: offset,
-        p_status_option_id: query.statusOptionId ?? null,
-        p_importance_option_id: query.importanceOptionId ?? null,
-        p_reply_status_option_id: query.replyStatusOptionId ?? null,
-        p_channel_option_id: query.channelOptionId ?? null,
-        p_subitem_status_option_id: query.subitemStatusOptionId ?? null,
-        p_payment_option_id: query.paymentOptionId ?? null,
-        p_payment_status_option_id: query.paymentStatusOptionId ?? null,
-        p_subprogress_option_id: query.subprogressOptionId ?? null,
-        p_person_id: query.personId ?? null,
-      })
+      .rpc("crm_board_standard_filter_page_hydrated_v1", standardFilterPageParams)
       .abortSignal(options?.signal ?? new AbortController().signal);
   let response = await retryTimedOutRead(
     () =>
       useInitialPageRpc
         ? supabase
-            .rpc("crm_board_initial_page_hydrated_v1", {
-              p_limit: limit,
-              p_offset: offset,
-              p_exclude_group_names: options?.excludeGroupNames ?? null,
-            })
+            .rpc("crm_board_initial_page_hydrated_v1", initialPageParams)
             .abortSignal(options?.signal ?? new AbortController().signal)
         : useFastGroupPageRpc
           ? supabase
-              .rpc("crm_board_group_page_hydrated_fast_v1", {
-                p_group_id: groupId,
-                p_limit: limit,
-                p_offset: offset,
-              })
+              .rpc("crm_board_group_page_hydrated_fast_v1", fastGroupPageParams)
               .abortSignal(options?.signal ?? new AbortController().signal)
         : useStandardFilterFastPath
           ? requestStandardFilterPage()
@@ -1843,7 +1891,41 @@ export async function fetchHydratedClientGroupPage(
   ) {
     response = await retryTimedOutRead(requestIndexedPage, 1);
   }
-  const { data, error } = response;
+  // A missing database code means the browser did not receive a PostgREST
+  // response at all (the Safari failure captured in production). Retry only
+  // that transport failure through our same-origin server route. Do not hide
+  // query failures such as 57014, and never revive an intentionally aborted
+  // Board request.
+  let data = response.data;
+  let error: { code?: string | null; message?: string | null } | null =
+    response.error;
+  if (error && !error.code && !options?.signal?.aborted) {
+    const fallback = useInitialPageRpc
+      ? await requestBoardPageSameOrigin(
+          "crm_board_initial_page_hydrated_v1",
+          initialPageParams,
+          options?.signal,
+        )
+      : useFastGroupPageRpc
+        ? await requestBoardPageSameOrigin(
+            "crm_board_group_page_hydrated_fast_v1",
+            fastGroupPageParams,
+            options?.signal,
+          )
+        : useStandardFilterFastPath
+          ? await requestBoardPageSameOrigin(
+              "crm_board_standard_filter_page_hydrated_v1",
+              standardFilterPageParams,
+              options?.signal,
+            )
+          : await requestBoardPageSameOrigin(
+              "crm_board_client_page_hydrated_indexed_v1",
+              indexedPageParams,
+              options?.signal,
+            );
+    data = fallback.data;
+    error = fallback.error;
+  }
   if (error) throw error;
 
   const rows = (data ?? []) as HydratedBoardPageRpcRow[];
