@@ -7260,6 +7260,7 @@ export function CRMBoard({
 
   const STATUS_TO_GROUP_NAME: Partial<Record<ClientStatus, string>> = {
     "Follow Up": "Follow Up",
+    Quoted: "Follow Up",
     Shortlisted: "Shortlisted",
     Unqualified: "Unqualified Lead",
   };
@@ -7708,6 +7709,36 @@ export function CRMBoard({
       }
       let nextUpdates = { ...updates };
       let movedToGroupName: string | null = null;
+      const quotedStatus = findSystemOption(
+        clientStatusEntries,
+        "client_status_quoted",
+        "Quoted",
+      );
+      const waitingReplyStatus = findSystemOption(
+        replyStatusEntries,
+        "reply_status_waiting",
+        "Waiting",
+      );
+      const doneReplyStatus = findSystemOption(
+        replyStatusEntries,
+        "reply_status_done",
+        "Done",
+      );
+      const isBecomingQuoted =
+        !!existingClient &&
+        (updates.statusOptionId === quotedStatus.id ||
+          updates.status === quotedStatus.value) &&
+        existingClient.statusOptionId !== quotedStatus.id &&
+        existingClient.status !== quotedStatus.value;
+      if (
+        isBecomingQuoted &&
+        existingClient.replyStatusOptionId === waitingReplyStatus.id
+      ) {
+        // Mirror the server-side rule in the optimistic board state so the
+        // reply cell does not briefly remain Waiting before realtime arrives.
+        nextUpdates.replyStatus = doneReplyStatus.value;
+        nextUpdates.replyStatusOptionId = doneReplyStatus.id ?? null;
+      }
       const selectedGroup = updates.groupId
         ? groups.find((group) => group.id === updates.groupId)
         : null;
@@ -7906,10 +7937,12 @@ export function CRMBoard({
     [
       canEditClientRecord,
       clients,
+      clientStatusEntries,
       commitCustomerMatch,
       ensureCurrentClosedLeadsGroup,
       groups,
       reloadClients,
+      replyStatusEntries,
       setClients,
       showAssignmentPermissionError,
       releaseCustomerMatchProtection,

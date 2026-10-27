@@ -30,6 +30,23 @@ function singaporeMidnightUtc(year: number, month: number, day: number) {
     return new Date(Date.UTC(year, month - 1, day) - 8 * 60 * 60 * 1000);
 }
 
+function isIngestedClient(customFields: unknown) {
+    if (!customFields || typeof customFields !== "object" || Array.isArray(customFields)) {
+        return false;
+    }
+
+    const fields = customFields as Record<string, unknown>;
+    // All inbound adapters persist both values. Checking for the metadata,
+    // rather than a fixed list of source names, automatically supports future
+    // ingestion channels while excluding leads created manually in the CRM.
+    return (
+        typeof fields.source === "string" &&
+        fields.source.trim().length > 0 &&
+        typeof fields.external_id === "string" &&
+        fields.external_id.trim().length > 0
+    );
+}
+
 async function singaporeWorkingDayCutoff(value: Date) {
     const date = singaporeDateParts(value);
     // The assignee keeps the whole following Singapore working day. This used
@@ -66,19 +83,26 @@ export async function GET(request: NextRequest) {
     const waitingLabel = await getSystemLabel("reply_status", "reply_status_waiting");
     const { data: clients, error } = await supabase
         .from("clients")
-        .select("id, name, reply_status, reply_status_option_id, waiting_started_at, client_assignees(user_id)")
+        .select("id, name, reply_status, reply_status_option_id, waiting_started_at, custom_fields, client_assignees(user_id, assignment_type)")
         .eq("reply_status_option_id", waitingLabel.id)
-        .not("waiting_started_at", "is", null);
+        .not("waiting_started_at", "is", null)
+        .is("deleted_at", null);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
     let reassigned = 0;
     let notificationsCreated = 0;
     for (const client of clients ?? []) {
+        if (!isIngestedClient(client.custom_fields)) continue;
+
         const startedAt = new Date(client.waiting_started_at);
         const reassignmentDueAt = await singaporeWorkingDayCutoff(startedAt);
         if (now < reassignmentDueAt) continue;
 
         const oldAssigneeIds = (client.client_assignees ?? [])
+            .filter(
+                (assignment: { user_id: string; assignment_type?: string | null }) =>
+                    !assignment.assignment_type || assignment.assignment_type === "people",
+            )
             .map((assignment: { user_id: string }) => assignment.user_id)
             .filter(Boolean);
         const oldAssigneeId = oldAssigneeIds[0];
@@ -90,12 +114,18 @@ export async function GET(request: NextRequest) {
         const { error: deleteError } = await supabase
             .from("client_assignees")
             .delete()
-            .eq("client_id", client.id);
+            .eq("client_id", client.id)
+            .eq("user_id", oldAssigneeId);
         if (deleteError) throw deleteError;
 
         const { error: insertAssigneeError } = await supabase
             .from("client_assignees")
-            .insert({ client_id: client.id, user_id: newAssigneeId, assigned_by: null });
+            .insert({
+                client_id: client.id,
+                user_id: newAssigneeId,
+                assignment_type: "people",
+                assigned_by: null,
+            });
         if (insertAssigneeError) throw insertAssigneeError;
 
         const { error: resetWaitingError } = await supabase

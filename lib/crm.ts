@@ -2382,9 +2382,48 @@ export async function updateClientRow(
       );
     }
   }
+
+  // Status-to-group rules belong here rather than only in the board.  This
+  // keeps API, import, and realtime-driven client updates consistent as well.
+  // Groups do not currently have a system key, so the configured Follow Up
+  // group is resolved by its canonical board name.
+  if (nextUpdates.status !== undefined) {
+    const quotedLabel = await resolveSystemOption("client_status", "quoted");
+    const isBecomingQuoted =
+      clientOptionIds.status_option_id === quotedLabel.id &&
+      existing.status_option_id !== quotedLabel.id &&
+      existing.status !== quotedLabel.value;
+
+    if (isBecomingQuoted) {
+      const { data: followUpGroup, error: followUpGroupError } = await supabase
+        .from("crm_groups")
+        .select("id")
+        .eq("name", "Follow Up")
+        .maybeSingle();
+      if (followUpGroupError) throw followUpGroupError;
+      if (!followUpGroup) {
+        throw new Error(
+          'The required CRM group "Follow Up" is not configured.',
+        );
+      }
+
+      nextUpdates.groupId = followUpGroup.id;
+
+      const [waitingLabel, doneLabel] = await Promise.all([
+        resolveSystemOption("reply_status", "waiting"),
+        resolveSystemOption("reply_status", "done"),
+      ]);
+      if (existing.reply_status_option_id === waitingLabel.id) {
+        nextUpdates.replyStatus = doneLabel.value;
+        nextUpdates.replyStatusOptionId = doneLabel.id;
+        clientOptionIds.reply_status_option_id = doneLabel.id;
+      }
+    }
+  }
+
   if (
-    updates.replyStatus !== undefined &&
-    updates.replyStatus !== existing.reply_status
+    nextUpdates.replyStatus !== undefined &&
+    nextUpdates.replyStatus !== existing.reply_status
   ) {
     const waitingLabel = await resolveSystemOption("reply_status", "waiting");
     nextUpdates.waitingStartedAt =
@@ -2395,43 +2434,51 @@ export async function updateClientRow(
 
   const payload = {
     ...(nextUpdates.name !== undefined ? { name: nextUpdates.name } : {}),
-    ...(updates.people !== undefined ? { people: updates.people } : {}),
+    ...(nextUpdates.people !== undefined ? { people: nextUpdates.people } : {}),
     ...(nextUpdates.replyStatus !== undefined
       ? { reply_status: nextUpdates.replyStatus }
       : {}),
-    ...(updates.followUp !== undefined ? { follow_up: updates.followUp } : {}),
-    ...(updates.status !== undefined ? { status: updates.status } : {}),
-    ...(updates.channel !== undefined ? { channel: updates.channel } : {}),
-    ...(updates.importance !== undefined
-      ? { importance: updates.importance }
+    ...(nextUpdates.followUp !== undefined
+      ? { follow_up: nextUpdates.followUp }
       : {}),
-    ...(updates.progress !== undefined ? { progress: updates.progress } : {}),
+    ...(nextUpdates.status !== undefined ? { status: nextUpdates.status } : {}),
+    ...(nextUpdates.channel !== undefined ? { channel: nextUpdates.channel } : {}),
+    ...(nextUpdates.importance !== undefined
+      ? { importance: nextUpdates.importance }
+      : {}),
+    ...(nextUpdates.progress !== undefined
+      ? { progress: nextUpdates.progress }
+      : {}),
     ...(nextUpdates.company !== undefined
       ? { company: nextUpdates.company }
       : {}),
-    ...(updates.email !== undefined ? { email: updates.email } : {}),
-    ...(updates.phone !== undefined ? { phone: updates.phone } : {}),
-    ...(updates.requirements !== undefined
-      ? { requirements: updates.requirements }
+    ...(nextUpdates.email !== undefined ? { email: nextUpdates.email } : {}),
+    ...(nextUpdates.phone !== undefined ? { phone: nextUpdates.phone } : {}),
+    ...(nextUpdates.requirements !== undefined
+      ? { requirements: nextUpdates.requirements }
       : {}),
-    ...(updates.unqualifiedReason !== undefined
-      ? { unqualified_reason: updates.unqualifiedReason }
+    ...(nextUpdates.unqualifiedReason !== undefined
+      ? { unqualified_reason: nextUpdates.unqualifiedReason }
       : {}),
-    ...(updates.nbd !== undefined ? { nbd: updates.nbd } : {}),
-    ...(updates.totalPrice !== undefined
-      ? { total_price: updates.totalPrice }
+    ...(nextUpdates.nbd !== undefined ? { nbd: nextUpdates.nbd } : {}),
+    ...(nextUpdates.totalPrice !== undefined
+      ? { total_price: nextUpdates.totalPrice }
       : {}),
-    ...(updates.billingAddress !== undefined
-      ? { billing_address: updates.billingAddress }
+    ...(nextUpdates.billingAddress !== undefined
+      ? { billing_address: nextUpdates.billingAddress }
       : {}),
-    ...(updates.groupId !== undefined ? { group_id: updates.groupId } : {}),
-    ...(updates.expanded !== undefined ? { expanded: updates.expanded } : {}),
-    ...(updates.color !== undefined ? { color: updates.color } : {}),
-    ...(updates.activityLog !== undefined
-      ? { activity_log: updates.activityLog }
+    ...(nextUpdates.groupId !== undefined
+      ? { group_id: nextUpdates.groupId }
       : {}),
-    ...(updates.customFields !== undefined
-      ? { custom_fields: updates.customFields }
+    ...(nextUpdates.expanded !== undefined
+      ? { expanded: nextUpdates.expanded }
+      : {}),
+    ...(nextUpdates.color !== undefined ? { color: nextUpdates.color } : {}),
+    ...(nextUpdates.activityLog !== undefined
+      ? { activity_log: nextUpdates.activityLog }
+      : {}),
+    ...(nextUpdates.customFields !== undefined
+      ? { custom_fields: nextUpdates.customFields }
       : {}),
     ...(nextUpdates.waitingStartedAt !== undefined
       ? { waiting_started_at: nextUpdates.waitingStartedAt }
