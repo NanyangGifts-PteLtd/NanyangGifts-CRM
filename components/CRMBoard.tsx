@@ -3389,6 +3389,13 @@ export function CRMBoard({
   }, [showPeopleFilter]);
 
   useEffect(() => {
+    if (showPeopleFilter) return;
+    setEditingPeopleColors(false);
+    setEditingPeopleColorId(null);
+    setPeopleColorPalettePosition(null);
+  }, [showPeopleFilter]);
+
+  useEffect(() => {
     const applyAvatarColorChange = (event: Event) => {
       const detail = (
         event as CustomEvent<{ id?: unknown; avatarColor?: unknown }>
