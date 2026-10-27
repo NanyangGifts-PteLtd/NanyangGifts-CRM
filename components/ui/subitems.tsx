@@ -2774,6 +2774,7 @@ export function SubitemsTable({
                 sub.name,
                 sub.supplier,
               )}
+              linkifyUrls
               // Do not force height or important width here: this same class is
               // applied to the expanded textarea, whose dimensions must remain
               // under the user's resize control.
@@ -3253,6 +3254,7 @@ export function SubitemsTable({
                 sub.name,
                 sub.supplier,
               )}
+              linkifyUrls
               // See the standard subitem supplier cell above. The red state
               // must not override the resizable textarea's width or height.
               className={

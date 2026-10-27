@@ -1,6 +1,55 @@
 "use client";
 import React, { useState, useRef, useEffect, useLayoutEffect } from "react";
 
+const HTTP_URL_PATTERN = /(?:https?:\/\/|www\.)[^\s<>'"`]+/gi;
+
+type DetectedLink = { text: string; href: string };
+
+function supplierLinks(value: string): DetectedLink[] {
+  return Array.from(value.matchAll(HTTP_URL_PATTERN)).flatMap((match) => {
+    const text = match[0].replace(/[),.;!?]+$/, "");
+    if (!text) return [];
+    return [{
+      text,
+      href: text.startsWith("www.") ? `https://${text}` : text,
+    }];
+  });
+}
+
+function LinkifiedText({ value }: { value: string }) {
+  const matches = Array.from(value.matchAll(HTTP_URL_PATTERN));
+  if (!matches.length) return <>{value}</>;
+  const nodes: React.ReactNode[] = [];
+  let cursor = 0;
+  for (const [index, match] of matches.entries()) {
+    const rawText = match[0];
+    const text = rawText.replace(/[),.;!?]+$/, "");
+    const start = match.index ?? cursor;
+    const end = start + rawText.length;
+    if (start > cursor) nodes.push(value.slice(cursor, start));
+    if (text) {
+      nodes.push(
+        <a
+          key={`${start}-${index}`}
+          href={text.startsWith("www.") ? `https://${text}` : text}
+          target="_blank"
+          rel="noopener noreferrer"
+          data-inline-editor-link
+          onClick={(event) => event.stopPropagation()}
+          onPointerDown={(event) => event.stopPropagation()}
+          className="text-blue-600 underline underline-offset-2 hover:text-blue-800"
+        >
+          {text}
+        </a>,
+      );
+    }
+    if (text.length < rawText.length) nodes.push(rawText.slice(text.length));
+    cursor = end;
+  }
+  if (cursor < value.length) nodes.push(value.slice(cursor));
+  return <>{nodes}</>;
+}
+
 export function EditableCell({
   value,
   onChange,
@@ -17,6 +66,7 @@ export function EditableCell({
   onEditingChange,
   recommendations = [],
   recommendedSupplier,
+  linkifyUrls = false,
 }: {
   value: string;
   /**
@@ -39,6 +89,8 @@ export function EditableCell({
   onEditingChange?: (editing: boolean) => void;
   recommendations?: string[];
   recommendedSupplier?: string;
+  /** Render safe HTTP(S) URLs as links; used by the Supplier field. */
+  linkifyUrls?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [local, setLocal] = useState(value);
@@ -114,7 +166,7 @@ export function EditableCell({
         (target && inputRef.current?.contains(target)) ||
         (target && textareaRef.current?.contains(target)) ||
         (event.target as HTMLElement | null)?.closest(
-          "[data-inline-editor-suggestion]",
+          "[data-inline-editor-suggestion], [data-inline-editor-link]",
         )
       )
         return;
@@ -156,6 +208,25 @@ export function EditableCell({
       />
     );
     const recommended = recommendedSupplier?.trim();
+    const links = linkifyUrls ? supplierLinks(local) : [];
+    const linkBar = links.length ? (
+      <div className="absolute left-0 top-[264px] z-menu flex w-[min(620px,calc(100vw-48px))] flex-wrap gap-2 rounded-b border border-slate-200 bg-white p-2 text-xs shadow-lg">
+        {links.map((link, index) => (
+          <a
+            key={`${link.href}-${index}`}
+            href={link.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            data-inline-editor-link
+            onPointerDown={(event) => event.stopPropagation()}
+            className="max-w-full truncate text-blue-600 underline underline-offset-2 hover:text-blue-800"
+            title={`Open ${link.href} in a new tab`}
+          >
+            {link.text}
+          </a>
+        ))}
+      </div>
+    ) : null;
     const matches = recommendations
       .filter(
         (item) =>
@@ -167,8 +238,9 @@ export function EditableCell({
     return resizableMultiline ? (
       <div className="relative h-[22px] w-full">
         {textarea}
+        {linkBar}
         {(recommended || matches.length > 0) && (
-          <div className="absolute left-0 top-[264px] z-menu flex w-[min(620px,calc(100vw-48px))] flex-wrap gap-1 rounded-b border border-slate-200 bg-white p-2 shadow-lg">
+          <div className={`absolute left-0 ${links.length ? "top-[304px]" : "top-[264px]"} z-menu flex w-[min(620px,calc(100vw-48px))] flex-wrap gap-1 rounded-b border border-slate-200 bg-white p-2 shadow-lg`}>
             {recommended && (
               <button
                 type="button"
@@ -252,7 +324,11 @@ export function EditableCell({
           : "truncate"
       } ${className}`}
     >
-      {value ||
+      {value
+        ? linkifyUrls
+          ? <LinkifiedText value={value} />
+          : value
+        :
         (placeholder && (
           <span className="text-gray-300 select-none">{placeholder}</span>
         ))}
