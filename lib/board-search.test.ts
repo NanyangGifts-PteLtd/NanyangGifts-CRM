@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  boardSearchColumnsForQuery,
   expandedGroupsForSearch,
   matchesBoardSearchValues,
   selectedBoardSearchColumns,
@@ -42,6 +43,21 @@ describe("board search helpers", () => {
       allColumnsSelected: false,
       selectedColumns: new Set(["subitem:name", "subitem:status"]),
     });
+  });
+
+  it("distinguishes an explicit no-column selection from all columns", () => {
+    expect(boardSearchColumnsForQuery(true, new Set(["client:client"]))).toEqual(
+      [],
+    );
+    expect(boardSearchColumnsForQuery(false, new Set())).toEqual([
+      "__no_board_search_columns__",
+    ]);
+    expect(
+      boardSearchColumnsForQuery(
+        false,
+        new Set(["subitem:name", "client:client"]),
+      ),
+    ).toEqual(["client:client", "subitem:name"]);
   });
 
   it("turns an All columns selection into explicit choices before deselecting one", () => {

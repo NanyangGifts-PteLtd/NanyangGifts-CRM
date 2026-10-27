@@ -1,5 +1,10 @@
 export type BoardSearchColumn = { key: string };
 
+// An empty column array is the database contract for "all columns". Send an
+// impossible indexed key when the user explicitly selects none so that state
+// cannot silently broaden into an all-field search.
+export const NO_BOARD_SEARCH_COLUMN = "__no_board_search_columns__";
+
 export function selectedBoardSearchColumns(
   allColumnsSelected: boolean,
   selectedColumns: ReadonlySet<string>,
@@ -8,6 +13,15 @@ export function selectedBoardSearchColumns(
   return allColumnsSelected
     ? new Set(availableColumns.map((column) => column.key))
     : new Set(selectedColumns);
+}
+
+export function boardSearchColumnsForQuery(
+  allColumnsSelected: boolean,
+  selectedColumns: ReadonlySet<string>,
+) {
+  if (allColumnsSelected) return [];
+  if (!selectedColumns.size) return [NO_BOARD_SEARCH_COLUMN];
+  return [...selectedColumns].sort();
 }
 
 export type SearchColumnSelection = {

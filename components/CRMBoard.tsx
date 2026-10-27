@@ -132,12 +132,15 @@ import {
 } from "@/lib/board-labels";
 import { overallPaymentStatus as calculateOverallPaymentStatus } from "@/lib/payment-status";
 import {
+  boardSearchColumnsForQuery,
   matchesBoardSearchValues,
   selectedBoardSearchColumns,
   setAllSearchColumns,
   setSearchColumnsSelection,
   visibleSearchGroups,
 } from "@/lib/board-search";
+
+const DEFAULT_BOARD_SEARCH_COLUMNS = ["client:client", "subitem:name"];
 
 type PendingOptionDeletion = {
   code: string;
@@ -699,10 +702,12 @@ function GroupPageSentinel({
   loading,
   onVisible,
   minWidth,
+  compact = false,
 }: {
   loading: boolean;
   onVisible: () => void;
   minWidth: number;
+  compact?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -722,7 +727,13 @@ function GroupPageSentinel({
       ref={ref}
       role="status"
       className="flex items-start justify-start border-b border-[#D0D4E4] bg-white p-4 text-xs text-slate-500"
-      style={{ minWidth, minHeight: "calc(100vh - 180px)" }}
+      style={{
+        minWidth,
+        // Search and filter results can open several matching groups at once.
+        // A viewport-height sentinel in every one of them makes the rows above
+        // the user's position repeatedly grow and shrink as pages arrive.
+        minHeight: compact ? 48 : "calc(100vh - 180px)",
+      }}
     >
       {loading ? (
         <span className="inline-flex items-center gap-2">
@@ -800,9 +811,9 @@ export function CRMBoard({
   const [showBoardSearch, setShowBoardSearch] = useState(false);
   const [boardSearchTerm, setBoardSearchTerm] = useState("");
   const [showBoardSearchOptions, setShowBoardSearchOptions] = useState(false);
-  const [boardSearchAllColumns, setBoardSearchAllColumns] = useState(true);
+  const [boardSearchAllColumns, setBoardSearchAllColumns] = useState(false);
   const [boardSearchColumns, setBoardSearchColumns] = useState<Set<string>>(
-    new Set(),
+    new Set(DEFAULT_BOARD_SEARCH_COLUMNS),
   );
   const [collapsedSearchColumnGroups, setCollapsedSearchColumnGroups] =
     useState<Set<string>>(new Set());
@@ -817,7 +828,6 @@ export function CRMBoard({
     useState(0);
   const boardSearchRef = useRef<HTMLDivElement>(null);
   const boardSearchInputRef = useRef<HTMLInputElement>(null);
-  const boardSearchDebounceRef = useRef<number | null>(null);
   const lastServerQueryRef = useRef<string>("");
   const pendingBoardQuerySourceRef = useRef<
     "person" | "filter" | "other"
@@ -3299,21 +3309,11 @@ export function CRMBoard({
 
   useEffect(() => {
     if (!showBoardSearch) {
-      if (boardSearchDebounceRef.current !== null) {
-        window.clearTimeout(boardSearchDebounceRef.current);
-        boardSearchDebounceRef.current = null;
-      }
       return;
     }
     const handleClickAway = (event: MouseEvent) => {
       if (!boardSearchRef.current?.contains(event.target as Node)) {
         // Closing the search controls must not clear the active board filter.
-        // Flush any debounced keystrokes first, so clicking a filtered row
-        // immediately after typing also keeps the intended search term.
-        if (boardSearchDebounceRef.current !== null) {
-          window.clearTimeout(boardSearchDebounceRef.current);
-          boardSearchDebounceRef.current = null;
-        }
         const nextSearchTerm =
           boardSearchInputRef.current?.value ?? boardSearchTerm;
         setBoardSearchTerm(nextSearchTerm);
@@ -3326,14 +3326,6 @@ export function CRMBoard({
     document.addEventListener("mousedown", handleClickAway);
     return () => document.removeEventListener("mousedown", handleClickAway);
   }, [boardSearchTerm, showBoardSearch]);
-
-  useEffect(
-    () => () => {
-      if (boardSearchDebounceRef.current !== null)
-        window.clearTimeout(boardSearchDebounceRef.current);
-    },
-    [],
-  );
 
   useEffect(() => {
     if (
@@ -5980,15 +5972,10 @@ export function CRMBoard({
           advancedColumns.find((definition) => definition.key === column)
             ?.valueType ?? "text",
       }));
-    const selectedSearchColumns = boardSearchAllColumns
-      ? []
-      : [
-          ...selectedBoardSearchColumns(
-            false,
-            boardSearchColumns,
-            advancedColumns,
-          ),
-        ].sort();
+    const selectedSearchColumns = boardSearchColumnsForQuery(
+      boardSearchAllColumns,
+      boardSearchColumns,
+    );
     const sortValueType: CrmBoardQuery["sortValueType"] = [
       "totalPrice",
       "totalMarkup",
@@ -6138,7 +6125,7 @@ export function CRMBoard({
         : null;
       setResultGroupExpansionRequest((current) => current + 1);
       onServerQueryChange(query);
-    }, boardSearchTerm.trim() ? 250 : 0);
+    }, boardSearchTerm.trim() ? 400 : 0);
     return () => window.clearTimeout(timer);
   }, [
     activeBoardSort,
@@ -9756,6 +9743,9 @@ export function CRMBoard({
         return groupMap;
       }, new Map<AdvancedFilterColumn["category"], AdvancedFilterColumn[]>()),
   );
+  const selectedBoardSearchColumnCount = boardSearchAllColumns
+    ? advancedColumns.length
+    : boardSearchColumns.size;
 
   return (
     <div
@@ -10648,15 +10638,7 @@ export function CRMBoard({
                 ref={boardSearchInputRef}
                 autoFocus
                 defaultValue={boardSearchTerm}
-                onChange={(event) => {
-                  if (boardSearchDebounceRef.current !== null)
-                    window.clearTimeout(boardSearchDebounceRef.current);
-                  const nextValue = event.target.value;
-                  boardSearchDebounceRef.current = window.setTimeout(() => {
-                    boardSearchDebounceRef.current = null;
-                    setBoardSearchTerm(nextValue);
-                  }, 120);
-                }}
+                onChange={(event) => setBoardSearchTerm(event.target.value)}
                 placeholder="Search this board"
                 className="min-w-0 flex-1 px-2 text-sm outline-none"
               />
@@ -10664,9 +10646,6 @@ export function CRMBoard({
                 <button
                   type="button"
                   onClick={() => {
-                    if (boardSearchDebounceRef.current !== null)
-                      window.clearTimeout(boardSearchDebounceRef.current);
-                    boardSearchDebounceRef.current = null;
                     if (boardSearchInputRef.current)
                       boardSearchInputRef.current.value = "";
                     setBoardSearchTerm("");
@@ -10698,6 +10677,13 @@ export function CRMBoard({
                     />
                   </span>
                 )}
+              <span
+                className="ml-0.5 inline-flex min-w-5 shrink-0 items-center justify-center rounded-full bg-slate-100 px-1.5 text-[11px] font-semibold text-slate-600"
+                title={`${selectedBoardSearchColumnCount} search ${selectedBoardSearchColumnCount === 1 ? "column" : "columns"} selected`}
+                aria-label={`${selectedBoardSearchColumnCount} search columns selected`}
+              >
+                {selectedBoardSearchColumnCount}
+              </span>
               <button
                 type="button"
                 onClick={() => setShowBoardSearchOptions((open) => !open)}
@@ -10717,7 +10703,7 @@ export function CRMBoard({
             </button>
           )}
           {showBoardSearchOptions && (
-            <div className="absolute left-0 top-full z-[100] mt-1 w-72 rounded-lg border border-slate-200 bg-white p-3 shadow-xl">
+            <div className="absolute left-0 top-full z-[100] mt-1 w-[min(920px,calc(100vw-2rem))] rounded-lg border border-slate-200 bg-white p-4 shadow-xl">
               <div className="mb-2 text-sm font-medium text-slate-700">
                 Choose columns to search
               </div>
@@ -10748,11 +10734,11 @@ export function CRMBoard({
                 />
                 All columns
               </label>
-              <div className="max-h-64 overflow-y-auto pt-1">
+              <div className="max-h-[min(68vh,680px)] overflow-y-auto pt-1">
                 {boardSearchColumnGroups.map(([category, columns]) => {
                   const collapsed = collapsedSearchColumnGroups.has(category);
                   return (
-                    <div key={category}>
+                    <div key={category} className="min-w-0 self-start">
                       <div className="mt-1 flex items-center gap-2 border-t border-slate-100 py-2.5 text-sm font-semibold text-slate-600">
                         <button
                           type="button"
@@ -10801,42 +10787,45 @@ export function CRMBoard({
                           All
                         </label>
                       </div>
-                      {!collapsed &&
-                        columns.map((column) => (
-                          <label
-                            key={column.key}
-                            className="ml-4 flex cursor-pointer items-center gap-2 border-l border-slate-100 py-1.5 pl-3 text-sm text-slate-700 hover:bg-slate-50"
-                          >
-                            <input
-                              type="checkbox"
-                              checked={
-                                boardSearchAllColumns ||
-                                boardSearchColumns.has(column.key)
-                              }
-                              onChange={(event) => {
-                                const shouldSelect = event.target.checked;
-                                setBoardSearchAllColumns(false);
-                                setBoardSearchColumns((current) =>
-                                  setSearchColumnsSelection(
-                                    {
-                                      allColumnsSelected:
-                                        boardSearchAllColumns,
-                                      selectedColumns: current,
-                                    },
-                                    [column.key],
-                                    shouldSelect,
-                                    advancedColumns.map((item) => item.key),
-                                  ).selectedColumns,
-                                );
-                              }}
-                              className="h-4 w-4 accent-[#0f8da8]"
-                            />
-                            <span className="sr-only">
-                              {column.category} · {column.label}
-                            </span>
-                            <span className="truncate">{column.label}</span>
-                          </label>
-                        ))}
+                      {!collapsed && (
+                        <div className="grid grid-cols-1 gap-x-2 2xl:grid-cols-2">
+                          {columns.map((column) => (
+                            <label
+                              key={column.key}
+                              className="ml-4 flex cursor-pointer items-center gap-2 border-l border-slate-100 py-1.5 pl-3 text-sm text-slate-700 hover:bg-slate-50"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={
+                                  boardSearchAllColumns ||
+                                  boardSearchColumns.has(column.key)
+                                }
+                                onChange={(event) => {
+                                  const shouldSelect = event.target.checked;
+                                  setBoardSearchAllColumns(false);
+                                  setBoardSearchColumns((current) =>
+                                    setSearchColumnsSelection(
+                                      {
+                                        allColumnsSelected:
+                                          boardSearchAllColumns,
+                                        selectedColumns: current,
+                                      },
+                                      [column.key],
+                                      shouldSelect,
+                                      advancedColumns.map((item) => item.key),
+                                    ).selectedColumns,
+                                  );
+                                }}
+                                className="h-4 w-4 accent-[#0f8da8]"
+                              />
+                              <span className="sr-only">
+                                {column.category} · {column.label}
+                              </span>
+                              <span className="truncate">{column.label}</span>
+                            </label>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -12639,6 +12628,16 @@ export function CRMBoard({
               // loading. A skeleton is only needed when there is no real
               // group content to show yet.
               const showGroupSkeleton = isGroupExpanding && groupClients.length === 0;
+              // During a search/filter, reserve the space that the first
+              // group page will occupy before it arrives. Otherwise a group
+              // above the viewport jumps from a single loading row to up to
+              // 30 client rows, pushing the reader down the Board.
+              const skeletonRowCount = Math.max(
+                groupClients.length,
+                shouldExpandGroupsForResults
+                  ? Math.min(groupPageState[group.id]?.total ?? 1, 30)
+                  : 0,
+              );
 
               return (
                 <div
@@ -12848,7 +12847,7 @@ export function CRMBoard({
                         className="relative overflow-hidden bg-white"
                         style={{
                           minWidth: groupTotalMinWidth,
-                          minHeight: 28 + groupClients.length * 33.1,
+                          minHeight: 28 + skeletonRowCount * 33.1,
                         }}
                         aria-busy="true"
                         aria-label={`Loading ${group.name} clients`}
@@ -12889,9 +12888,9 @@ export function CRMBoard({
                             </div>
                           ))}
                         </div>
-                        {groupClients.map((client) => (
+                        {Array.from({ length: skeletonRowCount }).map((_, index) => (
                           <div
-                            key={client.id}
+                            key={`${group.id}-skeleton-${index}`}
                             aria-hidden="true"
                             className="flex h-[33.1px] border-b border-[#D0D4E4]"
                             style={{
@@ -13576,6 +13575,7 @@ export function CRMBoard({
                             void (onPrimeGroup ?? onLoadMoreGroup)?.(group.id)
                           }
                           minWidth={groupTotalMinWidth}
+                          compact={shouldExpandGroupsForResults}
                         />
                       )}
                       <AddClientInput
