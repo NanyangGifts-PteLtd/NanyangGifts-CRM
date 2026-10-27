@@ -512,6 +512,7 @@ interface CRMBoardProps {
   onServerQueryChange?: (query: CrmBoardQuery) => void;
   search?: string;
   currentUserRole?: string | null;
+  defaultPersonFilterId?: string | null;
   clientAssignees: ClientAssigneeMap;
   setClientAssignees: React.Dispatch<React.SetStateAction<ClientAssigneeMap>>;
   clientPmAssignees: ClientAssigneeMap;
@@ -764,6 +765,7 @@ export function CRMBoard({
   onServerQueryChange,
   search = "",
   currentUserRole,
+  defaultPersonFilterId,
   clientAssignees,
   setClientAssignees,
   clientPmAssignees,
@@ -794,6 +796,7 @@ export function CRMBoard({
   const [filterPayment, setFilterPayment] = useState("All");
   const [filterPaymentStatus, setFilterPaymentStatus] = useState("All");
   const [filterPeople, setFilterPeople] = useState("All");
+  const appliedDefaultPersonFilterRef = useRef(false);
   const [showBoardSearch, setShowBoardSearch] = useState(false);
   const [boardSearchTerm, setBoardSearchTerm] = useState("");
   const [showBoardSearchOptions, setShowBoardSearchOptions] = useState(false);
@@ -825,6 +828,14 @@ export function CRMBoard({
   const [filterReplyStatus, setFilterReplyStatus] = useState("All");
   const [filterChannel, setFilterChannel] = useState("All");
   const processedSearchTarget = useRef<string | null>(null);
+
+  // Apply the Sales landing filter once. Clearing or replacing it afterwards
+  // remains a normal user-controlled Person filter action.
+  useEffect(() => {
+    if (appliedDefaultPersonFilterRef.current || !defaultPersonFilterId) return;
+    appliedDefaultPersonFilterRef.current = true;
+    setFilterPeople(defaultPersonFilterId);
+  }, [defaultPersonFilterId]);
 
   useEffect(() => {
     if (!searchTarget) return;

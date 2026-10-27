@@ -2298,6 +2298,9 @@ export default function Page() {
   );
 
   useEffect(() => {
+    // The Sales default depends on the authenticated profile. Avoid issuing
+    // the ordinary unfiltered landing request while that lookup is pending.
+    if (!roleLoaded) return;
     const queryKey = JSON.stringify(boardQuery);
     if (skipBoardReloadForQueryKeyRef.current === queryKey) {
       skipBoardReloadForQueryKeyRef.current = null;
@@ -2305,7 +2308,7 @@ export default function Page() {
     }
     // A Board-query change intentionally defines a new result set.
     void reloadClients({ preservePagination: false });
-  }, [boardQuery, reloadClients]);
+  }, [boardQuery, reloadClients, roleLoaded]);
 
   useEffect(() => {
     if (searchParams.get("panel") !== "crm" || !clientsLoaded) return;
@@ -2412,7 +2415,13 @@ export default function Page() {
         return;
       }
 
-      setCurrentUserRole(profile?.role ?? null);
+      const role = profile?.role ?? null;
+      setCurrentUserRole(role);
+      if (String(role ?? "").trim().toLowerCase() === "sales") {
+        const salesBoardQuery = { personId: user.id } satisfies CrmBoardQuery;
+        boardQueryKeyRef.current = JSON.stringify(salesBoardQuery);
+        setBoardQuery(salesBoardQuery);
+      }
       setRoleLoaded(true);
     };
 
@@ -2634,6 +2643,11 @@ export default function Page() {
             onServerQueryChange={handleServerQueryChange}
             search={search}
             currentUserRole={currentUserRole}
+            defaultPersonFilterId={
+              String(currentUserRole ?? "").trim().toLowerCase() === "sales"
+                ? user?.id ?? null
+                : null
+            }
             clientAssignees={clientAssignees}
             setClientAssignees={setClientAssignees}
             clientPmAssignees={clientPmAssignees}
