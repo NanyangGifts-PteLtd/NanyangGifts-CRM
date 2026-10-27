@@ -854,6 +854,30 @@ export function AdditionalCostsBoard({
       toast.error("Label could not be updated", { description: result.error });
       return;
     }
+    if (action === "rename" && optionId && extra) {
+      const field =
+        code === "additional_cost_status"
+          ? "status"
+          : code === "additional_cost_reason"
+            ? "reason"
+            : "courier";
+      const idField = `${field}_option_id` as
+        | "status_option_id"
+        | "reason_option_id"
+        | "courier_option_id";
+      setRows((current) =>
+        current.map((row) =>
+          row[idField] === optionId ||
+          (!row[idField] && row[field as keyof AdditionalCost] === value)
+            ? {
+                ...row,
+                [field]: extra,
+                [idField]: optionId,
+              }
+            : row,
+        ),
+      );
+    }
     await loadLabelOptions();
   };
   const deleteLabel = async (
@@ -4219,6 +4243,45 @@ export function AdditionalCostsBoard({
                                   options={
                                     labelOptions.additional_cost_reason ?? []
                                   }
+                                  onAddOption={(value) =>
+                                    manageLabel(
+                                      "additional_cost_reason",
+                                      "add",
+                                      value,
+                                    )
+                                  }
+                                  onDeleteOption={(value, optionId) =>
+                                    deleteLabel(
+                                      "additional_cost_reason",
+                                      value,
+                                      optionId,
+                                    )
+                                  }
+                                  onUpdateOptionColor={(value, color, optionId) =>
+                                    manageLabel(
+                                      "additional_cost_reason",
+                                      "color",
+                                      value,
+                                      color,
+                                      optionId,
+                                    )
+                                  }
+                                  onRenameOption={(value, nextValue, optionId) =>
+                                    manageLabel(
+                                      "additional_cost_reason",
+                                      "rename",
+                                      value,
+                                      nextValue,
+                                      optionId,
+                                    )
+                                  }
+                                  onReorderOptions={(layout) =>
+                                    reorderLabels(
+                                      "additional_cost_reason",
+                                      layout,
+                                    )
+                                  }
+                                  manageLabel="reason"
                                 />
                               </div>
                             </label>
@@ -4364,6 +4427,34 @@ export function AdditionalCostsBoard({
                             }))
                           }
                           options={labelOptions.additional_cost_reason ?? []}
+                          onAddOption={(value) =>
+                            manageLabel("additional_cost_reason", "add", value)
+                          }
+                          onDeleteOption={(value, optionId) =>
+                            deleteLabel("additional_cost_reason", value, optionId)
+                          }
+                          onUpdateOptionColor={(value, color, optionId) =>
+                            manageLabel(
+                              "additional_cost_reason",
+                              "color",
+                              value,
+                              color,
+                              optionId,
+                            )
+                          }
+                          onRenameOption={(value, nextValue, optionId) =>
+                            manageLabel(
+                              "additional_cost_reason",
+                              "rename",
+                              value,
+                              nextValue,
+                              optionId,
+                            )
+                          }
+                          onReorderOptions={(layout) =>
+                            reorderLabels("additional_cost_reason", layout)
+                          }
+                          manageLabel="reason"
                         />
                       </div>
                     </label>
@@ -4388,6 +4479,35 @@ export function AdditionalCostsBoard({
                             )
                           }
                           includeBlankOption={false}
+                          onAddOption={(value) =>
+                            manageLabel("additional_cost_courier", "add", value)
+                          }
+                          onDeleteOption={(value, optionId) =>
+                            deleteLabel("additional_cost_courier", value, optionId)
+                          }
+                          onUpdateOptionColor={(value, color, optionId) =>
+                            manageLabel(
+                              "additional_cost_courier",
+                              "color",
+                              value,
+                              color,
+                              optionId,
+                            )
+                          }
+                          onRenameOption={(value, nextValue, optionId) =>
+                            manageLabel(
+                              "additional_cost_courier",
+                              "rename",
+                              value,
+                              nextValue,
+                              optionId,
+                            )
+                          }
+                          onReorderOptions={(layout) =>
+                            reorderLabels("additional_cost_courier", layout)
+                          }
+                          manageLabel="courier"
+                          sectionCount={1}
                         />
                       </div>
                     </label>

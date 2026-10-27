@@ -119,6 +119,7 @@ export async function POST(request: NextRequest) {
     if (body.action === "rename") {
       const nextValue = body.nextValue?.trim();
       if (!nextValue) throw new Error("A label name is required.");
+      const previousValue = body.value?.trim();
       const { error } = await supabaseAdmin
         .from("option_values")
         .update({ value: nextValue })
@@ -132,10 +133,23 @@ export async function POST(request: NextRequest) {
             ? "reason"
             : "courier";
       const idField = `${field}_option_id`;
-      await supabaseAdmin
+      const { error: linkedRowsError } = await supabaseAdmin
         .from("additional_costs")
         .update({ [field]: nextValue })
         .eq(idField, optionId);
+      if (linkedRowsError) throw linkedRowsError;
+
+      // Older voucher rows may predate the stable option-ID columns. Repair
+      // those rows while their former display value is still known, so a
+      // rename cannot leave an orphaned text label behind.
+      if (previousValue) {
+        const { error: legacyRowsError } = await supabaseAdmin
+          .from("additional_costs")
+          .update({ [field]: nextValue, [idField]: optionId })
+          .is(idField, null)
+          .eq(field, previousValue);
+        if (legacyRowsError) throw legacyRowsError;
+      }
       return NextResponse.json({ ok: true });
     }
     throw new Error("Invalid label update.");
