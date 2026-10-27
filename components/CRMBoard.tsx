@@ -7875,14 +7875,14 @@ export function CRMBoard({
         "reply_status_replied",
         "Done",
       );
-      const isBecomingQuoted =
-        !!existingClient &&
-        (updates.statusOptionId === quotedStatus.id ||
-          updates.status === quotedStatus.value) &&
-        existingClient.statusOptionId !== quotedStatus.id &&
-        existingClient.status !== quotedStatus.value;
+      const isQuotedStatusUpdate = quotedStatus.id
+        ? updates.statusOptionId === quotedStatus.id ||
+          (updates.statusOptionId === undefined &&
+            updates.status === quotedStatus.value)
+        : updates.status === quotedStatus.value;
       if (
-        isBecomingQuoted &&
+        isQuotedStatusUpdate &&
+        existingClient &&
         existingClient.replyStatusOptionId === waitingReplyStatus.id
       ) {
         // Mirror the server-side rule in the optimistic board state so the
@@ -7989,7 +7989,9 @@ export function CRMBoard({
           return;
         }
       } else if (updates.status) {
-        const targetGroupName = STATUS_TO_GROUP_NAME[updates.status];
+        const targetGroupName = isQuotedStatusUpdate
+          ? "Follow Up"
+          : STATUS_TO_GROUP_NAME[updates.status];
         if (targetGroupName) {
           const matchingGroup = groups.find(
             (g) => g.name.toLowerCase() === targetGroupName.toLowerCase(),

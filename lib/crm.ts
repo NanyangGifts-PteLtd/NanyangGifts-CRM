@@ -2392,12 +2392,14 @@ export async function updateClientRow(
   // group is resolved by its canonical board name.
   if (nextUpdates.status !== undefined) {
     const quotedLabel = await resolveSystemOption("client_status", "quoted");
-    const isBecomingQuoted =
-      clientOptionIds.status_option_id === quotedLabel.id &&
-      existing.status_option_id !== quotedLabel.id &&
-      existing.status !== quotedLabel.value;
+    // Enforce the automation whenever the stable Quoted option is saved.
+    // Older/imported rows can have a correct option ID with stale display
+    // text (or the reverse); treating this only as a pristine transition
+    // allowed those partially migrated rows to keep the wrong group.
+    const isQuotedStatusUpdate =
+      clientOptionIds.status_option_id === quotedLabel.id;
 
-    if (isBecomingQuoted) {
+    if (isQuotedStatusUpdate) {
       const { data: followUpGroup, error: followUpGroupError } = await supabase
         .from("crm_groups")
         .select("id")
