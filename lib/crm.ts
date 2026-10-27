@@ -2405,14 +2405,17 @@ export async function updateClientRow(
 
       nextUpdates.groupId = followUpGroup.id;
 
-      const [waitingLabel, doneLabel] = await Promise.all([
-        resolveSystemOption("reply_status", "waiting"),
-        resolveSystemOption("reply_status", "done"),
-      ]);
+      const waitingLabel = await resolveSystemOption("reply_status", "waiting");
       if (existing.reply_status_option_id === waitingLabel.id) {
-        nextUpdates.replyStatus = doneLabel.value;
-        nextUpdates.replyStatusOptionId = doneLabel.id;
-        clientOptionIds.reply_status_option_id = doneLabel.id;
+        // The reply integration already uses this stable terminal-state key.
+        // It may be displayed as either "Replied" or "Done" on the Board.
+        const repliedLabel = await resolveSystemOption(
+          "reply_status",
+          "replied",
+        );
+        nextUpdates.replyStatus = repliedLabel.value;
+        nextUpdates.replyStatusOptionId = repliedLabel.id;
+        clientOptionIds.reply_status_option_id = repliedLabel.id;
       }
     }
   }

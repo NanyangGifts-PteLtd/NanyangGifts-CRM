@@ -7742,7 +7742,7 @@ export function CRMBoard({
       );
       const doneReplyStatus = findSystemOption(
         replyStatusEntries,
-        "reply_status_done",
+        "reply_status_replied",
         "Done",
       );
       const isBecomingQuoted =
