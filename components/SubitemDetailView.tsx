@@ -506,7 +506,9 @@ export function SubitemDetailView({
                 key={profile.id}
                 title={profile.full_name || profile.email || "User"}
                 className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-white text-[10px] font-bold text-white"
-                style={{ background: gradientForId(profile.id) }}
+                style={{
+                  background: gradientForId(profile.id, profile.avatar_color),
+                }}
               >
                 {(profile.full_name || profile.email || "U")
                   .slice(0, 2)

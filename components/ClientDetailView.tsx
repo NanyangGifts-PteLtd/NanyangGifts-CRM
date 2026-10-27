@@ -696,7 +696,9 @@ export function ClientDetailView({
                 key={profile.id}
                 title={profile.full_name || profile.email || "User"}
                 className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-white text-[10px] font-bold text-white"
-                style={{ background: gradientForId(profile.id) }}
+                style={{
+                  background: gradientForId(profile.id, profile.avatar_color),
+                }}
               >
                 {(profile.full_name || profile.email || "U")
                   .slice(0, 2)
@@ -1062,7 +1064,9 @@ export function ClientDetailView({
                       >
                         <span
                           className="flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-semibold text-white"
-                          style={{ background: gradientForId(profile.id) }}
+                          style={{
+                            background: gradientForId(profile.id, profile.avatar_color),
+                          }}
                         >
                           {(profile.full_name || profile.email || "U")
                             .slice(0, 2)
@@ -1108,7 +1112,10 @@ export function ClientDetailView({
                           <span
                             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold text-white"
                             style={{
-                              background: gradientForId(update.author_id),
+                              background: gradientForId(
+                                update.author_id,
+                                update.author?.avatar_color,
+                              ),
                             }}
                           >
                             {(author?.full_name || author?.email || "U")

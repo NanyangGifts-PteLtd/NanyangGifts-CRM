@@ -50,6 +50,7 @@ export type Profile = {
   full_name: string | null;
   email: string | null;
   avatar_url?: string | null;
+  avatar_color?: string | null;
   role?: string | null;
 };
 

@@ -48,6 +48,7 @@ import { createClient as createSupabaseClient } from "@/lib/supabase/client";
 import { ClientRow } from "./ui/clientrows";
 import { TRACKING_VIEW_MIN_WIDTH } from "./TrackingQuoteList";
 import { gradientForId } from "./ui/assignee-multiselect";
+import { AVATAR_COLOR_OPTIONS } from "@/lib/avatar-colors";
 import { SUBITEM_COLS, PAYMENT_COLS } from "./ui/subitems";
 import {
   AlertDialog,
@@ -515,6 +516,7 @@ interface CRMBoardProps {
   onServerQueryChange?: (query: CrmBoardQuery) => void;
   search?: string;
   currentUserRole?: string | null;
+  onProfilesRefresh?: () => Promise<void> | void;
   defaultPersonFilterId?: string | null;
   clientAssignees: ClientAssigneeMap;
   setClientAssignees: React.Dispatch<React.SetStateAction<ClientAssigneeMap>>;
@@ -776,6 +778,7 @@ export function CRMBoard({
   onServerQueryChange,
   search = "",
   currentUserRole,
+  onProfilesRefresh,
   defaultPersonFilterId,
   clientAssignees,
   setClientAssignees,
@@ -834,6 +837,18 @@ export function CRMBoard({
   >("other");
   const [showPeopleFilter, setShowPeopleFilter] = useState(false);
   const [peopleFilterSearch, setPeopleFilterSearch] = useState("");
+  const [editingPeopleColors, setEditingPeopleColors] = useState(false);
+  const [editingPeopleColorId, setEditingPeopleColorId] = useState<string | null>(
+    null,
+  );
+  const [peopleColorPalettePosition, setPeopleColorPalettePosition] =
+    useState<{ left: number; top: number } | null>(null);
+  const [savingPeopleColorId, setSavingPeopleColorId] = useState<string | null>(
+    null,
+  );
+  const [peopleColorOverrides, setPeopleColorOverrides] = useState<
+    Record<string, string | null>
+  >({});
   const [filterImportance, setFilterImportance] = useState("All");
   const [filterReplyStatus, setFilterReplyStatus] = useState("All");
   const [filterChannel, setFilterChannel] = useState("All");
@@ -1013,6 +1028,7 @@ export function CRMBoard({
 
   const filterRef = useRef<HTMLDivElement>(null);
   const peopleFilterRef = useRef<HTMLDivElement>(null);
+  const peopleColorPaletteRef = useRef<HTMLDivElement>(null);
   const [ocfClient, setOcfClient] = useState<Client | null>(null);
   const [isOcfChooserOpen, setIsOcfChooserOpen] = useState(false);
   const [isOcfModalOpen, setIsOcfModalOpen] = useState(false);
@@ -1581,10 +1597,11 @@ export function CRMBoard({
   const paymentStatusOptionsForFilter = paymentStatusEntries.map(
     (e) => e.value,
   );
-  const peopleOptions = profiles
+  const personFilterProfiles = profiles
     .filter(
       (profile) => profile.id && profile.role?.toLowerCase() !== "shipper",
-    )
+    );
+  const peopleOptions = personFilterProfiles
     .map((profile) => ({
       value: profile.id,
       label: profile.full_name || profile.email || profile.id,
@@ -1592,8 +1609,69 @@ export function CRMBoard({
   const peopleProfilesById = Object.fromEntries(
     profiles.map((profile) => [profile.id, profile]),
   );
+  const editingPeopleColorProfile = editingPeopleColorId
+    ? peopleProfilesById[editingPeopleColorId]
+    : null;
   const selectedPeopleProfile =
     filterPeople === "All" ? null : peopleProfilesById[filterPeople];
+  const canEditPeopleColors = ["admin", "director", "dev"].includes(
+    String(currentUserRole ?? "").toLowerCase(),
+  );
+  const avatarColorForProfile = useCallback(
+    (profile: Profile | null | undefined) => {
+      if (!profile) return undefined;
+      return Object.prototype.hasOwnProperty.call(peopleColorOverrides, profile.id)
+        ? peopleColorOverrides[profile.id]
+        : profile.avatar_color;
+    },
+    [peopleColorOverrides],
+  );
+  const editingPeopleColor = avatarColorForProfile(editingPeopleColorProfile);
+  const savePeopleAvatarColor = useCallback(
+    async (profileId: string, avatarColor: string | null) => {
+      const profile = peopleProfilesById[profileId];
+      if (!profile || savingPeopleColorId) return;
+
+      const previousColor = avatarColorForProfile(profile) ?? null;
+      setPeopleColorOverrides((current) => ({
+        ...current,
+        [profileId]: avatarColor,
+      }));
+      setSavingPeopleColorId(profileId);
+      try {
+        const response = await fetch("/api/profile-avatar-colors", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId: profileId, avatarColor }),
+        });
+        const payload = (await response.json()) as { error?: string };
+        if (!response.ok) throw new Error(payload.error || "Could not save colour.");
+        setProfiles((current) =>
+          current.map((item) =>
+            item.id === profileId ? { ...item, avatar_color: avatarColor } : item,
+          ),
+        );
+        await onProfilesRefresh?.();
+        toast.success("User icon colour updated");
+      } catch (error) {
+        setPeopleColorOverrides((current) => ({
+          ...current,
+          [profileId]: previousColor,
+        }));
+        toast.error("Could not update user icon colour", {
+          description: error instanceof Error ? error.message : "Please try again.",
+        });
+      } finally {
+        setSavingPeopleColorId(null);
+      }
+    },
+    [
+      avatarColorForProfile,
+      onProfilesRefresh,
+      peopleProfilesById,
+      savingPeopleColorId,
+    ],
+  );
   const statusColors = Object.fromEntries(
     clientStatusEntries.map((e) => [e.value, e.color]),
   );
@@ -3297,9 +3375,12 @@ export function CRMBoard({
     const handler = (event: MouseEvent) => {
       if (
         peopleFilterRef.current &&
-        !peopleFilterRef.current.contains(event.target as Node)
+        !peopleFilterRef.current.contains(event.target as Node) &&
+        !peopleColorPaletteRef.current?.contains(event.target as Node)
       ) {
         setShowPeopleFilter(false);
+        setEditingPeopleColorId(null);
+        setPeopleColorPalettePosition(null);
       }
     };
 
@@ -10856,7 +10937,12 @@ export function CRMBoard({
             {selectedPeopleProfile ? (
               <span
                 className="flex h-5 w-5 items-center justify-center rounded-full text-[9px] font-bold text-white"
-                style={{ background: gradientForId(selectedPeopleProfile.id) }}
+                style={{
+                  background: gradientForId(
+                    selectedPeopleProfile.id,
+                    avatarColorForProfile(selectedPeopleProfile),
+                  ),
+                }}
               >
                 {(
                   selectedPeopleProfile.full_name ||
@@ -10925,14 +11011,16 @@ export function CRMBoard({
                   className="h-8 w-full rounded border border-sky-400 py-1 pl-9 pr-3 text-sm outline-none"
                 />
               </div>
-              <div className="flex flex-wrap gap-2">
-                {peopleOptions
-                  .filter(({ label }) =>
-                    label
+              <div className="max-h-[min(420px,calc(100vh-16rem))] space-y-1 overflow-y-auto pr-1">
+                {personFilterProfiles
+                  .filter((profile) => {
+                    const label = profile.full_name || profile.email || profile.id;
+                    return label
                       .toLowerCase()
-                      .includes(peopleFilterSearch.toLowerCase()),
-                  )
-                  .map(({ value, label }) => {
+                      .includes(peopleFilterSearch.toLowerCase());
+                  })
+                  .map((profile) => {
+                    const label = profile.full_name || profile.email || profile.id;
                     const initials = label
                       .trim()
                       .split(/\s+/)
@@ -10941,28 +11029,179 @@ export function CRMBoard({
                       .map((part) => part[0])
                       .join("")
                       .toUpperCase();
-                    const selected = filterPeople === value;
+                    const selected = filterPeople === profile.id;
+                    const avatarColor = avatarColorForProfile(profile);
                     return (
-                      <button
-                        key={value}
-                        type="button"
-                        title={label}
-                        onClick={() => {
-                          setFilterPeople(value);
-                          setShowPeopleFilter(false);
-                          setPeopleFilterSearch("");
-                        }}
-                        className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold text-white ring-offset-2 transition hover:scale-105 ${selected ? "ring-2 ring-sky-400" : ""}`}
-                        style={{ background: gradientForId(value) }}
-                      >
-                        {initials || "U"}
-                      </button>
+                      <div key={profile.id}>
+                        <button
+                          type="button"
+                          title={editingPeopleColors ? "Choose this user's icon colour" : label}
+                          onClick={(event) => {
+                            if (editingPeopleColors) {
+                              if (editingPeopleColorId === profile.id) {
+                                setEditingPeopleColorId(null);
+                                setPeopleColorPalettePosition(null);
+                                return;
+                              }
+                              const rect = event.currentTarget.getBoundingClientRect();
+                              setEditingPeopleColorId(profile.id);
+                              setPeopleColorPalettePosition({
+                                left: Math.min(
+                                  Math.max(8, rect.right + 8),
+                                  Math.max(8, window.innerWidth - 360),
+                                ),
+                                top: Math.min(
+                                  Math.max(8, rect.top),
+                                  Math.max(8, window.innerHeight - 460),
+                                ),
+                              });
+                              return;
+                            }
+                            setFilterPeople(profile.id);
+                            setShowPeopleFilter(false);
+                            setPeopleFilterSearch("");
+                          }}
+                          className={`flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left text-sm transition ${selected && !editingPeopleColors ? "bg-sky-50 text-sky-900 ring-1 ring-sky-300" : "hover:bg-slate-50"}`}
+                        >
+                          <span
+                            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white"
+                            style={{
+                              background: gradientForId(profile.id, avatarColor),
+                            }}
+                          >
+                            {initials || "U"}
+                          </span>
+                          <span className="min-w-0 flex-1 truncate font-medium">
+                            {label}
+                          </span>
+                          {editingPeopleColors ? (
+                            <span
+                              aria-hidden="true"
+                              className="h-5 w-5 shrink-0 rounded-full border-2 border-white shadow ring-1 ring-slate-300"
+                              style={{
+                                background: gradientForId(profile.id, avatarColor),
+                              }}
+                            />
+                          ) : null}
+                        </button>
+                      </div>
                     );
                   })}
+                {personFilterProfiles.filter((profile) => {
+                  const label = profile.full_name || profile.email || profile.id;
+                  return label
+                    .toLowerCase()
+                    .includes(peopleFilterSearch.toLowerCase());
+                }).length === 0 ? (
+                  <p className="px-2 py-4 text-center text-sm text-slate-500">
+                    No matching users
+                  </p>
+                ) : null}
+              </div>
+              <div className="mt-3 flex justify-end border-t border-slate-100 pt-3">
+                <button
+                  type="button"
+                  disabled={!canEditPeopleColors}
+                  title={
+                    canEditPeopleColors
+                      ? undefined
+                      : "Only admins, directors, and dev users can edit shared user icon colours."
+                  }
+                  onClick={() => {
+                    setEditingPeopleColors((current) => !current);
+                    setEditingPeopleColorId(null);
+                    setPeopleColorPalettePosition(null);
+                  }}
+                  className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-45"
+                >
+                  {editingPeopleColors ? "Done" : "Edit"}
+                </button>
               </div>
             </div>
           )}
         </div>
+        {showPeopleFilter &&
+          editingPeopleColors &&
+          editingPeopleColorProfile &&
+          peopleColorPalettePosition &&
+          typeof document !== "undefined" &&
+          createPortal(
+            <div
+              ref={peopleColorPaletteRef}
+              role="dialog"
+              aria-label="Choose user icon colour"
+              className="fixed z-[100] w-[352px] max-h-[calc(100vh-1rem)] overflow-y-auto rounded-xl border border-slate-200 bg-white p-3 shadow-2xl"
+              style={peopleColorPalettePosition}
+            >
+              <div className="mb-3 flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-sm font-semibold text-slate-700">
+                    Choose an icon colour
+                  </div>
+                  <div className="max-w-[270px] truncate text-xs text-slate-500">
+                    {editingPeopleColorProfile.full_name ||
+                      editingPeopleColorProfile.email ||
+                      editingPeopleColorProfile.id}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingPeopleColorId(null);
+                    setPeopleColorPalettePosition(null);
+                  }}
+                  className="rounded p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                  aria-label="Close colour picker"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+              <div className="mb-3">
+                <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                  Automatic
+                </div>
+                <button
+                  type="button"
+                  title="Use the automatic colour"
+                  aria-label="Use the automatic colour"
+                  disabled={
+                    savingPeopleColorId === editingPeopleColorProfile.id
+                  }
+                  onClick={() =>
+                    void savePeopleAvatarColor(
+                      editingPeopleColorProfile.id,
+                      null,
+                    )
+                  }
+                  className={`flex h-7 w-7 items-center justify-center rounded-full border-2 bg-gradient-to-br from-cyan-300 via-violet-300 to-pink-300 text-[11px] font-bold text-white transition hover:scale-110 disabled:cursor-wait ${!editingPeopleColor ? "ring-2 ring-sky-400 ring-offset-2" : "border-white"}`}
+                >
+                  A
+                </button>
+              </div>
+              <div className="grid grid-cols-10 gap-1.5">
+                {AVATAR_COLOR_OPTIONS.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    title={option.label}
+                    aria-label={`${option.label} icon colour`}
+                    disabled={
+                      savingPeopleColorId === editingPeopleColorProfile.id
+                    }
+                    onClick={() =>
+                      void savePeopleAvatarColor(
+                        editingPeopleColorProfile.id,
+                        option.value,
+                      )
+                    }
+                    className={`h-7 w-7 rounded-full border-2 transition hover:scale-110 disabled:cursor-wait ${editingPeopleColor === option.value ? "border-white ring-2 ring-sky-400 ring-offset-2" : "border-white"}`}
+                    style={{ backgroundColor: option.value }}
+                  />
+                ))}
+              </div>
+            </div>,
+            document.body,
+          )}
 
         <div ref={filterRef} className="relative">
           <div className="inline-flex overflow-hidden rounded-md text-sm font-medium text-slate-700">
@@ -11199,7 +11438,12 @@ export function CRMBoard({
                     return (
                       <span
                         className="flex h-5 w-5 items-center justify-center rounded-full text-[9px] font-bold text-white"
-                        style={{ background: gradientForId(value) }}
+                        style={{
+                          background: gradientForId(
+                            value,
+                            avatarColorForProfile(profile),
+                          ),
+                        }}
                         title={displayLabel}
                       >
                         {initials}

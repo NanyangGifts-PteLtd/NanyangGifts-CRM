@@ -2532,7 +2532,7 @@ export default function Page() {
       const supabase = createSupabaseClient();
       const { data, error } = await supabase
         .from("profiles")
-        .select("id, full_name, email, role, avatar_url")
+        .select("id, full_name, email, role, avatar_url, avatar_color")
         .order("full_name", { ascending: true, nullsFirst: true });
 
       if (error) {
@@ -2558,7 +2558,7 @@ export default function Page() {
     const supabase = createSupabaseClient();
     const { data, error } = await supabase
       .from("profiles")
-      .select("id, full_name, email, role, avatar_url")
+      .select("id, full_name, email, role, avatar_url, avatar_color")
       .order("full_name", { ascending: true, nullsFirst: true });
     if (error) {
       console.error("Failed to refresh profiles", error);
@@ -2643,6 +2643,7 @@ export default function Page() {
             onServerQueryChange={handleServerQueryChange}
             search={search}
             currentUserRole={currentUserRole}
+            onProfilesRefresh={reloadProfiles}
             defaultPersonFilterId={
               String(currentUserRole ?? "").trim().toLowerCase() === "sales"
                 ? user?.id ?? null

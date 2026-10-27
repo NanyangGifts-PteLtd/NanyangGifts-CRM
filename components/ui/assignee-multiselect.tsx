@@ -3,6 +3,7 @@
 import { useMemo, useState, useEffect, useRef } from 'react';
 import type { Profile } from '../../app/types';
 import { Plus, X } from 'lucide-react';
+import { avatarBackgroundForId } from '@/lib/avatar-colors';
 
 type Props = {
     profiles: Profile[];
@@ -10,22 +11,8 @@ type Props = {
     onChange: (ids: string[]) => void;
 };
 
-const GRADIENTS = [
-    'linear-gradient(150deg, #7ae9f0, #ff95cd)',
-    'linear-gradient(150deg, #f2ffb0, #ff7b7b)',
-    'linear-gradient(150deg, #74a2ff, #caffd4)',
-    'linear-gradient(150deg, #ccffcc, #51aaf3)',
-    'linear-gradient(150deg, #f9a8d4, #818cf8)',
-    'linear-gradient(150deg, #cba3ff, rgb(151, 177, 255))',
-    'linear-gradient(150deg, #59bdff, #7b64cc)',
-];
-
-export function gradientForId(id: string): string {
-    let hash = 0;
-    for (let i = 0; i < id.length; i++) {
-        hash = (hash * 6 + id.charCodeAt(i)) >>> 0;
-    }
-    return GRADIENTS[hash % GRADIENTS.length];
+export function gradientForId(id: string, avatarColor?: string | null): string {
+    return avatarBackgroundForId(id, avatarColor);
 }
 
 function getLabel(profile: Profile) {
@@ -124,7 +111,9 @@ export function AssigneeMultiSelect({ profiles, selectedIds, onChange }: Props) 
                                 <div
                                     key={p.id}
                                     className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-bold"
-                                    style={{ background: gradientForId(p.id) }}
+                                    style={{
+                                        background: gradientForId(p.id, p.avatar_color),
+                                    }}
                                     title={getLabel(p)}
                                 >
                                     {initials(p)}
@@ -177,7 +166,9 @@ export function AssigneeMultiSelect({ profiles, selectedIds, onChange }: Props) 
                                         <input type="checkbox" checked={checked} readOnly className="h-3.5 w-3.5 flex-shrink-0" />
                                         <div
                                             className="w-5 h-5 rounded-full flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0"
-                                            style={{ background: gradientForId(p.id) }}
+                                            style={{
+                                                background: gradientForId(p.id, p.avatar_color),
+                                            }}
                                         >
                                             {initials(p)}
                                         </div>
