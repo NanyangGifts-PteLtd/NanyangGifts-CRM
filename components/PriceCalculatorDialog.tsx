@@ -135,6 +135,7 @@ export function PriceCalculatorDialog(props: Props) {
   } = props;
   const [records, setRecords] = useState<Record[]>([]);
   const [loading, setLoading] = useState(true);
+  const [historyError, setHistoryError] = useState<string | null>(null);
   const [allHistory, setAllHistory] = useState(false);
   const [markup, setMarkup] = useState(1000);
   const financials = calculateSubitemFinancials(subitem, currencyOptions);
@@ -172,12 +173,25 @@ export function PriceCalculatorDialog(props: Props) {
     let alive = true;
     const load = async () => {
       setLoading(true);
+      setHistoryError(null);
       try {
         const response = await fetch(
           `/api/price-calculator/history?name=${encodeURIComponent(subitem.name)}&excludeSubitemId=${encodeURIComponent(subitem.id)}`,
         );
-        const body = await response.json();
-        if (alive) setRecords(response.ok ? (body.records ?? []) : []);
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(body?.error || "Could not load historical pricing.");
+        }
+        if (alive) setRecords(body.records ?? []);
+      } catch (error) {
+        if (alive) {
+          setRecords([]);
+          setHistoryError(
+            error instanceof Error
+              ? error.message
+              : "Could not load historical pricing.",
+          );
+        }
       } finally {
         if (alive) setLoading(false);
       }
@@ -383,6 +397,10 @@ export function PriceCalculatorDialog(props: Props) {
           <p className="p-6 text-center text-sm text-slate-500">
             <LoaderCircle className="mr-1 inline animate-spin" size={15} />{" "}
             Loading history...
+          </p>
+        ) : historyError ? (
+          <p className="p-6 text-center text-sm text-rose-600">
+            Could not load historical pricing: {historyError}
           </p>
         ) : records.length ? (
           <>

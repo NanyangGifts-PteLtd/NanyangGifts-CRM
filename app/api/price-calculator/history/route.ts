@@ -51,20 +51,14 @@ export async function GET(request: NextRequest) {
   if (!closedStatus.data?.id || !(awardedStatuses.data ?? []).length)
     return NextResponse.json({ records: [] });
 
-  const { data: closedClients, error: clientsError } = await supabaseAdmin
-    .from("clients")
-    .select("id, name, display_id")
-    .eq("status_option_id", closedStatus.data.id)
-    .is("deleted_at", null);
-  if (clientsError)
-    return NextResponse.json({ error: clientsError.message }, { status: 500 });
-  const clientIds = (closedClients ?? []).map((client) => client.id);
-  if (!clientIds.length) return NextResponse.json({ records: [] });
-
   let subitemsQuery = supabaseAdmin
     .from("subitems")
-    .select("id, client_id, created_at, name, qty, cost, currency, currency_option_id, manpower, ls, os, up")
-    .in("client_id", clientIds)
+    // Keep the Closed-client condition inside one relational query. Building
+    // an `IN` list from every closed client becomes an oversized REST request
+    // on the migrated production dataset and can fail before history is read.
+    .select("id, client_id, created_at, name, qty, cost, currency, currency_option_id, manpower, ls, os, up, clients!subitems_client_id_fkey!inner(id, name, display_id)")
+    .eq("clients.status_option_id", closedStatus.data.id)
+    .is("clients.deleted_at", null)
     .eq("name", name)
     .in("status_option_id", (awardedStatuses.data ?? []).map((status) => status.id))
     .is("deleted_at", null)
@@ -74,10 +68,26 @@ export async function GET(request: NextRequest) {
   if (subitemsError)
     return NextResponse.json({ error: subitemsError.message }, { status: 500 });
 
-  const clientsById = new Map((closedClients ?? []).map((client) => [client.id, client]));
   return NextResponse.json({
     records: (subitems ?? []).map((subitem) => {
-      const client = clientsById.get(subitem.client_id);
+      const relatedClient = subitem.clients as unknown;
+      const clientShape = (
+        value: unknown,
+      ): {
+        id: string;
+        name: string | null;
+        display_id: string | null;
+      } | null =>
+        value && typeof value === "object" && !Array.isArray(value)
+          ? (value as {
+              id: string;
+              name: string | null;
+              display_id: string | null;
+            })
+          : null;
+      const client = Array.isArray(relatedClient)
+        ? clientShape(relatedClient[0])
+        : clientShape(relatedClient);
       return {
         id: subitem.id,
         clientId: subitem.client_id,
