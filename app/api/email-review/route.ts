@@ -87,9 +87,18 @@ function requirements(subject: string, body: string) {
     .slice(0, 200_000);
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const { role } = await authorize();
+    if (!REVIEWER_ROLES.has(role)) throw new Error("Forbidden");
+    if (new URL(request.url).searchParams.get("summary") === "count") {
+      const { count, error } = await supabaseAdmin
+        .from("email_review_queue")
+        .select("id", { count: "exact", head: true })
+        .in("review_status", ["pending", "failed"]);
+      if (error) throw error;
+      return NextResponse.json({ pendingCount: count ?? 0 });
+    }
     const { data, error } = await supabaseAdmin
       .from("email_review_queue")
       .select(
@@ -109,7 +118,7 @@ export async function GET() {
         ),
         payload: undefined,
       })),
-      canReview: REVIEWER_ROLES.has(role),
+      canReview: true,
     });
   } catch (error) {
     return failure(error);

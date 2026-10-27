@@ -219,6 +219,9 @@ function panelFromSearchParam(value: string | null): SidePanel | null {
 
 function canViewPanel(panel: SidePanel, role: string | null) {
   const normalizedRole = String(role ?? "").toLowerCase();
+  if (panel === "emailreview") {
+    return ["admin", "director", "dev"].includes(normalizedRole);
+  }
   if (panel === "calendar") {
     return ["admin", "director", "dev"].includes(normalizedRole);
   }
@@ -261,6 +264,7 @@ export default function Page() {
   const [search, setSearch] = useState("");
   const [user, setUser] = useState<User | null>(null);
   const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
+  const [emailReviewPending, setEmailReviewPending] = useState(0);
   const [roleLoaded, setRoleLoaded] = useState(false);
   const [clientsLoaded, setClientsLoaded] = useState(false);
   const [hasLoadedInitialClients, setHasLoadedInitialClients] =
@@ -2421,6 +2425,58 @@ export default function Page() {
     setNotifications((await response.json()) as Notification[]);
   }, []);
 
+  const loadEmailReviewPending = useCallback(async () => {
+    const response = await fetch("/api/email-review?summary=count");
+    if (!response.ok) return;
+    const result = await response.json();
+    setEmailReviewPending(Number(result.pendingCount) || 0);
+  }, []);
+
+  useEffect(() => {
+    const canReviewEmails = ["admin", "director", "dev"].includes(
+      String(currentUserRole ?? "").toLowerCase(),
+    );
+    if (!canReviewEmails) {
+      setEmailReviewPending(0);
+      return;
+    }
+
+    let disposed = false;
+    let refreshTimer: number | undefined;
+    const scheduleRefresh = () => {
+      if (refreshTimer !== undefined) window.clearTimeout(refreshTimer);
+      refreshTimer = window.setTimeout(() => {
+        refreshTimer = undefined;
+        if (!disposed) void loadEmailReviewPending();
+      }, 250);
+    };
+    void loadEmailReviewPending();
+    const supabase = createSupabaseClient();
+    const channel = supabase
+      .channel("email-review-pending-count")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "email_review_queue" },
+        scheduleRefresh,
+      )
+      .subscribe();
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible" && document.hasFocus())
+        void loadEmailReviewPending();
+    };
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    window.addEventListener("focus", refreshWhenVisible);
+    window.addEventListener("email-review:changed", scheduleRefresh);
+    return () => {
+      disposed = true;
+      if (refreshTimer !== undefined) window.clearTimeout(refreshTimer);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+      window.removeEventListener("focus", refreshWhenVisible);
+      window.removeEventListener("email-review:changed", scheduleRefresh);
+      void supabase.removeChannel(channel);
+    };
+  }, [currentUserRole, loadEmailReviewPending]);
+
   useEffect(() => {
     void loadNotifications();
     // Realtime already refreshes notifications as they change. A visibility
@@ -2728,6 +2784,7 @@ export default function Page() {
         activePanel={activePanel}
         onChangePanel={changePanel}
         emailUnread={0}
+        emailReviewPending={emailReviewPending}
         collapsed={sidebarCollapsed}
         onToggleCollapsed={() => setSidebarCollapsed((v) => !v)}
         currentUserRole={currentUserRole}

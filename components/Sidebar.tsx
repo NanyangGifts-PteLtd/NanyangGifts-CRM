@@ -40,6 +40,7 @@ interface SidebarProps {
   activePanel: SidePanel;
   onChangePanel: (panel: SidePanel) => void;
   emailUnread: number;
+  emailReviewPending: number;
   collapsed: boolean;
   onToggleCollapsed: () => void;
   currentUserRole?: string | null;
@@ -101,6 +102,7 @@ export default function Sidebar({
   activePanel,
   onChangePanel,
   emailUnread,
+  emailReviewPending,
   collapsed,
   onToggleCollapsed,
   currentUserRole,
@@ -143,6 +145,7 @@ export default function Sidebar({
             (item) => {
               const role = String(currentUserRole ?? "").toLowerCase();
               if (item.id === "calendar") return ["admin", "director", "dev"].includes(role);
+              if (item.id === "emailreview") return ["admin", "director", "dev"].includes(role);
               if (item.id === "useradmin") return role === "director" || role === "dev";
               return true;
             },
@@ -207,6 +210,15 @@ export default function Sidebar({
                     style={{ fontSize: "10px" }}
                   >
                     {emailUnread}
+                  </span>
+                )}
+                {item.id === "emailreview" && emailReviewPending > 0 && (
+                  <span
+                    className="ml-auto bg-amber-500 text-white rounded-full text-xs px-1.5 py-0.5 hidden lg:flex items-center justify-center min-w-5 leading-none"
+                    style={{ fontSize: "10px" }}
+                    aria-label={`${emailReviewPending} emails pending review`}
+                  >
+                    {emailReviewPending}
                   </span>
                 )}
                 <div className="absolute left-full ml-2 px-2 py-1 bg-gray-800 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 lg:hidden">

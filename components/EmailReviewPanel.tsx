@@ -87,6 +87,7 @@ export function EmailReviewPanel({ currentUserRole }: Props) {
       setRows((current) =>
         current.map((row) => (row.id === id ? result.row : row)),
       );
+      window.dispatchEvent(new Event("email-review:changed"));
       toast.success(
         action === "promote"
           ? "Email promoted to enquiry"
@@ -152,6 +153,7 @@ export function EmailReviewPanel({ currentUserRole }: Props) {
           ids.forEach((id) => next.delete(id));
           return next;
         });
+        window.dispatchEvent(new Event("email-review:changed"));
       }
       const failed = results.length - updatedRows.length;
       if (failed) {
