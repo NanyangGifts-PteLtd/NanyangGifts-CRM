@@ -3389,6 +3389,47 @@ export function CRMBoard({
   }, [showPeopleFilter]);
 
   useEffect(() => {
+    const applyAvatarColorChange = (event: Event) => {
+      const detail = (
+        event as CustomEvent<{ id?: unknown; avatarColor?: unknown }>
+      ).detail;
+      const profileId = detail?.id;
+      const avatarColor = detail?.avatarColor;
+      if (
+        !detail ||
+        typeof profileId !== "string" ||
+        (typeof avatarColor !== "string" && avatarColor !== null)
+      ) {
+        return;
+      }
+      setProfiles((current) =>
+        current.map((profile) =>
+          profile.id === profileId
+            ? { ...profile, avatar_color: avatarColor }
+            : profile,
+        ),
+      );
+      setPeopleColorOverrides((current) => {
+        if (!Object.prototype.hasOwnProperty.call(current, profileId)) {
+          return current;
+        }
+        const next = { ...current };
+        delete next[profileId];
+        return next;
+      });
+    };
+    window.addEventListener(
+      "crm:profile-avatar-color-updated",
+      applyAvatarColorChange,
+    );
+    return () =>
+      window.removeEventListener(
+        "crm:profile-avatar-color-updated",
+        applyAvatarColorChange,
+      );
+  }, []);
+
+  useEffect(() => {
     if (!showBoardSearch) {
       return;
     }

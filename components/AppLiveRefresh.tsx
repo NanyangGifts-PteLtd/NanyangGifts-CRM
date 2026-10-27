@@ -11,6 +11,11 @@ type RefreshKind = "records" | "protectedRecords" | "profiles" | "groups" | "not
 
 type RecordRow = Record<string, unknown>;
 
+type ProfileAvatarColorChange = {
+  id: string;
+  avatarColor: string | null;
+};
+
 export type LiveRecordChange = {
   table: "clients" | "subitems" | "client_assignees" | "subitem_assignees";
   eventType: "INSERT" | "UPDATE" | "DELETE";
@@ -236,6 +241,28 @@ export function AppLiveRefresh({
       pendingRecordChanges.current.push(change);
       schedule("records");
     };
+    const handleProfileChange = (payload: { new: RecordRow }) => {
+      const profileId =
+        typeof payload.new.id === "string" ? payload.new.id : null;
+      const hasAvatarColor = Object.prototype.hasOwnProperty.call(
+        payload.new,
+        "avatar_color",
+      );
+      const avatarColor = payload.new.avatar_color;
+      if (
+        profileId &&
+        hasAvatarColor &&
+        (typeof avatarColor === "string" || avatarColor === null)
+      ) {
+        window.dispatchEvent(
+          new CustomEvent<ProfileAvatarColorChange>(
+            "crm:profile-avatar-color-updated",
+            { detail: { id: profileId, avatarColor } },
+          ),
+        );
+      }
+      schedule("profiles");
+    };
 
     let channel: ReturnType<typeof supabase.channel> | null = null;
     const start = async () => {
@@ -251,7 +278,7 @@ export function AppLiveRefresh({
         // refresh and can replay an older snapshot over an active editor.
         .on("postgres_changes", { event: "*", schema: "public", table: "client_assignees" }, (payload) => scheduleRecordChange("client_assignees", payload))
         .on("postgres_changes", { event: "*", schema: "public", table: "subitem_assignees" }, (payload) => scheduleRecordChange("subitem_assignees", payload))
-        .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, () => schedule("profiles"))
+        .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, handleProfileChange)
         .on("postgres_changes", { event: "*", schema: "public", table: "crm_groups" }, () => schedule("groups"))
         .on("postgres_changes", { event: "*", schema: "public", table: "option_values" }, () => schedule("labelOptions"))
         .on("postgres_changes", { event: "*", schema: "public", table: "custom_columns" }, () => schedule("boardMetadata"))
