@@ -1360,13 +1360,19 @@ export async function fetchSubitemDetailPayloads(subitemIds: string[]) {
       clientCustomFields: new Map<string, Record<string, string>>(),
     } satisfies HydratedSubitemDetails;
   }
-  const { data, error } = await supabase.rpc("crm_hydrate_subitem_details_v2", {
-    p_subitem_ids: ids,
-  });
-  if (error) throw error;
   const subitems = new Map<string, Partial<Subitem>>();
   const clientCustomFields = new Map<string, Record<string, string>>();
-  for (const row of (data ?? []) as HydratedSubitemDetailsRpcRow[]) {
+  // The RPC deliberately caps each request at 100 IDs. Large clients can
+  // legitimately contain more than that, so hydrate in bounded batches and
+  // merge the results instead of failing the entire client expansion.
+  for (let offset = 0; offset < ids.length; offset += 100) {
+    const batch = ids.slice(offset, offset + 100);
+    const { data, error } = await supabase.rpc(
+      "crm_hydrate_subitem_details_v2",
+      { p_subitem_ids: batch },
+    );
+    if (error) throw error;
+    for (const row of (data ?? []) as HydratedSubitemDetailsRpcRow[]) {
     const mapped = mapSubitems({
       id: String(row.subitem_id),
       client_id: "",
@@ -1429,7 +1435,7 @@ export async function fetchSubitemDetailPayloads(subitemIds: string[]) {
       sample_type: null,
       details_hydrated: true,
     });
-    subitems.set(String(row.subitem_id), {
+      subitems.set(String(row.subitem_id), {
       paymentRows: mapped.paymentRows,
       timelineRows: mapped.timelineRows,
       timelineGroups: mapped.timelineGroups,
@@ -1437,10 +1443,11 @@ export async function fetchSubitemDetailPayloads(subitemIds: string[]) {
       customFields: row.subitem_custom_fields ?? {},
       detailsHydrated: true,
     });
-    clientCustomFields.set(
-      String(row.client_id),
-      row.client_custom_fields ?? {},
-    );
+      clientCustomFields.set(
+        String(row.client_id),
+        row.client_custom_fields ?? {},
+      );
+    }
   }
   return { subitems, clientCustomFields } satisfies HydratedSubitemDetails;
 }
