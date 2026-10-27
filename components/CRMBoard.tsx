@@ -6449,14 +6449,20 @@ export function CRMBoard({
   const searchScopedGroups = trackingView
     ? groupedClients.filter(({ group }) => /^closed leads\s*-/i.test(group.name))
     : groupedClients;
-  // Filtering, like text search, should not leave empty group shells behind.
-  // The server-side group total is used because a matching client may be on a
-  // page that has not been loaded into the board yet.
+  // Filtering, like text search, should not leave *known* empty group shells
+  // behind. A missing/inexact group count is not evidence of zero results:
+  // the first global page may simply not have reached that group yet, and the
+  // deferred count query can time out. Keep those groups visible (collapsed,
+  // with their existing "Loading count" status) until the server explicitly
+  // confirms a zero. Otherwise a partial result page is falsely presented as
+  // the complete result set.
   const boardVisibleGroups = shouldExpandGroupsForResults
     ? searchScopedGroups.filter(
-        ({ group, clients: groupClients }) =>
-          groupClients.length > 0 ||
-          (groupPageState[group.id]?.total ?? 0) > 0,
+        ({ group, clients: groupClients }) => {
+          const state = groupPageState[group.id];
+          const isKnownEmpty = state?.isCountExact === true && state.total === 0;
+          return groupClients.length > 0 || !isKnownEmpty;
+        },
       )
     : visibleSearchGroups(searchScopedGroups, false);
   const noBoardSearchResults =
