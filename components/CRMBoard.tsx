@@ -1334,11 +1334,10 @@ export function CRMBoard({
   );
 
   const canSoftDeleteRecord = useCallback(
-    (createdAt: string | null | undefined, deletionOwnerId: string | null | undefined) => {
+    (createdAt: string | null | undefined) => {
       const role = String(currentUserRole ?? "").trim().toLowerCase();
-      if (["director", "dev"].includes(role)) return true;
-      if (!currentUserId || !createdAt || deletionOwnerId !== currentUserId)
-        return false;
+      if (["admin", "director", "dev"].includes(role)) return true;
+      if (!currentUserId || !createdAt) return false;
       return Date.now() - new Date(createdAt).getTime() < 72 * 60 * 60 * 1000;
     },
     [currentUserId, currentUserRole],
@@ -1350,7 +1349,7 @@ export function CRMBoard({
       return Boolean(
         client &&
           canEditClientRecord(clientId) &&
-          canSoftDeleteRecord(client.createdAt, client.deletionOwnerId),
+          canSoftDeleteRecord(client.createdAt),
       );
     },
     [canEditClientRecord, canSoftDeleteRecord, clients],
@@ -1364,7 +1363,7 @@ export function CRMBoard({
       return Boolean(
         subitem &&
           canEditSubitemRecord(clientId, subitemId) &&
-          canSoftDeleteRecord(subitem.createdAt, subitem.deletionOwnerId),
+          canSoftDeleteRecord(subitem.createdAt),
       );
     },
     [canEditSubitemRecord, canSoftDeleteRecord, clients],
@@ -1422,6 +1421,11 @@ export function CRMBoard({
 
   const showAssignmentPermissionError = useCallback(() => {
     toast.error("You can only edit items that are assigned to you");
+  }, []);
+  const showDeletePermissionError = useCallback(() => {
+    toast.error(
+      "You can only delete assigned items created within the last 72 hours",
+    );
   }, []);
   const [pendingDeleteSelected, setPendingDeleteSelected] = useState(false);
   const [pendingSubitemLock, setPendingSubitemLock] = useState<{
@@ -8715,7 +8719,7 @@ export function CRMBoard({
   const deleteClient = useCallback(
     async (clientId: string) => {
       if (!canSoftDeleteClientRecord(clientId)) {
-        showAssignmentPermissionError();
+        showDeletePermissionError();
         return;
       }
       const clientToDelete = clients.find((client) => client.id === clientId);
@@ -8766,7 +8770,7 @@ export function CRMBoard({
       clients,
       setClients,
       notifyChange,
-      showAssignmentPermissionError,
+      showDeletePermissionError,
     ],
   );
 
@@ -8793,7 +8797,7 @@ export function CRMBoard({
   const deleteSelected = useCallback(async () => {
     const ids = [...selectedIds];
     if (ids.some((clientId) => !canSoftDeleteClientRecord(clientId))) {
-      showAssignmentPermissionError();
+      showDeletePermissionError();
       return;
     }
     const selectedClientsById = new Map(
@@ -8863,7 +8867,7 @@ export function CRMBoard({
     clients,
     setClients,
     notifyChange,
-    showAssignmentPermissionError,
+    showDeletePermissionError,
   ]);
 
   const duplicateSelectedClients = useCallback(
@@ -9268,7 +9272,7 @@ export function CRMBoard({
   const deleteSubitem = useCallback(
     async (_clientId: string, subitemId: string, deactivationReason?: string) => {
       if (!canSoftDeleteSubitemRecord(_clientId, subitemId)) {
-        showAssignmentPermissionError();
+        showDeletePermissionError();
         return;
       }
       const releaseSubitemProtection = holdBoardRecordProtection(
@@ -9325,7 +9329,7 @@ export function CRMBoard({
       clients,
       setClients,
       notifyChange,
-      showAssignmentPermissionError,
+      showDeletePermissionError,
     ],
   );
 
@@ -10252,7 +10256,7 @@ export function CRMBoard({
             onClick={() => setPendingDeleteSelected(true)}
             title={
               !canSoftDeleteSelectedClients
-                ? "You can only delete clients you created within the last 72 hours"
+                ? "You can only delete assigned clients created within the last 72 hours"
                 : "Delete selected clients"
             }
             className="flex items-center gap-1.5 rounded px-3 py-2 text-sm text-red-500 hover:bg-red-50 disabled:cursor-not-allowed disabled:text-slate-300 disabled:hover:bg-transparent"
@@ -10486,7 +10490,7 @@ export function CRMBoard({
             onClick={() => setPendingDeleteSelectedSubitems(selectedSubitemIds)}
             title={
               !canSoftDeleteSelectedSubitems
-                ? "You can only delete subitems you created within the last 72 hours"
+                ? "You can only delete assigned subitems created within the last 72 hours"
                 : "Delete selected subitems"
             }
             className="flex items-center gap-1.5 rounded px-3 py-2 text-sm text-red-500 hover:bg-red-50 disabled:cursor-not-allowed disabled:text-slate-300 disabled:hover:bg-transparent"
@@ -12002,7 +12006,7 @@ export function CRMBoard({
                   return !owner || !canSoftDeleteSubitemRecord(owner.id, subitemId);
                 });
                 if (hasLockedSubitem) {
-                  showAssignmentPermissionError();
+                  showDeletePermissionError();
                   return;
                 }
                 setPendingDeleteSelectedSubitems(null);

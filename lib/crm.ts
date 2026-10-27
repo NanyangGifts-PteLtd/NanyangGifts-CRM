@@ -244,7 +244,6 @@ type Subitems = {
   client_id: string;
   position: number | null;
   created_at: string | null;
-  deletion_owner_id?: string | null;
   waiting_started_at: string | null;
   name: string | null;
   people: string | null;
@@ -360,7 +359,6 @@ type Clients = {
   total_price: string | null;
   billing_address: string | null;
   created_by?: string | null;
-  deletion_owner_id?: string | null;
   created_at: string | null;
   waiting_started_at: string | null;
   group_id: string;
@@ -546,7 +544,6 @@ export function mapSubitems(row: Subitems): Subitem {
     id: row.id,
     displayId: row.display_id ?? "",
     createdAt: row.created_at ?? null,
-    deletionOwnerId: row.deletion_owner_id ?? null,
     position: row.position ?? Number.MAX_SAFE_INTEGER,
     name: row.name ?? "",
     people: row.people ?? "",
@@ -683,7 +680,6 @@ function mapClients(row: Clients): Client {
     totalPrice: row.total_price ?? "",
     billingAddress: row.billing_address ?? "",
     createdBy: row.created_by ?? null,
-    deletionOwnerId: row.deletion_owner_id ?? null,
     createdAt: row.created_at ?? "",
     waitingStartedAt: row.waiting_started_at ?? null,
     groupId: row.group_id ?? null,
@@ -990,7 +986,7 @@ export async function fetchClientsWithSubitems(params?: {
     "tracking_overall_invoice_payment_status_option_id", "company", "email",
     "phone", "requirements", "unqualified_reason", "nbd",
     "total_price", "billing_address", "created_by", "created_at", "waiting_started_at",
-    "group_id", "expanded", "color", "custom_fields", "deletion_owner_id", "deleted_at",
+    "group_id", "expanded", "color", "custom_fields", "deleted_at",
     "deleted_by",
   ].join(", ");
   const subitemBoardSelect = [
@@ -1008,7 +1004,7 @@ export async function fetchClientsWithSubitems(params?: {
     "payment_amount", "difference", "payment_remarks", "timeline_rows",
     "timeline_groups", "show_timeline", "show_payments", "show_sample",
     "sample_rows", "sample_order_status", "sample_status", "sample_type",
-    "custom_fields", "shipper_id", "deletion_owner_id", "deleted_at", "deleted_by",
+    "custom_fields", "shipper_id", "deleted_at", "deleted_by",
     "deleted_with_client_id",
   ].join(", ");
   const paymentRowSelect = [
@@ -2550,7 +2546,7 @@ export async function updateClientRow(
     });
 }
 
-async function assertCreatorActionAllowed(
+async function assertBinActionAllowed(
   table: "clients" | "subitems",
   id: string,
   action: "soft-delete" | "restore",
@@ -2566,40 +2562,77 @@ async function assertCreatorActionAllowed(
     .eq("id", user.id)
     .single();
   if (profileError) throw profileError;
-  if (["director", "dev"].includes(String(profile?.role ?? "").toLowerCase()))
+  if (
+    ["admin", "director", "dev"].includes(
+      String(profile?.role ?? "").toLowerCase(),
+    )
+  )
     return;
 
-  const { data: item, error: itemError } = await supabase
-    .from(table)
-    .select("created_at, deletion_owner_id")
-    .eq("id", id)
-    .single();
-  if (itemError) throw itemError;
+  let clientId: string;
+  let createdAt: string | null;
+  if (table === "clients") {
+    const { data: client, error: clientError } = await supabase
+      .from("clients")
+      .select("id, created_at")
+      .eq("id", id)
+      .single();
+    if (clientError) throw clientError;
+    clientId = client.id;
+    createdAt = client.created_at;
+  } else {
+    const { data: subitem, error: subitemError } = await supabase
+      .from("subitems")
+      .select("client_id, created_at")
+      .eq("id", id)
+      .single();
+    if (subitemError) throw subitemError;
+    clientId = subitem.client_id;
+    createdAt = subitem.created_at;
+  }
 
-  const createdAt = item.created_at;
-  const actionDescription =
-    action === "soft-delete" ? "moved to the Bin" : "restored";
   if (action === "soft-delete" && !createdAt)
     throw new Error(
-      `This item has no creation date and cannot be ${actionDescription} by this role.`,
+      "This item has no creation date and cannot be moved to the Bin by this role.",
     );
   const ageInHours = createdAt
     ? (Date.now() - new Date(createdAt).getTime()) / 3_600_000
     : null;
   if (action === "soft-delete" && ageInHours !== null && ageInHours >= 72)
     throw new Error(
-      `This item is more than 72 hours old and can only be ${actionDescription} by a director or developer.`,
+      "This item is more than 72 hours old and can only be moved to the Bin by an administrator, director, or developer.",
     );
 
-  if (!item.deletion_owner_id || item.deletion_owner_id !== user.id) {
+  const [clientAssignment, subitemAssignment] = await Promise.all([
+    supabase
+      .from("client_assignees")
+      .select("user_id")
+      .eq("client_id", clientId)
+      .eq("user_id", user.id)
+      .limit(1)
+      .maybeSingle(),
+    table === "subitems"
+      ? supabase
+          .from("subitem_assignees")
+          .select("user_id")
+          .eq("subitem_id", id)
+          .eq("user_id", user.id)
+          .limit(1)
+          .maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+  ]);
+  if (clientAssignment.error || subitemAssignment.error) {
+    throw clientAssignment.error ?? subitemAssignment.error;
+  }
+  if (!clientAssignment.data && !subitemAssignment.data) {
     throw new Error(
-      `You can only ${action === "soft-delete" ? "move items created by you to the Bin" : "restore items created by you"}, unless you are a director or developer.`,
+      "You can only move or restore items for clients or subitems assigned to you.",
     );
   }
 }
 
 export async function deleteClientRow(clientId: string) {
-  await assertCreatorActionAllowed("clients", clientId, "soft-delete");
+  await assertBinActionAllowed("clients", clientId, "soft-delete");
   const { data: client, error: clientReadError } = await supabase
     .from("clients")
     .select("name")
@@ -2664,7 +2697,7 @@ export async function deleteClientRow(clientId: string) {
 }
 
 export async function restoreClientRow(clientId: string) {
-  await assertCreatorActionAllowed("clients", clientId, "restore");
+  await assertBinActionAllowed("clients", clientId, "restore");
   const { data: client, error: fetchError } = await supabase
     .from("clients")
     .select("id, deleted_at")
@@ -3675,7 +3708,7 @@ export async function moveSubitemRow(
 }
 
 export async function deleteSubitemRow(subitemId: string, deactivationReason?: string) {
-  await assertCreatorActionAllowed("subitems", subitemId, "soft-delete");
+  await assertBinActionAllowed("subitems", subitemId, "soft-delete");
   const { data: existing, error: fetchError } = await supabase
     .from("subitems")
     .select("*")
@@ -3750,7 +3783,7 @@ export async function deleteSubitemRow(subitemId: string, deactivationReason?: s
 }
 
 export async function restoreSubitemRow(subitemId: string) {
-  await assertCreatorActionAllowed("subitems", subitemId, "restore");
+  await assertBinActionAllowed("subitems", subitemId, "restore");
   const { data: subitem, error: fetchError } = await supabase
     .from("subitems")
     .select("id, client_id, name, deleted_at, custom_fields")
