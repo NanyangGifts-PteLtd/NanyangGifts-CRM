@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { ChevronDown, ChevronRight, Plus, Trash2 } from "lucide-react";
+import { ColumnSelectionPicker } from "./ColumnSelectionPicker";
 
 export type AdvancedFilterCondition =
   | "is"
@@ -306,10 +307,6 @@ export function AdvancedFilters({
     onRulesChange(
       rules.map((rule) => (rule.id === id ? { ...rule, ...changes } : rule)),
     );
-  const columnOptions = columns.map((column) => ({
-    value: column.key,
-    label: column.label,
-  }));
   return (
     <div className="w-[min(1120px,calc(100vw-1rem))] rounded-xl border border-slate-200 bg-white p-5 shadow-2xl">
       <div className="mb-5 flex items-center justify-between">
@@ -371,11 +368,14 @@ export function AdvancedFilters({
                   "Or"
                 )}
               </div>
-              <Combo
-                value={selected?.label ?? rule.column}
+              <ColumnSelectionPicker
+                value={rule.column}
                 placeholder="Column"
-                options={columnOptions}
-                groups
+                options={columns.map((column) => ({
+                  key: column.key,
+                  label: column.label,
+                  category: column.category,
+                }))}
                 onChange={(column) =>
                   update(rule.id, {
                     column,

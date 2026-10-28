@@ -123,6 +123,7 @@ import {
   type AdvancedFilterColumn,
   type AdvancedFilterRule,
 } from "./AdvancedFilters";
+import { ColumnSelectionPicker } from "./ColumnSelectionPicker";
 import { uploadCrmFiles } from "@/lib/crm-files";
 import { CombinedPushPreviewModal } from "./shipper/CombinedPushPreviewModal";
 import { useEscapeClose } from "./hooks/use-escape-close";
@@ -1816,7 +1817,6 @@ export function CRMBoard({
     new Set(),
   );
   const [openColumnMenu, setOpenColumnMenu] = useState<string | null>(null);
-  const [showHideColumns, setShowHideColumns] = useState(false);
   const [showBoardMoreMenu, setShowBoardMoreMenu] = useState(false);
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [trackingView, setTrackingView] = useState(false);
@@ -3458,7 +3458,6 @@ export function CRMBoard({
     if (
       !openGroupMenu &&
       !openColumnMenu &&
-      !showHideColumns &&
       !showBoardMoreMenu &&
       !showSortMenu
     )
@@ -3468,7 +3467,6 @@ export function CRMBoard({
       if (target.closest("[data-crm-menu-trigger], [data-crm-menu]")) return;
       setOpenGroupMenu(null);
       setOpenColumnMenu(null);
-      setShowHideColumns(false);
       setShowBoardMoreMenu(false);
       setShowSortMenu(false);
     };
@@ -3478,7 +3476,6 @@ export function CRMBoard({
   }, [
     openGroupMenu,
     openColumnMenu,
-    showHideColumns,
     showBoardMoreMenu,
     showSortMenu,
   ]);
@@ -11063,7 +11060,6 @@ export function CRMBoard({
               setShowPeopleFilter((open) => !open);
               setShowFilter(false);
               setShowSortMenu(false);
-              setShowHideColumns(false);
               setShowBoardMoreMenu(false);
             }}
             className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors ${showPeopleFilter || selectedPeopleProfile ? "bg-[#dff5f7] text-slate-700" : "text-slate-700 hover:bg-slate-100"}`}
@@ -11655,7 +11651,6 @@ export function CRMBoard({
             type="button"
             onClick={() => {
               setShowSortMenu((open) => !open);
-              setShowHideColumns(false);
               setShowBoardMoreMenu(false);
             }}
             className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100 ${showSortMenu || activeBoardSort.category !== DEFAULT_BOARD_SORT.category || activeBoardSort.column !== DEFAULT_BOARD_SORT.column || activeBoardSort.direction !== DEFAULT_BOARD_SORT.direction ? "bg-slate-100" : ""}`}
@@ -11679,50 +11674,34 @@ export function CRMBoard({
               <div className="grid gap-2 sm:grid-cols-[1fr_150px]">
                 <label className="grid gap-1 text-[11px] font-medium text-slate-500">
                   Column
-                  <select
+                  <ColumnSelectionPicker
                     value={`${activeBoardSort.category}:${activeBoardSort.column}`}
-                    onChange={(event) => {
-                      const [category, ...columnParts] =
-                        event.target.value.split(":");
+                    options={[
+                      ...clientSortColumns.map((column) => ({
+                        key: `client:${column.key}`,
+                        label: column.label || column.key,
+                        category: "Client",
+                      })),
+                      ...subitemSortColumns.map((column) => ({
+                        key: `subitem:${column.key}`,
+                        label: column.label || column.key,
+                        category: "Subitem",
+                      })),
+                      ...paymentSortColumns.map((column) => ({
+                        key: `payment:${column.key}`,
+                        label: column.label || column.key,
+                        category: "Payment",
+                      })),
+                    ]}
+                    onChange={(value) => {
+                      const [category, ...columnParts] = value.split(":");
                       setBoardSort((current) => ({
                         ...current,
                         category: category as BoardSortSetting["category"],
                         column: columnParts.join(":"),
                       }));
                     }}
-                    className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-700 outline-none focus:border-sky-400"
-                  >
-                    <optgroup label="Client columns">
-                      {clientSortColumns.map((column) => (
-                        <option
-                          key={`client:${column.key}`}
-                          value={`client:${column.key}`}
-                        >
-                          {column.label || column.key}
-                        </option>
-                      ))}
-                    </optgroup>
-                    <optgroup label="Subitem columns">
-                      {subitemSortColumns.map((column) => (
-                        <option
-                          key={`subitem:${column.key}`}
-                          value={`subitem:${column.key}`}
-                        >
-                          {column.label || column.key}
-                        </option>
-                      ))}
-                    </optgroup>
-                    <optgroup label="Payment columns">
-                      {paymentSortColumns.map((column) => (
-                        <option
-                          key={`payment:${column.key}`}
-                          value={`payment:${column.key}`}
-                        >
-                          {column.label || column.key}
-                        </option>
-                      ))}
-                    </optgroup>
-                  </select>
+                  />
                 </label>
                 <label className="grid gap-1 text-[11px] font-medium text-slate-500">
                   Direction
@@ -11745,73 +11724,65 @@ export function CRMBoard({
           )}
         </div>
 
-        <div className="relative" data-crm-menu-trigger>
-          <button
-            onClick={() => {
-              setShowHideColumns((open) => !open);
-              setShowSortMenu(false);
-              setShowBoardMoreMenu(false);
-            }}
-            className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100"
-          >
-            <EyeOff size={12} /> Hide
-            {hiddenColumnKeys.size > 0 && (
-              <span className="rounded-full bg-slate-200 px-1.5 text-xs">
-                {hiddenColumnKeys.size}
-              </span>
-            )}
-            <ChevronDown size={11} />
-          </button>
-          {showHideColumns && (
-            <div
-              data-crm-menu
-              className="absolute top-full left-0 mt-1 w-64 max-h-[min(520px,calc(100vh-5rem))] overflow-y-auto rounded-lg border border-gray-200 bg-white p-2 shadow-xl z-50"
-            >
-              <div className="flex items-center justify-between border-b border-gray-100 px-2 pb-2">
-                <span className="text-xs font-semibold text-gray-800">
-                  Display columns
-                </span>
-                <button
-                  onClick={() => setHiddenColumnKeys(new Set())}
-                  className="text-[10px] font-medium text-gray-400 hover:text-gray-700"
-                >
-                  Show all
-                </button>
-              </div>
-              {hideableColumnGroups.map((group) => (
-                <div key={group.label} className="pt-2">
-                  <div className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400">
-                    {group.label}
-                  </div>
-                  {group.columns.map((column) => {
-                    const visible = !hiddenColumnKeys.has(column.key);
-                    return (
-                      <label
-                        key={column.key}
-                        className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-[11px] text-gray-700 hover:bg-gray-50"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={visible}
-                          onChange={(event) =>
-                            setColumnVisibility(
-                              column.key,
-                              event.target.checked,
-                            )
-                          }
-                          className="h-3.5 w-3.5 rounded accent-[#0f8da8]"
-                        />
-                        <span className="truncate">
-                          {column.label || "Unnamed column"}
-                        </span>
-                      </label>
-                    );
-                  })}
-                </div>
-              ))}
-            </div>
+        <ColumnSelectionPicker
+          mode="multiple"
+          selectedKeys={new Set(
+            hideableColumnGroups.flatMap((group) =>
+              group.columns
+                .filter((column) => !hiddenColumnKeys.has(column.key))
+                .map((column) => column.key),
+            ),
           )}
-        </div>
+          options={hideableColumnGroups.flatMap((group) =>
+            group.columns.map((column) => ({
+              key: column.key,
+              label: column.label || "Unnamed column",
+              category: group.label,
+            })),
+          )}
+          onToggle={(key, visible) => setColumnVisibility(key, visible)}
+          onSetAll={(visible) => {
+            setHiddenColumnKeys(
+              visible
+                ? new Set()
+                : new Set(
+                    hideableColumnGroups.flatMap((group) =>
+                      group.columns.map((column) => column.key),
+                    ),
+                  ),
+            );
+          }}
+          renderTrigger={({ open, toggle }) => (
+            <button
+              type="button"
+              onClick={() => {
+                toggle();
+                setShowSortMenu(false);
+                setShowBoardMoreMenu(false);
+              }}
+              className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100 ${open ? "bg-slate-100" : ""}`}
+            >
+              <EyeOff size={12} /> Hide
+              {hiddenColumnKeys.size > 0 && (
+                <span className="rounded-full bg-slate-200 px-1.5 text-xs">
+                  {hiddenColumnKeys.size}
+                </span>
+              )}
+              <ChevronDown size={11} />
+            </button>
+          )}
+        />
+
+        <button
+          type="button"
+          onClick={toggleCollapseAllGroups}
+          disabled={groups.length === 0}
+          title={allGroupsCollapsed ? "Expand all groups" : "Collapse all groups"}
+          className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {allGroupsCollapsed ? <ChevronsDown size={15} /> : <ChevronsUp size={15} />}
+          {allGroupsCollapsed ? "Expand groups" : "Collapse groups"}
+        </button>
 
         <div className="relative ml-1" data-crm-menu-trigger>
           <button
@@ -11819,7 +11790,6 @@ export function CRMBoard({
             onClick={() => {
               setShowBoardMoreMenu((open) => !open);
               setShowSortMenu(false);
-              setShowHideColumns(false);
             }}
             className="flex h-6 w-6 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 hover:text-gray-800"
             title="More board actions"
@@ -11845,24 +11815,6 @@ export function CRMBoard({
                 <Plus size={15} className="text-[#43adc4]" /> Add group
               </button>
               <div className="my-1 border-t border-gray-100" />
-              <button
-                type="button"
-                onClick={() => {
-                  setShowBoardMoreMenu(false);
-                  toggleCollapseAllGroups();
-                }}
-                disabled={groups.length === 0}
-                className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                {allGroupsCollapsed ? (
-                  <ChevronsDown size={15} className="text-[#43adc4]" />
-                ) : (
-                  <ChevronsUp size={15} className="text-[#43adc4]" />
-                )}
-                {allGroupsCollapsed
-                  ? "Expand all groups"
-                  : "Collapse all groups"}
-              </button>
               <button
                 type="button"
                 onClick={() => {
