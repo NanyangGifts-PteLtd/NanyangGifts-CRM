@@ -153,10 +153,19 @@ const formatQuickBooksAmount = (value: number) =>
     minimumFractionDigits: 2,
   }).format(value);
 
+const addOneMonthDateInput = (value: Date = new Date()) => {
+  const year = value.getFullYear();
+  const month = value.getMonth() + 1;
+  const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  return new Date(Date.UTC(year, month, Math.min(value.getDate(), lastDay)))
+    .toISOString()
+    .slice(0, 10);
+};
+
 const customPaymentTermOption = "Others (specify)";
 const quickBooksPaymentTerms = [
   "100% upfront",
-  "50% deposit, 50% before delivery",
+  "50% deposit, 50% pre-delivery",
   "50% deposit, 50% after delivery",
   "30 days credit",
   "60 days credit",
@@ -165,6 +174,11 @@ const quickBooksPaymentTerms = [
 const standardQuickBooksPaymentTerms = quickBooksPaymentTerms.filter(
   (term) => term !== customPaymentTermOption,
 );
+const legacyQuickBooksPaymentTerm = "50% deposit, 50% before delivery";
+const quickBooksPaymentTermDisplayValue = (value: string) =>
+  value === legacyQuickBooksPaymentTerm
+    ? "50% deposit, 50% pre-delivery"
+    : value;
 
 function QuickBooksPaymentTermField({
   value,
@@ -177,10 +191,11 @@ function QuickBooksPaymentTermField({
   disabled?: boolean;
   accent?: "amber" | "emerald";
 }) {
+  const displayValue = quickBooksPaymentTermDisplayValue(value);
   const isCustom =
-    Boolean(value) && !standardQuickBooksPaymentTerms.includes(value);
-  const selectedValue = isCustom ? customPaymentTermOption : value;
-  const customValue = value === customPaymentTermOption ? "" : value;
+    Boolean(displayValue) && !standardQuickBooksPaymentTerms.includes(displayValue);
+  const selectedValue = isCustom ? customPaymentTermOption : displayValue;
+  const customValue = displayValue === customPaymentTermOption ? "" : displayValue;
   const focusClass =
     accent === "amber"
       ? "focus:border-amber-400 focus:ring-amber-100"
@@ -893,6 +908,10 @@ export function ClientRow({
       customer?: string;
       total: number;
       paymentTerm: string;
+      email: string;
+      billingAddress: string;
+      expirationDate: string;
+      poNumber: string;
       lines: Array<{
         id?: string;
         name: string;
@@ -937,6 +956,14 @@ export function ClientRow({
   const [quickBooksCompanyName, setQuickBooksCompanyName] = useState(
     client.company ?? "",
   );
+  const [quickBooksEmail, setQuickBooksEmail] = useState(client.email ?? "");
+  const [quickBooksBillingAddress, setQuickBooksBillingAddress] = useState(
+    client.billingAddress || client.company || "",
+  );
+  const [quickBooksExpirationDate, setQuickBooksExpirationDate] = useState(
+    addOneMonthDateInput(),
+  );
+  const [quickBooksPoNumber, setQuickBooksPoNumber] = useState("");
   const [quoteDeliveryBySubitem, setQuoteDeliveryBySubitem] = useState<
     Record<string, "singapore" | "other" | "">
   >({});
@@ -1313,6 +1340,12 @@ export function ClientRow({
       });
       setQuickBooksSalesperson(String(result.salesperson ?? "CRM user"));
       setQuickBooksCompanyName(client.company ?? "");
+      setQuickBooksEmail(client.email ?? "");
+      setQuickBooksBillingAddress(
+        client.billingAddress || client.company || "",
+      );
+      setQuickBooksExpirationDate(addOneMonthDateInput());
+      setQuickBooksPoNumber("");
       setQuickBooksPaymentTerm(String(result.paymentTerm ?? ""));
     } catch (error) {
       setQuickBooksDefaults({
@@ -1321,6 +1354,12 @@ export function ClientRow({
       });
       setQuickBooksSalesperson("CRM user");
       setQuickBooksPaymentTerm("");
+      setQuickBooksEmail(client.email ?? "");
+      setQuickBooksBillingAddress(
+        client.billingAddress || client.company || "",
+      );
+      setQuickBooksExpirationDate(addOneMonthDateInput());
+      setQuickBooksPoNumber("");
     } finally {
       setQuickBooksDefaultsLoading(false);
     }
@@ -1359,6 +1398,12 @@ export function ClientRow({
               : (quoteDeliveryBySubitem[subitem.id] as "singapore" | "other"),
           ]),
         ),
+        {
+          email: quickBooksEmail,
+          billingAddress: quickBooksBillingAddress,
+          expirationDate: quickBooksExpirationDate,
+          poNumber: quickBooksPoNumber,
+        },
       )) as {
         estimateId?: string | null;
         docNumber?: string | null;
@@ -1408,6 +1453,18 @@ export function ClientRow({
         isInvoiced: Boolean(result.isInvoiced),
         invoiceDocNumbers: result.invoiceDocNumbers ?? [],
       });
+      setQuickBooksCompanyName(client.company ?? result.current.customer ?? "");
+      setQuickBooksEmail(result.current.email || client.email || "");
+      setQuickBooksBillingAddress(
+        result.current.billingAddress ||
+          client.billingAddress ||
+          client.company ||
+          "",
+      );
+      setQuickBooksExpirationDate(
+        result.current.expirationDate || addOneMonthDateInput(),
+      );
+      setQuickBooksPoNumber(result.current.poNumber ?? "");
     } catch (error) {
       setUpdateEstimateError(
         error instanceof Error ? error.message : "Could not load quote preview",
@@ -1416,6 +1473,10 @@ export function ClientRow({
   };
   const updateQuickBooksEstimate = async () => {
     if (!selectedEstimateGenerationId) return;
+    if (!quickBooksCompanyName.trim()) {
+      setUpdateEstimateError("Company name is required for the QuickBooks quote.");
+      return;
+    }
     if (
       !quickBooksPaymentTerm.trim() ||
       quickBooksPaymentTerm === customPaymentTermOption
@@ -1434,6 +1495,11 @@ export function ClientRow({
         body: JSON.stringify({
           estimateGenerationId: selectedEstimateGenerationId,
           paymentTerm: quickBooksPaymentTerm,
+          companyName: quickBooksCompanyName,
+          email: quickBooksEmail,
+          billingAddress: quickBooksBillingAddress,
+          expirationDate: quickBooksExpirationDate,
+          poNumber: quickBooksPoNumber,
           deliveryBySubitem: Object.fromEntries(
             (updateEstimatePreview?.incoming.lines ?? []).map((line) => [
               line.id,
@@ -2134,6 +2200,10 @@ export function ClientRow({
     setQuickBooksPaymentTerm("");
     setQuickBooksSalesperson("");
     setQuickBooksCompanyName(client.company ?? "");
+    setQuickBooksEmail(client.email ?? "");
+    setQuickBooksBillingAddress(client.billingAddress || client.company || "");
+    setQuickBooksExpirationDate(addOneMonthDateInput());
+    setQuickBooksPoNumber("");
     setQuoteDeliveryBySubitem({});
     setSameQuoteTaxForAll(false);
     setUpdateEstimates([]);
@@ -2494,6 +2564,57 @@ export function ClientRow({
                   </p>
                 ) : null)}
               {updateEstimatePreview && (
+                <>
+                  <div className="grid gap-3 rounded border border-amber-200 bg-white/80 p-3 sm:grid-cols-2 lg:grid-cols-3">
+                    <label className="grid gap-1 text-[11px] font-medium text-slate-600">
+                      Company Name *
+                      <input
+                        value={quickBooksCompanyName}
+                        onChange={(event) => setQuickBooksCompanyName(event.target.value)}
+                        disabled={isUpdatingEstimate}
+                        className="h-9 rounded border border-slate-200 bg-white px-2 text-sm text-slate-700 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
+                      />
+                    </label>
+                    <label className="grid gap-1 text-[11px] font-medium text-slate-600">
+                      Email
+                      <input
+                        type="email"
+                        value={quickBooksEmail}
+                        onChange={(event) => setQuickBooksEmail(event.target.value)}
+                        disabled={isUpdatingEstimate}
+                        className="h-9 rounded border border-slate-200 bg-white px-2 text-sm text-slate-700 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
+                      />
+                    </label>
+                    <label className="grid gap-1 text-[11px] font-medium text-slate-600">
+                      Expiration Date
+                      <input
+                        type="date"
+                        value={quickBooksExpirationDate}
+                        onChange={(event) => setQuickBooksExpirationDate(event.target.value)}
+                        disabled={isUpdatingEstimate}
+                        className="h-9 rounded border border-slate-200 bg-white px-2 text-sm text-slate-700 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
+                      />
+                    </label>
+                    <label className="grid gap-1 text-[11px] font-medium text-slate-600 sm:col-span-2">
+                      Billing Address
+                      <input
+                        value={quickBooksBillingAddress}
+                        onChange={(event) => setQuickBooksBillingAddress(event.target.value)}
+                        disabled={isUpdatingEstimate}
+                        placeholder="Defaults to the company name when blank"
+                        className="h-9 rounded border border-slate-200 bg-white px-2 text-sm text-slate-700 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
+                      />
+                    </label>
+                    <label className="grid gap-1 text-[11px] font-medium text-slate-600">
+                      PO Number
+                      <input
+                        value={quickBooksPoNumber}
+                        onChange={(event) => setQuickBooksPoNumber(event.target.value)}
+                        disabled={isUpdatingEstimate}
+                        className="h-9 rounded border border-slate-200 bg-white px-2 text-sm text-slate-700 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
+                      />
+                    </label>
+                  </div>
                 <div className="grid gap-4 lg:grid-cols-2">
                   {[
                     [
@@ -2568,11 +2689,25 @@ export function ClientRow({
                           <table className="w-full table-fixed text-left">
                             <thead className="bg-slate-100/80 text-[10px] uppercase tracking-wide text-slate-500">
                               <tr>
-                                <th className="w-[36%] px-3 py-2">Item</th>
-                                <th className="px-2 py-2 text-right">Qty</th>
-                                <th className="px-2 py-2 text-right">Rate</th>
-                                <th className="px-3 py-2 text-right">Amount</th>
-                                <th className="w-[36%] px-3 py-2">
+                                <th
+                                  className={`${isIncoming ? "w-[28%]" : "w-[44%]"} px-3 py-2`}
+                                >
+                                  Item
+                                </th>
+                                <th className="w-[8%] whitespace-nowrap px-2 py-2 text-right">Qty</th>
+                                <th
+                                  className={`${isIncoming ? "w-[14%]" : "w-[18%]"} whitespace-nowrap px-2 py-2 text-right`}
+                                >
+                                  Rate
+                                </th>
+                                <th
+                                  className={`${isIncoming ? "w-[18%]" : "w-[20%]"} whitespace-nowrap px-3 py-2 text-right`}
+                                >
+                                  Amount
+                                </th>
+                                <th
+                                  className={`${isIncoming ? "w-[32%]" : "w-[20%]"} px-3 py-2`}
+                                >
                                   <div className="flex items-center justify-between gap-2">
                                     <span>Tax</span>
                                     {isIncoming && (
@@ -2611,13 +2746,13 @@ export function ClientRow({
                                       </p>
                                     ) : null}
                                   </td>
-                                  <td className="px-2 py-2 text-right">
+                                  <td className="whitespace-nowrap px-2 py-2 text-right">
                                     {line.qty}
                                   </td>
-                                  <td className="px-2 py-2 text-right">
+                                  <td className="whitespace-nowrap px-2 py-2 text-right">
                                     {formatQuickBooksAmount(line.unitPrice)}
                                   </td>
-                                  <td className="px-3 py-2 text-right font-medium">
+                                  <td className="whitespace-nowrap px-3 py-2 text-right font-medium">
                                     {formatQuickBooksAmount(line.amount)}
                                   </td>
                                   <td className="px-3 py-2">
@@ -2665,6 +2800,7 @@ export function ClientRow({
                     );
                   })}
                 </div>
+                </>
               )}
               {updateEstimatePreview && (
                 <p className="text-[11px] text-slate-500">
@@ -2777,6 +2913,42 @@ export function ClientRow({
                       <QuickBooksPaymentTermField
                         value={quickBooksPaymentTerm}
                         onChange={setQuickBooksPaymentTerm}
+                      />
+                    </label>
+                    <label className="grid gap-1 text-[11px] font-medium text-slate-600 sm:order-5">
+                      Email
+                      <input
+                        type="email"
+                        value={quickBooksEmail}
+                        onChange={(event) => setQuickBooksEmail(event.target.value)}
+                        placeholder="Client email"
+                        className="h-9 rounded border border-slate-200 bg-white px-2 text-sm text-slate-700 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
+                      />
+                    </label>
+                    <label className="grid gap-1 text-[11px] font-medium text-slate-600 sm:order-6">
+                      Expiration Date
+                      <input
+                        type="date"
+                        value={quickBooksExpirationDate}
+                        onChange={(event) => setQuickBooksExpirationDate(event.target.value)}
+                        className="h-9 rounded border border-slate-200 bg-white px-2 text-sm text-slate-700 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
+                      />
+                    </label>
+                    <label className="grid gap-1 text-[11px] font-medium text-slate-600 sm:order-7">
+                      Billing Address
+                      <input
+                        value={quickBooksBillingAddress}
+                        onChange={(event) => setQuickBooksBillingAddress(event.target.value)}
+                        placeholder="Defaults to the company name when blank"
+                        className="h-9 rounded border border-slate-200 bg-white px-2 text-sm text-slate-700 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
+                      />
+                    </label>
+                    <label className="grid gap-1 text-[11px] font-medium text-slate-600 sm:order-8">
+                      PO Number
+                      <input
+                        value={quickBooksPoNumber}
+                        onChange={(event) => setQuickBooksPoNumber(event.target.value)}
+                        className="h-9 rounded border border-slate-200 bg-white px-2 text-sm text-slate-700 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
                       />
                     </label>
                   </div>
@@ -3044,6 +3216,7 @@ export function ClientRow({
                       !selectedEstimateGenerationId ||
                       !updateEstimatePreview ||
                       updateEstimatePreview.isInvoiced ||
+                      !quickBooksCompanyName.trim() ||
                       !quickBooksPaymentTerm.trim() ||
                       quickBooksPaymentTerm === customPaymentTermOption ||
                       updateEstimatePreview.incoming.lines.some(

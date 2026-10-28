@@ -18,6 +18,92 @@ const numberValue = (value: unknown) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
+function addOneMonth(date: Date) {
+  const year = date.getUTCFullYear();
+  const month = date.getUTCMonth() + 1;
+  const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  return new Date(
+    Date.UTC(year, month, Math.min(date.getUTCDate(), lastDay)),
+  )
+    .toISOString()
+    .slice(0, 10);
+}
+
+function dateOnly(value: unknown, fallback: string) {
+  const candidate = String(value ?? "").trim();
+  return DATE_ONLY.test(candidate) ? candidate : fallback;
+}
+
+function poFieldNameMatches(value: unknown) {
+  return String(value ?? "")
+    .toLocaleLowerCase()
+    .replace(/[^a-z0-9]/g, "") === "ponumber";
+}
+
+type QuickBooksPoField = { definitionId: string; type: string };
+type QuickBooksCustomField = {
+  DefinitionId?: unknown;
+  Name?: unknown;
+  Type?: unknown;
+  StringValue?: unknown;
+  BooleanValue?: unknown;
+  CustomField?: QuickBooksCustomField[];
+};
+
+async function quickBooksPoNumberField(): Promise<QuickBooksPoField | null> {
+  const preferences = await qboRequest("/preferences", { method: "GET" });
+  const groups = (preferences?.Preferences?.SalesFormsPrefs?.CustomField ??
+    []) as QuickBooksCustomField[];
+  const fields = groups.flatMap((group) => group.CustomField ?? [group]);
+  const directField = fields.find(
+    (field) =>
+      poFieldNameMatches(field.Name) && String(field.DefinitionId ?? "").trim(),
+  );
+  if (directField) {
+    return {
+      definitionId: String(directField.DefinitionId),
+      type: String(directField.Type || "StringType"),
+    };
+  }
+  const nameField = fields.find((field) => poFieldNameMatches(field.StringValue));
+  const match = String(nameField?.Name ?? "").match(/SalesCustomName(\d+)$/i);
+  if (!match) return null;
+  const slot = match[1];
+  const enabled = fields.find(
+    (field) =>
+      String(field.Name ?? "").toLocaleLowerCase() ===
+      `salesformsprefs.usesalescustom${slot}`.toLocaleLowerCase(),
+  );
+  if (enabled?.BooleanValue === false) return null;
+  return { definitionId: slot, type: "StringType" };
+}
+
+function paymentTermForQuickBooks(value: string) {
+  if (value === "50% deposit, 50% before delivery") {
+    return "50% deposit, 50% pre-delivery";
+  }
+  if (value.length > 31) {
+    throw new Error(
+      "Payment Terms must be 31 characters or fewer for the configured QuickBooks field.",
+    );
+  }
+  return value;
+}
+
+function poNumberFromEstimate(
+  estimate: { CustomField?: QuickBooksCustomField[] },
+  poField: QuickBooksPoField | null,
+) {
+  const field = (estimate.CustomField ?? []).find(
+    (candidate: QuickBooksCustomField) =>
+      (poField && String(candidate?.DefinitionId) === poField.definitionId) ||
+      poFieldNameMatches(candidate?.Name),
+  );
+  return String(field?.StringValue ?? "");
+}
+
 async function eligibleSubitemStatusIds() {
   return new Set(
     (await Promise.all(
@@ -89,15 +175,41 @@ async function getOrCreateItem(subitem: any) {
   return created.Item;
 }
 
-const customFields = (existingFields: any[], salesperson: string, paymentTerm: string) => [
+const customFields = (
+  existingFields: any[],
+  salesperson: string,
+  paymentTerm: string,
+  poNumber: string,
+  poField: QuickBooksPoField | null,
+) => {
+  if (poNumber && !poField) {
+    throw new Error(
+      'QuickBooks does not have an active sales-form custom field named "PO Number".',
+    );
+  }
+  return [
   // Keep any pre-existing sales-form fields (such as PO Number) intact. Only
-  // the two CRM-managed field slots are replaced.
+  // CRM-managed fields are replaced. The PO field is matched from the active
+  // QuickBooks company preferences, never assumed to use a fixed slot.
   ...(existingFields ?? []).filter(
-    (field) => !["2", "3"].includes(String(field.DefinitionId)),
+    (field) =>
+      !["2", "3", ...(poField ? [poField.definitionId] : [])].includes(
+        String(field.DefinitionId),
+      ),
   ),
   ...(paymentTerm ? [{ DefinitionId: "2", Type: "StringType", StringValue: paymentTerm }] : []),
   { DefinitionId: "3", Type: "StringType", StringValue: salesperson },
+  ...(poField
+    ? [
+        {
+          DefinitionId: poField.definitionId,
+          Type: poField.type,
+          StringValue: poNumber,
+        },
+      ]
+    : []),
 ];
+};
 
 function incomingPreview(
   client: any,
@@ -179,7 +291,7 @@ async function authorisedGeneration(
   return { generation, client: { ...client, subitems: activeSubitems ?? [] } };
 }
 
-const currentPreview = (estimate: any) => ({
+const currentPreview = (estimate: any, poField: QuickBooksPoField | null) => ({
   id: estimate.Id,
   syncToken: estimate.SyncToken,
   docNumber: estimate.DocNumber,
@@ -189,6 +301,10 @@ const currentPreview = (estimate: any) => ({
     (estimate.CustomField ?? []).find(
       (field: any) => String(field.DefinitionId) === "2",
     )?.StringValue ?? "",
+  email: estimate.BillEmail?.Address ?? "",
+  billingAddress: estimate.BillAddr?.Line1 ?? "",
+  expirationDate: estimate.ExpirationDate ?? "",
+  poNumber: poNumberFromEstimate(estimate, poField),
   lines: (estimate.Line ?? [])
     .filter((line: any) => line.DetailType === "SalesItemLineDetail")
     .map((line: any) => ({
@@ -212,10 +328,11 @@ export async function GET(request: NextRequest) {
       const { generation, client } = await authorisedGeneration(supabase, generationId, user.id);
       const eligibleStatusIds = await eligibleSubitemStatusIds();
       const result = await qboRequest(`/estimate/${generation.quickbooks_estimate_id}`, { method: "GET" });
+      const poField = await quickBooksPoNumberField();
       const linkedInvoices = await linkedInvoicesForEstimate(result.Estimate);
       return NextResponse.json({
         generation,
-        current: currentPreview(result.Estimate),
+        current: currentPreview(result.Estimate, poField),
         incoming: incomingPreview(client, eligibleStatusIds),
         isInvoiced: linkedInvoices.length > 0,
         invoiceDocNumbers: linkedInvoices.map((invoice) => invoice.DocNumber ?? invoice.Id).filter(Boolean),
@@ -324,10 +441,20 @@ export async function POST(request: NextRequest) {
     const {
       estimateGenerationId,
       paymentTerm: suppliedPaymentTerm,
+      companyName: suppliedCompanyName,
+      email: suppliedEmail,
+      billingAddress: suppliedBillingAddress,
+      expirationDate: suppliedExpirationDate,
+      poNumber: suppliedPoNumber,
       deliveryBySubitem = {},
     } = await request.json() as {
       estimateGenerationId?: string;
       paymentTerm?: string;
+      companyName?: string;
+      email?: string;
+      billingAddress?: string;
+      expirationDate?: string;
+      poNumber?: string;
       deliveryBySubitem?: Record<string, "singapore" | "other">;
     };
     if (!estimateGenerationId) return NextResponse.json({ error: "Missing quote selection" }, { status: 400 });
@@ -366,6 +493,22 @@ export async function POST(request: NextRequest) {
     if (!paymentTerm || paymentTerm === "Others (specify)") {
       return NextResponse.json({ error: "Payment terms are required for the QuickBooks quote." }, { status: 400 });
     }
+    const companyName = String(suppliedCompanyName ?? client.company ?? "")
+      .trim()
+      .slice(0, 200);
+    if (!companyName) {
+      return NextResponse.json({ error: "Company name is required for the QuickBooks quote." }, { status: 400 });
+    }
+    const email = String(suppliedEmail ?? client.email ?? "").trim().slice(0, 320);
+    const billingAddress = String(suppliedBillingAddress ?? client.billing_address ?? "")
+      .trim()
+      .slice(0, 500);
+    const poNumber = String(suppliedPoNumber ?? "").trim().slice(0, 200);
+    const expirationDate = dateOnly(
+      suppliedExpirationDate,
+      current.ExpirationDate || addOneMonth(new Date(current.TxnDate || Date.now())),
+    );
+    const poField = await quickBooksPoNumberField();
     const lines = await Promise.all(preview.lines.map(async (line: any, index: number) => {
       const item = await getOrCreateItem({ name: line.name });
       return {
@@ -381,27 +524,69 @@ export async function POST(request: NextRequest) {
         },
       };
     }));
+    let customer = current.CustomerRef;
+    if (String(current.CustomerRef?.name ?? "").trim() !== companyName) {
+      const matches = await qboQuery(
+        `SELECT * FROM Customer WHERE DisplayName = '${esc(companyName)}'`,
+      );
+      const existingCustomer = matches?.QueryResponse?.Customer?.[0];
+      if (existingCustomer) {
+        customer = { value: existingCustomer.Id, name: existingCustomer.DisplayName };
+      } else {
+        const customerResult = await qboRequest(
+          `/customer/${encodeURIComponent(String(current.CustomerRef?.value ?? ""))}`,
+          { method: "GET" },
+        );
+        const currentCustomer = customerResult?.Customer;
+        if (!currentCustomer?.Id || currentCustomer.SyncToken == null) {
+          throw new Error("QuickBooks customer could not be updated.");
+        }
+        const customerUpdate = await qboRequest("/customer", {
+          method: "POST",
+          body: JSON.stringify({
+            Id: currentCustomer.Id,
+            SyncToken: currentCustomer.SyncToken,
+            sparse: true,
+            DisplayName: companyName,
+            CompanyName: companyName,
+          }),
+        });
+        customer = {
+          value: customerUpdate?.Customer?.Id ?? currentCustomer.Id,
+          name: customerUpdate?.Customer?.DisplayName ?? companyName,
+        };
+      }
+    }
     const updatedResult = await qboRequest("/estimate", {
       method: "POST",
       body: JSON.stringify({
         Id: current.Id,
         SyncToken: current.SyncToken,
         sparse: false,
-        CustomerRef: current.CustomerRef,
+        CustomerRef: customer,
         TxnDate: current.TxnDate,
-        ExpirationDate: current.ExpirationDate,
-        BillAddr: current.BillAddr,
+        ExpirationDate: expirationDate,
+        BillAddr: { Line1: billingAddress || companyName },
         ShipAddr: current.ShipAddr,
-        BillEmail: current.BillEmail,
+        ...(email ? { BillEmail: { Address: email } } : {}),
         CustomerMemo: current.CustomerMemo,
         PrivateNote: current.PrivateNote,
-        TxnTaxDetail: current.TxnTaxDetail,
+        // Do not carry the old transaction-level tax detail into the rebuilt
+        // quote. It can contain a stale/invalid TaxRateRef (for example 47)
+        // even when the line TaxCodeRefs are valid. QuickBooks recalculates
+        // the transaction tax from the rebuilt lines.
         CurrencyRef: current.CurrencyRef,
         ExchangeRate: current.ExchangeRate,
         DepartmentRef: current.DepartmentRef,
         SalesTermRef: current.SalesTermRef,
         Line: lines,
-        CustomField: customFields(current.CustomField, salesperson, paymentTerm),
+        CustomField: customFields(
+          current.CustomField,
+          salesperson,
+          paymentTermForQuickBooks(paymentTerm),
+          poNumber,
+          poField,
+        ),
       }),
     });
     const updated = updatedResult.Estimate;

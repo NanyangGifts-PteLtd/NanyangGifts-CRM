@@ -74,7 +74,7 @@ const inputClass =
 const customPaymentTermOption = "Others (specify)";
 const paymentTerms = [
   "100% upfront",
-  "50% deposit, 50% before delivery",
+  "50% deposit, 50% pre-delivery",
   "50% deposit, 50% after delivery",
   "30 days credit",
   "60 days credit",
@@ -83,6 +83,9 @@ const paymentTerms = [
 const standardPaymentTerms = paymentTerms.filter(
   (term) => term !== customPaymentTermOption,
 );
+const legacyPaymentTerm = "50% deposit, 50% before delivery";
+const paymentTermDisplayValue = (value: string) =>
+  value === legacyPaymentTerm ? "50% deposit, 50% pre-delivery" : value;
 
 function PaymentTermField({
   value,
@@ -91,9 +94,11 @@ function PaymentTermField({
   value: string;
   onChange: (value: string) => void;
 }) {
-  const isCustom = Boolean(value) && !standardPaymentTerms.includes(value);
-  const selectedValue = isCustom ? customPaymentTermOption : value;
-  const customValue = value === customPaymentTermOption ? "" : value;
+  const displayValue = paymentTermDisplayValue(value);
+  const isCustom =
+    Boolean(displayValue) && !standardPaymentTerms.includes(displayValue);
+  const selectedValue = isCustom ? customPaymentTermOption : displayValue;
+  const customValue = displayValue === customPaymentTermOption ? "" : displayValue;
 
   return (
     <div className="grid gap-2">

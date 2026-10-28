@@ -10,6 +10,12 @@ export function useGenerateEstimate() {
         salesperson: string,
         paymentTerm: string,
         deliveryBySubitem: Record<string, "singapore" | "other">,
+        details: {
+            email: string;
+            billingAddress: string;
+            expirationDate: string;
+            poNumber: string;
+        },
     ) {
         try {
             setIsGeneratingEstimate(true);
@@ -20,7 +26,7 @@ export function useGenerateEstimate() {
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ clientId, companyName, salesperson, paymentTerm, deliveryBySubitem }),
+                body: JSON.stringify({ clientId, companyName, salesperson, paymentTerm, deliveryBySubitem, ...details }),
             });
 
             const json = await res.json();

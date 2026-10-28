@@ -28,14 +28,104 @@ function numberValue(value: unknown) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
+function addOneMonth(date: Date) {
+  const year = date.getUTCFullYear();
+  const month = date.getUTCMonth() + 1;
+  const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  return new Date(
+    Date.UTC(year, month, Math.min(date.getUTCDate(), lastDay)),
+  )
+    .toISOString()
+    .slice(0, 10);
+}
+
+function dateOnly(value: unknown, fallback: string) {
+  const candidate = String(value ?? "").trim();
+  return DATE_ONLY.test(candidate) ? candidate : fallback;
+}
+
+function poFieldNameMatches(value: unknown) {
+  return String(value ?? "")
+    .toLocaleLowerCase()
+    .replace(/[^a-z0-9]/g, "") === "ponumber";
+}
+
+type QuickBooksCustomField = {
+  DefinitionId?: unknown;
+  Name?: unknown;
+  Type?: unknown;
+  StringValue?: unknown;
+  BooleanValue?: unknown;
+  CustomField?: QuickBooksCustomField[];
+};
+
+/**
+ * QuickBooks' legacy Preferences response stores sales custom field names in
+ * nested Name/Value settings rather than in Estimate CustomField objects.
+ * Resolve the active PO Number slot from those settings. This company has PO
+ * Number in Sales Custom 1, but this deliberately verifies it at runtime.
+ */
+async function quickBooksPoNumberField() {
+  const preferences = await qboRequest("/preferences", { method: "GET" });
+  const groups = (preferences?.Preferences?.SalesFormsPrefs?.CustomField ??
+    []) as QuickBooksCustomField[];
+  const fields = groups.flatMap((group) => group.CustomField ?? [group]);
+  const directField = fields.find(
+    (field) =>
+      poFieldNameMatches(field.Name) && String(field.DefinitionId ?? "").trim(),
+  );
+  if (directField) {
+    return {
+      definitionId: String(directField.DefinitionId),
+      type: String(directField.Type || "StringType"),
+    };
+  }
+  const nameField = fields.find((field) =>
+    poFieldNameMatches(field.StringValue),
+  );
+  const match = String(nameField?.Name ?? "").match(/SalesCustomName(\d+)$/i);
+  if (!match) return null;
+  const slot = match[1];
+  const enabled = fields.find(
+    (field) =>
+      String(field.Name ?? "").toLocaleLowerCase() ===
+      `salesformsprefs.usesalescustom${slot}`.toLocaleLowerCase(),
+  );
+  if (enabled?.BooleanValue === false) return null;
+  return { definitionId: slot, type: "StringType" };
+}
+
+function paymentTermForQuickBooks(value: string) {
+  // Sales Custom 2 is a legacy QuickBooks field with a 31-character value
+  // limit. Keep the meaning while using a value that can be stored there.
+  if (value === "50% deposit, 50% before delivery") {
+    return "50% deposit, 50% pre-delivery";
+  }
+  if (value.length > 31) {
+    throw new Error(
+      "Payment Terms must be 31 characters or fewer for the configured QuickBooks field.",
+    );
+  }
+  return value;
+}
+
 function estimateMetadataFields(values: {
   salesperson: string;
   paymentTerm: string;
+  poNumber: string;
+  poField: { definitionId: string; type: string } | null;
 }) {
   // Verified from the existing Make scenario's QuickBooks response:
   // DefinitionId 2 is Payment Terms; DefinitionId 3 is the current legacy
   // salesperson slot. Name is intentionally omitted because QuickBooks uses
   // the definition ID to resolve a transaction custom field.
+  if (values.poNumber && !values.poField) {
+    throw new Error(
+      'QuickBooks does not have an active sales-form custom field named "PO Number".',
+    );
+  }
   return [
     ...(values.paymentTerm.trim()
       ? [
@@ -51,6 +141,15 @@ function estimateMetadataFields(values: {
       Type: "StringType",
       StringValue: values.salesperson,
     },
+    ...(values.poNumber && values.poField
+      ? [
+          {
+            DefinitionId: values.poField.definitionId,
+            Type: values.poField.type,
+            StringValue: values.poNumber,
+          },
+        ]
+      : []),
   ];
 }
 
@@ -117,12 +216,20 @@ export async function POST(req: NextRequest) {
       companyName: suppliedCompanyName,
       salesperson: suppliedSalesperson,
       paymentTerm: suppliedPaymentTerm,
+      email: suppliedEmail,
+      billingAddress: suppliedBillingAddress,
+      expirationDate: suppliedExpirationDate,
+      poNumber: suppliedPoNumber,
       deliveryBySubitem,
     } = (await req.json()) as {
       clientId?: string;
       companyName?: string;
       salesperson?: string;
       paymentTerm?: string;
+      email?: string;
+      billingAddress?: string;
+      expirationDate?: string;
+      poNumber?: string;
       deliveryBySubitem?: Record<string, "singapore" | "other">;
     };
     if (!clientId) {
@@ -154,6 +261,12 @@ export async function POST(req: NextRequest) {
     const salesperson = String(suppliedSalesperson ?? "")
       .trim()
       .slice(0, 200);
+    const email = String(suppliedEmail ?? "").trim().slice(0, 320);
+    const billingAddress = String(suppliedBillingAddress ?? "")
+      .trim()
+      .slice(0, 500);
+    const poNumber = String(suppliedPoNumber ?? "").trim().slice(0, 200);
+    const expirationDate = dateOnly(suppliedExpirationDate, addOneMonth(new Date()));
     if (!companyName) {
       return NextResponse.json(
         { error: "Company name is required for the QuickBooks quote." },
@@ -291,7 +404,9 @@ export async function POST(req: NextRequest) {
 
     const customFields = estimateMetadataFields({
       salesperson,
-      paymentTerm,
+      paymentTerm: paymentTermForQuickBooks(paymentTerm),
+      poNumber,
+      poField: poNumber ? await quickBooksPoNumberField() : null,
     });
     const estimateRes = await qboRequest("/estimate", {
       method: "POST",
@@ -300,6 +415,10 @@ export async function POST(req: NextRequest) {
           value: customer.Id,
           name: customer.DisplayName,
         },
+        TxnDate: new Date().toISOString().slice(0, 10),
+        ExpirationDate: expirationDate,
+        ...(email ? { BillEmail: { Address: email } } : {}),
+        BillAddr: { Line1: billingAddress || companyName },
         Line: lines,
         ...(customFields.length ? { CustomField: customFields } : {}),
       }),
