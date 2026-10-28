@@ -12,7 +12,6 @@ import {
 } from "pdf-lib";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { randomUUID } from "node:crypto";
 
 const ELIGIBLE_STATUS_KEYS = [
   "subitem_status_quoted",
@@ -552,13 +551,13 @@ export async function POST(req: NextRequest) {
     );
   }
   const number = Number(quotationNumber);
-  const filename = `Quotation ${number} - ${
+  const filename = `Proforma Quote ${number} from ${
     String(client.company)
       .replace(/[^a-z0-9]+/gi, " ")
       .trim() || "Client"
   }.pdf`;
   const createdBy = profile?.full_name?.trim() || profile?.email || "CRM user";
-  const storagePath = `clients/${clientId}/sample-estimates/${user.id}/${randomUUID()}.pdf`;
+  const storagePath = `clients/${clientId}/sample-estimates/${user.id}/${filename}`;
   const pdf = await makePdf({
     client,
     rows,
