@@ -2388,16 +2388,19 @@ export async function updateClientRow(
 
   // Status-to-group rules belong here rather than only in the board.  This
   // keeps API, import, and realtime-driven client updates consistent as well.
-  // Groups do not currently have a system key, so the configured Follow Up
-  // group is resolved by its canonical board name.
+  // Groups do not currently have a system key, so configured groups are
+  // resolved by their canonical board names.
   if (nextUpdates.status !== undefined) {
     const quotedLabel = await resolveSystemOption("client_status", "quoted");
+    const failedLabel = await resolveSystemOption("client_status", "failed");
     // Enforce the automation whenever the stable Quoted option is saved.
     // Older/imported rows can have a correct option ID with stale display
     // text (or the reverse); treating this only as a pristine transition
     // allowed those partially migrated rows to keep the wrong group.
     const isQuotedStatusUpdate =
       clientOptionIds.status_option_id === quotedLabel.id;
+    const isFailedStatusUpdate =
+      clientOptionIds.status_option_id === failedLabel.id;
 
     if (isQuotedStatusUpdate) {
       const { data: followUpGroup, error: followUpGroupError } = await supabase
@@ -2426,6 +2429,20 @@ export async function updateClientRow(
         nextUpdates.replyStatusOptionId = repliedLabel.id;
         clientOptionIds.reply_status_option_id = repliedLabel.id;
       }
+    } else if (isFailedStatusUpdate) {
+      const { data: failedGroup, error: failedGroupError } = await supabase
+        .from("crm_groups")
+        .select("id")
+        .eq("name", "Failed")
+        .maybeSingle();
+      if (failedGroupError) throw failedGroupError;
+      if (!failedGroup) {
+        throw new Error('The required CRM group "Failed" is not configured.');
+      }
+
+      // Keep the status and group in the same clients UPDATE below.  If the
+      // group is unavailable, the error above prevents either change.
+      nextUpdates.groupId = failedGroup.id;
     }
   }
 

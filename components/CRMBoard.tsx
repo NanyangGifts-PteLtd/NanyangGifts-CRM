@@ -7482,6 +7482,7 @@ export function CRMBoard({
   const STATUS_TO_GROUP_NAME: Partial<Record<ClientStatus, string>> = {
     "Follow Up": "Follow Up",
     Quoted: "Follow Up",
+    Failed: "Failed",
     Shortlisted: "Shortlisted",
     Unqualified: "Unqualified Lead",
   };
@@ -7935,6 +7936,11 @@ export function CRMBoard({
         "client_status_quoted",
         "Quoted",
       );
+      const failedStatus = findSystemOption(
+        clientStatusEntries,
+        "client_status_failed",
+        "Failed",
+      );
       const waitingReplyStatus = findSystemOption(
         replyStatusEntries,
         "reply_status_waiting",
@@ -7950,6 +7956,11 @@ export function CRMBoard({
           (updates.statusOptionId === undefined &&
             updates.status === quotedStatus.value)
         : updates.status === quotedStatus.value;
+      const isFailedStatusUpdate = failedStatus.id
+        ? updates.statusOptionId === failedStatus.id ||
+          (updates.statusOptionId === undefined &&
+            updates.status === failedStatus.value)
+        : updates.status === failedStatus.value;
       if (
         isQuotedStatusUpdate &&
         existingClient &&
@@ -8061,15 +8072,21 @@ export function CRMBoard({
       } else if (updates.status) {
         const targetGroupName = isQuotedStatusUpdate
           ? "Follow Up"
+          : isFailedStatusUpdate
+            ? "Failed"
           : STATUS_TO_GROUP_NAME[updates.status];
         if (targetGroupName) {
           const matchingGroup = groups.find(
             (g) => g.name.toLowerCase() === targetGroupName.toLowerCase(),
           );
-          if (matchingGroup) {
-            nextUpdates.groupId = matchingGroup.id;
-            movedToGroupName = matchingGroup.name;
+          if (!matchingGroup) {
+            toast.error(`${targetGroupName} group is not configured`, {
+              description: `The status was not changed, so this lead cannot be left in the wrong group.`,
+            });
+            return;
           }
+          nextUpdates.groupId = matchingGroup.id;
+          movedToGroupName = matchingGroup.name;
         }
       }
       setClients((prev) =>

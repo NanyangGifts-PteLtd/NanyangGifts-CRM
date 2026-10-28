@@ -143,9 +143,9 @@ const automations: ReferenceItem[] = [
     trigger:
       "A CRM lead status is changed to a mapped status, including Closed.",
     behaviour:
-      "Moves the client into the matching CRM group automatically. Closing also ensures the current Closed Leads group exists; the board presents an Undo action for the automatic move.",
+      "Quoted moves the client to Follow Up and changes Waiting reply status to Done. Failed moves it to Failed; Shortlisted and Unqualified also move to their mapped groups. Closing ensures the current Closed Leads group exists. Status and group are saved together; if a required group is unavailable, neither change is saved. The board presents an Undo action for the automatic move.",
     source:
-      "components/CRMBoard.tsx; app/api/crm-groups/ensure-current-closed/route.ts",
+      "components/CRMBoard.tsx; lib/crm.ts; app/api/crm-groups/ensure-current-closed/route.ts",
   },
   {
     title: "Overdue timeline progress",
@@ -153,6 +153,14 @@ const automations: ReferenceItem[] = [
     behaviour:
       "Marks timeline rows as Late when their end date has passed and they are not already complete, delivered, shipped out, or Late.",
     source: "components/SubitemDetailView.tsx",
+  },
+  {
+    title: "OCF Need By timeline synchronisation",
+    trigger: "An internal user saves an OCF with a changed Need By value.",
+    behaviour:
+      "Updates the NBD row across every timeline of each linked subitem. A date is stored as the timeline date; ASAP is stored as the row remark. The OCF is saved even if that secondary update fails, and the user is warned to save again.",
+    source:
+      "app/api/order-confirmations/update/route.ts; lib/ocf-need-by.ts",
   },
   {
     title: "System label resolution",
@@ -235,8 +243,9 @@ const restrictions: ReferenceItem[] = [
     title: "Labels/options",
     trigger: "Label management and option APIs.",
     behaviour:
-      "Admin, director, and dev users can manage protected option layouts. A label used by an automation cannot be deleted until its dependency is resolved.",
-    source: "app/api/options/delete/route.ts; app/api/options/reorder/route.ts",
+      "Admin, director, and dev users can manage protected option layouts. Any authenticated user can update the shared Person-icon colour palette. A label used by an automation cannot be deleted until its dependency is resolved.",
+    source:
+      "app/api/options/delete/route.ts; app/api/options/reorder/route.ts; app/api/profile-avatar-colors/route.ts",
   },
   {
     title: "Customer profiles and blacklist",
@@ -250,7 +259,7 @@ const restrictions: ReferenceItem[] = [
     title: "CRM soft deletion",
     trigger: "Deleting a client or subitem from the CRM Board.",
     behaviour:
-      "The creator may move their item to the Bin within 72 hours of creation; directors/developers may do so at any time.",
+      "A user assigned through Client People/PM, or directly to the subitem, may move it to the Bin within 72 hours of creation. Directors, developers, and admins may do so at any time.",
     source: "lib/crm.ts",
   },
   {
@@ -264,7 +273,7 @@ const restrictions: ReferenceItem[] = [
     title: "Payment Voucher board",
     trigger: "Payment voucher access and row actions.",
     behaviour:
-      "Internal roles can access the board. Deleting/recovering standard vouchers is limited to admins/directors; QuickBooks-Bills-only rows additionally permit dev users. Bill-related columns are read-only pending a dedicated editor.",
+      "Internal roles can access the board. Active Courier and Other vouchers are edited through their preview by client People/PM assignees or admin/director users; deactivated and QuickBooks-Bills-only rows cannot be edited there. A client assignee or admin/director/dev may deactivate a standard voucher; QuickBooks-Bills-only rows require admin/director/dev. QuickBooks Bill fields remain generated/read-only.",
     source:
       "app/api/additional-costs/route.ts; components/AdditionalCostsBoard.tsx",
   },
@@ -295,7 +304,7 @@ const restrictions: ReferenceItem[] = [
     title: "Round Robin",
     trigger: "Round Robin panel and API.",
     behaviour:
-      "Admins, directors, and developers can manage the assignment queue; eligible assignees are sales and director users according to the queue rules.",
+      "Admins, directors, and developers can manage the assignment queue. Sales and director users must be explicitly present and active in the pool before they are eligible; creating or reactivating an account does not automatically add or re-enable it. Deactivated accounts are disabled in the pool.",
     source: "components/RoundRobinPanel.tsx; app/api/round-robin/route.ts",
   },
   {
