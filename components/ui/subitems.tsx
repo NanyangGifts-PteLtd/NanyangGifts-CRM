@@ -4377,10 +4377,14 @@ export function SubitemsTable({
                     const isEditControl = !!target.closest(
                       "button, input, textarea, select, [data-editable-cell]",
                     );
+                    const isReadOnlyInteraction = !!target.closest(
+                      "a[href], [data-inline-editor-link], [data-view-action]",
+                    );
                     if (
                       isEditControl &&
+                      !isReadOnlyInteraction &&
                       !target.closest(
-                        "[data-subitem-assignment-editor], [data-view-action], [data-selection-control], [data-subitem-action-menu]",
+                        "[data-subitem-assignment-editor], [data-selection-control], [data-subitem-action-menu]",
                       )
                     ) {
                       event.preventDefault();

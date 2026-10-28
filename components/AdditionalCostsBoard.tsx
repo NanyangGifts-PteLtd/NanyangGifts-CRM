@@ -64,6 +64,7 @@ type AdditionalCost = {
   courier_option_id?: string | null;
   trip_id: string;
   items_sent: string;
+  related_subitem_ids?: string[] | null;
   qty: string;
   verified: boolean | null;
   discussed: boolean | null;
@@ -1128,6 +1129,17 @@ export function AdditionalCostsBoard({
         next.set(client.id, client);
         return Array.from(next.values());
       });
+      const eligibleSubitems = client.subitems.filter(
+        (subitem) =>
+          !subitem.customFields?.additionalCostId &&
+          awardedOrLaterSubitemStatusIds.has(subitem.statusOptionId ?? ""),
+      );
+      // IDs are unambiguous. Older vouchers only retained a comma-separated
+      // display name, so keep that as a one-time compatibility fallback while
+      // excluding ineligible and payment-voucher subitems.
+      const storedRelatedIds = Array.isArray(row.related_subitem_ids)
+        ? row.related_subitem_ids.filter((id): id is string => typeof id === "string")
+        : [];
       const selectedNames = new Set(
         row.items_sent.split(",").map((name) => name.trim()).filter(Boolean),
       );
@@ -1138,9 +1150,13 @@ export function AdditionalCostsBoard({
         cost: row.cost == null ? "" : String(row.cost),
         reason: row.reason,
         reasonOptionId: row.reason_option_id ?? "",
-        relatedSubitemIds: client.subitems
-          .filter((subitem) => selectedNames.has(subitem.name))
-          .map((subitem) => subitem.id),
+        relatedSubitemIds: storedRelatedIds.length
+          ? eligibleSubitems
+              .filter((subitem) => storedRelatedIds.includes(subitem.id))
+              .map((subitem) => subitem.id)
+          : eligibleSubitems
+              .filter((subitem) => selectedNames.has(subitem.name))
+              .map((subitem) => subitem.id),
         courier: row.courier,
         remarks: row.remarks,
         orderNumber: row.order_number ?? "",

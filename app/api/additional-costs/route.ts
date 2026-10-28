@@ -424,6 +424,7 @@ export async function POST(request: NextRequest) {
         reason: reason.value,
         reason_option_id: reason.id,
         items_sent: itemsSent,
+        related_subitem_ids: relatedSubitemIds,
         courier: courier.value,
         courier_option_id: courier.id,
         voucher_group: isOtherVoucher ? "other" : "courier",
@@ -671,6 +672,7 @@ export async function PATCH(request: NextRequest) {
       await assertAwardedOrLaterRelatedSubitems(relatedSubitems ?? []);
       const names = new Map((relatedSubitems ?? []).map((subitem) => [subitem.id, subitem.name]));
       values.items_sent = ids.map((id) => names.get(id) ?? "").filter(Boolean).join(", ");
+      values.related_subitem_ids = ids;
       delete values.relatedSubitemIds;
     }
     if (values.items_sent !== undefined && !String(values.items_sent).trim())

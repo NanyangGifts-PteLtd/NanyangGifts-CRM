@@ -3333,11 +3333,15 @@ export function ClientRow({
           const isEditControl = !!target.closest(
             "button, input, textarea, select, [data-editable-cell]",
           );
+          const isReadOnlyInteraction = !!target.closest(
+            "a[href], [data-inline-editor-link], [data-view-action]",
+          );
           if (
             !isAssignmentColumn &&
             column &&
             isEditControl &&
-            !target.closest("[data-view-action], [data-activity-log]")
+            !isReadOnlyInteraction &&
+            !target.closest("[data-activity-log]")
           ) {
             event.preventDefault();
             event.stopPropagation();
