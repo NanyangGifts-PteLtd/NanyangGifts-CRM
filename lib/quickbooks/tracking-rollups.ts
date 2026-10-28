@@ -20,7 +20,9 @@ function labelValues(label: NullableLabel) {
     : { value: null, optionId: null };
 }
 
-/** Recomputes the two client-level summaries from every active quote. */
+const UNASSIGNED_TRACKING_STATUS_KEY = "__unassigned";
+
+/** Recomputes the client-level invoice and payment summaries. */
 export async function refreshClientTrackingRollups(clientId: string) {
   const [{ data: quotes, error: quotesError }, labels] = await Promise.all([
     supabaseAdmin
@@ -39,13 +41,13 @@ export async function refreshClientTrackingRollups(clientId: string) {
     quoteIds.length
       ? supabaseAdmin
           .from("quickbooks_estimate_invoices")
-          .select("estimate_generation_id, quickbooks_invoice_doc_number, invoice_date, total, balance, is_voided")
+          .select("estimate_generation_id, quickbooks_invoice_doc_number, invoice_date, total, balance, is_voided, tracking_status_option_id")
           .in("estimate_generation_id", quoteIds)
           .order("invoice_date", { ascending: false })
       : Promise.resolve({ data: [], error: null }),
     supabaseAdmin
       .from("quickbooks_client_invoices")
-      .select("quickbooks_invoice_doc_number, invoice_date, total, balance, is_voided")
+      .select("quickbooks_invoice_doc_number, invoice_date, total, balance, is_voided, tracking_status_option_id")
       .eq("client_id", clientId)
       .order("invoice_date", { ascending: false }),
   ]);
@@ -62,6 +64,17 @@ export async function refreshClientTrackingRollups(clientId: string) {
         .filter((number): number is string => Boolean(number)),
     ),
   ).join(", ");
+  const trackingStatusSummary = invoices.reduce<Record<string, number>>(
+    (summary, invoice) => {
+      if (invoice.is_voided) return summary;
+      const optionId =
+        String(invoice.tracking_status_option_id ?? "").trim() ||
+        UNASSIGNED_TRACKING_STATUS_KEY;
+      summary[optionId] = (summary[optionId] ?? 0) + 1;
+      return summary;
+    },
+    {},
+  );
 
   const quoteIdsWithActiveInvoices = new Set(
     (quoteInvoicesResult.data ?? [])
@@ -108,7 +121,9 @@ export async function refreshClientTrackingRollups(clientId: string) {
       tracking_overall_invoice_payment_status: payment.value,
       tracking_overall_invoice_payment_status_option_id: payment.optionId,
       tracking_invoice_numbers: invoiceNumbers,
+      tracking_invoice_status_summary: trackingStatusSummary,
     })
     .eq("id", clientId);
   if (updateError) throw updateError;
+  return trackingStatusSummary;
 }

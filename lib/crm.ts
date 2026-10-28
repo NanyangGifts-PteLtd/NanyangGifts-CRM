@@ -349,6 +349,7 @@ type Clients = {
   tracking_invoice_numbers?: string | null;
   tracking_overall_invoice_payment_status?: string | null;
   tracking_overall_invoice_payment_status_option_id?: string | null;
+  tracking_invoice_status_summary?: Record<string, number> | null;
   company: string | null;
   email: string | null;
   phone: string | null;
@@ -671,6 +672,8 @@ function mapClients(row: Clients): Client {
       row.tracking_overall_invoice_payment_status ?? null,
     trackingOverallInvoicePaymentStatusOptionId:
       row.tracking_overall_invoice_payment_status_option_id ?? null,
+    trackingInvoiceStatusSummary:
+      row.tracking_invoice_status_summary ?? {},
     company: row.company ?? "",
     email: row.email ?? "",
     phone: row.phone ?? "",
@@ -983,7 +986,8 @@ export async function fetchClientsWithSubitems(params?: {
     "tracking_quote_subtotal", "tracking_quote_total", "tracking_invoice_subtotal",
     "tracking_invoice_total", "tracking_invoice_numbers",
     "tracking_overall_invoice_payment_status",
-    "tracking_overall_invoice_payment_status_option_id", "company", "email",
+    "tracking_overall_invoice_payment_status_option_id",
+    "tracking_invoice_status_summary", "company", "email",
     "phone", "requirements", "unqualified_reason", "nbd",
     "total_price", "billing_address", "created_by", "created_at", "waiting_started_at",
     "group_id", "expanded", "color", "custom_fields", "deleted_at",

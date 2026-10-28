@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
       ? await supabase
           .from("quickbooks_estimate_invoices")
           .select(
-            "id, estimate_generation_id, quickbooks_invoice_doc_number, invoice_date, due_date, subtotal, total, balance, is_voided, link_source",
+            "id, estimate_generation_id, quickbooks_invoice_doc_number, invoice_date, due_date, subtotal, total, balance, is_voided, link_source, tracking_status, tracking_status_option_id",
           )
           .in("estimate_generation_id", quoteIds)
           .order("invoice_date", { ascending: false })
@@ -47,11 +47,22 @@ export async function GET(request: NextRequest) {
       await supabaseAdmin
         .from("quickbooks_client_invoices")
         .select(
-          "id, quickbooks_invoice_doc_number, invoice_date, due_date, subtotal, total, balance, is_voided, link_source, last_synced_at",
+          "id, quickbooks_invoice_doc_number, invoice_date, due_date, subtotal, total, balance, is_voided, link_source, last_synced_at, tracking_status, tracking_status_option_id",
         )
         .eq("client_id", clientId)
         .order("invoice_date", { ascending: false });
     if (directInvoicesError) throw directInvoicesError;
+    const trackingStatusSummary = [
+      ...(invoices ?? []),
+      ...(directInvoices ?? []),
+    ].reduce<Record<string, number>>((summary, invoice) => {
+      if (invoice.is_voided) return summary;
+      const optionId =
+        String(invoice.tracking_status_option_id ?? "").trim() ||
+        "__unassigned";
+      summary[optionId] = (summary[optionId] ?? 0) + 1;
+      return summary;
+    }, {});
 
     return NextResponse.json({
       quotes: (generations ?? []).map((quote) => ({
@@ -59,6 +70,7 @@ export async function GET(request: NextRequest) {
         invoices: invoicesByQuote.get(quote.id) ?? [],
       })),
       directInvoices: directInvoices ?? [],
+      trackingStatusSummary,
     });
   } catch (error) {
     return NextResponse.json(

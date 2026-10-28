@@ -353,6 +353,12 @@ const CLIENT_HEADER_COLS: HeaderCol[] = [
     minWidth: 120,
   },
   {
+    key: "trackingInvoiceStatusSummary",
+    label: "Tracking Status Summary",
+    width: 190,
+    minWidth: 150,
+  },
+  {
     key: "trackingQuoteActions",
     label: "Quote Actions",
     width: 125,
@@ -456,6 +462,12 @@ const TRACKING_HEADER_COLS: HeaderCol[] = [
     minWidth: 120,
   },
   {
+    key: "trackingInvoiceStatusSummary",
+    label: "Tracking Status Summary",
+    width: 190,
+    minWidth: 150,
+  },
+  {
     key: "trackingQuoteActions",
     label: "Quote Actions",
     width: 125,
@@ -483,6 +495,7 @@ const TRACKING_ONLY_CLIENT_COLUMN_KEYS = new Set([
   "trackingOverallPriceInvoiceMatch",
   "trackingVerifiedMismatchRemarks",
   "trackingOverallInvoicePaymentStatus",
+  "trackingInvoiceStatusSummary",
   "trackingQuoteActions",
   "trackingVerifiedInvoiceMonday",
 ]);
@@ -1820,6 +1833,68 @@ export function CRMBoard({
   const [showBoardMoreMenu, setShowBoardMoreMenu] = useState(false);
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [trackingView, setTrackingView] = useState(false);
+  const trackingSummaryHydrationKey = useMemo(
+    () =>
+      clients
+        .map(
+          (client) =>
+            `${client.id}:${JSON.stringify(client.trackingInvoiceStatusSummary ?? {})}`,
+        )
+        .sort()
+        .join("|"),
+    [clients],
+  );
+  useEffect(() => {
+    if (!trackingView || !trackingSummaryHydrationKey) return;
+    let active = true;
+    const clientIds = trackingSummaryHydrationKey
+      .split("|")
+      .map((entry) => entry.slice(0, entry.indexOf(":")));
+    const supabase = createSupabaseClient();
+    void supabase
+      .from("clients")
+      .select("id, tracking_invoice_status_summary")
+      .in("id", clientIds)
+      .then(({ data, error }) => {
+        if (!active || error || !data) return;
+        const summaries = new Map(
+          data.map((row) => [
+            row.id,
+            (row.tracking_invoice_status_summary ?? {}) as Record<string, number>,
+          ]),
+        );
+        setClients((current) => {
+          let changed = false;
+          const next = current.map((client) => {
+            const summary = summaries.get(client.id);
+            if (
+              !summary ||
+              JSON.stringify(summary) ===
+                JSON.stringify(client.trackingInvoiceStatusSummary ?? {})
+            )
+              return client;
+            changed = true;
+            return { ...client, trackingInvoiceStatusSummary: summary };
+          });
+          return changed ? next : current;
+        });
+      });
+    return () => {
+      active = false;
+    };
+  }, [setClients, trackingSummaryHydrationKey, trackingView]);
+  const handleTrackingStatusSummaryChanged = useCallback(
+    (clientId: string, summary: Record<string, number>) => {
+      setClients((current) =>
+        current.map((client) =>
+          client.id === clientId
+            ? { ...client, trackingInvoiceStatusSummary: summary }
+            : client,
+        ),
+      );
+    },
+    [setClients],
+  );
   const boardToolbarRef = useRef<HTMLDivElement>(null);
   const [boardToolbarWidth, setBoardToolbarWidth] = useState<number | null>(
     null,
@@ -4059,6 +4134,29 @@ export function CRMBoard({
                 .eq("id", row.id);
           }
         } else {
+          if (code === "tracking_payment_status") {
+            const results = await Promise.all([
+              supabase
+                .from("quickbooks_estimate_invoices")
+                .update({ tracking_status: trimmed })
+                .eq("tracking_status_option_id", option.id),
+              supabase
+                .from("quickbooks_client_invoices")
+                .update({ tracking_status: trimmed })
+                .eq("tracking_status_option_id", option.id),
+            ]);
+            const renameError = results.find((result) => result.error)?.error;
+            if (renameError) {
+              await supabase
+                .from("option_values")
+                .update({ value: oldName })
+                .eq("id", option.id);
+              toast.error("Existing tracking status labels could not be updated", {
+                description: renameError.message,
+              });
+              return;
+            }
+          }
           if (code === "tracking_invoice_payment_status") {
             const { error } = await supabase
               .from("estimate_generations")
@@ -13642,6 +13740,9 @@ export function CRMBoard({
                           onToggleSelect={() => toggleSelect(client.id)}
                           onUpdate={(updates) =>
                             updateClient(client.id, updates)
+                          }
+                          onTrackingStatusSummaryChanged={
+                            handleTrackingStatusSummaryChanged
                           }
                           onUpdateSubitem={(subitemId, updates) =>
                             updateSubitem(client.id, subitemId, updates)

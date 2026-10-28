@@ -11,7 +11,7 @@ import {
   PaymentRow,
   Profile,
 } from "../../app/types";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   ChevronDown,
@@ -72,6 +72,64 @@ import { crmCellText } from "@/lib/crm-cell-context";
 // to move it right. The client header is aligned to the row's border edge in
 // CRMBoard.tsx.
 const CLIENT_ROW_ACCENT_LEFT_OFFSET_PX = -0.2;
+const UNASSIGNED_TRACKING_STATUS_KEY = "__unassigned";
+
+function TrackingStatusSummaryBar({
+  summary,
+  options,
+}: {
+  summary: Record<string, number> | undefined;
+  options: OptionEntry[];
+}) {
+  const optionById = new Map(
+    options.filter((option) => option.id).map((option) => [option.id as string, option]),
+  );
+  const entries = Object.entries(summary ?? {}).filter(
+    ([, count]) => Number.isFinite(count) && count > 0,
+  );
+  const total = entries.reduce((sum, [, count]) => sum + count, 0);
+  if (!total) {
+    return (
+      <div
+        className="mx-2 h-3.5 flex-1 rounded-sm bg-slate-200"
+        title="No active invoices"
+      />
+    );
+  }
+  const optionOrder = new Map(
+    options.map((option, index) => [option.id ?? option.value, index]),
+  );
+  const ordered = [...entries].sort(([left], [right]) => {
+    if (left === UNASSIGNED_TRACKING_STATUS_KEY) return 1;
+    if (right === UNASSIGNED_TRACKING_STATUS_KEY) return -1;
+    return (optionOrder.get(left) ?? Number.MAX_SAFE_INTEGER) -
+      (optionOrder.get(right) ?? Number.MAX_SAFE_INTEGER);
+  });
+
+  return (
+    <div className="mx-2 flex h-3.5 flex-1 rounded-sm bg-slate-200">
+      {ordered.map(([optionId, count]) => {
+        const option = optionById.get(optionId);
+        const label =
+          optionId === UNASSIGNED_TRACKING_STATUS_KEY
+            ? "No status"
+            : (option?.value ?? "Unknown status");
+        const percentage = (count / total) * 100;
+        return (
+          <span
+            key={optionId}
+            className="relative h-full min-w-[2px] cursor-help border-r border-white/70 transition-transform duration-150 ease-out first:rounded-l-sm last:rounded-r-sm last:border-r-0 hover:z-10 hover:-translate-y-0.5 hover:scale-y-125 hover:shadow-md"
+            style={{
+              width: `${percentage}%`,
+              backgroundColor: option?.color ?? "#94a3b8",
+            }}
+            title={`${label} ${count}/${total} ${percentage.toFixed(1)}%`}
+          />
+        );
+      })}
+    </div>
+  );
+}
 
 type AttachmentItem = {
   id: string;
@@ -287,6 +345,10 @@ export type ClientRowProps = {
   onToggleExpand: () => void;
   onToggleSelect: () => void;
   onUpdate: (u: Partial<Client>) => void;
+  onTrackingStatusSummaryChanged?: (
+    clientId: string,
+    summary: Record<string, number>,
+  ) => void;
   onUpdateSubitem: (subitemId: string, u: Partial<Subitem>) => void;
   onApplySelectedSubitemStatus?: (
     status: string,
@@ -486,6 +548,7 @@ export function ClientRow({
   onToggleExpand,
   onToggleSelect,
   onUpdate,
+  onTrackingStatusSummaryChanged,
   onUpdateSubitem,
   onApplySelectedSubitemStatus,
   onApplySelectedSubitemField,
@@ -847,6 +910,24 @@ export function ClientRow({
     useState(false);
   const [linkQuoteDialogOpen, setLinkQuoteDialogOpen] = useState(false);
   const [trackingQuoteListVersion, setTrackingQuoteListVersion] = useState(0);
+  const [trackingStatusSummary, setTrackingStatusSummary] = useState(
+    client.trackingInvoiceStatusSummary ?? {},
+  );
+  useEffect(() => {
+    const incoming = client.trackingInvoiceStatusSummary ?? {};
+    setTrackingStatusSummary((current) =>
+      Object.keys(incoming).length === 0 && Object.keys(current).length > 0
+        ? current
+        : incoming,
+    );
+  }, [client.trackingInvoiceStatusSummary]);
+  const handleTrackingStatusSummaryChanged = useCallback(
+    (summary: Record<string, number>) => {
+      setTrackingStatusSummary(summary);
+      onTrackingStatusSummaryChanged?.(client.id, summary);
+    },
+    [client.id, onTrackingStatusSummaryChanged],
+  );
   const [isLoadingTrackingInvoices, setIsLoadingTrackingInvoices] =
     useState(false);
   const [trackingInvoiceRows, setTrackingInvoiceRows] = useState<
@@ -3599,6 +3680,21 @@ export function ClientRow({
               />
             </div>
             <div
+              data-client-column="trackingInvoiceStatusSummary"
+              className="tracking-client-cell flex items-center border-r border-[#D0D4E4]"
+              style={{
+                height: 30,
+                minWidth: colWidth.trackingInvoiceStatusSummary,
+                width: colWidth.trackingInvoiceStatusSummary,
+                order: columnOrderMap.trackingInvoiceStatusSummary,
+              }}
+            >
+              <TrackingStatusSummaryBar
+                summary={trackingStatusSummary}
+                options={trackingPaymentStatusLabelOptions}
+              />
+            </div>
+            <div
               data-client-column="trackingQuoteActions"
               className="tracking-client-cell flex items-center justify-center overflow-hidden border-r border-[#D0D4E4] p-1"
               style={{
@@ -5234,6 +5330,9 @@ export function ClientRow({
                 onReorderOptions?.(code, layout)
               }
               onQuotesChanged={() => setIsTrackingInvoicesExpanded(true)}
+              onTrackingStatusSummaryChanged={
+                handleTrackingStatusSummaryChanged
+              }
               expandAllInvoices={isTrackingInvoicesExpanded}
             />
           </div>

@@ -32,7 +32,6 @@ export const TRACKING_VIEW_MIN_WIDTH = TRACKING_QUOTE_TABLE_MIN_WIDTH + 80;
 const QUOTE_COLUMN_DEFINITIONS = [
   { key: "quote", width: 230, minWidth: 220 },
   { key: "summary", width: 140, minWidth: 100 },
-  { key: "trackingStatus", width: 180, minWidth: 130 },
   { key: "remarks", width: 240, minWidth: 140 },
   { key: "quoteSubtotal", width: 190, minWidth: 150 },
   { key: "quoteTotal", width: 125, minWidth: 100 },
@@ -51,6 +50,7 @@ const INVOICE_COLUMN_DEFINITIONS = [
   { key: "subtotal", width: 240, minWidth: 170 },
   { key: "total", width: 275, minWidth: 130 },
   { key: "balance", width: 240, minWidth: 120 },
+  { key: "trackingStatus", width: 180, minWidth: 130 },
   { key: "status", width: 170, minWidth: 110 },
   { key: "actions", width: 135, minWidth: 115 },
 ] as const;
@@ -116,6 +116,8 @@ type Invoice = {
   is_voided: boolean;
   link_source: "quickbooks" | "manual" | null;
   last_synced_at?: string | null;
+  tracking_status: string | null;
+  tracking_status_option_id: string | null;
 };
 
 type Quote = {
@@ -172,6 +174,7 @@ type TrackingQuoteListProps = {
     layout: BadgeOptionLayout[],
   ) => void | Promise<void>;
   onQuotesChanged?: () => void;
+  onTrackingStatusSummaryChanged?: (summary: Record<string, number>) => void;
   expandAllInvoices?: boolean;
 };
 
@@ -196,6 +199,7 @@ export function TrackingQuoteList({
   onRenameOption,
   onReorderOptions,
   onQuotesChanged,
+  onTrackingStatusSummaryChanged,
   expandAllInvoices = false,
 }: TrackingQuoteListProps) {
   const [quotes, setQuotes] = useState<Quote[]>([]);
@@ -224,6 +228,7 @@ export function TrackingQuoteList({
     Record<string, number>
   >(() => defaultWidths(INVOICE_COLUMN_DEFINITIONS));
   const latestQuoteUpdate = useRef(new Map<string, number>());
+  const latestInvoiceUpdate = useRef(new Map<string, number>());
   const autoSyncStarted = useRef(false);
   const hasLoaded = useRef(false);
 
@@ -267,6 +272,7 @@ export function TrackingQuoteList({
       ),
     [invoiceColumnWidths],
   );
+  const trackingTableWidth = Math.max(quoteTableWidth, invoiceTableWidth);
 
   useEffect(() => {
     const loadWidths = async () => {
@@ -369,6 +375,9 @@ export function TrackingQuoteList({
         if (active) {
           setQuotes(loadedQuotes);
           setDirectInvoices(loadedDirectInvoices);
+          onTrackingStatusSummaryChanged?.(
+            (result.trackingStatusSummary ?? {}) as Record<string, number>,
+          );
         }
 
         if (canEdit && !autoSyncStarted.current) {
@@ -441,7 +450,7 @@ export function TrackingQuoteList({
     return () => {
       active = false;
     };
-  }, [canEdit, clientId, reloadVersion]);
+  }, [canEdit, clientId, onTrackingStatusSummaryChanged, reloadVersion]);
 
   const syncQuoteInvoices = async (quoteId: string) => {
     if (!canEdit) return;
@@ -628,6 +637,75 @@ export function TrackingQuoteList({
     }
   };
 
+  const updateInvoiceTrackingStatus = async (
+    invoiceId: string,
+    source: "estimate" | "direct",
+    value: string,
+    optionId: string | null,
+  ) => {
+    if (!canEdit) return;
+    const requestId = (latestInvoiceUpdate.current.get(invoiceId) ?? 0) + 1;
+    latestInvoiceUpdate.current.set(invoiceId, requestId);
+    const previous =
+      source === "direct"
+        ? directInvoices.find((invoice) => invoice.id === invoiceId)
+        : quotes.flatMap((quote) => quote.invoices).find((invoice) => invoice.id === invoiceId);
+    const apply = (invoice: Invoice): Invoice =>
+      invoice.id === invoiceId
+        ? {
+            ...invoice,
+            tracking_status: value || null,
+            tracking_status_option_id: optionId,
+          }
+        : invoice;
+    if (source === "direct") setDirectInvoices((current) => current.map(apply));
+    else
+      setQuotes((current) =>
+        current.map((quote) => ({ ...quote, invoices: quote.invoices.map(apply) })),
+      );
+    setError(null);
+
+    try {
+      const response = await fetch(
+        `/api/quickbooks/tracking-invoices/${invoiceId}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ source, trackingStatusOptionId: optionId }),
+        },
+      );
+      const result = await response.json();
+      if (!response.ok)
+        throw new Error(result?.error ?? "Could not update invoice tracking status");
+      onTrackingStatusSummaryChanged?.(
+        (result.trackingStatusSummary ?? {}) as Record<string, number>,
+      );
+      onQuotesChanged?.();
+    } catch (updateError) {
+      if (
+        previous &&
+        latestInvoiceUpdate.current.get(invoiceId) === requestId
+      ) {
+        const restore = (invoice: Invoice) =>
+          invoice.id === invoiceId ? previous : invoice;
+        if (source === "direct")
+          setDirectInvoices((current) => current.map(restore));
+        else
+          setQuotes((current) =>
+            current.map((quote) => ({
+              ...quote,
+              invoices: quote.invoices.map(restore),
+            })),
+          );
+      }
+      setError(
+        updateError instanceof Error
+          ? updateError.message
+          : "Could not update invoice tracking status",
+      );
+    }
+  };
+
   const labelManagementProps = (code: TrackingLabelCode) => ({
     onAddOption: onAddOption
       ? (name: string) => onAddOption(code, name)
@@ -659,7 +737,7 @@ export function TrackingQuoteList({
   return (
     <div
       className="overflow-visible border border-[#d0d4e4] bg-white text-[12.6px]"
-      style={{ minWidth: quoteTableWidth }}
+      style={{ width: trackingTableWidth, minWidth: trackingTableWidth }}
     >
       {syncingAll && (
         <div className="flex items-center gap-2 border-b border-sky-200 bg-sky-50 px-3 py-2 font-medium text-sky-700">
@@ -679,7 +757,6 @@ export function TrackingQuoteList({
         {[
           "Quote",
           "Summary",
-          "Tracking Status",
           "Remarks",
           "Quote total before GST",
           "Quote total",
@@ -696,7 +773,7 @@ export function TrackingQuoteList({
               key={column.key}
               className={`relative px-3 py-2 text-center ${
                 index > 0 ? "border-l border-[#d0d4e4]" : ""
-              } ${index === 4 || index === 6 || index === 11 ? "whitespace-nowrap" : ""}`}
+              } ${index === 3 || index === 5 || index === 10 ? "whitespace-nowrap" : ""}`}
             >
               {label}
               <ColumnResizeHandle
@@ -771,21 +848,6 @@ export function TrackingQuoteList({
                     void updateQuote(quote.id, { trackingSummary: value })
                   }
                   {...labelManagementProps("tracking_summary")}
-                />
-              </div>
-              <div className="min-w-0 border-l border-[#d0d4e4] p-0">
-                <StatusBadge
-                  value={quote.payment_status ?? ""}
-                  options={paymentStatusOptions}
-                  small
-                  includeBlankOption={false}
-                  readOnly={!canEdit}
-                  readOnlyReason="You can only edit items that are assigned to you"
-                  manageLabel="quote payment status"
-                  onChange={(value) =>
-                    void updateQuote(quote.id, { paymentStatus: value })
-                  }
-                  {...labelManagementProps("tracking_payment_status")}
                 />
               </div>
               <div className="relative min-w-0 overflow-visible border-l border-[#d0d4e4] p-0 focus-within:z-[80]">
@@ -893,11 +955,11 @@ export function TrackingQuoteList({
             </div>
 
             {open && (
-              <div className="border-t border-[#d0d4e4] bg-[#f7fbfc] p-3">
+              <div className="border-t border-[#d0d4e4] bg-[#f7fbfc] py-3">
                 {quote.invoices.length ? (
                   <div
                     className="inline-block overflow-hidden border border-[#d0d4e4] bg-white align-top"
-                    style={{ minWidth: invoiceTableWidth }}
+                    style={{ width: invoiceTableWidth, minWidth: invoiceTableWidth }}
                   >
                     <div
                       className="grid border-b border-[#d0d4e4] bg-white text-[12.6px] font-medium text-slate-600"
@@ -910,6 +972,7 @@ export function TrackingQuoteList({
                         "Invoice total before GST",
                         "Invoice total",
                         "Balance",
+                        "Tracking Status",
                         "Status",
                         "Actions",
                       ].map((label, index) => {
@@ -958,6 +1021,25 @@ export function TrackingQuoteList({
                         <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">
                           {amount(invoice.balance)}
                         </span>
+                        <div className="min-w-0 border-l border-[#d0d4e4] p-0">
+                          <StatusBadge
+                            value={invoice.tracking_status ?? ""}
+                            options={paymentStatusOptions}
+                            small
+                            readOnly={!canEdit || invoice.is_voided}
+                            readOnlyReason={invoice.is_voided ? "Voided invoices cannot be updated" : "You can only edit items that are assigned to you"}
+                            manageLabel="invoice tracking status"
+                            onChange={(value, option) =>
+                              void updateInvoiceTrackingStatus(
+                                invoice.id,
+                                "estimate",
+                                value,
+                                option?.id ?? null,
+                              )
+                            }
+                            {...labelManagementProps("tracking_payment_status")}
+                          />
+                        </div>
                         <span className={`border-l border-[#d0d4e4] px-3 py-2 text-center font-medium ${invoice.is_voided ? "text-red-600" : "text-emerald-700"}`}>
                           {invoice.is_voided ? "Voided" : "Active"}
                         </span>
@@ -1000,7 +1082,7 @@ export function TrackingQuoteList({
           </div>
         );
       })}
-      <div className="border-t border-[#d0d4e4] bg-[#f7fbfc] p-3">
+      <div className="border-t border-[#d0d4e4] bg-[#f7fbfc] py-3">
         <div className="mb-2 flex items-center justify-between">
           <div>
             <div className="font-semibold text-slate-700">Invoice only</div>
@@ -1016,7 +1098,7 @@ export function TrackingQuoteList({
         </div>
         <div
           className="inline-block overflow-hidden border border-[#d0d4e4] bg-white align-top"
-          style={{ minWidth: invoiceTableWidth }}
+          style={{ width: invoiceTableWidth, minWidth: invoiceTableWidth }}
         >
           <div
             className="grid border-b border-[#d0d4e4] font-medium text-slate-600"
@@ -1029,6 +1111,7 @@ export function TrackingQuoteList({
               "Invoice total before GST",
               "Invoice total",
               "Balance",
+              "Tracking Status",
               "Status",
               "Actions",
             ].map((label, index) => (
@@ -1065,6 +1148,25 @@ export function TrackingQuoteList({
                 <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">{amount(invoice.subtotal)}</span>
                 <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">{amount(invoice.total)}</span>
                 <span className="border-l border-[#d0d4e4] px-3 py-2 text-center">{amount(invoice.balance)}</span>
+                <div className="min-w-0 border-l border-[#d0d4e4] p-0">
+                  <StatusBadge
+                    value={invoice.tracking_status ?? ""}
+                    options={paymentStatusOptions}
+                    small
+                    readOnly={!canEdit || invoice.is_voided}
+                    readOnlyReason={invoice.is_voided ? "Voided invoices cannot be updated" : "You can only edit items that are assigned to you"}
+                    manageLabel="invoice tracking status"
+                    onChange={(value, option) =>
+                      void updateInvoiceTrackingStatus(
+                        invoice.id,
+                        "direct",
+                        value,
+                        option?.id ?? null,
+                      )
+                    }
+                    {...labelManagementProps("tracking_payment_status")}
+                  />
+                </div>
                 <span className={`border-l border-[#d0d4e4] px-3 py-2 text-center font-medium ${invoice.is_voided ? "text-red-600" : "text-emerald-700"}`}>
                   {invoice.is_voided ? "Voided" : "Active"}
                 </span>

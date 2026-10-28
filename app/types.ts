@@ -247,6 +247,7 @@ export interface Client {
   trackingInvoiceNumbers?: string;
   trackingOverallInvoicePaymentStatus?: string | null;
   trackingOverallInvoicePaymentStatusOptionId?: string | null;
+  trackingInvoiceStatusSummary?: Record<string, number>;
   company: string;
   email: string;
   phone: string;
