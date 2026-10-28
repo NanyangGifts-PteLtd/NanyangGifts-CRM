@@ -7,7 +7,8 @@ import logo from "./nanyanggifts-gifts-and-merch.png";
 import { DEFAULT_IMPORTANT_NOTES } from "@/components/Important-Notes";
 import OcfImportantNotes from "@/components/OcfImportantNotes";
 import { OcfFloatingInstruction } from "@/components/OcfFloatingInstruction";
-import { PrintArtworkAppendix } from "@/components/ocf/PrintArtworkAppendix";
+import { PrintOcfItemPages } from "@/components/ocf/PrintOcfItemPages";
+import { InlineDatePicker } from "@/components/ui/inline-date-picker";
 
 type OcfItem = {
   id: string;
@@ -330,9 +331,9 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
   }
 
   return (
-    <main className="min-h-screen bg-[#f3f4f6] ">
-      <div className="mx-auto max-w-5xl bg-white p-6 shadow-lg">
-        <div className="relative mb-4 flex min-h-28 items-start justify-between gap-4 border-b border-black pb-14">
+    <main className="min-h-screen bg-[#f3f4f6] print:bg-white">
+      <div className="mx-auto max-w-5xl bg-white p-6 shadow-lg print:max-w-none print:p-0 print:shadow-none">
+        <div className="relative mb-4 flex min-h-28 items-start justify-between gap-4 border-b border-black pb-14 print:hidden">
           <div>
             <Image
               src={logo}
@@ -402,7 +403,7 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
           </div>
         </div>
 
-        <div className="mb-4 bg-[#eef2ff] px-10 py-3">
+        <div className="mb-4 bg-[#eef2ff] px-10 py-3 print:hidden">
           <table className="w-full border-collapse text-[10px]">
             <tbody>
               <tr>
@@ -447,7 +448,7 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
           </table>
         </div>
 
-        <div className="relative">
+        <div className="relative print:hidden">
           <OcfFloatingInstruction side="left" step={1} className="top-16">
             Please check and verify the Item Artwork(s). Click the image to enlarge
           </OcfFloatingInstruction>
@@ -542,20 +543,18 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
                   </td>
                   <td className="border border-black px-2 py-3 font-medium">
                     <div className="space-y-2">
-                      <input
-                        type="date"
-                        value={
-                          item.need_by_date === "ASAP"
-                            ? ""
-                            : item.need_by_date ?? ""
-                        }
-                        disabled={item.need_by_date === "ASAP"}
-                        onChange={(event) =>
-                          updateItemNeedBy(item.id, event.target.value)
-                        }
-                        className="w-full min-w-0 rounded border border-gray-300 px-2 py-1 text-[11px] font-normal disabled:cursor-not-allowed disabled:bg-gray-100"
-                        aria-label={`Need by date for ${item.item_name || "item"}`}
-                      />
+                      <div className="h-7 w-full min-w-0 rounded border border-gray-300 bg-white px-1 text-[10px] font-normal">
+                        <InlineDatePicker
+                          value={
+                            item.need_by_date === "ASAP"
+                              ? ""
+                              : item.need_by_date ?? ""
+                          }
+                          onChange={(value) => updateItemNeedBy(item.id, value)}
+                          label={`Need by date for ${item.item_name || "item"}`}
+                          className="text-[10px]"
+                        />
+                      </div>
                       <label className="flex items-center gap-2 text-[11px] font-normal text-gray-700">
                         <input
                           type="checkbox"
@@ -661,7 +660,7 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
           </table>
         </div>
 
-        <table className="mt-4 w-full border border-black text-[11px]">
+        <table className="mt-4 w-full border border-black text-[11px] print:hidden">
           <tbody>
             <tr className="border-b border-black">
               <td className="border-r border-black bg-[#eef2ff] px-3 py-2 font-semibold">
@@ -681,7 +680,18 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
           </tbody>
         </table>
 
-        <div className="relative mt-4 border border-gray-300 text-[11px]">
+        <PrintOcfItemPages
+          items={items}
+          projectName={clientNameSnapshot}
+          companyName={companySnapshot}
+          salespersonName={ocf.salesperson_name ?? ""}
+          salespersonEmail={ocf.salesperson_email ?? ""}
+          generatedAt={ocf.generated_at}
+          estimatedDeliveryNotes={deliveryNotes}
+          brandLogoSrc={logo.src}
+        />
+
+        <div className="relative mt-4 border border-gray-300 text-[11px] print:hidden">
           <OcfFloatingInstruction side="right" step={3} className="top-1/2">
             [Optional] Please tick here if you have a strict Need By Date
           </OcfFloatingInstruction>
@@ -742,23 +752,41 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
             <OcfFloatingInstruction side="right" step={5} className="top-1/2">
               Please sign and submit here
             </OcfFloatingInstruction>
-            <p className="mb-2 font-semibold text-gray-800">
-              Client Signature:
-            </p>
-            <img
-              src={ocf.client_signature_url}
-              alt="Client signature"
-              className="max-h-40 rounded border border-gray-300 bg-white"
-            />
+            <div className="flex items-start justify-between gap-6">
+              <div>
+                <p className="mb-2 font-semibold text-gray-800">
+                  Client Signature:
+                </p>
+                <img
+                  src={ocf.client_signature_url}
+                  alt="Client signature"
+                  className="max-h-40 rounded border border-gray-300 bg-white"
+                />
+              </div>
+              <p className="shrink-0 text-sm text-gray-700">
+                <span className="font-semibold">Signed at:</span>{" "}
+                {ocf.client_signed_at
+                  ? new Date(ocf.client_signed_at).toLocaleString("en-SG")
+                  : "-"}
+              </p>
+            </div>
           </div>
         ) : (
           <div className="relative mt-3">
             <OcfFloatingInstruction side="right" step={5} className="top-1/2">
               Please sign and submit here
             </OcfFloatingInstruction>
-            <p>
-            <span className="font-semibold">Client Signature:</span> -
-            </p>
+            <div className="flex items-start justify-between gap-6 text-sm">
+              <p>
+                <span className="font-semibold">Client Signature:</span> -
+              </p>
+              <p className="shrink-0 text-gray-700">
+                <span className="font-semibold">Signed at:</span>{" "}
+                {ocf.client_signed_at
+                  ? new Date(ocf.client_signed_at).toLocaleString("en-SG")
+                  : "-"}
+              </p>
+            </div>
           </div>
         )}
 
@@ -769,13 +797,7 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
           <p className="mt-4 text-sm text-green-600">{saveMessage}</p>
         ) : null}
 
-        <div className="mt-6 border-t border-gray-200 pt-4 text-sm text-gray-700">
-          <p>
-            <span className="font-semibold">Signed at:</span>{" "}
-            {ocf.client_signed_at
-              ? new Date(ocf.client_signed_at).toLocaleString("en-SG")
-              : "-"}
-          </p>
+        <div className="mt-6 border-t border-gray-200 pt-4 text-sm text-gray-700 print:hidden">
           <p>
             <span className="font-semibold">Submitted at:</span>{" "}
             {ocf.client_submitted_at
@@ -794,7 +816,6 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
           </p>
         </div>
 
-        <PrintArtworkAppendix items={items} />
       </div>
 
       {expandedImage ? (

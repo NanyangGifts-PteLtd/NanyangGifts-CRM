@@ -7,7 +7,7 @@ import logo from "./nanyanggifts-gifts-and-merch.png";
 import { DEFAULT_IMPORTANT_NOTES } from "@/components/Important-Notes";
 import OcfImportantNotes from "@/components/OcfImportantNotes";
 import { OcfFloatingInstruction } from "@/components/OcfFloatingInstruction";
-import { PrintArtworkAppendix } from "@/components/ocf/PrintArtworkAppendix";
+import { PrintOcfItemPages } from "@/components/ocf/PrintOcfItemPages";
 
 type OcfItem = {
   id: string;
@@ -221,9 +221,9 @@ export default function ClientOcfView({ ocf }: { ocf: Ocf }) {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [expandedImage]);
   return (
-    <main className="min-h-screen bg-[#f3f4f6] px-4 py-8">
-      <div className="mx-auto max-w-5xl bg-white p-6 shadow-lg">
-        <div className="mb-4 flex items-start justify-between gap-4 border-b border-black pb-4">
+    <main className="min-h-screen bg-[#f3f4f6] px-4 py-8 print:bg-white print:p-0">
+      <div className="mx-auto max-w-5xl bg-white p-6 shadow-lg print:max-w-none print:p-0 print:shadow-none">
+        <div className="mb-4 flex items-start justify-between gap-4 border-b border-black pb-4 print:hidden">
           <div>
             <Image
               src={logo}
@@ -249,7 +249,7 @@ export default function ClientOcfView({ ocf }: { ocf: Ocf }) {
           </div>
         </div>
 
-        <div className="mb-4 bg-[#eef2ff] px-4 py-3">
+        <div className="mb-4 bg-[#eef2ff] px-4 py-3 print:hidden">
           <table className="w-full border-collapse text-sm">
             <tbody>
               <tr>
@@ -280,7 +280,7 @@ export default function ClientOcfView({ ocf }: { ocf: Ocf }) {
           </table>
         </div>
 
-        <div className="relative">
+        <div className="relative print:hidden">
           <OcfFloatingInstruction side="left" step={1} className="top-16">
             Please check and verify the Item Artwork(s). Click the image to enlarge
           </OcfFloatingInstruction>
@@ -473,7 +473,7 @@ export default function ClientOcfView({ ocf }: { ocf: Ocf }) {
           </table>
         </div>
 
-        <table className="mt-4 w-full border border-black text-sm">
+        <table className="mt-4 w-full border border-black text-sm print:hidden">
           <tbody>
             <tr className="border-b border-black">
               <td className="border-r border-black bg-[#eef2ff] px-3 py-2 font-semibold">
@@ -493,7 +493,18 @@ export default function ClientOcfView({ ocf }: { ocf: Ocf }) {
           </tbody>
         </table>
 
-        <div className="relative mt-4 border border-gray-300 text-sm">
+        <PrintOcfItemPages
+          items={items}
+          projectName={ocf.client_name_snapshot ?? ""}
+          companyName={company}
+          salespersonName={ocf.salesperson_name ?? ""}
+          salespersonEmail={ocf.salesperson_email ?? ""}
+          generatedAt={ocf.generated_at}
+          estimatedDeliveryNotes={ocf.estimated_delivery_notes ?? ""}
+          brandLogoSrc={logo.src}
+        />
+
+        <div className="relative mt-4 border border-gray-300 text-sm print:hidden">
           <OcfFloatingInstruction side="right" step={3} className="top-1/2">
             [Optional] Please tick here if you have a strict Need By Date
           </OcfFloatingInstruction>
@@ -567,7 +578,7 @@ export default function ClientOcfView({ ocf }: { ocf: Ocf }) {
             Please sign and submit here
           </OcfFloatingInstruction>
           {isLocked ? (
-            <div className="space-y-2 text-sm text-gray-700">
+            <div className="space-y-2 text-sm text-gray-700 print:hidden">
               <p>This form has already been submitted.</p>
               <p>
                 <span className="font-semibold">Signed at:</span>{" "}
@@ -604,9 +615,22 @@ export default function ClientOcfView({ ocf }: { ocf: Ocf }) {
               }
             />
           )}
+          {isLocked ? (
+            <div className="hidden items-start justify-between gap-6 text-sm print:flex">
+              <p>
+                <span className="font-semibold">Client Signature:</span>{" "}
+                Signed
+              </p>
+              <p className="shrink-0 text-gray-700">
+                <span className="font-semibold">Signed at:</span>{" "}
+                {ocf.client_signed_at
+                  ? new Date(ocf.client_signed_at).toLocaleString("en-SG")
+                  : "-"}
+              </p>
+            </div>
+          ) : null}
         </div>
 
-        <PrintArtworkAppendix items={items} />
       </div>
 
       {expandedImage ? (
