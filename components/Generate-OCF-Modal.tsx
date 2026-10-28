@@ -96,8 +96,20 @@ function showOcfGenerationLoading(target: Window) {
 }
 
 function toLeadTimeNumber(value: string | number | null | undefined) {
+  if (typeof value === "string" && value.trim() === "") return null;
+  if (value === null || value === undefined) return null;
   const num = Number(value);
   return Number.isFinite(num) ? num : null;
+}
+
+function formatLeadTimeRange(
+  value: string | number | null | undefined,
+  additionalDays: number,
+) {
+  const leadTime = toLeadTimeNumber(value);
+  return leadTime === null
+    ? "XX days"
+    : `${leadTime} - ${leadTime + additionalDays} days`;
 }
 
 function buildEstimatedDeliveryNotes(
@@ -109,24 +121,11 @@ function buildEstimatedDeliveryNotes(
 ) {
   return subitems
     .map((item) => {
-      const pl = toLeadTimeNumber(item.pl);
-      const sl = toLeadTimeNumber(item.sl);
+      const productionLeadTime = formatLeadTimeRange(item.pl, 3);
+      const shippingLeadTime = formatLeadTimeRange(item.sl, 4);
 
-      const lines: string[] = [];
-
-      if (pl !== null) {
-        lines.push(`- Estimated Production Lead Time: ${pl + 3} days `);
-      }
-
-      if (sl !== null) {
-        lines.push(`- Estimated Shipping Lead Time: ${sl + 3} days `);
-      }
-
-      if (lines.length === 0) return null;
-
-      return `${item.name || "Item"}\n${lines.join("\n")}`;
+      return `${item.name || "Item"}\n- Estimated Production Lead Time: ${productionLeadTime}\n- Estimated Shipping Lead Time: ${shippingLeadTime}`;
     })
-    .filter(Boolean)
     .join("\n\n");
 }
 function savedFinalArtwork(raw?: string): FinalArtwork | null {
