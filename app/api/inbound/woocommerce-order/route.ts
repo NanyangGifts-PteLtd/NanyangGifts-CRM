@@ -15,6 +15,10 @@ type IncomingPayload = {
   currency?: string;
   orderTotal?: string | number | null;
   subitems?: unknown;
+  line_items?: unknown;
+  lineItems?: unknown;
+  items?: unknown;
+  products?: unknown;
 };
 
 function authorized(request: NextRequest) {
@@ -50,7 +54,13 @@ export async function POST(request: NextRequest) {
       orderTotal: asNumberString(body.orderTotal),
       billingAddress: asText(body.billingAddress),
       qty: "",
-      subitems: normalizeSubitems(body.subitems),
+      subitems: normalizeSubitems(
+        body.subitems ??
+          body.line_items ??
+          body.lineItems ??
+          body.items ??
+          body.products,
+      ),
     });
     return NextResponse.json(result, { status: result.statusCode });
   } catch (error) {

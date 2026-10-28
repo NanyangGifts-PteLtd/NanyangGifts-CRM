@@ -89,11 +89,29 @@ export async function deliverMakeOutboxEvent(id: string) {
   const previousAssignee = row.payload.previousAssignee && typeof row.payload.previousAssignee === "object"
     ? row.payload.previousAssignee as Record<string, unknown>
     : {};
+  const nextAttemptCount = row.attempt_count + 1;
+  try {
+  let persistedSubitems = Array.isArray(client.subitems) ? client.subitems : [];
+  let deliveryPayload = row.payload;
+  if (typeof client.id === "string" && client.id) {
+    const { data: subitems, error: subitemsError } = await supabaseAdmin
+      .from("subitems")
+      .select("name, qty")
+      .eq("client_id", client.id)
+      .is("deleted_at", null)
+      .order("position", { ascending: true });
+    if (subitemsError) throw new Error(subitemsError.message);
+    persistedSubitems = (subitems ?? []).map((subitem) => ({
+      name: subitem.name ?? "Untitled subitem",
+      qty: subitem.qty ?? "",
+    }));
+    deliveryPayload = {
+      ...row.payload,
+      client: { ...client, subitems: persistedSubitems },
+    };
+  }
   const webhookUrl = process.env.MAKE_LEAD_ASSIGNED_WEBHOOK_URL?.trim();
   const secret = process.env.MAKE_INTEGRATION_SECRET?.trim();
-  const nextAttemptCount = row.attempt_count + 1;
-
-  try {
     if (!webhookUrl || !secret) {
       throw new Error("MAKE_LEAD_ASSIGNED_WEBHOOK_URL or MAKE_INTEGRATION_SECRET is not configured");
     }
@@ -121,7 +139,10 @@ export async function deliverMakeOutboxEvent(id: string) {
         clientPhone: client.phone ?? "",
         clientRequirements: client.requirements ?? "",
         clientBoardUrl: client.boardUrl ?? "",
-        clientSubitems: client.subitems ?? [],
+        clientSubitems: persistedSubitems,
+        // Keep a top-level alias for Make scenarios that map simple fields
+        // instead of traversing the nested client object.
+        subitems: persistedSubitems,
         assigneeId: assignee.id ?? "",
         assigneeName: assignee.name ?? "",
         assigneeEmail: assignee.email ?? "",
@@ -131,7 +152,7 @@ export async function deliverMakeOutboxEvent(id: string) {
         previousAssigneeId: previousAssignee.id ?? "",
         previousAssigneeName: previousAssignee.name ?? "",
         previousAssigneeEmail: previousAssignee.email ?? "",
-        data: row.payload,
+        data: deliveryPayload,
       }),
       signal: AbortSignal.timeout(10_000),
     });

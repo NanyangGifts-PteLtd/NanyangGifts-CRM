@@ -92,10 +92,46 @@ export function normalizeSubitems(input: unknown): InboundSubitem[] {
       return raw.split("\n").map((line) => line.trim()).filter(Boolean).map((name) => ({ name, qty: "" }));
     }
   }
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const record = value as Record<string, unknown>;
+    const nested = [
+      record.subitems,
+      record.line_items,
+      record.lineItems,
+      record.items,
+      record.products,
+      record.orderItems,
+    ].find((candidate) => Array.isArray(candidate) || typeof candidate === "string");
+    if (nested !== undefined) value = nested;
+    else if (
+      "name" in record ||
+      "product_name" in record ||
+      "productName" in record ||
+      "item_name" in record ||
+      "title" in record
+    ) {
+      value = [record];
+    }
+  }
   if (!Array.isArray(value)) return [];
   return value.map((item) => {
+    if (typeof item === "string" || typeof item === "number") {
+      return { name: asText(item, "Untitled subitem"), qty: "" };
+    }
     const record = item && typeof item === "object" ? item as Record<string, unknown> : {};
-    return { name: asText(record.name, "Untitled subitem"), qty: asNumberString(record.qty) };
+    const name =
+      record.name ??
+      record.product_name ??
+      record.productName ??
+      record.item_name ??
+      record.title ??
+      record.sku;
+    const quantity =
+      record.qty ??
+      record.quantity ??
+      record.line_item_quantity ??
+      record.order_quantity;
+    return { name: asText(name, "Untitled subitem"), qty: asNumberString(quantity) };
   });
 }
 
@@ -172,7 +208,24 @@ async function reserveIngestion(lead: NormalizedInboundLead): Promise<{ row: Ing
       // A completed ingestion is only a true duplicate when its resulting
       // client still has the recorded round-robin owner. Otherwise, resume
       // the idempotent pipeline below to repair the missing assignment.
-      if (assignment) {
+      let hasExpectedSubitems = true;
+      if (assignment && lead.subitems.length) {
+        const { data: existingSubitems, error: subitemsError } =
+          await supabaseAdmin
+            .from("subitems")
+            .select("id")
+            .eq("client_id", row.client_id)
+            .is("deleted_at", null)
+            .contains("custom_fields", {
+              inbound_source: lead.source,
+              inbound_external_id: lead.externalId,
+            })
+            .limit(1);
+        if (subitemsError) throw new InboundLeadError(subitemsError.message);
+        hasExpectedSubitems = Boolean(existingSubitems?.length);
+      }
+
+      if (assignment && hasExpectedSubitems) {
         return {
           row,
           earlyResult: {
@@ -376,9 +429,11 @@ export async function ingestLead(lead: NormalizedInboundLead): Promise<InboundRe
     }
 
     let subitemsInserted = 0;
-    if (!ingestion.subitems_created) {
+    if (lead.subitems.length) {
       subitemsInserted = await createSubitems(clientId, lead);
-      ingestion = await updateIngestion(ingestion.id, { subitems_created: true });
+      if (!ingestion.subitems_created) {
+        ingestion = await updateIngestion(ingestion.id, { subitems_created: true });
+      }
     }
 
     if (!ingestion.activity_logged) {
@@ -444,6 +499,19 @@ export async function ingestLead(lead: NormalizedInboundLead): Promise<InboundRe
       ingestion = await updateIngestion(ingestion.id, { notification_sent: true });
     }
 
+    // Use the persisted rows for the notification so the email cannot diverge
+    // from what was actually written to the CRM. This also protects retries
+    // where the source payload contains a different representation.
+    const { data: persistedSubitems, error: persistedSubitemsError } =
+      await supabaseAdmin
+        .from("subitems")
+        .select("name, qty")
+        .eq("client_id", clientId)
+        .is("deleted_at", null)
+        .order("position", { ascending: true });
+    if (persistedSubitemsError)
+      throw new InboundLeadError(persistedSubitemsError.message);
+
     // Email delivery is an external side effect. Queue it durably, but never
     // roll back an otherwise successful lead ingestion when Make is offline.
     try {
@@ -464,7 +532,10 @@ export async function ingestLead(lead: NormalizedInboundLead): Promise<InboundRe
         orderNumber: lead.orderNumber,
         orderTotal: lead.orderTotal,
         currency: lead.currency,
-        subitems: lead.subitems,
+        subitems: (persistedSubitems ?? []).map((item) => ({
+          name: asText(item.name, "Untitled subitem"),
+          qty: asNumberString(item.qty),
+        })),
       });
     } catch (error) {
       console.error("Could not queue Make lead assignment event", error);
