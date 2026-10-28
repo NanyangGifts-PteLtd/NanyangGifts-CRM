@@ -119,6 +119,7 @@ import { ClientDetailView } from "./ClientDetailView";
 import { SubitemDetailView } from "./SubitemDetailView";
 import {
   AdvancedFilters,
+  advancedFilterConditionRequiresValue,
   type AdvancedFilterColumn,
   type AdvancedFilterRule,
 } from "./AdvancedFilters";
@@ -5301,26 +5302,32 @@ export function CRMBoard({
       peopleProfilesById[id]?.full_name || peopleProfilesById[id]?.email || id;
     const labelColors = (options: OptionEntry[]) =>
       Object.fromEntries(options.map((option) => [option.value, option.color]));
-    const labelColorsFor = (category: string, key: string) => {
+    const labelOptionsFor = (category: string, key: string) => {
       if (category === "client") {
-        if (key === "replyStatus") return labelColors(replyStatusEntries);
-        if (key === "status") return labelColors(clientStatusEntries);
-        if (key === "channel") return labelColors(channelEntries);
-        if (key === "importance") return labelColors(importanceEntries);
-        if (key === "progress") return labelColors(progressEntries);
+        if (key === "replyStatus") return replyStatusEntries;
+        if (key === "status") return clientStatusEntries;
+        if (key === "channel") return channelEntries;
+        if (key === "importance") return importanceEntries;
+        if (key === "progress") return progressEntries;
         if (key === "overallPaymentStatus")
-          return labelColors(overallPaymentStatusEntries);
+          return overallPaymentStatusEntries;
       }
-      if (key === "status") return labelColors(subitemStatusEntries);
-      if (key === "payment") return labelColors(paymentEntries);
-      if (key === "paymentStatus") return labelColors(paymentStatusEntries);
-      if (key === "shipper") return labelColors(shipperEntries);
-      if (key === "localOverseas") return labelColors(localOverseasEntries);
-      if (key === "currency") return labelColors(currencyEntries);
-      if (key === "modeOfPayment") return labelColors(modeOfPaymentEntries);
+      if (key === "status") return subitemStatusEntries;
+      if (key === "payment") return paymentEntries;
+      if (key === "paymentStatus") return paymentStatusEntries;
+      if (key === "shipper") return shipperEntries;
+      if (key === "localOverseas") return localOverseasEntries;
+      if (key === "currency") return currencyEntries;
+      if (key === "modeOfPayment") return modeOfPaymentEntries;
       if (category === "subpayment" && key === "paymentReceivedLabel")
-        return labelColors(paymentReceivedEntries);
+        return paymentReceivedEntries;
+      if (category === "timeline" && key === "subProgress")
+        return subitemSubprogressEntries;
       return undefined;
+    };
+    const labelColorsFor = (category: string, key: string) => {
+      const options = labelOptionsFor(category, key);
+      return options ? labelColors(options) : undefined;
     };
     const numericClientKeys = new Set(["totalPrice", "totalMarkup"]);
     const numericSubitemKeys = new Set([
@@ -5331,7 +5338,7 @@ export function CRMBoard({
       "sample", "totalToPay", "paymentAmount", "difference",
     ]);
     const dateKeys = new Set([
-      "dateCreated", "followUp", "nbd", "closedDate", "timelineStart",
+      "dateCreated", "createdAt", "followUp", "nbd", "closedDate", "timelineStart",
       "timelineEnd", "returnByDate", "returnedDate", "sentDate",
     ]);
     const valueTypeFor = (
@@ -5447,6 +5454,7 @@ export function CRMBoard({
           clients.map((client) => clientValue(client, column.key)),
         ),
         labelColors: labelColorsFor("client", column.key),
+        labelOptions: labelOptionsFor("client", column.key),
         valueType: valueTypeFor("client", column.key, column.field_type),
       }));
     // Display IDs are intentionally separate search/filter fields. Unlike
@@ -5492,6 +5500,7 @@ export function CRMBoard({
         ),
       ),
       labelColors: labelColorsFor("subitem", column.key),
+      labelOptions: labelOptionsFor("subitem", column.key),
       valueType: valueTypeFor(
         "subitem",
         column.key,
@@ -5510,6 +5519,7 @@ export function CRMBoard({
         ),
       ),
       labelColors: labelColorsFor("payment", column.key),
+      labelOptions: labelOptionsFor("payment", column.key),
       valueType: valueTypeFor("payment", column.key),
     }));
     const subpaymentColumns = SUBPAYMENT_SEARCH_COLS.map((column) => ({
@@ -5539,6 +5549,7 @@ export function CRMBoard({
         ),
       ),
       labelColors: labelColorsFor("subpayment", column.key),
+      labelOptions: labelOptionsFor("subpayment", column.key),
       valueType: valueTypeFor("subpayment", column.key),
     }));
     const timelineColumns = TIMELINE_SEARCH_COLS.map((column) => ({
@@ -5608,8 +5619,22 @@ export function CRMBoard({
     shipperEntries,
     subitemAssignees,
     subitemCustomCols,
+    subitemSubprogressEntries,
     subitemStatusEntries,
   ]);
+
+  const advancedRuleValue = useCallback(
+    (rule: AdvancedFilterRule) => {
+      if (!rule.valueOptionId) return rule.value;
+      return (
+        advancedColumns
+          .find((column) => column.key === rule.column)
+          ?.labelOptions?.find((option) => option.id === rule.valueOptionId)
+          ?.value ?? rule.value
+      );
+    },
+    [advancedColumns],
+  );
 
   const matchesAdvancedRule = useCallback(
     (client: Client, rule: AdvancedFilterRule) => {
@@ -5730,9 +5755,13 @@ export function CRMBoard({
           return Array.isArray(value) ? value : [value];
         });
       }
-      const query = rule.value.trim().toLowerCase();
+      const resolvedRuleValue = advancedRuleValue(rule);
+      const query = resolvedRuleValue.trim().toLowerCase();
       const tests = values.map((value) => String(value ?? "").toLowerCase());
-      const numericQuery = Number(rule.value.replace(/,/g, "").trim());
+      const hasNonEmptyValue = tests.some((value) => value.trim() !== "");
+      if (rule.condition === "is empty") return !hasNonEmptyValue;
+      if (rule.condition === "is not empty") return hasNonEmptyValue;
+      const numericQuery = Number(resolvedRuleValue.replace(/,/g, "").trim());
       const numericTests = values
         .map((value) => String(value ?? "").replace(/,/g, "").trim())
         .filter((value) => value !== "")
@@ -5741,6 +5770,26 @@ export function CRMBoard({
       const isNumericRule =
         advancedColumns.find((column) => column.key === rule.column)
           ?.valueType === "number";
+      const isDateRule =
+        advancedColumns.find((column) => column.key === rule.column)
+          ?.valueType === "date";
+      const dateQuery = Date.parse(resolvedRuleValue);
+      const dateTests = values
+        .map((value) => Date.parse(String(value ?? "").slice(0, 10)))
+        .filter((value) => Number.isFinite(value));
+      if (isDateRule && !Number.isFinite(dateQuery)) return false;
+      if (isDateRule && rule.condition === "is")
+        return dateTests.some((value) => value === dateQuery);
+      if (isDateRule && rule.condition === "is not")
+        return dateTests.every((value) => value !== dateQuery);
+      if (rule.condition === "is before")
+        return dateTests.some((value) => value < dateQuery);
+      if (rule.condition === "is on or before")
+        return dateTests.some((value) => value <= dateQuery);
+      if (rule.condition === "is after")
+        return dateTests.some((value) => value > dateQuery);
+      if (rule.condition === "is on or after")
+        return dateTests.some((value) => value >= dateQuery);
       if (!Number.isFinite(numericQuery) &&
         [
           "is greater than",
@@ -5771,12 +5820,16 @@ export function CRMBoard({
         return tests.some((value) => value.includes(query));
       if (rule.condition === "does not contain")
         return tests.every((value) => !value.includes(query));
+      if (rule.condition === "ends with")
+        return tests.some((value) => value.endsWith(query));
       return tests.some((value) => value.startsWith(query));
     },
     [
       clientAssignees,
       clientPeopleIds,
       clientPmAssigneeIds,
+      advancedColumns,
+      advancedRuleValue,
       contributesToAwardedOrLaterTotals,
       currencyEntries,
       peopleProfilesById,
@@ -5800,7 +5853,11 @@ export function CRMBoard({
       filterChannel,
     ].filter((value) => value !== "All").length +
     advancedRules.filter(
-      (rule) => rule.column && rule.condition && rule.value.trim(),
+      (rule) =>
+        rule.column &&
+        rule.condition &&
+        (!advancedFilterConditionRequiresValue(rule.condition) ||
+          advancedRuleValue(rule).trim()),
     ).length;
   const shouldExpandGroupsForResults =
     boardSearchActive || activeFilterCount > 0;
@@ -6022,7 +6079,11 @@ export function CRMBoard({
       );
 
     const populatedRules = advancedRules.filter(
-      (rule) => rule.column && rule.condition && rule.value.trim(),
+      (rule) =>
+        rule.column &&
+        rule.condition &&
+        (!advancedFilterConditionRequiresValue(rule.condition) ||
+          advancedRuleValue(rule).trim()),
     );
     const matchesAdvanced =
       !populatedRules.length ||
@@ -6089,13 +6150,21 @@ export function CRMBoard({
   useEffect(() => {
     if (!onServerQueryChange) return;
     const populatedRules = advancedRules
-      .filter((rule) => rule.column && rule.condition && rule.value.trim())
-      .map(({ column, condition, value }) => ({
-        column,
-        condition,
-        value: value.trim(),
+      .filter(
+        (rule) =>
+          rule.column &&
+          rule.condition &&
+          (!advancedFilterConditionRequiresValue(rule.condition) ||
+            advancedRuleValue(rule).trim()),
+      )
+      .map((rule) => ({
+        column: rule.column,
+        condition: rule.condition,
+        value: advancedRuleValue(rule).trim(),
         valueType:
-          advancedColumns.find((definition) => definition.key === column)
+          advancedColumns.find(
+            (definition) => definition.key === rule.column,
+          )
             ?.valueType ?? "text",
       }));
     const selectedSearchColumns = boardSearchColumnsForQuery(
@@ -6260,6 +6329,7 @@ export function CRMBoard({
     advancedColumns,
     advancedJoin,
     advancedRules,
+    advancedRuleValue,
     boardSearchAllColumns,
     boardSearchColumns,
     boardSearchTerm,
@@ -7053,7 +7123,7 @@ export function CRMBoard({
     renderOption?: (value: string, label: string) => React.ReactNode;
   }) => (
     <div
-      className={`min-w-48 shrink-0 ${
+      className={`min-w-56 shrink-0 ${
         focusedFilterColumn &&
         focusedFilterColumn !==
           (
@@ -7076,7 +7146,7 @@ export function CRMBoard({
       <div className="mb-2 text-[11px] font-semibold text-gray-500">
         {label}
       </div>
-      <div className="max-h-60 space-y-1 overflow-y-auto pr-1">
+      <div className="max-h-80 space-y-1 overflow-y-auto pr-1">
         <button
           onClick={() => onChange("All")}
           className="flex items-center gap-2 w-full rounded-md px-2 py-1.5 text-left text-[10px] font-semibold hover:bg-gray-50"
@@ -11299,7 +11369,7 @@ export function CRMBoard({
           </div>
           {showFilter && (
             <div
-              className={`absolute top-full left-0 z-50 mt-1 rounded-lg ${filterMode === "quick" ? "w-[min(680px,calc(100vw-1rem))] border border-gray-200 bg-white p-3 shadow-xl" : ""}`}
+              className={`absolute top-full left-0 z-50 mt-1 rounded-lg ${filterMode === "quick" ? "w-[min(960px,calc(100vw-1rem))] border border-gray-200 bg-white p-4 shadow-xl" : ""}`}
             >
               {filterMode === "advanced" && (
                 <AdvancedFilters

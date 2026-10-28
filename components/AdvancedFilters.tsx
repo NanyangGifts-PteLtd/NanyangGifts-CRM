@@ -11,15 +11,29 @@ export type AdvancedFilterCondition =
   | "contains"
   | "does not contain"
   | "starts with"
+  | "ends with"
+  | "is empty"
+  | "is not empty"
   | "is greater than"
   | "is greater than or equal to"
   | "is less than"
-  | "is less than or equal to";
+  | "is less than or equal to"
+  | "is before"
+  | "is on or before"
+  | "is after"
+  | "is on or after";
 export type AdvancedFilterRule = {
   id: string;
   column: string;
   condition: AdvancedFilterCondition | "";
   value: string;
+  valueOptionId?: string;
+};
+export type AdvancedFilterLabelOption = {
+  id?: string;
+  value: string;
+  color: string;
+  section?: number;
 };
 export type AdvancedFilterColumn = {
   key: string;
@@ -29,6 +43,7 @@ export type AdvancedFilterColumn = {
   values: string[];
   valueType?: "text" | "number" | "date";
   labelColors?: Record<string, string>;
+  labelOptions?: AdvancedFilterLabelOption[];
 };
 const textConditions: AdvancedFilterCondition[] = [
   "is",
@@ -38,6 +53,9 @@ const textConditions: AdvancedFilterCondition[] = [
   "contains",
   "does not contain",
   "starts with",
+  "ends with",
+  "is empty",
+  "is not empty",
 ];
 const numericConditions: AdvancedFilterCondition[] = [
   "is",
@@ -46,7 +64,23 @@ const numericConditions: AdvancedFilterCondition[] = [
   "is greater than or equal to",
   "is less than",
   "is less than or equal to",
+  "is empty",
+  "is not empty",
 ];
+const dateConditions: AdvancedFilterCondition[] = [
+  "is",
+  "is not",
+  "is before",
+  "is on or before",
+  "is after",
+  "is on or after",
+  "is empty",
+  "is not empty",
+];
+
+export const advancedFilterConditionRequiresValue = (
+  condition: AdvancedFilterCondition | "",
+) => condition !== "is empty" && condition !== "is not empty";
 
 function Combo({
   value,
@@ -55,17 +89,21 @@ function Combo({
   groups,
   disabled,
   labelColors,
+  labelOptions,
   inputMode,
+  inputType,
   onChange,
 }: {
   value: string;
   placeholder: string;
-  options: Array<{ value: string; label: string }>;
+  options: Array<{ value: string; label: string; id?: string }>;
   groups?: boolean;
   disabled?: boolean;
   labelColors?: Record<string, string>;
+  labelOptions?: AdvancedFilterLabelOption[];
   inputMode?: "text" | "numeric";
-  onChange: (value: string) => void;
+  inputType?: "text" | "date";
+  onChange: (value: string, optionId?: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [typing, setTyping] = useState(false);
@@ -77,7 +115,9 @@ function Combo({
         option.label.toLowerCase().includes(value.toLowerCase()),
       )
     : options;
-  const selectedLabelColor = labelColors?.[value];
+  const selectedLabelColor =
+    labelOptions?.find((option) => option.value === value)?.color ??
+    labelColors?.[value];
   const groupedOptions = Array.from(
     filtered.reduce((groupMap, option) => {
       const group = option.value.split(":")[0];
@@ -89,19 +129,27 @@ function Combo({
   );
   const optionButton = (option: (typeof filtered)[number]) => (
     <button
-      key={option.value}
+      key={option.id ?? option.value}
       type="button"
       onMouseDown={(event) => event.preventDefault()}
       onClick={() => {
         setTyping(false);
-        onChange(option.value);
+        onChange(option.value, option.id);
         setOpen(false);
       }}
-      className="block w-full rounded px-2 py-2 text-left text-sm text-slate-700 hover:bg-sky-50"
+      className={
+        labelOptions
+          ? "block w-full rounded-sm text-left"
+          : "block w-full rounded px-2 py-2 text-left text-sm text-slate-700 hover:bg-sky-50"
+      }
     >
       {labelColors?.[option.value] ? (
         <span
-          className="inline-flex min-h-6 items-center rounded px-2 text-xs font-semibold text-white"
+          className={
+            labelOptions
+              ? "flex h-8 w-full items-center justify-center rounded-sm px-2 text-xs font-semibold text-white transition hover:brightness-95"
+              : "inline-flex min-h-6 items-center rounded px-2 text-xs font-semibold text-white"
+          }
           style={{ backgroundColor: labelColors[option.value] }}
         >
           {option.label}
@@ -128,16 +176,17 @@ function Combo({
           disabled={disabled}
           value={value}
           inputMode={inputMode}
+          type={inputType ?? "text"}
           onFocus={() => {
             setTyping(false);
             setOpen(true);
           }}
           onChange={(event) => {
             setTyping(true);
-            onChange(event.target.value);
+            onChange(event.target.value, undefined);
             setOpen(true);
           }}
-          placeholder={disabled ? "Select a column first" : placeholder}
+          placeholder={placeholder}
           className={`min-w-0 flex-1 bg-transparent px-3 text-sm outline-none placeholder:text-slate-400 ${
             selectedLabelColor ? "text-white placeholder:text-white/75" : ""
           }`}
@@ -157,8 +206,44 @@ function Combo({
         </button>
       </div>
       {open && !disabled && (
-        <div className="absolute left-0 top-full z-menu mt-1 max-h-64 w-full min-w-56 overflow-auto rounded-md border border-slate-200 bg-white p-1 shadow-xl">
-          {groups
+        <div
+          className={`absolute top-full z-menu mt-1 max-h-[min(520px,70vh)] overflow-auto rounded-xl border border-slate-200 bg-white p-2 shadow-2xl ${
+            labelOptions
+              ? "right-0 w-[min(760px,calc(100vw-2rem))]"
+              : "left-0 w-full min-w-64"
+          }`}
+        >
+          {labelOptions ? (
+            <div
+              className="grid min-w-max"
+              style={{
+                gridTemplateColumns: `repeat(${Math.max(1, ...labelOptions.map((option) => (option.section ?? 0) + 1))}, minmax(180px, 1fr))`,
+              }}
+            >
+              {Array.from({
+                length: Math.max(
+                  1,
+                  ...labelOptions.map((option) => (option.section ?? 0) + 1),
+                ),
+              }).map((_, section) => (
+                <div
+                  key={section}
+                  className={`min-h-12 space-y-2 px-3 ${section > 0 ? "border-l border-slate-200" : ""}`}
+                >
+                  {filtered
+                    .filter(
+                      (option) =>
+                        (labelOptions.find(
+                          (labelOption) =>
+                            labelOption.id === option.id ||
+                            labelOption.value === option.value,
+                        )?.section ?? 0) === section,
+                    )
+                    .map(optionButton)}
+                </div>
+              ))}
+            </div>
+          ) : groups
             ? groupedOptions.map(([group, groupOptions]) => {
                 const collapsed = collapsedGroups.has(group);
                 return (
@@ -226,7 +311,7 @@ export function AdvancedFilters({
     label: column.label,
   }));
   return (
-    <div className="w-[min(830px,calc(100vw-1rem))] rounded-xl border border-slate-200 bg-white p-5 shadow-2xl">
+    <div className="w-[min(1120px,calc(100vw-1rem))] rounded-xl border border-slate-200 bg-white p-5 shadow-2xl">
       <div className="mb-5 flex items-center justify-between">
         <div>
           <h3 className="text-base font-semibold text-slate-800">
@@ -248,12 +333,22 @@ export function AdvancedFilters({
       <div className="space-y-2">
         {rules.map((rule, index) => {
           const selected = columns.find((column) => column.key === rule.column);
-          const usesExactLabelMatch =
-            rule.condition === "is" || rule.condition === "is not";
           const isNumeric = selected?.valueType === "number";
+          const isDate = selected?.valueType === "date";
           const conditionOptions = isNumeric
             ? numericConditions
-            : textConditions;
+            : isDate
+              ? dateConditions
+              : textConditions;
+          const needsValue = advancedFilterConditionRequiresValue(
+            rule.condition,
+          );
+          const selectedLabelOptions = selected?.labelOptions;
+          const currentLabelValue = rule.valueOptionId
+            ? selectedLabelOptions?.find(
+                (option) => option.id === rule.valueOptionId,
+              )?.value ?? rule.value
+            : rule.value;
           return (
             <div key={rule.id} className="flex items-center gap-2">
               <div className="w-20 text-center text-sm text-slate-600">
@@ -286,6 +381,7 @@ export function AdvancedFilters({
                     column,
                     condition: column ? "is" : "",
                     value: "",
+                    valueOptionId: undefined,
                   })
                 }
               />
@@ -300,22 +396,37 @@ export function AdvancedFilters({
                 onChange={(condition) =>
                   update(rule.id, {
                     condition: condition as AdvancedFilterCondition,
+                    ...(!advancedFilterConditionRequiresValue(
+                      condition as AdvancedFilterCondition,
+                    )
+                      ? { value: "", valueOptionId: undefined }
+                      : {}),
                   })
                 }
               />
               <Combo
-                disabled={!selected}
-                value={rule.value}
-                placeholder="Value"
-                options={(selected?.values ?? []).map((value) => ({
-                  value,
-                  label: value,
-                }))}
-                labelColors={
-                  usesExactLabelMatch ? selected?.labelColors : undefined
+                disabled={!selected || !needsValue}
+                value={needsValue ? currentLabelValue : ""}
+                placeholder={needsValue ? "Value" : "No value needed"}
+                options={
+                  selectedLabelOptions
+                    ? selectedLabelOptions.map((option) => ({
+                        value: option.value,
+                        label: option.value,
+                        id: option.id,
+                      }))
+                    : (selected?.values ?? []).map((value) => ({
+                        value,
+                        label: value,
+                      }))
                 }
+                labelColors={selected?.labelColors}
+                labelOptions={selectedLabelOptions}
                 inputMode={isNumeric ? "numeric" : "text"}
-                onChange={(value) => update(rule.id, { value })}
+                inputType={isDate ? "date" : "text"}
+                onChange={(value, valueOptionId) =>
+                  update(rule.id, { value, valueOptionId })
+                }
               />
               <button
                 type="button"
