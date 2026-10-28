@@ -52,10 +52,46 @@ type Ocf = {
   order_confirmation_items: OcfItem[];
 };
 
-const formatNeedBy = (value?: string | null) =>
-  /^\d{4}-\d{2}-\d{2}$/.test(value ?? "")
-    ? String(value).split("-").reverse().join("/")
-    : value || "-";
+type EditableOcfItem = OcfItem & { remarks: string };
+
+function getEditorSnapshot({
+  deliveryNotes,
+  clientNameSnapshot,
+  companySnapshot,
+  sameAddressForAllItems,
+  items,
+}: {
+  deliveryNotes: string;
+  clientNameSnapshot: string;
+  companySnapshot: string;
+  sameAddressForAllItems: boolean;
+  items: EditableOcfItem[];
+}) {
+  return JSON.stringify({
+    deliveryNotes,
+    clientNameSnapshot,
+    companySnapshot,
+    sameAddressForAllItems,
+    items: items.map((item) => ({
+      id: item.id,
+      need_by_date: item.need_by_date ?? "",
+      remarks: item.remarks ?? "",
+      delivery_name: item.delivery_name ?? "",
+      delivery_address: item.delivery_address ?? "",
+      delivery_contact_number: item.delivery_contact_number ?? "",
+      delivery_remarks: item.delivery_remarks ?? "",
+    })),
+  });
+}
+
+function getNeedBySnapshot(items: EditableOcfItem[]) {
+  return JSON.stringify(
+    items.map((item) => ({
+      id: item.id,
+      need_by_date: item.need_by_date ?? "",
+    })),
+  );
+}
 
 export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
   const router = useRouter();
@@ -72,7 +108,7 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
   const [sameAddressForAllItems, setSameAddressForAllItems] = useState(
     ocf.same_address_for_all_items ?? true,
   );
-  const [items, setItems] = useState(
+  const [items, setItems] = useState<EditableOcfItem[]>(
     ocf.order_confirmation_items.map((item) => ({
       ...item,
       remarks: item.remarks ?? "",
@@ -81,11 +117,52 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [savedSnapshot, setSavedSnapshot] = useState(() =>
+    getEditorSnapshot({
+      deliveryNotes: ocf.estimated_delivery_notes ?? "",
+      clientNameSnapshot: ocf.client_name_snapshot ?? "",
+      companySnapshot: ocf.company_snapshot ?? "",
+      sameAddressForAllItems: ocf.same_address_for_all_items ?? true,
+      items: ocf.order_confirmation_items.map((item) => ({
+        ...item,
+        remarks: item.remarks ?? "",
+      })),
+    }),
+  );
+  const [savedNeedBySnapshot, setSavedNeedBySnapshot] = useState(() =>
+    getNeedBySnapshot(
+      ocf.order_confirmation_items.map((item) => ({
+        ...item,
+        remarks: item.remarks ?? "",
+      })),
+    ),
+  );
   const [expandedImage, setExpandedImage] = useState<{
     src: string;
     alt: string;
   } | null>(null);
   const importantNotes = ocf.important_notes?.trim() || DEFAULT_IMPORTANT_NOTES;
+
+  const editorSnapshot = useMemo(
+    () =>
+      getEditorSnapshot({
+        deliveryNotes,
+        clientNameSnapshot,
+        companySnapshot,
+        sameAddressForAllItems,
+        items,
+      }),
+    [
+      clientNameSnapshot,
+      companySnapshot,
+      deliveryNotes,
+      items,
+      sameAddressForAllItems,
+    ],
+  );
+  const hasUnsavedChanges = editorSnapshot !== savedSnapshot;
+  const needBySnapshot = useMemo(() => getNeedBySnapshot(items), [items]);
+  const hasNeedByChanges = needBySnapshot !== savedNeedBySnapshot;
 
   const clientUrl = useMemo(() => {
     if (!ocf.client_token || typeof window === "undefined") return "";
@@ -129,6 +206,14 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
               remarks: value,
             }
           : item,
+      ),
+    );
+  }
+
+  function updateItemNeedBy(itemId: string, value: string) {
+    setItems((prev) =>
+      prev.map((item) =>
+        item.id === itemId ? { ...item, need_by_date: value } : item,
       ),
     );
   }
@@ -206,8 +291,10 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
           companySnapshot,
           sameAddressForAllItems,
           estimatedDeliveryNotes: deliveryNotes,
+          syncNeedByToTimeline: hasNeedByChanges,
           items: items.map((item) => ({
             id: item.id,
+            need_by_date: item.need_by_date ?? "",
             remarks: item.remarks ?? "",
             delivery_name: item.delivery_name ?? "",
             delivery_address: item.delivery_address ?? "",
@@ -223,10 +310,20 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
         throw new Error(result?.error || "Failed to save internal updates.");
       }
 
-      setSaveMessage("Changes saved successfully.");
+      if (!result?.timelineWarning) {
+        setSavedSnapshot(editorSnapshot);
+        setSavedNeedBySnapshot(needBySnapshot);
+      }
+      setSaveMessage(
+        result?.timelineWarning
+          ? `Changes saved. ${result.timelineWarning}`
+          : "Changes saved successfully.",
+      );
       router.refresh();
-    } catch (err: any) {
-      setSaveError(err.message || "Failed to save internal updates.");
+    } catch (err: unknown) {
+      setSaveError(
+        err instanceof Error ? err.message : "Failed to save internal updates.",
+      );
     } finally {
       setSaving(false);
     }
@@ -264,9 +361,17 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
               type="button"
               onClick={saveInternalEdits}
               disabled={saving}
-              className="whitespace-nowrap rounded bg-[#7BCBD5] px-4 py-2 text-sm font-medium text-white hover:bg-teal-400 disabled:cursor-not-allowed disabled:opacity-60"
+              className={`whitespace-nowrap rounded px-4 py-2 text-sm font-medium text-white transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                hasUnsavedChanges
+                  ? "bg-amber-500 shadow-lg ring-2 ring-amber-300 ring-offset-2 hover:bg-amber-600"
+                  : "bg-[#7BCBD5] hover:bg-teal-400"
+              }`}
             >
-              {saving ? "Saving..." : "Save Changes"}
+              {saving
+                ? "Saving..."
+                : hasUnsavedChanges
+                  ? "Save Changes (unsaved)"
+                  : "Save Changes"}
             </button>
             <button
               type="button"
@@ -436,7 +541,36 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
                     {item.qty || "-"}
                   </td>
                   <td className="border border-black px-2 py-3 font-medium">
-                    {formatNeedBy(item.need_by_date)}
+                    <div className="space-y-2">
+                      <input
+                        type="date"
+                        value={
+                          item.need_by_date === "ASAP"
+                            ? ""
+                            : item.need_by_date ?? ""
+                        }
+                        disabled={item.need_by_date === "ASAP"}
+                        onChange={(event) =>
+                          updateItemNeedBy(item.id, event.target.value)
+                        }
+                        className="w-full min-w-0 rounded border border-gray-300 px-2 py-1 text-[11px] font-normal disabled:cursor-not-allowed disabled:bg-gray-100"
+                        aria-label={`Need by date for ${item.item_name || "item"}`}
+                      />
+                      <label className="flex items-center gap-2 text-[11px] font-normal text-gray-700">
+                        <input
+                          type="checkbox"
+                          checked={item.need_by_date === "ASAP"}
+                          onChange={(event) =>
+                            updateItemNeedBy(
+                              item.id,
+                              event.target.checked ? "ASAP" : "",
+                            )
+                          }
+                          className="h-3.5 w-3.5 accent-[#7BCBD5]"
+                        />
+                        ASAP
+                      </label>
+                    </div>
                   </td>
                   <td className="border border-black px-2 py-3">
                     <textarea

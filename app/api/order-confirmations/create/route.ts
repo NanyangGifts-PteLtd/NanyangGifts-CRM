@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSystemLabel } from "@/lib/system-labels";
 import { canEditClient } from "@/lib/client-access";
+import { withOcfNeedByTimeline } from "@/lib/ocf-need-by";
 import {
   DEFAULT_IMPORTANT_NOTES,
   DEFAULT_STRICT_NEED_BY_WARNING,
@@ -114,7 +115,9 @@ export async function POST(req: NextRequest) {
     );
     const { data: awardedSubitems, error: subitemsError } = await supabase
       .from("subitems")
-      .select("id, client_id, name, qty, description, status, timeline_rows")
+      .select(
+        "id, client_id, name, qty, description, status, timeline_rows, timeline_groups",
+      )
       .eq("client_id", clientId)
       .in(
         "status_option_id",
@@ -286,49 +289,17 @@ export async function POST(req: NextRequest) {
           (item) => item.id === upload.subitemId,
         );
         if (!subitem) return null;
-        const rows = Array.isArray(subitem.timeline_rows)
-          ? subitem.timeline_rows
-          : [];
-        const nbdIndex = rows.findIndex(
-          (row: any) =>
-            String(row?.name ?? "")
-              .trim()
-              .toLowerCase() === "nbd",
-        );
-        const nbdRow = {
-          id: crypto.randomUUID(),
-          name: "NBD",
-          person: "",
-          remarks: "",
-          subProgress: "",
-          timelineStart: "",
-          timelineEnd: "",
-          duration: "",
-          dependency: "",
-        };
-        const nextNbd = {
-          ...(nbdIndex >= 0 ? rows[nbdIndex] : nbdRow),
-          timelineStart: upload.needBy === "ASAP" ? "" : upload.needBy,
-          remarks:
-            upload.needBy === "ASAP"
-              ? "ASAP"
-              : String((nbdIndex >= 0 ? rows[nbdIndex]?.remarks : "") ?? "")
-                    .trim()
-                    .toLowerCase() === "asap"
-                ? ""
-                : nbdIndex >= 0
-                  ? (rows[nbdIndex]?.remarks ?? "")
-                  : "",
-        };
-        const timeline_rows =
-          nbdIndex >= 0
-            ? rows.map((row: any, index: number) =>
-                index === nbdIndex ? nextNbd : row,
-              )
-            : [...rows, nextNbd];
+        const { timelineRows, timelineGroups } = withOcfNeedByTimeline({
+          timelineRows: subitem.timeline_rows,
+          timelineGroups: subitem.timeline_groups,
+          needBy: upload.needBy!,
+        });
         return supabase
           .from("subitems")
-          .update({ timeline_rows })
+          .update({
+            timeline_rows: timelineRows,
+            timeline_groups: timelineGroups,
+          })
           .eq("id", upload.subitemId);
       }),
     );
