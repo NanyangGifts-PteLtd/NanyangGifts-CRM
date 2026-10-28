@@ -243,7 +243,7 @@ const restrictions: ReferenceItem[] = [
     title: "Labels/options",
     trigger: "Label management and option APIs.",
     behaviour:
-      "Admin, director, and dev users can manage protected option layouts. Any authenticated user can update the shared Person-icon colour palette. A label used by an automation cannot be deleted until its dependency is resolved.",
+      "Internal staff can add, rename, recolour, and rearrange ordinary Board labels. Payment-status and Payment Voucher label layouts remain admin/director/dev-only. Deletion remains admin/director/dev-only, and an automation-backed label cannot be deleted until its dependency is resolved. Any authenticated user can update the shared Person-icon colour palette.",
     source:
       "app/api/options/delete/route.ts; app/api/options/reorder/route.ts; app/api/profile-avatar-colors/route.ts",
   },

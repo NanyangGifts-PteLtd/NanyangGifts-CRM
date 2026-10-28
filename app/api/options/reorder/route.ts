@@ -27,9 +27,26 @@ const BOARD_OPTION_CODES = new Set([
   "additional_cost_status",
   "additional_cost_reason",
   "additional_cost_courier",
+  "moon_cake",
+  "tracking_verified_invoice_monday",
 ]);
 
-async function canManageLabels() {
+// Most Board label menus already allow ordinary internal staff to add and
+// rename labels. Their order is shared configuration too, so keep that
+// capability aligned with the existing label editor. Financial and Payment
+// Voucher labels remain manager-controlled because their menus do not expose
+// label creation to ordinary staff.
+const INTERNAL_ROLES = new Set(["sales", "pm", "admin", "director", "dev"]);
+const MANAGER_ROLES = new Set(["admin", "director", "dev"]);
+const MANAGER_ONLY_LAYOUT_CODES = new Set([
+  "payment_status",
+  "overall_payment_status",
+  "additional_cost_status",
+  "additional_cost_reason",
+  "additional_cost_courier",
+]);
+
+async function canReorderLabels(code: string) {
   const caller = await createClient();
   const {
     data: { user },
@@ -40,20 +57,21 @@ async function canManageLabels() {
     .select("role")
     .eq("id", user.id)
     .maybeSingle();
-  return ["admin", "director", "dev"].includes(
-    profile?.role?.trim().toLowerCase() ?? "",
-  );
+  const role = profile?.role?.trim().toLowerCase() ?? "";
+  return MANAGER_ONLY_LAYOUT_CODES.has(code)
+    ? MANAGER_ROLES.has(role)
+    : INTERNAL_ROLES.has(role);
 }
 
 export async function POST(request: NextRequest) {
-  if (!(await canManageLabels()))
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const body = (await request.json()) as {
     code?: string;
     values?: string[];
     layout?: Array<{ id?: string; value?: string; section?: number }>;
   };
   const code = body.code?.trim() ?? "";
+  if (!(await canReorderLabels(code)))
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const layout = Array.isArray(body.layout)
     ? body.layout.map((item) => ({
         id: item.id?.trim() || undefined,
