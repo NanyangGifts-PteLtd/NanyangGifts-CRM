@@ -65,6 +65,7 @@ export default {
         board: "50",
         menu: "100",
         tooltip: "150",
+        "context-menu": "175",
         selection: "200",
         "selection-menu": "250",
         modal: "300",

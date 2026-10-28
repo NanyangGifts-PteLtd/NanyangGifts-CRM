@@ -12,6 +12,11 @@ import {
   Search,
   Trash2,
 } from "lucide-react";
+import { toast } from "sonner";
+import {
+  copyCrmCellText,
+  type CrmRowActionsEventDetail,
+} from "@/lib/crm-cell-context";
 
 export function SubitemActionsMenu({
   subitemId,
@@ -66,6 +71,7 @@ export function SubitemActionsMenu({
     top: number;
   } | null>(null);
   const [moving, setMoving] = useState(false);
+  const [contextCellText, setContextCellText] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const [search, setSearch] = useState("");
@@ -106,7 +112,7 @@ export function SubitemActionsMenu({
   useEffect(() => {
     const handler = (event: Event) => {
       const detail = (event as CustomEvent<
-        string | { id: string; clientX?: number; clientY?: number }
+        string | CrmRowActionsEventDetail
       >).detail;
       const targetId = typeof detail === "string" ? detail : detail?.id;
       if (targetId !== subitemId) return;
@@ -117,6 +123,11 @@ export function SubitemActionsMenu({
       ) {
         setMenuPosition(clampMenuPosition(detail.clientX, detail.clientY));
       }
+      setContextCellText(
+        typeof detail !== "string" && detail.cellText !== undefined
+          ? detail.cellText
+          : null,
+      );
       setOpen(true);
     };
     window.addEventListener("crm:subitem-actions", handler);
@@ -186,6 +197,7 @@ export function SubitemActionsMenu({
         type="button"
         onClick={(event) => {
           event.stopPropagation();
+          setContextCellText(null);
           const rect = event.currentTarget.getBoundingClientRect();
           setOpen((value) => {
             if (!value) {
@@ -203,9 +215,27 @@ export function SubitemActionsMenu({
         createPortal(
         <div
           ref={menuRef}
-          className="fixed z-menu w-44 rounded-md border border-slate-200 bg-white p-1 text-left shadow-xl"
+          className="fixed z-context-menu w-44 rounded-md border border-slate-200 bg-white p-1 text-left shadow-xl"
           style={menuPosition}
         >
+          {contextCellText !== null && (
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  const value = contextCellText;
+                  setOpen(false);
+                  void copyCrmCellText(value)
+                    .then(() => toast.success("Cell copied"))
+                    .catch(() => toast.error("Could not copy this cell"));
+                }}
+                className="flex w-full items-center gap-2 rounded px-2 py-2 text-xs text-slate-700 hover:bg-slate-50"
+              >
+                <Copy size={14} /> Copy cell
+              </button>
+              <div className="my-1 border-t border-slate-200" />
+            </>
+          )}
           {onOpen && (
             <button
               type="button"

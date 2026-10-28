@@ -182,6 +182,7 @@ export function EditableCell({
       <textarea
         ref={textareaRef}
         data-inline-editor
+        data-crm-cell-value={local}
         draggable={false}
         value={local}
         rows={resizableMultiline ? 5 : 1}
@@ -287,6 +288,7 @@ export function EditableCell({
       <input
         ref={inputRef}
         data-inline-editor
+        data-crm-cell-value={local}
         draggable={false}
         type={type}
         value={local}
@@ -312,6 +314,7 @@ export function EditableCell({
   return (
     <div
       data-editable-cell
+      data-crm-cell-value={value}
       onClick={() => {
         if (readOnly) return;
         savedRef.current = false;

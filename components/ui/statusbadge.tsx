@@ -251,6 +251,22 @@ export function StatusBadge({
     return () => document.removeEventListener("mousedown", close);
   }, [open]);
 
+  useEffect(() => {
+    if (!open) return;
+    const closeForRowActions = () => {
+      setOpen(false);
+      setEditingLabels(false);
+      setColorEditor(null);
+      setDraftNames({});
+      setNewOption("");
+      setDraggedOption(null);
+      setEditorOptions(null);
+    };
+    window.addEventListener("crm:close-cell-overlays", closeForRowActions);
+    return () =>
+      window.removeEventListener("crm:close-cell-overlays", closeForRowActions);
+  }, [open]);
+
   // A local reorder remains authoritative until its matching persisted
   // snapshot arrives. This lets external changes stay live without allowing
   // stale events from the current user's queued drag saves to rubberband the
@@ -620,6 +636,7 @@ export function StatusBadge({
     <>
       <button
         ref={btnRef}
+        data-crm-cell-value={value}
         type="button"
         onClick={handleOpen}
         aria-label={value || "Set label"}

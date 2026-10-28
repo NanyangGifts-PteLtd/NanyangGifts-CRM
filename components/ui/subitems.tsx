@@ -75,6 +75,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "./alert-dialog";
+import { crmCellText } from "@/lib/crm-cell-context";
 
 const SUBITEM_COLUMN_DESCRIPTIONS: Record<string, string> = {
   tcSgd: "Total unit cost in SGD, excluding manpower, shipping etc",
@@ -4349,12 +4350,14 @@ export function SubitemsTable({
                   }
                   onContextMenu={(event) => {
                     event.preventDefault();
+                    window.dispatchEvent(new Event("crm:close-cell-overlays"));
                     window.dispatchEvent(
                       new CustomEvent("crm:subitem-actions", {
                         detail: {
                           id: sub.id,
                           clientX: event.clientX,
                           clientY: event.clientY,
+                          cellText: crmCellText(event.target, "td"),
                         },
                       }),
                     );

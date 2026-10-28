@@ -65,6 +65,7 @@ import {
 } from "@/lib/board-labels";
 import { overallPaymentStatus as calculateOverallPaymentStatus } from "@/lib/payment-status";
 import { InlineDatePicker } from "./inline-date-picker";
+import { crmCellText } from "@/lib/crm-cell-context";
 
 // Manual visual tuning point for the solid accent on every client row.
 // Use a negative value to move the client-row rail left, or a positive value
@@ -3103,12 +3104,14 @@ export function ClientRow({
         data-client-id={client.id}
         onContextMenu={(event) => {
           event.preventDefault();
+          window.dispatchEvent(new Event("crm:close-cell-overlays"));
           window.dispatchEvent(
             new CustomEvent("crm:client-actions", {
               detail: {
                 id: client.id,
                 clientX: event.clientX,
                 clientY: event.clientY,
+                cellText: crmCellText(event.target, "[data-client-column]"),
               },
             }),
           );
