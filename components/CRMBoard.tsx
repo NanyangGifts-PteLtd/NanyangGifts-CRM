@@ -12618,11 +12618,11 @@ export function CRMBoard({
             })()}
             {(
               [
-                ["purchaseOrder", "Purchase order"],
-                ["signedQuotation", "Signed quotation"],
-                ["proofOfPayment", "Proof of payment"],
+                ["purchaseOrder", "Purchase order", "Document date"],
+                ["signedQuotation", "Signed quotation", "Signed date"],
+                ["proofOfPayment", "Proof of payment", "Payment date"],
               ] as const
-            ).map(([key, label]) => (
+            ).map(([key, label, dateLabel]) => (
               <label
                 key={key}
                 className="grid gap-1.5 text-sm font-medium text-slate-700"
@@ -12645,7 +12645,7 @@ export function CRMBoard({
                     className="block min-w-0 flex-1 text-xs file:mr-3 file:rounded-md file:border-0 file:bg-sky-100 file:px-3 file:py-2 file:text-xs file:font-semibold file:text-sky-700 hover:file:bg-sky-200 disabled:opacity-50"
                   />
                   <span className="grid gap-0.5 text-[11px] font-medium text-slate-500">
-                    <span>Document date</span>
+                    <span>{dateLabel}</span>
                     <input
                       type="date"
                       value={closeLeadFileDates[key]}
@@ -12657,7 +12657,7 @@ export function CRMBoard({
                           [key]: event.target.value,
                         }))
                       }
-                      aria-label={`${label} document date`}
+                      aria-label={`${label} ${dateLabel.toLowerCase()}`}
                       className="h-9 w-40 rounded-md border border-slate-300 bg-white px-2 text-sm text-slate-700 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
                     />
                   </span>
