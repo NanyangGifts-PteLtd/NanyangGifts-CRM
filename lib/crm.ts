@@ -1528,6 +1528,51 @@ export type CrmBoardQuery = {
 
 export type CrmQuickFilterCounts = Record<string, Record<string, number>>;
 
+export type CrmBoardClientMembership = {
+  clientId: string;
+  groupId: string | null;
+  matches: boolean;
+};
+
+export async function fetchCrmBoardClientMemberships(
+  clientIds: string[],
+  query: CrmBoardQuery,
+): Promise<CrmBoardClientMembership[]> {
+  const uniqueClientIds = Array.from(new Set(clientIds.filter(Boolean)));
+  if (!uniqueClientIds.length) return [];
+  if (uniqueClientIds.length > 100) {
+    throw new Error("CRM Board membership checks accept at most 100 clients");
+  }
+
+  const { data, error } = await supabase.rpc("crm_board_client_memberships_v1", {
+    p_client_ids: uniqueClientIds,
+    p_search: query.search?.trim() || null,
+    p_search_columns: query.searchColumns ?? null,
+    p_advanced_rules: query.advancedRules ?? [],
+    p_advanced_join: query.advancedJoin ?? "and",
+    p_status_option_id: query.statusOptionId ?? null,
+    p_importance_option_id: query.importanceOptionId ?? null,
+    p_reply_status_option_id: query.replyStatusOptionId ?? null,
+    p_channel_option_id: query.channelOptionId ?? null,
+    p_subitem_status_option_id: query.subitemStatusOptionId ?? null,
+    p_payment_option_id: query.paymentOptionId ?? null,
+    p_payment_status_option_id: query.paymentStatusOptionId ?? null,
+    p_subprogress_option_id: query.subprogressOptionId ?? null,
+    p_person_id: query.personId ?? null,
+  });
+  if (error) throw error;
+
+  return ((data ?? []) as Array<{
+    client_id: string;
+    group_id: string | null;
+    matches: boolean;
+  }>).map((row) => ({
+    clientId: String(row.client_id),
+    groupId: row.group_id ? String(row.group_id) : null,
+    matches: row.matches === true,
+  }));
+}
+
 export type GanttServerQuery = {
   search: string;
   searchScope: "all" | "group" | "client" | "subitem";

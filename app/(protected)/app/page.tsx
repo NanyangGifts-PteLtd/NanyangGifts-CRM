@@ -15,6 +15,7 @@ import type {
 } from "../../types";
 import {
   fetchClientGroupCounts,
+  fetchCrmBoardClientMemberships,
   fetchCrmBoardQuickFilterCounts,
   fetchGanttResourcePage,
   fetchHydratedClientGroupPage,
@@ -1741,8 +1742,10 @@ export default function Page() {
       }
 
       const targetClientIds = new Set<string>();
+      const candidateClientIds = new Set<string>();
       const deletedClientIds = new Set<string>();
       const deletedSubitemIds = new Set<string>();
+      const filteredOutClientIds = new Set<string>();
       const targetGroupIds = new Set<string>();
       const visibleGroupReconcileIds = new Set<string>();
       const initiallyExcludedGroupIds = new Set(
@@ -1761,6 +1764,8 @@ export default function Page() {
             visibleCrmGroupIdsRef.current.has(groupId) &&
             groupPageState[groupId]?.loaded,
         );
+      const shouldReconcileLoadedGroup = (groupId: string | null) =>
+        Boolean(groupId && groupPageState[groupId]?.loaded);
 
       for (const change of changes) {
         const currentRow = change.new;
@@ -1810,9 +1815,17 @@ export default function Page() {
           const subitemId =
             realtimeSubitemId(currentRow) ?? realtimeSubitemId(previousRow);
           if (subitemId) deletedSubitemIds.add(subitemId);
+          // Removing a subitem can make its parent stop matching a subitem,
+          // payment, search, Person, or Advanced filter. Re-evaluate only that
+          // parent rather than treating the child deletion as display-only.
+          if (Object.keys(boardQuery).length) {
+            candidateClientIds.add(clientId);
+            hasNonRemovalChange = true;
+          }
           continue;
         }
         hasNonRemovalChange = true;
+        candidateClientIds.add(clientId);
         if (change.table === "clients") {
           const localGroupId = knownClients.get(clientId)?.groupId;
           const nextGroupId =
@@ -1868,28 +1881,75 @@ export default function Page() {
             // Both parents are explicitly hydrated below. No global Board
             // reconciliation is necessary for a subitem move.
             targetClientIds.add(localClientId);
+            if (Object.keys(boardQuery).length) {
+              candidateClientIds.add(localClientId);
+            }
           }
         }
         if (knownClients.has(clientId)) targetClientIds.add(clientId);
       }
 
-      // Server-side filters can make a remotely edited record appear,
-      // disappear, or move page. Until targeted membership RPCs exist, retain
-      // the guarded full reconciliation for that correctness-sensitive case.
-      if (
-        (Object.keys(boardQuery).length && hasNonRemovalChange) ||
-        requiresFilteredFallback
-      ) {
-        // `preservePagination` only merges incoming rows over existing ones;
-        // that is intentionally unsuitable for moves because it would retain
-        // the client in its old group when the refreshed page omits it.
+      // Check only the records touched by this Realtime burst against the
+      // active server query. Matching visible groups are reconciled using
+      // their already-loaded page window; non-matching clients are removed in
+      // place. The complete filtered Board is retained as a safety fallback
+      // only when an event cannot identify its parent or the matcher is not
+      // available yet during deployment.
+      if (Object.keys(boardQuery).length && hasNonRemovalChange) {
+        if (requiresFilteredFallback || candidateClientIds.size > 100) {
+          await reloadClients({
+            targetGroupIds: [...targetGroupIds],
+            preservePagination: false,
+            reason: "realtime-filtered-unresolved-fallback",
+          });
+          return;
+        }
+
+        try {
+          const memberships = await fetchCrmBoardClientMemberships(
+            [...candidateClientIds],
+            boardQuery,
+          );
+          for (const membership of memberships) {
+            const currentGroupId = knownClients.get(membership.clientId)?.groupId;
+            if (!membership.matches) {
+              filteredOutClientIds.add(membership.clientId);
+              targetClientIds.delete(membership.clientId);
+            } else if (knownClients.has(membership.clientId)) {
+              targetClientIds.add(membership.clientId);
+            }
+
+            if (
+              currentGroupId &&
+              currentGroupId !== membership.groupId &&
+              shouldReconcileLoadedGroup(currentGroupId)
+            ) {
+              visibleGroupReconcileIds.add(currentGroupId);
+            }
+            if (membership.groupId) {
+              targetGroupIds.add(membership.groupId);
+              if (shouldReconcileLoadedGroup(membership.groupId)) {
+                visibleGroupReconcileIds.add(membership.groupId);
+              }
+            }
+          }
+        } catch (error) {
+          console.warn(
+            "Could not resolve targeted filtered CRM memberships",
+            error,
+          );
+          await reloadClients({
+            targetGroupIds: [...targetGroupIds],
+            preservePagination: false,
+            reason: "realtime-filtered-membership-fallback",
+          });
+          return;
+        }
+      } else if (requiresFilteredFallback) {
         await reloadClients({
           targetGroupIds: [...targetGroupIds],
-          // A remote membership change can make a row enter, leave, or move
-          // within a filtered result set. This is one of the few cases where
-          // replacing the query snapshot is required for correctness.
           preservePagination: false,
-          reason: "realtime-filtered-reconciliation",
+          reason: "realtime-unresolved-fallback",
         });
         return;
       }
@@ -1901,6 +1961,7 @@ export default function Page() {
       if (
         targetClientIds.size === 0 &&
         deletedClientIds.size === 0 &&
+        filteredOutClientIds.size === 0 &&
         deletedSubitemIds.size === 0 &&
         visibleGroupReconcileIds.size === 0
       ) {
@@ -2002,7 +2063,10 @@ export default function Page() {
         );
         setClients((current) => {
           const retained = current.flatMap((client) => {
-            if (deletedClientIds.has(client.id)) {
+            if (
+              deletedClientIds.has(client.id) ||
+              filteredOutClientIds.has(client.id)
+            ) {
               return isBoardRecordProtected("client", client.id) ? [client] : [];
             }
             if (
@@ -2040,6 +2104,24 @@ export default function Page() {
             ),
           ];
         });
+        if (visibleGroupPages.length) {
+          setGroupPageState((current) => {
+            const next = { ...current };
+            reconciledGroupIds.forEach((groupId, index) => {
+              const page = visibleGroupPages[index];
+              if (!page) return;
+              next[groupId] = {
+                total: page.total,
+                isCountExact: true,
+                hasMore: page.hasMore,
+                loading: false,
+                loaded: true,
+                loadedCount: page.nextOffset,
+              };
+            });
+            return next;
+          });
+        }
         const allHydratedClients = [
           ...hydrated.clients,
           ...hydratedVisibleGroupPageClients,
@@ -2095,15 +2177,19 @@ export default function Page() {
           return next;
         });
 
-        if (deletedClientIds.size) {
+        const removedClientIds = new Set([
+          ...deletedClientIds,
+          ...filteredOutClientIds,
+        ]);
+        if (removedClientIds.size) {
           setClientAssignees((current) => {
             const next = { ...current };
-            for (const clientId of deletedClientIds) delete next[clientId];
+            for (const clientId of removedClientIds) delete next[clientId];
             return next;
           });
           setClientPmAssignees((current) => {
             const next = { ...current };
-            for (const clientId of deletedClientIds) delete next[clientId];
+            for (const clientId of removedClientIds) delete next[clientId];
             return next;
           });
         }
