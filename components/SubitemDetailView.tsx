@@ -24,7 +24,7 @@ import { SubitemActionsMenu } from "./SubitemActionsMenu";
 import { EmptyFileDropPrompt, FileDropTarget } from "./ui/file-drop-target";
 import { uploadCrmFiles } from "@/lib/crm-files";
 import { FilePreview } from "./ui/file-preview";
-import { calculateSubitemFinancials } from "@/lib/subitem-calculations";
+import { calculateSubitemFinancials, roundUnitPrice } from "@/lib/subitem-calculations";
 import type { CustomColumn } from "@/lib/custom-columns";
 import {
   AlertDialog,
@@ -222,6 +222,20 @@ export function SubitemDetailView({
     if (key === "difference") return (subitem.paymentRows ?? []).filter((row) => row.paymentReceived).reduce((total, row) => total + Number(row.amount || 0), 0) - financials.tc;
     return "";
   };
+  const displayFormulaValue = (key: string) => {
+    const value = formulaValue(key);
+    // C-SGD is calculated at full exchange-rate precision, while the detail
+    // view exposes no more than five decimal places to match the Board.
+    if (key === "cSgd" && typeof value === "number")
+      return String(Number(value.toFixed(5)));
+    return String(value);
+  };
+  const normalizeUnitPriceInput = (value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed) return value;
+    const numeric = Number(trimmed);
+    return Number.isFinite(numeric) ? String(roundUnitPrice(numeric)) : value;
+  };
   const isPaidLocked = (key: keyof Subitem) =>
     Boolean(paidPaymentOptionId && subitem.paymentOptionId === paidPaymentOptionId) &&
     paidLockedFields.has(String(key)) &&
@@ -276,8 +290,17 @@ export function SubitemDetailView({
       >
         <EditableCell
           readOnly={!isFieldEditable(key)}
-          value={String(formulaFields.has(String(key)) ? formulaValue(key) : (subitem[key] ?? ""))}
-          onChange={(value) => onUpdate({ [key]: value } as Partial<Subitem>)}
+          value={
+            formulaFields.has(String(key))
+              ? displayFormulaValue(String(key))
+              : String(subitem[key] ?? "")
+          }
+          normalizeOnSave={key === "up" ? normalizeUnitPriceInput : undefined}
+          onChange={(value) =>
+            onUpdate({
+              [key]: key === "up" ? normalizeUnitPriceInput(value) : value,
+            } as Partial<Subitem>)
+          }
           className="min-h-[38px] px-2 text-sm"
         />
       </div>

@@ -53,6 +53,7 @@ function LinkifiedText({ value }: { value: string }) {
 export function EditableCell({
   value,
   onChange,
+  normalizeOnSave,
   type = "text",
   placeholder = "",
   className = "",
@@ -76,6 +77,8 @@ export function EditableCell({
    * to visibly snap back to its old value after blur.
    */
   onChange: (v: string) => void;
+  /** Converts a draft to its canonical persisted form before it leaves this cell. */
+  normalizeOnSave?: (value: string) => string;
   type?: string;
   placeholder?: string;
   className?: string;
@@ -154,7 +157,11 @@ export function EditableCell({
   const save = () => {
     if (readOnly || savedRef.current) return;
     savedRef.current = true;
-    onChange(local);
+    const nextValue = normalizeOnSave ? normalizeOnSave(local) : local;
+    // Keep the editor's own draft canonical too. This avoids one paint of an
+    // invalid value while the parent applies its optimistic update.
+    if (nextValue !== local) setLocal(nextValue);
+    onChange(nextValue);
     setEditing(false);
   };
 

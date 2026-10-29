@@ -16,6 +16,7 @@ import type {
 } from "@/app/types";
 import { addClientAssignee } from "./assignments";
 import { capitaliseFirstCharacter } from "./text-format";
+import { roundMonetaryAmount, roundUnitPrice } from "./subitem-calculations";
 
 const supabase = createClient();
 
@@ -3263,9 +3264,21 @@ export async function updateSubitemRow(
   }
 
   if ("qty" in updates || "up" in updates) {
-    const qty = Number(updates.qty ?? 0);
-    const up = Number(updates.up ?? 0);
-    nextUpdates.price = String(qty * up);
+    // Keep a manually entered U.P at the same five-decimal precision used by
+    // the calculator. The line total remains a two-decimal stored amount and
+    // must use the existing counterpart when only Qty or U.P was edited.
+    if (nextUpdates.up !== undefined && nextUpdates.up.trim() !== "") {
+      const parsedUp = Number(nextUpdates.up);
+      if (Number.isFinite(parsedUp))
+        nextUpdates.up = String(roundUnitPrice(parsedUp));
+    }
+    const qty = Number(nextUpdates.qty ?? existing.qty ?? 0);
+    const up = Number(nextUpdates.up ?? existing.up ?? 0);
+    nextUpdates.price = String(
+      roundMonetaryAmount(
+        (Number.isFinite(qty) ? qty : 0) * (Number.isFinite(up) ? up : 0),
+      ),
+    );
   }
 
   if (nextUpdates.shipper !== undefined) {

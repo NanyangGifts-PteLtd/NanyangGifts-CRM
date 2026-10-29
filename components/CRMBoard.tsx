@@ -110,6 +110,7 @@ import type { SearchResult } from "../app/types";
 import {
   calculateSubitemFinancials,
   parseSubitemNumber,
+  roundUnitPrice,
 } from "@/lib/subitem-calculations";
 import {
   currencySystemKey,
@@ -8601,22 +8602,35 @@ export function CRMBoard({
       const originalSubitem = clients
         .find((client) => client.id === clientId)
         ?.subitems.find((subitem) => subitem.id === subitemId);
+      // Apply the same precision rule before the optimistic state is set.
+      // Otherwise a user briefly sees a value that the save layer later
+      // corrects, and a slow request makes it look as if the invalid U.P was
+      // accepted. The normalised value is therefore also the only one sent.
+      const normalisedUpdates: Partial<Subitem> =
+        updates.up !== undefined && updates.up.trim() !== ""
+          ? (() => {
+              const parsed = Number(updates.up);
+              return Number.isFinite(parsed)
+                ? { ...updates, up: String(roundUnitPrice(parsed)) }
+                : updates;
+            })()
+          : updates;
       // Timeline tracking fields are the source of truth. Mirror their
       // comma-separated summaries immediately, rather than waiting for the
       // persisted timeline update and a subsequent client reload.
-      const optimisticUpdates: Partial<Subitem> = updates.timelineGroups
+      const optimisticUpdates: Partial<Subitem> = normalisedUpdates.timelineGroups
         ? {
-            ...updates,
+            ...normalisedUpdates,
             cnTracking: Array.from(
               new Set(
-                updates.timelineGroups
+                normalisedUpdates.timelineGroups
                   .map((timeline) => timeline.cnTracking.trim())
                   .filter(Boolean),
               ),
             ).join(", "),
             sgTracking: Array.from(
               new Set(
-                updates.timelineGroups
+                normalisedUpdates.timelineGroups
                   .map((timeline) => timeline.sgTracking.trim())
                   .filter(Boolean),
               ),

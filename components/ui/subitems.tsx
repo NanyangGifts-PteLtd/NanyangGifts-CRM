@@ -49,7 +49,7 @@ import {
   diffDaysUTC,
 } from "./timeline";
 import { CustomColumn } from "@/lib/custom-columns";
-import { calculateSubitemFinancials } from "@/lib/subitem-calculations";
+import { calculateSubitemFinancials, roundUnitPrice } from "@/lib/subitem-calculations";
 import {
   currencySystemKey,
   sgdToCurrencyMultiplier,
@@ -466,6 +466,20 @@ function parseNumber(v: string | number | undefined | null) {
 function formatMoney(v: number | null | undefined) {
   if (v == null || Number.isNaN(v)) return "";
   return v.toFixed(2);
+}
+
+// C-SGD is a derived exchange-rate value. Show useful precision without
+// implying that its underlying calculation has been rounded to five places.
+function formatCsgd(v: number | null | undefined) {
+  if (v == null || Number.isNaN(v)) return "";
+  return String(Number(v.toFixed(5)));
+}
+
+function normalizeUnitPriceInput(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return value;
+  const numeric = Number(trimmed);
+  return Number.isFinite(numeric) ? String(roundUnitPrice(numeric)) : value;
 }
 
 function formatQuantity(v: number) {
@@ -2868,7 +2882,7 @@ export function SubitemsTable({
       case "cSgd":
         return (
           <div className="flex justify-center text-xs text-gray-800">
-            {hasCurrency ? formatMoney(cSgd) : ""}
+            {hasCurrency ? formatCsgd(cSgd) : ""}
           </div>
         );
       case "tc":
@@ -2924,7 +2938,10 @@ export function SubitemsTable({
           >
             <EditableCell
               value={sub.up}
-              onChange={(v) => onUpdateSubitem(sub.id, { up: v })}
+              normalizeOnSave={normalizeUnitPriceInput}
+              onChange={(v) =>
+                onUpdateSubitem(sub.id, { up: normalizeUnitPriceInput(v) })
+              }
               type="number"
               readOnly={costLocked}
               readOnlyReason={paidLockReason}

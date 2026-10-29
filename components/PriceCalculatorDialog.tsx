@@ -8,6 +8,7 @@ import type { OptionEntry } from "@/lib/board-labels";
 import {
   calculateSubitemFinancials,
   parseSubitemNumber,
+  roundMonetaryAmount,
   roundUnitPrice,
 } from "@/lib/subitem-calculations";
 
@@ -58,6 +59,12 @@ const fmt = (n: number | null | undefined) => {
   if (n == null || !Number.isFinite(n)) return "—";
   const rounded = Number(n.toFixed(2));
   return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(2);
+};
+// Unit prices and exchange-converted unit costs can be shown to five places;
+// their source calculations retain full precision.
+const fmtPrecision = (n: number | null | undefined, digits = 5) => {
+  if (n == null || !Number.isFinite(n)) return "—";
+  return String(Number(n.toFixed(digits)));
 };
 const pct = (n: number | null) => (n == null ? "—" : `${n.toFixed(1)}%`);
 const grid =
@@ -148,10 +155,11 @@ export function PriceCalculatorDialog(props: Props) {
     const up = financials.quantity
       ? roundUnitPrice(unroundedPrice / financials.quantity)
       : null;
-    // Price must always be derived from the same two-decimal unit price the
-    // user sees and sends to the CRM, never from a hidden higher-precision
-    // intermediate value.
-    const price = up == null ? unroundedPrice : up * financials.quantity;
+    // Price uses the displayed five-decimal U.P, then retains the CRM's
+    // normal two-decimal monetary precision.
+    const price = up == null
+      ? roundMonetaryAmount(unroundedPrice)
+      : roundMonetaryAmount(up * financials.quantity);
     return {
       markup: amount,
       price,
@@ -262,7 +270,7 @@ export function PriceCalculatorDialog(props: Props) {
           </div>
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <Formula label="Cost in SGD" value={fmt(financials.cSgd)} />
+          <Formula label="Cost in SGD" value={fmtPrecision(financials.cSgd)} />
           <Formula label="Total Cost in SGD" value={fmt(financials.tcSgd)} />
         </div>
         <div className="grid grid-cols-3 gap-3">
@@ -305,7 +313,7 @@ export function PriceCalculatorDialog(props: Props) {
             >
               <span>{fmt(row.markup)}</span>
               <span>{pct(row.percent)}</span>
-              <span>{fmt(row.up)}</span>
+              <span>{fmtPrecision(row.up)}</span>
               <span>{fmt(row.price)}</span>
               <button
                 type="button"
@@ -357,7 +365,7 @@ export function PriceCalculatorDialog(props: Props) {
             <span>{fmt(f.tc)}</span>
             <span>{fmt(f.quantity ? f.tc / f.quantity : null)}</span>
             <span>{fmt(f.price)}</span>
-            <span>{fmt(parseSubitemNumber(record.up))}</span>
+            <span>{fmtPrecision(parseSubitemNumber(record.up))}</span>
             <span>{fmt(f.markup)}</span>
             <span>{pct(f.percentMarkup)}</span>
             <button
@@ -488,7 +496,7 @@ export function PriceCalculatorDialog(props: Props) {
             />
             <Metric
               label="Unit Price"
-              value={fmt(slider.up)}
+              value={fmtPrecision(slider.up)}
               onChange={
                 readOnly
                   ? undefined
