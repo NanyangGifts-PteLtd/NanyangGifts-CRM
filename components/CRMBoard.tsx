@@ -530,6 +530,7 @@ interface CRMBoardProps {
       isCountExact: boolean;
     }
   >;
+  groupCountsSettled?: boolean;
   quickFilterCounts?: CrmQuickFilterCounts;
   quickFilterCountsLoading?: boolean;
   onLoadMoreGroup?: (groupId: string) => Promise<void> | void;
@@ -802,6 +803,7 @@ export function CRMBoard({
   boardQueryLoading = false,
   hasMoreBoardQueryResults = false,
   groupPageState = {},
+  groupCountsSettled = false,
   quickFilterCounts = {},
   quickFilterCountsLoading = false,
   onLoadMoreGroup,
@@ -6767,6 +6769,7 @@ export function CRMBoard({
       !expansionKey ||
       boardQueryLoading ||
       !clientsLoaded ||
+      !groupCountsSettled ||
       appliedResultGroupExpansionRef.current === expansionKey
     )
       return;
@@ -6784,6 +6787,7 @@ export function CRMBoard({
   }, [
     boardQueryLoading,
     clientsLoaded,
+    groupCountsSettled,
     groups,
     resultGroupExpansionRequest,
     searchResultGroupIdsKey,
@@ -6801,7 +6805,9 @@ export function CRMBoard({
   // confirms a zero. Otherwise a partial result page is falsely presented as
   // the complete result set.
   const boardVisibleGroups = shouldExpandGroupsForResults
-    ? searchScopedGroups.filter(
+    ? !groupCountsSettled
+      ? searchScopedGroups
+      : searchScopedGroups.filter(
         ({ group, clients: groupClients }) => {
           const state = groupPageState[group.id];
           const isKnownEmpty = state?.isCountExact === true && state.total === 0;

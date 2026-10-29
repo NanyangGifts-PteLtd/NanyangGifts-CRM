@@ -278,6 +278,11 @@ export default function Page() {
     useState(false);
   const [boardQuery, setBoardQuery] = useState<CrmBoardQuery>({});
   const [groupPageState, setGroupPageState] = useState<GroupPageState>({});
+  // A result query should settle its group layout once, rather than removing
+  // groups as separate count batches arrive. Store the query key whose full
+  // count pass has completed.
+  const [groupCountsSettledQueryKey, setGroupCountsSettledQueryKey] =
+    useState("");
   const [quickFilterCounts, setQuickFilterCounts] =
     useState<CrmQuickFilterCounts>({});
   const [quickFilterCountsLoading, setQuickFilterCountsLoading] =
@@ -1155,6 +1160,11 @@ export default function Page() {
             )
           : {};
       const hasExactGroupCounts = hasFreshGroupCounts;
+      if (hasExactGroupCounts) {
+        setGroupCountsSettledQueryKey(groupCountsQueryKey);
+      } else if (displayedBoardQueryKeyRef.current !== groupCountsQueryKey) {
+        setGroupCountsSettledQueryKey("");
+      }
       const targetedPagesByGroupId = new Map(
         targetGroupIds.map((groupId, index) => [
           groupId,
@@ -1635,6 +1645,7 @@ export default function Page() {
                 data: priorityCounts,
                 cachedAt: Date.now(),
               });
+              setGroupCountsSettledQueryKey(queryKey);
             }
             return;
           }
@@ -1653,6 +1664,7 @@ export default function Page() {
                   data: { ...priorityCounts, ...deferredCounts },
                   cachedAt: Date.now(),
                 });
+                setGroupCountsSettledQueryKey(queryKey);
               })
               .catch((error) => {
                 if (!isAbortError(error))
@@ -2870,6 +2882,9 @@ export default function Page() {
               (state) => state.hasMore || state.loading,
             )}
             groupPageState={groupPageState}
+              groupCountsSettled={
+                groupCountsSettledQueryKey === JSON.stringify(boardQuery)
+              }
             quickFilterCounts={quickFilterCounts}
             quickFilterCountsLoading={quickFilterCountsLoading}
             onLoadMoreGroup={loadMoreClientsForGroup}
