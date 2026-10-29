@@ -233,6 +233,11 @@ const DEFAULT_BOARD_SORT: BoardSortSetting = {
   column: "dateCreated",
   direction: "desc",
 };
+const PM_DEFAULT_BOARD_SORT: BoardSortSetting = {
+  category: "subitem",
+  column: "status",
+  direction: "desc",
+};
 type HeaderCol = {
   key: string;
   label: string;
@@ -1900,14 +1905,41 @@ export function CRMBoard({
     null,
   );
   const [boardToolbarHeight, setBoardToolbarHeight] = useState(40);
+  const isPmUser =
+    String(currentUserRole ?? "")
+      .trim()
+      .toLowerCase() === "pm";
+  const roleDefaultBoardSort = isPmUser
+    ? PM_DEFAULT_BOARD_SORT
+    : DEFAULT_BOARD_SORT;
   const [boardSort, setBoardSort] =
-    useState<BoardSortSetting>(DEFAULT_BOARD_SORT);
+    useState<BoardSortSetting>(() =>
+      String(currentUserRole ?? "")
+        .trim()
+        .toLowerCase() === "pm"
+        ? PM_DEFAULT_BOARD_SORT
+        : DEFAULT_BOARD_SORT,
+    );
   // Nested sorting is a presentation concern within already-loaded clients.
   // Keep the last client sort separately so choosing a subitem/payment column
   // does not alter the paged server query (and therefore does not reload the
   // board or collapse/displace the user's current client).
   const [lastClientBoardSort, setLastClientBoardSort] =
     useState<BoardSortSetting>(DEFAULT_BOARD_SORT);
+
+  // The role can arrive shortly after the board mounts. Apply the PM default
+  // only while the normal board default is still untouched, so it never
+  // overrides a sort the user has already chosen.
+  useEffect(() => {
+    if (!isPmUser) return;
+    setBoardSort((current) =>
+      current.category === DEFAULT_BOARD_SORT.category &&
+      current.column === DEFAULT_BOARD_SORT.column &&
+      current.direction === DEFAULT_BOARD_SORT.direction
+        ? PM_DEFAULT_BOARD_SORT
+        : current,
+    );
+  }, [isPmUser]);
 
   useEffect(() => {
     if (boardSort.category !== "client") return;
@@ -11751,7 +11783,7 @@ export function CRMBoard({
               setShowSortMenu((open) => !open);
               setShowBoardMoreMenu(false);
             }}
-            className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100 ${showSortMenu || activeBoardSort.category !== DEFAULT_BOARD_SORT.category || activeBoardSort.column !== DEFAULT_BOARD_SORT.column || activeBoardSort.direction !== DEFAULT_BOARD_SORT.direction ? "bg-slate-100" : ""}`}
+            className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100 ${showSortMenu || activeBoardSort.category !== roleDefaultBoardSort.category || activeBoardSort.column !== roleDefaultBoardSort.column || activeBoardSort.direction !== roleDefaultBoardSort.direction ? "bg-slate-100" : ""}`}
           >
             <ArrowDownUp size={12} /> Sort <ChevronDown size={11} />
           </button>
@@ -12642,9 +12674,9 @@ export function CRMBoard({
           <AlertDialogHeader>
             <AlertDialogTitle>Restore default column sorting?</AlertDialogTitle>
             <AlertDialogDescription>
-              Choose the section to restore. The board default is clients by
-              Date Created, newest first; subitem and payment rows return to
-              their original order.
+              Choose the section to restore. {isPmUser
+                ? "Your board default is subitems by Status, descending; client rows remain by Date Created, newest first."
+                : "The board default is clients by Date Created, newest first; subitem and payment rows return to their original order."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -12668,11 +12700,13 @@ export function CRMBoard({
               onClick={() => {
                 setShowRestoreSortingConfirm(false);
                 if (boardSort.category !== "client")
-                  setBoardSort(DEFAULT_BOARD_SORT);
+                  setBoardSort(roleDefaultBoardSort);
                 notifyChange(
                   "Subitem sorting restored",
                   boardSort.category !== "client"
-                    ? "Subitem and payment rows use their original order."
+                    ? isPmUser
+                      ? "Subitems are sorted by Status, descending."
+                      : "Subitem and payment rows use their original order."
                     : "The active client sort was left unchanged.",
                 );
               }}
@@ -12682,10 +12716,12 @@ export function CRMBoard({
             <AlertDialogAction
               onClick={() => {
                 setShowRestoreSortingConfirm(false);
-                setBoardSort(DEFAULT_BOARD_SORT);
+                setBoardSort(roleDefaultBoardSort);
                 notifyChange(
                   "Column sorting restored",
-                  "All sorting was restored to the board defaults.",
+                  isPmUser
+                    ? "All sorting was restored to the PM board default: subitems by Status, descending."
+                    : "All sorting was restored to the board defaults.",
                 );
               }}
             >
