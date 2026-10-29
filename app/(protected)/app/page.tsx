@@ -1232,6 +1232,21 @@ export default function Page() {
         }
       }
 
+      // Board page RPCs deliberately omit activity history. Activity is
+      // fetched only after a user expands a client or opens a detail view, so
+      // a routine row reconciliation must not replace that loaded history
+      // with an absent `activityLog` property and make the panel return to
+      // "Loading activity history".
+      rows = rows.map((incomingClient) => {
+        const currentClient = currentClientById.get(incomingClient.id);
+        return (
+          incomingClient.activityLog === undefined &&
+          currentClient?.activityLog !== undefined
+        )
+          ? { ...incomingClient, activityLog: currentClient.activityLog }
+          : incomingClient;
+      });
+
       // Never allow an older or edit-stale request to install its snapshot.
       // A fresh reconciliation will pick up both the latest local write and
       // any concurrent remote changes.
