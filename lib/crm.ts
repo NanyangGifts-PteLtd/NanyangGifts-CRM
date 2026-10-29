@@ -1885,9 +1885,12 @@ export async function fetchHydratedClientGroupPage(
         : useStandardFilterFastPath
           ? requestStandardFilterPage()
         : requestIndexedPage(),
-    // Keep one recovery attempt for a transient collision, but do not allow a
-    // single page load to occupy three consecutive timeout windows.
-    1,
+    // The standard-filter RPC is the normal interactive Board path. When it
+    // reaches statement_timeout, retrying immediately makes every affected
+    // tab issue a second expensive query into the same saturated database.
+    // Let Page's jittered, exponential Board recovery retry later instead.
+    // Other page paths retain one retry for a short-lived collision.
+    useStandardFilterFastPath ? 0 : 1,
   );
   // PostgREST can briefly retain its previous schema cache after the migration
   // is applied. Keep deployment ordering harmless by falling back only when
