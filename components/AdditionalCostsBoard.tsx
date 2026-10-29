@@ -33,6 +33,7 @@ import {
 import { createClient as createSupabaseClient } from "@/lib/supabase/client";
 import { uploadCrmFiles } from "@/lib/crm-files";
 import { FilePreview } from "@/components/ui/file-preview";
+import { FileDropTarget } from "@/components/ui/file-drop-target";
 import { AWARDED_OR_LATER_SUBITEM_STATUS_SYSTEM_KEYS } from "@/lib/board-labels";
 import {
   fetchHydratedClientBundle,
@@ -3764,6 +3765,16 @@ export function AdditionalCostsBoard({
                         </div>
                         {otherBillChoice === "add" ? (
                           <div className="mt-4 space-y-4">
+                            <FileDropTarget
+                              disabled={extractingBillDocument}
+                              onFiles={(files) => {
+                                const file = files[0];
+                                if (!file) return;
+                                if (prefillFileSignature)
+                                  setPendingExtractionFile(file);
+                                else void extractBillDocument(file);
+                              }}
+                            >
                             <label className="block rounded-lg border border-dashed border-sky-300 bg-sky-50 p-3 text-sm font-medium text-slate-700">
                               Upload Receipt/Invoice for Pre-filling
                               <span className="mt-1 block text-xs font-normal text-slate-500">
@@ -3772,6 +3783,7 @@ export function AdditionalCostsBoard({
                               </span>
                               <span className="mt-1 block text-xs font-normal text-slate-500">
                                 PDF, JPEG, PNG, TIFF, BMP, or HEIF up to 4 MB.
+                                You can also paste a copied image here.
                                 The original file is also added to the Bill
                                 attachments.
                               </span>
@@ -3799,6 +3811,7 @@ export function AdditionalCostsBoard({
                                 </span>
                               ) : null}
                             </label>
+                            </FileDropTarget>
                             {billOptionsLoading ? (
                               <p className="text-sm text-slate-500">
                                 Loading QuickBooks options…
@@ -4402,11 +4415,20 @@ export function AdditionalCostsBoard({
                                 className="mt-1 min-h-20 w-full rounded border border-slate-300 px-3 py-2 font-normal"
                               />
                             </label>
-                            <label className="block text-sm font-medium text-slate-700">
-                              Attachments
+                            <FileDropTarget
+                              onFiles={(files) =>
+                                setBillDraft((draft) => ({
+                                  ...draft,
+                                  attachments: [...draft.attachments, ...files],
+                                }))
+                              }
+                            >
+                              <label className="block text-sm font-medium text-slate-700">
+                                Attachments
                               <span className="mt-1 block text-xs font-normal text-slate-500">
                                 Click any attachment to preview it in the left
-                                pane. Files used for prefill are marked.
+                                pane. Drag files or paste copied images here.
+                                Files used for prefill are marked.
                               </span>
                               {editingQuickBooksBill &&
                                 billTargetVoucher?.quickbooks_attachment_files
@@ -4430,7 +4452,8 @@ export function AdditionalCostsBoard({
                                 }
                                 className="mt-1 block w-full text-sm font-normal text-slate-600"
                               />
-                            </label>
+                              </label>
+                            </FileDropTarget>
                             {billDraft.attachments.length ? (
                               <ul className="space-y-1 text-sm text-slate-600">
                                 {billDraft.attachments.map((file, index) => (

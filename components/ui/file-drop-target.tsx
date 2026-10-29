@@ -4,6 +4,7 @@ import {
   useRef,
   useState,
   type ChangeEvent,
+  type ClipboardEvent,
   type DragEvent,
   type ReactNode,
 } from "react";
@@ -35,7 +36,7 @@ export function EmptyFileDropPrompt({
         <Upload size={15} /> Add files
       </span>
       <span className="mt-1 text-xs text-sky-600">
-        Drag and drop files anywhere in this box, or click to browse
+        Drag and drop, paste copied images/files here, or click to browse
       </span>
       <input
         type="file"
@@ -63,7 +64,24 @@ export function FileDropTarget({ children, onFiles, disabled = false, className 
     event.dataTransfer.dropEffect = "copy";
   };
 
+  const addClipboardFiles = (event: ClipboardEvent<HTMLDivElement>) => {
+    if (disabled) return;
+    const target = event.target as HTMLElement | null;
+    if (
+      (target instanceof HTMLInputElement && target.type !== "file") ||
+      target instanceof HTMLTextAreaElement ||
+      target?.isContentEditable
+    )
+      return;
+    const files = Array.from(event.clipboardData.files);
+    if (!files.length) return;
+    event.preventDefault();
+    onFiles(files);
+  };
+
   return <div
+    tabIndex={disabled ? -1 : 0}
+    aria-label="File attachment area. Paste copied files or images here."
     className={`relative ${className} ${isDragging ? "ring-2 ring-sky-400 ring-inset bg-sky-50/70" : ""}`}
     onDragEnter={(event) => {
       prevent(event);
@@ -84,6 +102,7 @@ export function FileDropTarget({ children, onFiles, disabled = false, className 
       const files = Array.from(event.dataTransfer.files);
       if (!disabled && files.length) onFiles(files);
     }}
+    onPaste={addClipboardFiles}
   >
     {children}
     {isDragging && <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-inherit border-2 border-dashed border-sky-500 bg-sky-50/90 text-sm font-semibold text-sky-700">Drop file{`(s)`} here to add</div>}
