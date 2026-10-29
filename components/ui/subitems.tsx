@@ -468,9 +468,9 @@ function formatMoney(v: number | null | undefined) {
   return v.toFixed(2);
 }
 
-// C-SGD is a derived exchange-rate value. Show useful precision without
-// implying that its underlying calculation has been rounded to five places.
-function formatCsgd(v: number | null | undefined) {
+// Derived per-unit values can expose useful precision without implying that
+// their underlying calculation has been rounded to five places.
+function formatFiveDecimalValue(v: number | null | undefined) {
   if (v == null || Number.isNaN(v)) return "";
   return String(Number(v.toFixed(5)));
 }
@@ -2882,7 +2882,7 @@ export function SubitemsTable({
       case "cSgd":
         return (
           <div className="flex justify-center text-xs text-gray-800">
-            {hasCurrency ? formatCsgd(cSgd) : ""}
+            {hasCurrency ? formatFiveDecimalValue(cSgd) : ""}
           </div>
         );
       case "tc":
@@ -2982,7 +2982,9 @@ export function SubitemsTable({
       case "priceToSet":
         return (
           <div className="flex justify-center text-xs text-gray-800">
-            {hasCurrency && priceToSet !== null ? formatMoney(priceToSet) : ""}
+            {hasCurrency && priceToSet !== null
+              ? formatFiveDecimalValue(priceToSet)
+              : ""}
           </div>
         );
       case "priceCalculator":
