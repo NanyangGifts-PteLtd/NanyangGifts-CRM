@@ -126,13 +126,37 @@ export function PrintOcfItemPages({
 
   return (
     <section
-      className="hidden print:block print:break-before-page"
+      className="ocf-print-item-pages hidden print:block"
       aria-label="Printable OCF item pages"
     >
       <style>{`
         @media print {
           @page { size: A4 landscape; margin: 10mm; }
-          .ocf-print-sheet { height: 190mm; width: 100%; max-width: 277mm; }
+          /* Do not rely solely on Tailwind's print variants here. Safari's
+             print compositor can retain display:none from the hidden utility,
+             or clip a fixed-height flex child with overflow:hidden. */
+          .ocf-print-item-pages {
+            display: block !important;
+            visibility: visible !important;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
+          .ocf-print-sheet {
+            display: flex !important;
+            height: 190mm;
+            width: 100%;
+            max-width: 277mm;
+            overflow: visible !important;
+            break-inside: avoid-page;
+            page-break-inside: avoid;
+          }
+          .ocf-print-sheet:not(:last-child) {
+            break-after: page;
+            page-break-after: always;
+          }
+          .ocf-print-sheet img {
+            max-width: 100% !important;
+          }
         }
       `}</style>
       {sheets.map((sheet, sheetIndex) => (
