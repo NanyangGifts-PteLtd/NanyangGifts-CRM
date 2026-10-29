@@ -25,10 +25,6 @@ function readFiles(value: unknown): StoredFile[] {
   }
 }
 
-function filenamePart(value: string) {
-  return value.replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "") || "quote";
-}
-
 /**
  * Archives the current QuickBooks-rendered quote in the client's Files area.
  * Each generation/update receives its own immutable PDF copy.
@@ -62,11 +58,16 @@ export async function archiveQuickBooksEstimatePdf({
 
   const quotedNumber = String(docNumber ?? quoteId).trim();
   const createdAt = new Date();
+  const filename = `Official Quote ${quotedNumber} from NANYANGGIFTS PTE LTD.pdf`;
   const attachment: StoredFile = {
     id: randomUUID(),
-    name: `QuickBooks Quote ${quotedNumber}.pdf`,
+    // `name` controls the Files-cell label, while the final storage path
+    // segment controls the PDF viewer/download filename. Keep them identical.
+    name: filename,
     mimeType: "application/pdf",
-    storagePath: `clients/${clientId}/quickbooks-quotes/${createdAt.toISOString().replace(/[:.]/g, "-")}-${filenamePart(quotedNumber)}-${randomUUID()}.pdf`,
+    // Give every archived revision its own directory so an update can retain
+    // the same human-friendly filename without overwriting a prior PDF.
+    storagePath: `clients/${clientId}/quickbooks-quotes/${randomUUID()}/${filename}`,
     url: "",
   };
   attachment.url = `/api/files/download?path=${encodeURIComponent(attachment.storagePath)}`;

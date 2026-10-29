@@ -551,11 +551,7 @@ export async function POST(req: NextRequest) {
     );
   }
   const number = Number(quotationNumber);
-  const filename = `Proforma Quote ${number} from ${
-    String(client.company)
-      .replace(/[^a-z0-9]+/gi, " ")
-      .trim() || "Client"
-  }.pdf`;
+  const filename = `Proforma Quote ${number} from NANYANGGIFTS PTE LTD.pdf`;
   const createdBy = profile?.full_name?.trim() || profile?.email || "CRM user";
   const storagePath = `clients/${clientId}/sample-estimates/${user.id}/${filename}`;
   const pdf = await makePdf({
