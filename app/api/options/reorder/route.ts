@@ -98,7 +98,9 @@ export async function POST(request: NextRequest) {
           ? 4
           : code === "mode_of_payment"
             ? 3
-            : 1;
+            : code === "payment_received"
+              ? 2
+              : 1;
   if (
     !BOARD_OPTION_CODES.has(code) ||
     values.length === 0 ||

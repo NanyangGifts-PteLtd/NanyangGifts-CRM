@@ -3997,7 +3997,9 @@ export async function updateSubitemPaymentRow(
           payment_received_label: updates.paymentReceivedLabel,
           payment_received_option_id: paymentReceivedOption?.id ?? null,
           payment_received:
-            paymentReceivedOption?.system_key === "payment_received_yes"
+            paymentReceivedOption?.system_key === "payment_received_yes" ||
+            paymentReceivedOption?.system_key ===
+              "payment_received_refundable"
               ? true
               : paymentReceivedOption?.system_key === "payment_received_no"
                 ? false

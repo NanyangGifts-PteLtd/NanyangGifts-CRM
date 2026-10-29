@@ -4631,7 +4631,9 @@ export function SubitemsTable({
                                         paymentReceivedLabel: value,
                                         paymentReceived:
                                           option?.systemKey ===
-                                          "payment_received_yes"
+                                            "payment_received_yes" ||
+                                          option?.systemKey ===
+                                            "payment_received_refundable"
                                             ? true
                                             : option?.systemKey ===
                                                 "payment_received_no"
@@ -4665,6 +4667,7 @@ export function SubitemsTable({
                                       )
                                     }
                                     manageLabel="payment received"
+                                    sectionCount={2}
                                     small
                                     readOnly={!canEditSubitem(sub.id)}
                                   />

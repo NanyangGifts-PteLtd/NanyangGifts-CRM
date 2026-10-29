@@ -1829,7 +1829,19 @@ export function ClientRow({
     };
 
     const persistedItems = [...parseItems(), ...readOnlyItems];
-    const items = optimisticAttachmentItems[fieldKey] ?? persistedItems;
+    const candidateItems =
+      optimisticAttachmentItems[fieldKey] ?? persistedItems;
+    // Older closed-lead records can contain the same attachment metadata more
+    // than once. Apart from showing the same file twice, that gives React two
+    // children with the same key and can make a file preview appear unstable.
+    // Treat an attachment ID as its identity for display; do not mutate the
+    // saved list here, because it may be shared with the closed-lead record.
+    const seenAttachmentIds = new Set<string>();
+    const items = candidateItems.filter((item) => {
+      if (seenAttachmentIds.has(item.id)) return false;
+      seenAttachmentIds.add(item.id);
+      return true;
+    });
     const saveItems = async (nextItems: AttachmentItem[]) => {
       // Rendering this local list through the short database/Realtime settle
       // period prevents a preview icon from jumping back to an older list.
