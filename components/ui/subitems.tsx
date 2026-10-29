@@ -4891,7 +4891,8 @@ export function SubitemsTable({
                               })
                             }
                             onRemoveTimeline={
-                              timeline.isDefault || !canEditSubitem(sub.id)
+                              !canEditSubitem(sub.id) ||
+                              (sub.timelineGroups?.length ?? 1) <= 1
                                 ? undefined
                                 : () =>
                                     setPendingTimelineRemoval({
