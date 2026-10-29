@@ -12,6 +12,7 @@ import {
 import { ensureQuickBooksBillNumberAvailable } from "@/lib/quickbooks/bill-duplicate-check";
 import { listQuickBooksTaxCodes } from "@/lib/quickbooks/bill-options";
 import { quickBooksBillGstTotal } from "@/lib/quickbooks/bill-tax";
+import { formatPaymentVoucherReference } from "@/lib/payment-voucher-reference";
 
 const ALLOWED_ROLES = new Set(["admin", "director", "dev"]);
 
@@ -25,7 +26,7 @@ async function nextReference() {
         error?.message ?? "the database returned no reference"
       }`,
     );
-  return String(data);
+  return formatPaymentVoucherReference(data);
 }
 
 export async function POST(request: NextRequest) {

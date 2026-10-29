@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getSystemLabel } from "@/lib/system-labels";
 import { AWARDED_OR_LATER_SUBITEM_STATUS_SYSTEM_KEYS } from "@/lib/board-labels";
+import { formatPaymentVoucherReference } from "@/lib/payment-voucher-reference";
 
 const INTERNAL_ROLES = new Set(["sales", "pm", "admin", "director", "dev"]);
 const EDITABLE_FIELDS = new Set([
@@ -179,7 +180,7 @@ async function nextPaymentVoucherReference() {
     "next_payment_voucher_reference_id",
   );
   if (error || data === null) throw error ?? new Error("Could not allocate a Payment Voucher Reference ID.");
-  return String(data);
+  return formatPaymentVoucherReference(data);
 }
 
 async function ensureAdditionalCostStatus() {
