@@ -146,6 +146,7 @@ type BoardQuerySnapshot = {
 const BOARD_QUERY_CACHE_TTL_MS = 2 * 60 * 1000;
 const BOARD_QUERY_CACHE_LIMIT = 12;
 const GROUP_COUNTS_CACHE_TTL_MS = 60 * 1000;
+const PRIORITY_GROUP_COUNT_LIMIT = 10;
 const QUICK_FILTER_COUNTS_CACHE_TTL_MS = 60 * 1000;
 const EMPTY_GANTT_QUERY: GanttServerQuery = {
   search: "",
@@ -175,9 +176,10 @@ type ReloadClientsOptions = {
   // row outside the global initial page. Prime its destination group as part
   // of the same reconciliation so its updated count and visible rows agree.
   targetGroupIds?: string[];
-  // Internal guard: a failed load gets one delayed recovery attempt, rather
-  // than recursively scheduling retries for the duration of an outage.
-  recoveryAttempt?: boolean;
+  // Internal retry counter for a failed initial Board page. It uses an
+  // exponential, jittered delay so a temporary database overload recovers
+  // without every open Board retrying at the same moment.
+  recoveryAttempt?: number;
 };
 
 type SearchViewportAnchor = {
@@ -999,7 +1001,7 @@ export default function Page() {
   );
 
   const reloadClients = useCallback(async (options: ReloadClientsOptions = {}) => {
-    if (!options.recoveryAttempt && boardLoadRecoveryTimer.current !== null) {
+    if (options.recoveryAttempt === undefined && boardLoadRecoveryTimer.current !== null) {
       window.clearTimeout(boardLoadRecoveryTimer.current);
       boardLoadRecoveryTimer.current = null;
     }
@@ -1453,11 +1455,17 @@ export default function Page() {
       setQuickFilterCountsLoading(false);
       if (isAbortError(error)) return;
       console.error("Failed to load clients", error);
-      if (
-        !options.recoveryAttempt &&
-        refreshSequence === recordsRefreshSequence.current
-      ) {
+      if (refreshSequence === recordsRefreshSequence.current) {
         const failedQueryKey = JSON.stringify(boardQuery);
+        const recoveryAttempt = options.recoveryAttempt ?? 0;
+        // Start promptly for a transient timeout, then back off to a maximum
+        // of one Board-page retry per minute per visible tab. Previously the
+        // single permitted recovery could fail once and leave the Board in
+        // "Loading clients" forever until the user manually refreshed.
+        const recoveryDelayMs = Math.min(
+          60_000,
+          5_000 * 2 ** recoveryAttempt,
+        ) + Math.floor(Math.random() * 3_000);
         if (boardLoadRecoveryTimer.current !== null)
           window.clearTimeout(boardLoadRecoveryTimer.current);
         boardLoadRecoveryTimer.current = window.setTimeout(() => {
@@ -1470,9 +1478,9 @@ export default function Page() {
             return;
           void reloadClients({
             ...options,
-            recoveryAttempt: true,
+            recoveryAttempt: recoveryAttempt + 1,
           });
-        }, 20_000 + Math.floor(Math.random() * 20_000));
+        }, recoveryDelayMs);
       }
     } finally {
       if (boardLoadAbortController.current === abortController)
@@ -1498,57 +1506,99 @@ export default function Page() {
         return;
       const queryKey = JSON.stringify(boardQuery);
       if (boardQueryKeyRef.current !== queryKey) return;
-      groupCountsAbortController.current?.abort();
-      const abortController = new AbortController();
-      groupCountsAbortController.current = abortController;
-      void fetchClientGroupCounts(boardQuery, abortController.signal)
-        .then((nextGroupCounts) => {
-          if (boardQueryKeyRef.current !== queryKey) return;
-          groupCountsCacheRef.current.set(queryKey, {
-            data: nextGroupCounts,
-            cachedAt: Date.now(),
+      const orderedGroupIds = groups.map((group) => group.id);
+      if (!orderedGroupIds.length) return;
+      const priorityGroupIds = orderedGroupIds.slice(0, PRIORITY_GROUP_COUNT_LIMIT);
+      const deferredGroupIds = orderedGroupIds.slice(PRIORITY_GROUP_COUNT_LIMIT);
+      const applyExactCounts = (
+        groupIds: string[],
+        nextGroupCounts: Record<string, number>,
+      ) => {
+        setGroupPageState((current) => {
+          const next = { ...current };
+          let changed = false;
+          for (const groupId of groupIds) {
+            const total = nextGroupCounts[groupId] ?? 0;
+            const state = current[groupId];
+            const hasMore = (state?.loadedCount ?? 0) < total;
+            if (
+              state?.total === total &&
+              state.hasMore === hasMore &&
+              state.loading === false &&
+              state.isCountExact === true
+            ) continue;
+            changed = true;
+            next[groupId] = {
+              total,
+              hasMore,
+              loading: state?.loading ?? false,
+              loaded: state?.loaded ?? false,
+              loadedCount: state?.loadedCount ?? 0,
+              isCountExact: true,
+            };
+          }
+          return changed ? next : current;
+        });
+      };
+      const requestBatch = (groupIds: string[]) => {
+        groupCountsAbortController.current?.abort();
+        const abortController = new AbortController();
+        groupCountsAbortController.current = abortController;
+        const startedAt = performance.now();
+        return fetchClientGroupCounts(boardQuery, abortController.signal, groupIds)
+          .then((counts) => {
+            if (boardQueryKeyRef.current !== queryKey) return null;
+            applyExactCounts(groupIds, counts);
+            if (process.env.NODE_ENV !== "production")
+              console.info("CRM group-count batch", {
+                groups: groupIds.length,
+                durationMs: Math.round(performance.now() - startedAt),
+              });
+            return counts;
+          })
+          .finally(() => {
+            if (groupCountsAbortController.current === abortController)
+              groupCountsAbortController.current = null;
           });
-          setGroupPageState((current) => {
-            const next = { ...current };
-            let changed = false;
-            // The RPC has no row for a zero-count group. Include every known
-            // group so a stale total is actively cleared without requiring a
-            // user to expand that group.
-            for (const group of groups) {
-              const groupId = group.id;
-              const total = nextGroupCounts[groupId] ?? 0;
-              const state = current[groupId];
-              const hasMore = (state?.loadedCount ?? 0) < total;
-              if (
-                state?.total === total &&
-                state.hasMore === hasMore &&
-                state.loading === false &&
-                state.isCountExact === true
-              ) {
-                continue;
-              }
-              changed = true;
-              next[groupId] = {
-                total,
-                hasMore,
-                loading: state?.loading ?? false,
-                loaded: state?.loaded ?? false,
-                loadedCount: state?.loadedCount ?? 0,
-                isCountExact: true,
-              };
+      };
+      void requestBatch(priorityGroupIds)
+        .then((priorityCounts) => {
+          if (!priorityCounts || !deferredGroupIds.length) {
+            if (priorityCounts) {
+              groupCountsCacheRef.current.set(queryKey, {
+                data: priorityCounts,
+                cachedAt: Date.now(),
+              });
             }
-            return changed ? next : current;
-          });
+            return;
+          }
+          groupCountsRefreshTimer.current = window.setTimeout(() => {
+            groupCountsRefreshTimer.current = null;
+            if (
+              document.visibilityState !== "visible" ||
+              !document.hasFocus() ||
+              activePanelRef.current !== "crm" ||
+              boardQueryKeyRef.current !== queryKey
+            ) return;
+            void requestBatch(deferredGroupIds)
+              .then((deferredCounts) => {
+                if (!deferredCounts) return;
+                groupCountsCacheRef.current.set(queryKey, {
+                  data: { ...priorityCounts, ...deferredCounts },
+                  cachedAt: Date.now(),
+                });
+              })
+              .catch((error) => {
+                if (!isAbortError(error))
+                  console.warn("Could not refresh deferred CRM group counts", error);
+              });
+          }, 8_000 + Math.floor(Math.random() * 12_000));
         })
         .catch((error) => {
           if (!isAbortError(error))
-            console.warn("Could not refresh CRM group counts", error);
-        })
-        .finally(() => {
-          if (groupCountsAbortController.current === abortController)
-            groupCountsAbortController.current = null;
+            console.warn("Could not refresh priority CRM group counts", error);
         });
-    }, 5_000 + Math.floor(Math.random() * 10_000));
+    }, 1_000 + Math.floor(Math.random() * 3_000));
   }, [boardQuery, groups]);
   scheduleGroupCountsRefreshRef.current = scheduleGroupCountsRefresh;
 

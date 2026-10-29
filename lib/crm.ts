@@ -2009,6 +2009,7 @@ export async function searchCrmClients(
 export async function fetchClientGroupCounts(
   query: CrmBoardQuery = {},
   signal?: AbortSignal,
+  groupIds?: string[],
 ) {
   // This RPC returns one aggregate row per group. The former unfiltered path
   // selected every client's group_id into the browser and counted it locally;
@@ -2034,37 +2035,47 @@ export async function fetchClientGroupCounts(
       (query.sortValueType ?? "date") === "date" &&
       (query.sortDirection ?? "desc") === "desc",
   );
+  const requestedGroupIds = Array.from(new Set((groupIds ?? []).filter(Boolean)));
+  const useGroupBatch = requestedGroupIds.length > 0;
+  const rpcName = useStandardFilterFastPath
+    ? useGroupBatch
+      ? "crm_board_standard_filter_group_counts_batched_v1"
+      : "crm_board_standard_filter_group_counts_v1"
+    : useGroupBatch
+      ? "crm_board_client_group_counts_indexed_batched_v1"
+      : "crm_board_client_group_counts_indexed_v1";
+  const rpcParams = useStandardFilterFastPath
+    ? {
+        p_status_option_id: query.statusOptionId ?? null,
+        p_importance_option_id: query.importanceOptionId ?? null,
+        p_reply_status_option_id: query.replyStatusOptionId ?? null,
+        p_channel_option_id: query.channelOptionId ?? null,
+        p_subitem_status_option_id: query.subitemStatusOptionId ?? null,
+        p_payment_option_id: query.paymentOptionId ?? null,
+        p_payment_status_option_id: query.paymentStatusOptionId ?? null,
+        p_subprogress_option_id: query.subprogressOptionId ?? null,
+        p_person_id: query.personId ?? null,
+        ...(useGroupBatch ? { p_group_ids: requestedGroupIds } : {}),
+      }
+    : {
+        p_search: query.search?.trim() || null,
+        p_search_columns: query.searchColumns ?? null,
+        p_advanced_rules: query.advancedRules ?? [],
+        p_advanced_join: query.advancedJoin ?? "and",
+        p_status_option_id: query.statusOptionId ?? null,
+        p_importance_option_id: query.importanceOptionId ?? null,
+        p_reply_status_option_id: query.replyStatusOptionId ?? null,
+        p_channel_option_id: query.channelOptionId ?? null,
+        p_subitem_status_option_id: query.subitemStatusOptionId ?? null,
+        p_payment_option_id: query.paymentOptionId ?? null,
+        p_payment_status_option_id: query.paymentStatusOptionId ?? null,
+        p_subprogress_option_id: query.subprogressOptionId ?? null,
+        p_person_id: query.personId ?? null,
+        ...(useGroupBatch ? { p_group_ids: requestedGroupIds } : {}),
+      };
   let request = supabase.rpc(
-    useStandardFilterFastPath
-      ? "crm_board_standard_filter_group_counts_v1"
-      : "crm_board_client_group_counts_indexed_v1",
-    useStandardFilterFastPath
-      ? {
-          p_status_option_id: query.statusOptionId ?? null,
-          p_importance_option_id: query.importanceOptionId ?? null,
-          p_reply_status_option_id: query.replyStatusOptionId ?? null,
-          p_channel_option_id: query.channelOptionId ?? null,
-          p_subitem_status_option_id: query.subitemStatusOptionId ?? null,
-          p_payment_option_id: query.paymentOptionId ?? null,
-          p_payment_status_option_id: query.paymentStatusOptionId ?? null,
-          p_subprogress_option_id: query.subprogressOptionId ?? null,
-          p_person_id: query.personId ?? null,
-        }
-      : {
-      p_search: query.search?.trim() || null,
-      p_search_columns: query.searchColumns ?? null,
-      p_advanced_rules: query.advancedRules ?? [],
-      p_advanced_join: query.advancedJoin ?? "and",
-      p_status_option_id: query.statusOptionId ?? null,
-      p_importance_option_id: query.importanceOptionId ?? null,
-      p_reply_status_option_id: query.replyStatusOptionId ?? null,
-      p_channel_option_id: query.channelOptionId ?? null,
-      p_subitem_status_option_id: query.subitemStatusOptionId ?? null,
-      p_payment_option_id: query.paymentOptionId ?? null,
-      p_payment_status_option_id: query.paymentStatusOptionId ?? null,
-      p_subprogress_option_id: query.subprogressOptionId ?? null,
-      p_person_id: query.personId ?? null,
-        },
+    rpcName,
+    rpcParams,
   );
   if (signal) request = request.abortSignal(signal);
   let { data, error } = await request;
@@ -2072,6 +2083,7 @@ export async function fetchClientGroupCounts(
   // app before PostgREST exposes the new RPC simply uses the existing path.
   if (
     useStandardFilterFastPath &&
+    !useGroupBatch &&
     error &&
     ["PGRST202", "42883"].includes(error.code ?? "")
   ) {
@@ -2100,7 +2112,9 @@ export async function fetchClientGroupCounts(
   }>;
   return rows.reduce<Record<string, number>>((counts, row) => {
     const groupId = String(row.group_id ?? "");
-    if (groupId) counts[groupId] = Number(row.total_count ?? 0);
+    if (!groupId || (useGroupBatch && !requestedGroupIds.includes(groupId)))
+      return counts;
+    counts[groupId] = Number(row.total_count ?? 0);
     return counts;
   }, {});
 }
