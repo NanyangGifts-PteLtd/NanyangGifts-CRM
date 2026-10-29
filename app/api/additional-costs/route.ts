@@ -86,6 +86,12 @@ async function resolveLabelById(code: string, optionId: unknown) {
   return { value: data.value, id: data.id, systemKey: data.system_key ?? null };
 }
 
+function paymentVoucherSubitemName(reason: unknown, courier: unknown) {
+  const reasonText = String(reason ?? "").trim();
+  const courierText = String(courier ?? "").trim();
+  return courierText ? `${reasonText} - ${courierText}` : reasonText;
+}
+
 const ADDITIONAL_COST_STATUS = "[Variation] Cost Difference";
 const ADDITIONAL_COST_STATUS_KEY = "subitem_status_variation_cost_difference";
 
@@ -341,8 +347,6 @@ export async function POST(request: NextRequest) {
       "additional_cost_reason",
       "additional_cost_reason_shipping_ups",
     );
-    if (!isOtherVoucher && !courier.id)
-      throw new Error("Choose a Courier label.");
     const { data: client, error: clientError } = await supabaseAdmin
       .from("clients")
       .select("id, custom_fields")
@@ -454,7 +458,7 @@ export async function POST(request: NextRequest) {
           client_id: client.id,
           position: Number(lastSubitem?.position ?? -1) + 1,
           created_at: createdAt,
-          name: isOtherVoucher ? reason.value : courier.value,
+          name: paymentVoucherSubitemName(reason.value, courier.value),
           status: status.value,
           status_option_id: status.id,
           qty: "1",
@@ -706,8 +710,6 @@ export async function PATCH(request: NextRequest) {
       !String(values.remarks ?? existing.remarks ?? "").trim()
     )
       throw new Error("Remarks is required when Reason is Other.");
-    if (values.courier !== undefined && !values.courier)
-      throw new Error("Choose a Courier label.");
     const { data: linkedSubitem, error: linkedSubitemError } =
       await supabaseAdmin
         .from("subitems")
@@ -721,11 +723,14 @@ export async function PATCH(request: NextRequest) {
 
     const linkedChanges = {
       ...(values.cost !== undefined ? { cost: String(values.cost) } : {}),
-      ...(values.courier !== undefined
-        ? { name: String(values.courier) }
-        : isOtherVoucher && values.reason !== undefined
-          ? { name: String(values.reason) }
-          : {}),
+      ...(values.courier !== undefined || values.reason !== undefined
+        ? {
+            name: paymentVoucherSubitemName(
+              values.reason ?? existing.reason,
+              values.courier ?? existing.courier,
+            ),
+          }
+        : {}),
     };
     if (Object.keys(linkedChanges).length) {
       const { error: linkedUpdateError } = await supabaseAdmin

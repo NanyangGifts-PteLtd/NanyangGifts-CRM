@@ -2206,10 +2206,12 @@ export function AdditionalCostsBoard({
       id: "courier" as const,
       name: "Lalamove/Easyparcel/Replacements/Additional Costs",
       rows: rows.filter((row) =>
-        Boolean(
-          row.courier_option_id &&
-          courierVoucherOptionIds.has(row.courier_option_id),
-        ),
+        row.voucher_group === "courier" ||
+        (!row.voucher_group &&
+          Boolean(
+            row.courier_option_id &&
+              courierVoucherOptionIds.has(row.courier_option_id),
+          )),
       ),
       accent: "#16a5c4",
     },
@@ -2219,7 +2221,9 @@ export function AdditionalCostsBoard({
       rows: rows.filter(
         (row) =>
           row.voucher_group !== "quickbooks_bills_only" &&
-          (!row.courier_option_id ||
+          row.voucher_group !== "courier" &&
+          (Boolean(row.voucher_group) ||
+            !row.courier_option_id ||
             !courierVoucherOptionIds.has(row.courier_option_id)),
       ),
       accent: "#8b5cf6",
@@ -2624,12 +2628,7 @@ export function AdditionalCostsBoard({
                               onChange={(courier) =>
                                 void update(row.id, { courier })
                               }
-                              options={
-                                (labelOptions.additional_cost_courier ?? []).filter(
-                                  (option) => Boolean(option.value.trim()),
-                                )
-                              }
-                              includeBlankOption={false}
+                              options={labelOptions.additional_cost_courier ?? []}
                               readOnly={!canDelete(row) || String(group.id) === "courier"}
                               onAddOption={(value) =>
                                 manageLabel(
@@ -3201,10 +3200,7 @@ export function AdditionalCostsBoard({
                   <StatusBadge
                     value={row.courier}
                     onChange={(courier) => void update(row.id, { courier })}
-                    options={(labelOptions.additional_cost_courier ?? []).filter(
-                      (option) => Boolean(option.value.trim()),
-                    )}
-                    includeBlankOption={false}
+                    options={labelOptions.additional_cost_courier ?? []}
                     onAddOption={(value) =>
                       manageLabel("additional_cost_courier", "add", value)
                     }
@@ -4479,7 +4475,7 @@ export function AdditionalCostsBoard({
                       {renderRelatedSubitemSelector(selectedVoucherClientId!)}
                     </label>
                     <label className="text-sm font-medium text-slate-700">
-                      Courier *
+                      Courier
                       <div className="mt-1 h-10 overflow-hidden rounded border border-slate-300">
                         <StatusBadge
                           value={voucherDraft.courier}
@@ -4489,12 +4485,7 @@ export function AdditionalCostsBoard({
                               courier,
                             }))
                           }
-                          options={
-                            (labelOptions.additional_cost_courier ?? []).filter(
-                              (option) => Boolean(option.value.trim()),
-                            )
-                          }
-                          includeBlankOption={false}
+                          options={labelOptions.additional_cost_courier ?? []}
                           onAddOption={(value) =>
                             manageLabel("additional_cost_courier", "add", value)
                           }
@@ -4558,7 +4549,6 @@ export function AdditionalCostsBoard({
                       Number(voucherDraft.cost) <= 0 ||
                       !voucherDraft.reason ||
                       (!editingVoucher && !voucherDraft.relatedSubitemIds.length) ||
-                      !voucherDraft.courier ||
                       (voucherReasonIsOther && !voucherDraft.remarks.trim())
                     }
                     onClick={() => editingVoucher ? void saveVoucherEdit() : void create(selectedVoucherClientId!)}
