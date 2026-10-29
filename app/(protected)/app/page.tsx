@@ -305,6 +305,15 @@ export default function Page() {
   const reconciliationTimer = useRef<number | null>(null);
   const boardLoadRecoveryTimer = useRef<number | null>(null);
   const boardLoadAbortController = useRef<AbortController | null>(null);
+  // Group-page priming is optional scroll-ahead work. Keep it independently
+  // cancellable so a full Board refresh always has database headroom.
+  const groupPagePrefetchAbortControllers = useRef(
+    new Map<string, AbortController>(),
+  );
+  const deferredGroupPagePrefetchTimers = useRef(new Map<string, number>());
+  const primeClientPagesForGroupRef = useRef<(groupId: string) => void>(
+    () => {},
+  );
   const groupCountsRefreshTimer = useRef<number | null>(null);
   const groupCountsAbortController = useRef<AbortController | null>(null);
   const groupPageStateRef = useRef<GroupPageState>(groupPageState);
@@ -1011,6 +1020,9 @@ export default function Page() {
     }
     groupCountsAbortController.current?.abort();
     groupCountsAbortController.current = null;
+    for (const controller of groupPagePrefetchAbortControllers.current.values())
+      controller.abort();
+    groupPagePrefetchAbortControllers.current.clear();
     // Reconciliation is invoked by many normal Board actions. Keep every page
     // the user has already loaded unless a caller explicitly needs a new
     // result set (for example, a search/filter/sort change).
@@ -2245,9 +2257,26 @@ export default function Page() {
   const primeClientPagesForGroup = useCallback(async (groupId: string) => {
     if (groupPageState[groupId]?.loading || groupPageState[groupId]?.hasMore === false)
       return;
+    // A Board reload is the request needed to render the current screen;
+    // scroll-ahead is strictly optional. Defer rather than issuing a second
+    // expensive RPC during that reload. Keeping one timer per group avoids a
+    // sentinel/re-render loop turning into a request burst.
+    if (boardLoadAbortController.current !== null) {
+      if (!deferredGroupPagePrefetchTimers.current.has(groupId)) {
+        const timer = window.setTimeout(() => {
+          deferredGroupPagePrefetchTimers.current.delete(groupId);
+          void primeClientPagesForGroupRef.current(groupId);
+        }, 1_500 + Math.floor(Math.random() * 1_500));
+        deferredGroupPagePrefetchTimers.current.set(groupId, timer);
+      }
+      return;
+    }
     let offset = groupPageState[groupId]?.loaded
       ? groupPageState[groupId]?.loadedCount ?? 0
       : 0;
+    groupPagePrefetchAbortControllers.current.get(groupId)?.abort();
+    const abortController = new AbortController();
+    groupPagePrefetchAbortControllers.current.set(groupId, abortController);
     setGroupPageState((current) => ({
       ...current,
       [groupId]: {
@@ -2260,17 +2289,19 @@ export default function Page() {
       },
     }));
     try {
-      // On first expansion load the visible page plus two pages ahead. Once
-      // a group is already active, replenish two pages ahead of the scroll
-      // position whenever its sentinel becomes visible.
-      const pagesToFetch = groupPageState[groupId]?.loaded ? 2 : 3;
+      // Fetch one page only. The sentinel requests the next page as the user
+      // reaches it; fetching two or three full hydrated pages ahead was a
+      // substantial, avoidable source of concurrent database work.
+      const pagesToFetch = 1;
       for (let pageNumber = 0; pageNumber < pagesToFetch; pageNumber += 1) {
         const page = await fetchHydratedClientGroupPage(
           groupId,
           offset,
           30,
           boardQuery,
+          { signal: abortController.signal },
         );
+        if (abortController.signal.aborted) return;
         mergeAssignmentDataForClients(
           page.clients,
           { people: page.clientAssignees, pm: page.clientPmAssignees },
@@ -2297,8 +2328,15 @@ export default function Page() {
         if (!page.hasMore) break;
       }
     } catch (error) {
+      if (isAbortError(error)) return;
       console.error("Failed to prefetch CRM group pages", error);
     } finally {
+      if (
+        groupPagePrefetchAbortControllers.current.get(groupId) !==
+        abortController
+      )
+        return;
+      groupPagePrefetchAbortControllers.current.delete(groupId);
       setGroupPageState((current) => ({
         ...current,
         [groupId]: { ...current[groupId], loading: false },
@@ -2311,6 +2349,8 @@ export default function Page() {
     mergeAssignmentDataForClients,
     restoreSearchViewportAnchor,
   ]);
+
+  primeClientPagesForGroupRef.current = primeClientPagesForGroup;
 
   const updateGanttSubitem = useCallback(
     async (clientId: string, subitemId: string, updates: Partial<Subitem>) => {
