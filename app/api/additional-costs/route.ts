@@ -181,6 +181,38 @@ async function prepareRowsForUser<
   return attachPermissions(await attachLinkedClients(rows), userId, role);
 }
 
+async function assertVoucherClientEditor(
+  clientId: string,
+  userId: string,
+  role: string,
+) {
+  const { data: client, error: clientError } = await supabaseAdmin
+    .from("clients")
+    .select("id, custom_fields")
+    .eq("id", clientId)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (clientError || !client)
+    throw new Error("The selected client is no longer available.");
+  if (client.custom_fields?.subitemsLocked === "true")
+    throw new Error("This client is locked.");
+  if (!["admin", "director"].includes(role)) {
+    const { data: assignment, error: assignmentError } = await supabaseAdmin
+      .from("client_assignees")
+      .select("client_id")
+      .eq("client_id", client.id)
+      .eq("user_id", userId)
+      .in("assignment_type", ["people", "pm"])
+      .maybeSingle();
+    if (assignmentError) throw assignmentError;
+    if (!assignment)
+      throw new Error(
+        "You can only create payment vouchers for clients assigned to you.",
+      );
+  }
+  return client;
+}
+
 async function nextPaymentVoucherReference() {
   const { data, error } = await supabaseAdmin.rpc(
     "next_payment_voucher_reference_id",
@@ -304,6 +336,8 @@ export async function POST(request: NextRequest) {
   try {
     const { user, role } = await authorize();
     const body = (await request.json()) as {
+      action?: "save-draft";
+      id?: string;
       clientId?: string;
       paymentVoucherGroup?: "courier" | "other";
       values?: {
@@ -315,9 +349,130 @@ export async function POST(request: NextRequest) {
         orderNumber?: unknown;
         modeOfPaymentOptionId?: unknown;
       };
+      bill?: Record<string, unknown>;
+      ocr?: Record<string, unknown>;
     };
     if (!body.clientId)
       throw new Error("Choose a client before creating an additional cost.");
+
+    if (body.action === "save-draft") {
+      const client = await assertVoucherClientEditor(body.clientId, user.id, role);
+      const draftId = String(body.id ?? "").trim();
+      const costText = String(body.values?.cost ?? "").trim();
+      const cost = costText === "" ? null : Number(costText);
+      if (cost !== null && (!Number.isFinite(cost) || cost < 0))
+        throw new Error("Draft cost must be zero or greater.");
+      const reason = String(body.values?.reason ?? "").trim()
+        ? await resolveLabel("additional_cost_reason", body.values?.reason)
+        : { value: "", id: null };
+      const modeOfPayment = await resolveLabelById(
+        "mode_of_payment",
+        body.values?.modeOfPaymentOptionId,
+      );
+      const relatedSubitemIds = Array.isArray(body.values?.relatedSubitemIds)
+        ? [
+            ...new Set(
+              body.values.relatedSubitemIds.filter(
+                (id): id is string =>
+                  typeof id === "string" && id.trim().length > 0,
+              ),
+            ),
+          ]
+        : [];
+      const { data: selectedSubitems, error: selectedSubitemsError } =
+        relatedSubitemIds.length
+          ? await supabaseAdmin
+              .from("subitems")
+              .select("id, name")
+              .eq("client_id", client.id)
+              .is("deleted_at", null)
+              .in("id", relatedSubitemIds)
+          : { data: [], error: null };
+      if (selectedSubitemsError) throw selectedSubitemsError;
+      if ((selectedSubitems ?? []).length !== relatedSubitemIds.length)
+        throw new Error("One or more selected Related Subitems are unavailable.");
+      const itemsSent = (selectedSubitems ?? [])
+        .map((item) => item.name ?? "")
+        .filter(Boolean)
+        .join(", ");
+      const values = {
+        cost,
+        reason: reason.value,
+        reason_option_id: reason.id,
+        courier: "",
+        courier_option_id: null,
+        remarks: String(body.values?.remarks ?? "").trim(),
+        order_number: String(body.values?.orderNumber ?? "").trim(),
+        mode_of_payment: modeOfPayment.value,
+        mode_of_payment_option_id: modeOfPayment.id,
+        related_subitem_ids: relatedSubitemIds,
+        items_sent: itemsSent,
+        voucher_group: "other",
+        is_draft: true,
+        draft_bill: body.bill ?? {},
+        draft_ocr: body.ocr ?? {},
+        updated_at: new Date().toISOString(),
+      };
+      let row;
+      if (draftId) {
+        const { data: existing, error: existingError } = await supabaseAdmin
+          .from("additional_costs")
+          .select("id, client_id, is_draft, deactivated_at")
+          .eq("id", draftId)
+          .is("deleted_at", null)
+          .maybeSingle();
+        if (existingError || !existing || existing.client_id !== client.id)
+          throw new Error("Payment Voucher draft not found.");
+        if (!existing.is_draft || existing.deactivated_at)
+          throw new Error("Only an active Payment Voucher draft can be saved as a draft.");
+        const { data, error } = await supabaseAdmin
+          .from("additional_costs")
+          .update(values)
+          .eq("id", draftId)
+          .select("*")
+          .single();
+        if (error) throw error;
+        row = data;
+      } else {
+        const { data: latest, error: latestError } = await supabaseAdmin
+          .from("additional_costs")
+          .select("position")
+          .eq("client_id", client.id)
+          .order("position", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (latestError) throw latestError;
+        const { data, error } = await supabaseAdmin
+          .from("additional_costs")
+          .insert({
+            ...values,
+            client_id: client.id,
+            position: Number(latest?.position ?? -1) + 1,
+            created_by: user.id,
+            created_at: new Date().toISOString(),
+            trip_id: await nextPaymentVoucherReference(),
+            has_quickbooks_bill: false,
+          })
+          .select("*")
+          .single();
+        if (error) throw error;
+        row = data;
+      }
+      const { data: actor } = await supabaseAdmin
+        .from("profiles")
+        .select("full_name, email")
+        .eq("id", user.id)
+        .maybeSingle();
+      await supabaseAdmin.from("additional_cost_activity_log").insert({
+        additional_cost_id: row.id,
+        actor_id: user.id,
+        actor_name: actor?.full_name?.trim() || actor?.email || "Unknown user",
+        action: draftId ? "draft_saved" : "draft_created",
+        title: draftId ? "saved this Payment Voucher draft" : "created this Payment Voucher draft",
+      });
+      const [prepared] = await prepareRowsForUser([row], user.id, role);
+      return NextResponse.json({ row: prepared }, { status: draftId ? 200 : 201 });
+    }
     const isOtherVoucher = body.paymentVoucherGroup === "other";
     const cost = Number(body.values?.cost);
     const reason = await resolveLabel(

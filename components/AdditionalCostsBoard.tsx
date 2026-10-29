@@ -87,10 +87,45 @@ type AdditionalCost = {
     storagePath?: string;
   }>;
   voucher_group?: "courier" | "other" | "quickbooks_bills_only";
+  is_draft?: boolean;
+  draft_bill?: {
+    supplierId?: string;
+    supplierName?: string;
+    mailingAddress?: string;
+    termId?: string;
+    billDate?: string;
+    dueDate?: string;
+    billNumber?: string;
+    memo?: string;
+    overallGstAmount?: string;
+    lines?: Array<{
+      categoryId?: string;
+      categoryName?: string;
+      description?: string;
+      amount?: string;
+      taxCodeId?: string;
+    }>;
+    attachmentFiles?: StoredDraftAttachment[];
+  } | null;
+  draft_ocr?: {
+    confidence?: Record<string, number>;
+    prefillFileName?: string;
+    supplierExtraction?: {
+      name?: string;
+      suggestion?: { id: string; name: string };
+    };
+  } | null;
   deactivated_at?: string | null;
   deactivation_reason?: string | null;
   can_edit?: boolean;
   can_deactivate?: boolean;
+};
+type StoredDraftAttachment = {
+  id?: string;
+  name: string;
+  url: string;
+  storagePath: string;
+  mimeType?: string;
 };
 type LabelOption = {
   id?: string;
@@ -121,6 +156,7 @@ const initialColumns: Column[] = [
   { key: "courier", label: "Courier", width: 140 },
   { key: "created", label: "Date Created", width: 140 },
   { key: "actions", label: "Actions", width: 190 },
+  { key: "deactivate", label: "Deactivate", width: 120 },
 ];
 const otherVoucherColumns: Column[] = [
   { key: "activity", label: "", width: 52 },
@@ -147,7 +183,8 @@ const otherVoucherColumns: Column[] = [
   { key: "quickbooks_attachment_files", label: "Attached Files", width: 240 },
   { key: "bill_action", label: "Bill Action", width: 125 },
   { key: "created", label: "Date Created", width: 140 },
-  { key: "actions", label: "Deactivate", width: 110 },
+  { key: "actions", label: "Actions", width: 190 },
+  { key: "deactivate", label: "Deactivate", width: 120 },
 ];
 const quickBooksBillsOnlyColumns: Column[] = [
   { key: "activity", label: "", width: 52 },
@@ -375,6 +412,10 @@ export function AdditionalCostsBoard({
     supplierSuggestion?: { id: string; name: string };
     isPrefill: boolean;
   } | null>(null);
+  const [savedDraftAttachments, setSavedDraftAttachments] = useState<
+    StoredDraftAttachment[]
+  >([]);
+  const [pendingDraftClose, setPendingDraftClose] = useState(false);
   const [pendingExtractionFile, setPendingExtractionFile] =
     useState<File | null>(null);
   const [prefillFileSignature, setPrefillFileSignature] = useState<
@@ -1144,7 +1185,8 @@ export function AdditionalCostsBoard({
         row.items_sent.split(",").map((name) => name.trim()).filter(Boolean),
       );
       setEditingVoucher(row);
-      setVoucherCreationGroup("courier");
+      setVoucherCreationGroup(row.voucher_group === "other" ? "other" : "courier");
+      setOtherBillChoice(row.is_draft ? "add" : null);
       setSelectedVoucherClientId(row.client_id);
       setVoucherDraft({
         cost: row.cost == null ? "" : String(row.cost),
@@ -1163,6 +1205,54 @@ export function AdditionalCostsBoard({
         modeOfPayment: row.mode_of_payment ?? "",
         modeOfPaymentOptionId: row.mode_of_payment_option_id ?? "",
       });
+      if (row.is_draft) {
+        const draftBill = row.draft_bill ?? {};
+        const today = new Date().toISOString().slice(0, 10);
+        setBillDraft({
+          supplierId: draftBill.supplierId ?? "",
+          supplierName: draftBill.supplierName ?? "",
+          mailingAddress: draftBill.mailingAddress ?? "",
+          termId: draftBill.termId ?? "",
+          billDate: draftBill.billDate ?? today,
+          dueDate: draftBill.dueDate ?? today,
+          billNumber: draftBill.billNumber ?? "",
+          memo: draftBill.memo ?? "",
+          overallGstAmount: draftBill.overallGstAmount ?? "",
+          attachments: [],
+          lines: draftBill.lines?.length
+            ? draftBill.lines.map((line) => ({
+                categoryId: line.categoryId ?? "",
+                categoryName: line.categoryName ?? "",
+                description: line.description ?? "",
+                amount: line.amount ?? "",
+                taxCodeId: line.taxCodeId ?? "",
+              }))
+            : [{ categoryId: "", categoryName: "", description: "", amount: "", taxCodeId: "" }],
+        });
+        const attachments = draftBill.attachmentFiles ?? [];
+        setSavedDraftAttachments(attachments);
+        const prefillFile = attachments.find(
+          (file) => file.name === row.draft_ocr?.prefillFileName,
+        );
+        if (prefillFile?.url) {
+          setBillDocumentPreview({
+            name: prefillFile.name,
+            type: prefillFile.mimeType ?? "application/octet-stream",
+            url: prefillFile.url,
+            confidence: row.draft_ocr?.confidence ?? {},
+            isPrefill: true,
+          });
+          setPrefillFileSignature(prefillFile.name);
+        }
+        const extraction = row.draft_ocr?.supplierExtraction;
+        setSupplierExtraction(
+          extraction?.name
+            ? { name: extraction.name, suggestion: extraction.suggestion }
+            : null,
+        );
+      } else {
+        setSavedDraftAttachments([]);
+      }
       setPickerOpen(true);
     } catch (error) {
       toast.error("Payment voucher could not be opened", {
@@ -1209,6 +1299,132 @@ export function AdditionalCostsBoard({
       setCreatingFor(null);
     }
   };
+  const savePaymentVoucherDraft = async (closeAfterSave = true) => {
+    if (!selectedVoucherClientId) return;
+    setCreatingFor(editingVoucher?.id ?? selectedVoucherClientId);
+    try {
+      const uploadedAttachments = billDraft.attachments.length
+        ? await uploadCrmFiles(
+            billDraft.attachments,
+            `payment-vouchers/drafts/${editingVoucher?.id ?? "new"}`,
+            { clientId: selectedVoucherClientId },
+          )
+        : [];
+      const attachmentFiles = [
+        ...savedDraftAttachments,
+        ...uploadedAttachments,
+      ].filter(
+        (file, index, all) =>
+          all.findIndex((candidate) => candidate.storagePath === file.storagePath) ===
+          index,
+      );
+      const confidence = billDocumentPreview?.confidence ?? {};
+      const response = await fetch("/api/additional-costs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "save-draft",
+          ...(editingVoucher?.is_draft ? { id: editingVoucher.id } : {}),
+          clientId: selectedVoucherClientId,
+          values: voucherDraft,
+          bill: {
+            ...billDraft,
+            attachments: undefined,
+            attachmentFiles,
+          },
+          ocr: {
+            confidence,
+            prefillFileName: billDocumentPreview?.isPrefill
+              ? billDocumentPreview.name
+              : "",
+            supplierExtraction,
+          },
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok)
+        throw new Error(result.error ?? "Could not save the Payment Voucher draft.");
+      setRows((current) => {
+        const index = current.findIndex((row) => row.id === result.row.id);
+        return index < 0
+          ? [result.row, ...current]
+          : current.map((row) => (row.id === result.row.id ? result.row : row));
+      });
+      setEditingVoucher(result.row);
+      setSavedDraftAttachments(attachmentFiles);
+      setBillDraft((draft) => ({ ...draft, attachments: [] }));
+      toast.success("Payment Voucher draft saved", {
+        description: `${result.row.trip_id} can be continued from Group 2.`,
+      });
+      if (closeAfterSave) {
+        closePaymentVoucherPreview();
+      }
+      return result.row as AdditionalCost;
+    } catch (error) {
+      toast.error("Payment Voucher draft could not be saved", {
+        description: error instanceof Error ? error.message : "Please try again.",
+      });
+      return null;
+    } finally {
+      setCreatingFor(null);
+    }
+  };
+  const closePaymentVoucherPreview = () => {
+    setPickerOpen(false);
+    setPendingDraftClose(false);
+    setBillTargetVoucher(null);
+    setEditingVoucher(null);
+    setEditingQuickBooksBill(false);
+    setQuickBooksBillOnlyMode(false);
+    setBillDocumentPreview(null);
+    setPrefillFileSignature(null);
+    setSavedDraftAttachments([]);
+  };
+  const requestClosePaymentVoucherPreview = () => {
+    const canSaveDraft =
+      voucherCreationGroup === "other" &&
+      Boolean(selectedVoucherClientId) &&
+      !quickBooksBillOnlyMode &&
+      (!editingVoucher || Boolean(editingVoucher.is_draft));
+    if (canSaveDraft) {
+      setPendingDraftClose(true);
+      return;
+    }
+    closePaymentVoucherPreview();
+  };
+  useEffect(() => {
+    if (!pickerOpen || pendingDraftClose) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      const canSaveDraft =
+        voucherCreationGroup === "other" &&
+        Boolean(selectedVoucherClientId) &&
+        !quickBooksBillOnlyMode &&
+        (!editingVoucher || Boolean(editingVoucher.is_draft));
+      if (canSaveDraft) {
+        setPendingDraftClose(true);
+        return;
+      }
+      setPickerOpen(false);
+      setBillTargetVoucher(null);
+      setEditingVoucher(null);
+      setEditingQuickBooksBill(false);
+      setQuickBooksBillOnlyMode(false);
+      setBillDocumentPreview(null);
+      setPrefillFileSignature(null);
+      setSavedDraftAttachments([]);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [
+    pickerOpen,
+    pendingDraftClose,
+    voucherCreationGroup,
+    selectedVoucherClientId,
+    quickBooksBillOnlyMode,
+    editingVoucher,
+  ]);
   const validateBillGeneration = (needsNewVoucher: boolean) => {
     if (!billDraft.supplierName.trim()) return "Supplier is required.";
     if (!billDraft.billNumber.trim()) return "Invoice no. is required.";
@@ -1246,19 +1462,44 @@ export function AdditionalCostsBoard({
     clientId: string,
     existingVoucher?: AdditionalCost | null,
   ) => {
-    const validationError = validateBillGeneration(!existingVoucher);
+    const validationError = validateBillGeneration(
+      !existingVoucher || Boolean(existingVoucher.is_draft),
+    );
     if (validationError) {
       toast.error("Bill cannot be generated", { description: validationError });
       return;
     }
-    const draft = billDraft;
+    let restoredAttachments: File[];
+    try {
+      restoredAttachments = await Promise.all(
+        savedDraftAttachments.map(async (file) => {
+          const response = await fetch(file.url);
+          if (!response.ok)
+            throw new Error(`Could not retrieve saved attachment ${file.name}.`);
+          const blob = await response.blob();
+          return new File([blob], file.name, {
+            type: file.mimeType || blob.type || "application/octet-stream",
+          });
+        }),
+      );
+    } catch (error) {
+      toast.error("Saved attachment could not be loaded", {
+        description:
+          error instanceof Error ? error.message : "Please try again.",
+      });
+      return;
+    }
+    const draft = {
+      ...billDraft,
+      attachments: [...restoredAttachments, ...billDraft.attachments],
+    };
     const pendingId = `pending-quickbooks-bill-${crypto.randomUUID()}`;
     const pendingRow = pendingQuickBooksBillRow({
       id: pendingId,
       clientId,
       voucherGroup: existingVoucher?.voucher_group ?? "other",
       bill: draft,
-      voucher: existingVoucher ? undefined : voucherDraft,
+      voucher: existingVoucher?.is_draft ? voucherDraft : existingVoucher ? undefined : voucherDraft,
     });
     setCreatingFor(clientId);
     setRows((current) =>
@@ -1289,7 +1530,12 @@ export function AdditionalCostsBoard({
         "payload",
         JSON.stringify(
           existingVoucher
-            ? { clientId, voucherId: existingVoucher.id, bill }
+            ? {
+                clientId,
+                voucherId: existingVoucher.id,
+                ...(existingVoucher.is_draft ? { voucher: voucherDraft } : {}),
+                bill,
+              }
             : { clientId, voucher: voucherDraft, bill },
         ),
       );
@@ -2122,7 +2368,8 @@ export function AdditionalCostsBoard({
       .filter((subitem) => selectedNames.has(subitem.name))
       .map((subitem) => subitem.id);
     const menuOpen = boardRelatedSubitemsMenu?.rowId === row.id;
-    const lockedForPreviewEditing = row.voucher_group === "courier";
+    const lockedForPreviewEditing =
+      row.voucher_group === "courier" || Boolean(row.is_draft);
     return (
       <>
         <button
@@ -2297,10 +2544,7 @@ export function AdditionalCostsBoard({
       .filter((column): column is Column => Boolean(column))
       .map((column) => ({
         ...column,
-        width:
-          group.id === "courier" && column.key === "actions"
-            ? Math.max(layout.widths[column.key] ?? column.width, 260)
-            : layout.widths[column.key] ?? column.width,
+        width: layout.widths[column.key] ?? column.width,
       }));
     const columnGrid = tableColumns
       .map((column) => `${column.width}px`)
@@ -2465,6 +2709,10 @@ export function AdditionalCostsBoard({
                   group.rows.map((row) => {
                     const client = clientsById.get(row.client_id);
                     const project = projectForVoucher(row);
+                    const displayedBillMemo =
+                      row.quickbooks_memo ||
+                      (row.is_draft ? row.draft_bill?.memo?.trim() : "") ||
+                      "";
                     return (
                       <tr
                         key={row.id}
@@ -2725,10 +2973,10 @@ export function AdditionalCostsBoard({
                             <td
                               data-voucher-col="quickbooks_memo"
                               className="border-b border-r border-slate-200 bg-slate-100 px-3 py-2 text-sm text-slate-500"
-                              title={row.quickbooks_memo ?? ""}
+                              title={displayedBillMemo}
                             >
                               <span className="block truncate">
-                                {row.quickbooks_memo || "â€”"}
+                                {displayedBillMemo || "-"}
                               </span>
                             </td>
                             <td
@@ -2793,7 +3041,16 @@ export function AdditionalCostsBoard({
                               data-voucher-col="bill_action"
                               className="border-b border-r border-slate-200 px-2 py-1"
                             >
-                              {row.isGeneratingQuickBooksBill ? (
+                              {row.is_draft ? (
+                                <button
+                                  type="button"
+                                  disabled
+                                  title="Continue and complete this draft before working with a QuickBooks Bill."
+                                  className="w-full cursor-not-allowed rounded bg-slate-100 px-2 py-1.5 text-xs font-semibold text-slate-400"
+                                >
+                                  Complete draft first
+                                </button>
+                              ) : row.isGeneratingQuickBooksBill ? (
                                 <div className="flex h-8 items-center justify-center gap-1 rounded bg-amber-50 px-2 text-xs font-semibold text-amber-700">
                                   <LoaderCircle size={14} className="animate-spin" />
                                   Generating…
@@ -2861,11 +3118,12 @@ export function AdditionalCostsBoard({
                         >
                           {new Date(row.created_at).toLocaleDateString("en-SG")}
                         </td>
-                        <td
-                          data-voucher-col="actions"
-                          className="border-b border-slate-200 p-0 text-center"
-                        >
-                          {String(group.id) === "courier" ? (
+                        {String(group.id) !== "quickbooks_bills_only" ? (
+                          <td
+                            data-voucher-col="actions"
+                            className="border-b border-slate-200 p-0 text-center"
+                          >
+                          {(String(group.id) === "courier" || row.is_draft) ? (
                             <button
                               type="button"
                               disabled={!canDelete(row) || creatingFor === row.id}
@@ -2881,9 +3139,21 @@ export function AdditionalCostsBoard({
                             >
                               {creatingFor === row.id
                                 ? "Loading..."
-                                : "Edit Payment Voucher"}
+                                : row.is_draft
+                                  ? "Continue draft"
+                                  : "Edit Payment Voucher"}
                             </button>
                           ) : null}
+                          </td>
+                        ) : null}
+                        <td
+                          data-voucher-col={
+                            String(group.id) === "quickbooks_bills_only"
+                              ? "actions"
+                              : "deactivate"
+                          }
+                          className="border-b border-slate-200 p-0 text-center"
+                        >
                           <button
                             type="button"
                             disabled={
@@ -2901,7 +3171,7 @@ export function AdditionalCostsBoard({
                                   ? "Only admins, directors, and developers can delete QuickBooks-Bills-only rows."
                                   : "You can only edit payment vouchers for clients assigned to you"
                             }
-                            className={`inline-flex h-10 items-center justify-center gap-1 bg-red-50 px-2 text-xs font-semibold text-red-600 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-30 ${String(group.id) === "courier" ? "min-w-[105px] flex-1 whitespace-nowrap" : "w-full"}`}
+                            className="inline-flex h-10 w-full items-center justify-center gap-1 whitespace-nowrap bg-red-50 px-2 text-xs font-semibold text-red-600 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-30"
                           >
                             <Trash2 size={14} /> Deactivate
                           </button>
@@ -3400,15 +3670,7 @@ export function AdditionalCostsBoard({
                 </p>
               </div>
               <button
-                onClick={() => {
-                  setPickerOpen(false);
-                  setBillTargetVoucher(null);
-                  setEditingVoucher(null);
-                  setEditingQuickBooksBill(false);
-                  setQuickBooksBillOnlyMode(false);
-                  setBillDocumentPreview(null);
-                  setPrefillFileSignature(null);
-                }}
+                onClick={requestClosePaymentVoucherPreview}
                 className="rounded p-1 text-slate-400 hover:bg-slate-100"
               >
                 <X size={19} />
@@ -3416,7 +3678,7 @@ export function AdditionalCostsBoard({
             </div>
             {selectedVoucherClientId || quickBooksBillOnlyMode ? (
               voucherCreationGroup !== "courier" ? (
-                <div className="min-h-0 space-y-4 overflow-y-auto p-5">
+                <div className="flex min-h-0 flex-col gap-4 overflow-y-auto p-5">
                   {!billTargetVoucher && !quickBooksBillOnlyMode ? (
                     <button
                       type="button"
@@ -3476,7 +3738,7 @@ export function AdditionalCostsBoard({
                     </section>
                   ) : (
                     <>
-                      <section className="border-t border-slate-200 pt-4">
+                      <section className="order-2 border-t border-slate-200 pt-4">
                         <div className="flex items-center justify-between gap-3">
                           <div>
                             <h3 className="font-semibold text-slate-800">
@@ -4213,7 +4475,7 @@ export function AdditionalCostsBoard({
                         ) : null}
                       </section>
                       {!billTargetVoucher && !quickBooksBillOnlyMode ? (
-                        <section className="border-t border-slate-200 pt-4">
+                        <section className="order-1 border-t border-slate-200 pt-4">
                           <h3 className="font-semibold text-slate-800">
                             Voucher information
                           </h3>
@@ -4330,6 +4592,18 @@ export function AdditionalCostsBoard({
                           </label>
                         </section>
                       ) : null}
+                      {voucherCreationGroup === "other" &&
+                      !quickBooksBillOnlyMode &&
+                      (!billTargetVoucher || Boolean(editingVoucher?.is_draft)) ? (
+                        <button
+                          type="button"
+                          disabled={creatingFor !== null}
+                          onClick={() => void savePaymentVoucherDraft(true)}
+                          className="order-3 self-start rounded border border-violet-300 bg-violet-50 px-4 py-2 text-sm font-semibold text-violet-800 hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {creatingFor ? "Saving…" : "Save as draft"}
+                        </button>
+                      ) : null}
                       <button
                         type="button"
                         disabled={
@@ -4362,11 +4636,14 @@ export function AdditionalCostsBoard({
                               : otherBillChoice === "add"
                                 ? void generateQuickBooksBill(
                                   selectedVoucherClientId!,
-                                  billTargetVoucher,
+                                  billTargetVoucher ??
+                                    (editingVoucher?.is_draft
+                                      ? editingVoucher
+                                      : null),
                                 )
                                 : void create(selectedVoucherClientId!)
                         }
-                        className="rounded bg-[#16a5c4] px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-300"
+                        className="order-3 self-start rounded bg-[#16a5c4] px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-300"
                       >
                         {creatingFor
                           ? editingQuickBooksBill
@@ -4718,6 +4995,38 @@ export function AdditionalCostsBoard({
           </div>
         </div>
       ) : null}
+      <AlertDialog
+        open={pendingDraftClose}
+        onOpenChange={(open) => !open && setPendingDraftClose(false)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Save Payment Voucher as a draft?</AlertDialogTitle>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={Boolean(creatingFor)}>
+              Keep editing
+            </AlertDialogCancel>
+            <button
+              type="button"
+              disabled={Boolean(creatingFor)}
+              onClick={closePaymentVoucherPreview}
+              className="inline-flex h-10 items-center justify-center rounded-md border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            >
+              Discard
+            </button>
+            <AlertDialogAction
+              disabled={Boolean(creatingFor)}
+              onClick={(event) => {
+                event.preventDefault();
+                void savePaymentVoucherDraft(true);
+              }}
+            >
+              {creatingFor ? "Saving…" : "Save as draft"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <AlertDialog
         open={Boolean(pendingExtractionFile)}
         onOpenChange={(open) => !open && setPendingExtractionFile(null)}

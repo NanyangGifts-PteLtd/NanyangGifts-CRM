@@ -208,7 +208,7 @@ export async function POST(request: NextRequest) {
           ),
         ]
       : [];
-    if (!existingVoucherId && !relatedSubitemIds.length)
+    if ((!existingVoucherId || voucher) && !relatedSubitemIds.length)
       throw new Error("Select at least one Related Subitem.");
     const reason = voucher
       ? await resolveLabel("additional_cost_reason", voucher.reason)
@@ -257,11 +257,12 @@ export async function POST(request: NextRequest) {
       reason: string;
       has_quickbooks_bill: boolean | null;
       deactivated_at: string | null;
+      is_draft?: boolean | null;
     } | null = null;
     if (existingVoucherId) {
       const { data, error } = await supabaseAdmin
         .from("additional_costs")
-        .select("id, client_id, courier_option_id, reason, has_quickbooks_bill, deactivated_at")
+        .select("id, client_id, courier_option_id, reason, has_quickbooks_bill, deactivated_at, is_draft")
         .eq("id", existingVoucherId)
         .is("deleted_at", null)
         .maybeSingle();
@@ -281,9 +282,10 @@ export async function POST(request: NextRequest) {
       ]);
       if (
         data.has_quickbooks_bill ||
+        (!data.is_draft &&
         [lalamoveCourier.id, easyparcelCourier.id].includes(
           String(data.courier_option_id ?? ""),
-        )
+        ))
       )
         throw new Error(
           "This payment voucher already has a QuickBooks Bill or is not in the Bill group.",
@@ -298,7 +300,7 @@ export async function POST(request: NextRequest) {
       .in("id", relatedSubitemIds);
     if (relatedError) throw relatedError;
     if (
-      !existingVoucherId &&
+      (!existingVoucher || existingVoucher.is_draft) &&
       ((relatedSubitems ?? []).length !== relatedSubitemIds.length ||
         (relatedSubitems ?? []).some(
           (item) => item.custom_fields?.additionalCostId,
@@ -506,7 +508,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    if (existingVoucher) {
+    if (existingVoucher && !existingVoucher.is_draft) {
       const { data: updatedVoucher, error: updateError } = await supabaseAdmin
         .from("additional_costs")
         .update({
@@ -554,48 +556,68 @@ export async function POST(request: NextRequest) {
     if (!voucher || !reason || cost === null)
       throw new Error("Payment voucher details are required.");
     const createdAt = new Date().toISOString();
-    const { data: latest } = await supabaseAdmin
-      .from("additional_costs")
-      .select("position")
-      .eq("client_id", client.id)
-      .order("position", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    const nextReference = await nextPaymentVoucherReference();
-    const { data: voucherRow, error: voucherError } = await supabaseAdmin
-      .from("additional_costs")
-      .insert({
-        client_id: client.id,
-        position: Number(latest?.position ?? -1) + 1,
-        created_by: user.id,
-        created_at: createdAt,
-        cost,
-        reason: reason.value,
-        reason_option_id: reason.id,
-        items_sent: relatedNames,
-        courier: "",
-        courier_option_id: null,
-        remarks,
-        trip_id: nextReference,
-        has_quickbooks_bill: true,
-        quickbooks_bill_sync_error: null,
-        quickbooks_invoice_number: String(
-          quickBooksBill.DocNumber ?? invoiceNumber,
-        ),
-        quickbooks_supplier_id: supplierId,
-        quickbooks_supplier_name: String(
-          bill.supplierName ?? quickBooksBill.VendorRef?.name ?? "",
-        ),
-        quickbooks_memo: memo,
-        quickbooks_overall_gst_override: billGstValue,
-        quickbooks_bill_id: String(quickBooksBill.Id),
-        quickbooks_attachment_files: uploadedAttachments,
-        order_number: orderNumber,
-        mode_of_payment: modeOfPayment.value,
-        mode_of_payment_option_id: modeOfPayment.id,
-      })
-      .select("*")
-      .single();
+    const draftFinalValues = {
+      cost,
+      reason: reason.value,
+      reason_option_id: reason.id,
+      items_sent: relatedNames,
+      courier: "",
+      courier_option_id: null,
+      remarks,
+      has_quickbooks_bill: true,
+      quickbooks_bill_sync_error: null,
+      quickbooks_invoice_number: String(
+        quickBooksBill.DocNumber ?? invoiceNumber,
+      ),
+      quickbooks_supplier_id: supplierId,
+      quickbooks_supplier_name: String(
+        bill.supplierName ?? quickBooksBill.VendorRef?.name ?? "",
+      ),
+      quickbooks_memo: memo,
+      quickbooks_overall_gst_override: billGstValue,
+      quickbooks_bill_id: String(quickBooksBill.Id),
+      quickbooks_attachment_files: uploadedAttachments,
+      order_number: orderNumber,
+      mode_of_payment: modeOfPayment.value,
+      mode_of_payment_option_id: modeOfPayment.id,
+    };
+    const { data: latest } = existingVoucher?.is_draft
+      ? { data: null }
+      : await supabaseAdmin
+          .from("additional_costs")
+          .select("position")
+          .eq("client_id", client.id)
+          .order("position", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+    const voucherValues = {
+      client_id: client.id,
+      position: Number(latest?.position ?? -1) + 1,
+      created_by: user.id,
+      created_at: createdAt,
+      trip_id: existingVoucher?.is_draft
+        ? null
+        : await nextPaymentVoucherReference(),
+      ...draftFinalValues,
+    };
+    const voucherResult = existingVoucher?.is_draft
+      ? await supabaseAdmin
+          .from("additional_costs")
+          .update({
+            ...draftFinalValues,
+            is_draft: false,
+            draft_bill: null,
+            draft_ocr: null,
+          })
+          .eq("id", existingVoucher.id)
+          .select("*")
+          .single()
+      : await supabaseAdmin
+          .from("additional_costs")
+          .insert(voucherValues)
+          .select("*")
+          .single();
+    const { data: voucherRow, error: voucherError } = voucherResult;
     if (voucherError)
       throw new Error(
         `Could not save the payment voucher for this QuickBooks Bill: ${voucherError.message}`,
