@@ -27,6 +27,7 @@ type SupabaseReadResult = {
 type BoardPageRpcName =
   | "crm_board_initial_page_hydrated_v1"
   | "crm_board_group_page_hydrated_fast_v1"
+  | "crm_board_person_filter_page_hydrated_v1"
   | "crm_board_standard_filter_page_hydrated_v1"
   | "crm_board_client_page_hydrated_indexed_v1";
 
@@ -1799,6 +1800,21 @@ export async function fetchHydratedClientGroupPage(
       (query.sortValueType ?? "date") === "date" &&
       (query.sortDirection ?? "desc") === "desc",
   );
+  // Sales users begin on their own Person filter. This is by far the most
+  // frequent filtered Board load, so start from that user's assignments
+  // instead of scanning clients and correlating assignment checks per row.
+  const usePersonFilterFastPath = Boolean(
+    useStandardFilterFastPath &&
+      query.personId &&
+      !query.statusOptionId &&
+      !query.importanceOptionId &&
+      !query.replyStatusOptionId &&
+      !query.channelOptionId &&
+      !query.subitemStatusOptionId &&
+      !query.paymentOptionId &&
+      !query.paymentStatusOptionId &&
+      !query.subprogressOptionId,
+  );
   const useFastGroupPageRpc = Boolean(
     !useInitialPageRpc &&
       groupId &&
@@ -1864,6 +1880,12 @@ export async function fetchHydratedClientGroupPage(
     p_limit: limit,
     p_offset: offset,
   };
+  const personFilterPageParams = {
+    p_group_id: groupId,
+    p_limit: limit,
+    p_offset: offset,
+    p_person_id: query.personId ?? null,
+  };
   const requestIndexedPage = () =>
     supabase
       .rpc("crm_board_client_page_hydrated_indexed_v1", indexedPageParams)
@@ -1871,6 +1893,10 @@ export async function fetchHydratedClientGroupPage(
   const requestStandardFilterPage = () =>
     supabase
       .rpc("crm_board_standard_filter_page_hydrated_v1", standardFilterPageParams)
+      .abortSignal(options?.signal ?? new AbortController().signal);
+  const requestPersonFilterPage = () =>
+    supabase
+      .rpc("crm_board_person_filter_page_hydrated_v1", personFilterPageParams)
       .abortSignal(options?.signal ?? new AbortController().signal);
   let response = await retryTimedOutRead(
     () =>
@@ -1882,6 +1908,8 @@ export async function fetchHydratedClientGroupPage(
           ? supabase
               .rpc("crm_board_group_page_hydrated_fast_v1", fastGroupPageParams)
               .abortSignal(options?.signal ?? new AbortController().signal)
+        : usePersonFilterFastPath
+          ? requestPersonFilterPage()
         : useStandardFilterFastPath
           ? requestStandardFilterPage()
         : requestIndexedPage(),
@@ -1890,17 +1918,20 @@ export async function fetchHydratedClientGroupPage(
     // tab issue a second expensive query into the same saturated database.
     // Let Page's jittered, exponential Board recovery retry later instead.
     // Other page paths retain one retry for a short-lived collision.
-    useStandardFilterFastPath ? 0 : 1,
+    (useStandardFilterFastPath || usePersonFilterFastPath) ? 0 : 1,
   );
   // PostgREST can briefly retain its previous schema cache after the migration
   // is applied. Keep deployment ordering harmless by falling back only when
   // the new function itself is unavailable; real database errors still surface.
   if (
-    (useFastGroupPageRpc || useStandardFilterFastPath) &&
+    (useFastGroupPageRpc || useStandardFilterFastPath || usePersonFilterFastPath) &&
     response.error &&
     ["PGRST202", "42883"].includes(response.error.code ?? "")
   ) {
-    response = await retryTimedOutRead(requestIndexedPage, 1);
+    response = await retryTimedOutRead(
+      usePersonFilterFastPath ? requestStandardFilterPage : requestIndexedPage,
+      1,
+    );
   }
   // A missing database code means the browser did not receive a PostgREST
   // response at all (the Safari failure captured in production). Retry only
@@ -1923,6 +1954,12 @@ export async function fetchHydratedClientGroupPage(
             fastGroupPageParams,
             options?.signal,
           )
+        : usePersonFilterFastPath
+          ? await requestBoardPageSameOrigin(
+              "crm_board_person_filter_page_hydrated_v1",
+              personFilterPageParams,
+              options?.signal,
+            )
         : useStandardFilterFastPath
           ? await requestBoardPageSameOrigin(
               "crm_board_standard_filter_page_hydrated_v1",

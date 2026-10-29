@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 const BOARD_PAGE_RPCS = new Set([
   "crm_board_initial_page_hydrated_v1",
   "crm_board_group_page_hydrated_fast_v1",
+  "crm_board_person_filter_page_hydrated_v1",
   "crm_board_standard_filter_page_hydrated_v1",
   "crm_board_client_page_hydrated_indexed_v1",
 ]);
