@@ -32,11 +32,9 @@ function deliveryDetailsForItem(itemName: string | null, notes: string) {
 
 function PrintOcfItemPanel({
   item,
-  projectName,
   estimatedDeliveryNotes,
 }: {
   item: PrintOcfItem;
-  projectName: string;
   estimatedDeliveryNotes: string;
 }) {
   return (
@@ -44,7 +42,6 @@ function PrintOcfItemPanel({
       <div className="flex shrink-0 items-start justify-between gap-2 border-b border-black pb-1">
         <div className="min-w-0">
           <p className="font-bold">{item.item_name || "Unnamed item"}</p>
-          <p className="truncate text-[7px]">Project: {projectName || "-"}</p>
         </div>
         <dl className="grid shrink-0 grid-cols-[auto_auto] gap-x-1 text-right">
           <dt className="font-semibold">Qty:</dt>
@@ -53,13 +50,6 @@ function PrintOcfItemPanel({
           <dd className="whitespace-nowrap">{formatNeedBy(item.need_by_date)}</dd>
         </dl>
       </div>
-
-      <section className="shrink-0 border-b border-black py-1">
-        <h2 className="font-bold">Remarks</h2>
-        <p className="mt-0.5 whitespace-pre-wrap [overflow-wrap:anywhere]">
-          {item.remarks || "-"}
-        </p>
-      </section>
 
       <section className="shrink-0 border-b border-black py-1">
         <h2 className="font-bold">Delivery Information</h2>
@@ -200,7 +190,6 @@ export function PrintOcfItemPages({
               <PrintOcfItemPanel
                 key={item.id}
                 item={item}
-                projectName={projectName}
                 estimatedDeliveryNotes={estimatedDeliveryNotes}
               />
             ))}
