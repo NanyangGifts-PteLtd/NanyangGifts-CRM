@@ -10,6 +10,13 @@ export const metadata: Metadata = {
     metadataBase: new URL(defaultUrl),
     title: "Friday - NanyangGifts CRM",
     description: "NanyangGifts Custom CRM",
+    icons: {
+        icon: [
+            { url: "/Friday-icon.png", type: "image/png", sizes: "any" },
+        ],
+        shortcut: "/Friday-icon.png",
+        apple: "/Friday-icon.png",
+    },
 };
 
 export default function RootLayout({
