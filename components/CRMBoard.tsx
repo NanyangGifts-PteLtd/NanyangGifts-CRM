@@ -514,6 +514,7 @@ interface CRMBoardProps {
   reloadClients: (options?: {
     preservePagination?: boolean;
     targetGroupIds?: string[];
+    reason?: string;
   }) => Promise<void>;
   clientsLoaded?: boolean;
   boardQueryLoading?: boolean;
@@ -733,12 +734,22 @@ function GroupPageSentinel({
   compact?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  // A visible sentinel should request one page, not repeatedly drain every
+  // remaining page merely because appending rows caused another render. It is
+  // re-armed only after the user scrolls it out of view and approaches again.
+  const requestedForCurrentVisibilityRef = useRef(false);
   useEffect(() => {
     const element = ref.current;
     if (!element || loading) return;
     const observer = new IntersectionObserver(
       ([entry]) => {
-        if (entry?.isIntersecting) onVisible();
+        if (!entry?.isIntersecting) {
+          requestedForCurrentVisibilityRef.current = false;
+          return;
+        }
+        if (requestedForCurrentVisibilityRef.current) return;
+        requestedForCurrentVisibilityRef.current = true;
+        onVisible();
       },
       { rootMargin: "180px 0px" },
     );
@@ -3756,7 +3767,7 @@ export function CRMBoard({
         id: toastId,
         description: `${name} was removed from the ${code.replaceAll("_", " ")} list.`,
       });
-      void reloadClients();
+      void reloadClients({ reason: "label-delete" });
     },
     [notifyChange, reloadClients],
   );
@@ -3789,7 +3800,7 @@ export function CRMBoard({
       entries.filter((entry) => entry.id !== pending.optionId),
     );
     setPendingOptionDeletion(null);
-    await reloadClients();
+    await reloadClients({ reason: "label-delete-confirmed" });
     notifyChange(
       "Option deleted",
       `${pending.name} was removed and cleared from ${pending.usageCount} ${pending.usageCount === 1 ? "cell" : "cells"}.`,
@@ -4274,7 +4285,7 @@ export function CRMBoard({
           entry.value === oldName ? { ...entry, value: trimmed } : entry,
         ),
       );
-      await reloadClients();
+      await reloadClients({ reason: "label-rename" });
       notifyChange("Label renamed", `${oldName} was renamed to ${trimmed}.`);
     },
     [getOptionGroupId, notifyChange, reloadClients],
@@ -5151,7 +5162,10 @@ export function CRMBoard({
           description:
             error instanceof Error ? error.message : "Please try again.",
         });
-        await reloadClients({ preservePagination: false });
+        await reloadClients({
+          preservePagination: false,
+          reason: "subitem-reorder-rollback",
+        });
       }
     },
     [
@@ -5206,10 +5220,16 @@ export function CRMBoard({
 
       try {
         await moveSubitemRow(movingSubitem.id, targetClientId);
-        await reloadClients({ preservePagination: false });
+        // The source and destination were already updated optimistically.
+        // Realtime performs a targeted reconciliation after the protected
+        // write settles; replacing the entire query snapshot here made every
+        // unrelated group and open client appear to refresh.
       } catch (error) {
         console.error("Failed to move subitem", error);
-        await reloadClients({ preservePagination: false });
+        await reloadClients({
+          preservePagination: false,
+          reason: "subitem-cross-client-move-rollback",
+        });
         toast.error("Subitem could not be moved", {
           description:
             error instanceof Error
@@ -5392,7 +5412,7 @@ export function CRMBoard({
           updateClientRow(localDraggedId, updates),
         );
       } catch (err) {
-        void reloadClients();
+        void reloadClients({ reason: "client-move-rollback" });
         console.error("Failed to move client to group", err);
         toast.error("Client could not be moved", {
           description:
@@ -8696,7 +8716,10 @@ export function CRMBoard({
         const clientId = String(entry.meta?.deletedId ?? entry.clientId ?? "");
         if (!clientId) return;
         await restoreClientRow(clientId);
-        await reloadClients({ preservePagination: false });
+        await reloadClients({
+          preservePagination: false,
+          reason: "client-delete-undo",
+        });
         toast.success("Client deletion undone");
         return;
       }
@@ -8704,7 +8727,10 @@ export function CRMBoard({
         const subitemId = String(entry.meta?.deletedId ?? "");
         if (!subitemId) return;
         await restoreSubitemRow(subitemId);
-        await reloadClients({ preservePagination: false });
+        await reloadClients({
+          preservePagination: false,
+          reason: "subitem-delete-undo",
+        });
         toast.success("Subitem deletion undone");
         return;
       }
@@ -8862,7 +8888,10 @@ export function CRMBoard({
         setBinItems((items) =>
           items.filter((candidate) => candidate.id !== item.id),
         );
-        await reloadClients({ preservePagination: false });
+        await reloadClients({
+          preservePagination: false,
+          reason: "recycle-bin-restore",
+        });
         toast.success(
           `${item.type === "client" ? "Client" : "Subitem"} restored`,
         );
@@ -8945,7 +8974,7 @@ export function CRMBoard({
       setBinRestoreIssue(
         `Some items could not be permanently deleted:\n${failures.join("\n")}`,
       );
-    await reloadClients();
+    await reloadClients({ reason: "recycle-bin-permanent-delete" });
   }, [pendingPermanentBinItems, permanentlyDeleteBinItems, reloadClients]);
 
   const restoreSelectedBinItems = useCallback(async () => {
@@ -9293,7 +9322,7 @@ export function CRMBoard({
           }));
         }
         void Promise.all([
-          reloadClients(),
+          reloadClients({ reason: "client-duplicate-reconciliation" }),
           fetchClientAssignmentMaps(),
           fetchAllSubitemAssignees(),
         ])
@@ -9313,7 +9342,7 @@ export function CRMBoard({
         });
         setSelectedIds(new Set());
       } catch (error) {
-        await reloadClients();
+        await reloadClients({ reason: "client-duplicate-rollback" });
         toast.error("Clients could not be duplicated", {
           description:
             error instanceof Error
@@ -9367,7 +9396,7 @@ export function CRMBoard({
           }));
         }
         void Promise.all([
-          reloadClients(),
+          reloadClients({ reason: "single-client-duplicate-reconciliation" }),
           fetchClientAssignmentMaps(),
           fetchAllSubitemAssignees(),
         ])
@@ -9531,7 +9560,7 @@ export function CRMBoard({
               : client;
           }),
         );
-        await reloadClients();
+        await reloadClients({ reason: "bulk-client-move-rollback" });
         toast.error("Clients could not be moved", {
           description:
             error instanceof Error
@@ -9815,7 +9844,7 @@ export function CRMBoard({
             return client;
           }),
         );
-        await reloadClients();
+        await reloadClients({ reason: "bulk-subitem-move-rollback" });
         toast.error("Subitems could not be moved", {
           description:
             error instanceof Error
@@ -9870,7 +9899,7 @@ export function CRMBoard({
             : client;
         }),
       );
-      void reloadClients().catch((error) =>
+      void reloadClients({ reason: "subitem-duplicate-reconciliation" }).catch((error) =>
         console.error("Failed to reconcile duplicated subitems", error),
       ).finally(() => releaseDuplicateProtections.forEach((release) => release()));
       toast.success("Subitems duplicated", {
@@ -9878,7 +9907,7 @@ export function CRMBoard({
       });
       clearSubitemSelection();
     } catch (error) {
-      await reloadClients();
+      await reloadClients({ reason: "subitem-duplicate-rollback" });
       toast.error("Subitems could not be duplicated", {
         description:
           error instanceof Error
@@ -9927,7 +9956,9 @@ export function CRMBoard({
           ),
         );
         void setup()
-          .then(() => reloadClients())
+          .then(() =>
+            reloadClients({ reason: "single-subitem-duplicate-setup" }),
+          )
           .catch((error) => {
             console.error("Failed to finish duplicated subitem setup", error);
             toast.error("Subitem setup needs attention", {
@@ -14282,7 +14313,7 @@ export function CRMBoard({
           });
         }}
         onCreated={() => {
-          void reloadClients();
+          void reloadClients({ reason: "ocf-created" });
         }}
       />
       <OcfChooserModal

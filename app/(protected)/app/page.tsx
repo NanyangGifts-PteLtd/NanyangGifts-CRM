@@ -172,6 +172,10 @@ type GroupCountsCache = {
 
 type ReloadClientsOptions = {
   preservePagination?: boolean;
+  // Identifies why this Board request exists. This is emitted through the
+  // browser Performance API and a `crm:board-load-measured` event so loading
+  // regressions can be attributed without adding another analytics request.
+  reason?: string;
   // Membership changes (for example, a realtime client move) can place a
   // row outside the global initial page. Prime its destination group as part
   // of the same reconciliation so its updated count and visible rows agree.
@@ -1010,6 +1014,9 @@ export default function Page() {
   );
 
   const reloadClients = useCallback(async (options: ReloadClientsOptions = {}) => {
+    const loadReason = options.reason ?? "unspecified";
+    const loadStartedAt = performance.now();
+    let loadOutcome: "success" | "aborted" | "error" | "stale" = "success";
     if (options.recoveryAttempt === undefined && boardLoadRecoveryTimer.current !== null) {
       window.clearTimeout(boardLoadRecoveryTimer.current);
       boardLoadRecoveryTimer.current = null;
@@ -1266,6 +1273,7 @@ export default function Page() {
         refreshSequence !== recordsRefreshSequence.current ||
         writeRevisionAtStart !== getBoardWriteRevision()
       ) {
+        loadOutcome = "stale";
         if (refreshSequence === recordsRefreshSequence.current) {
           if (reconciliationTimer.current !== null)
             window.clearTimeout(reconciliationTimer.current);
@@ -1277,7 +1285,11 @@ export default function Page() {
             // This retry follows a stale response, commonly after a move.
             // Replacing the affected query snapshot is required so a row can
             // enter its destination group or leave its previous one.
-            void reloadClients({ targetGroupIds, preservePagination: false });
+            void reloadClients({
+              targetGroupIds,
+              preservePagination: false,
+              reason: "stale-response-reconciliation",
+            });
           }, 100);
         }
         return;
@@ -1473,14 +1485,18 @@ export default function Page() {
         reconciliationTimer.current = window.setTimeout(
           () => {
             reconciliationTimer.current = null;
-            void reloadClients();
+            void reloadClients({ reason: "protected-write-reconciliation" });
           },
           Math.max(350, protectionDelay + 100),
         );
       }
     } catch (error) {
       setQuickFilterCountsLoading(false);
-      if (isAbortError(error)) return;
+      if (isAbortError(error)) {
+        loadOutcome = "aborted";
+        return;
+      }
+      loadOutcome = "error";
       console.error("Failed to load clients", error);
       if (refreshSequence === recordsRefreshSequence.current) {
         const failedQueryKey = JSON.stringify(boardQuery);
@@ -1506,12 +1522,34 @@ export default function Page() {
           void reloadClients({
             ...options,
             recoveryAttempt: recoveryAttempt + 1,
+            reason: `timeout-recovery:${loadReason}`,
           });
         }, recoveryDelayMs);
       }
     } finally {
       if (boardLoadAbortController.current === abortController)
         boardLoadAbortController.current = null;
+      const detail = {
+        reason: loadReason,
+        outcome: loadOutcome,
+        durationMs: Math.round((performance.now() - loadStartedAt) * 10) / 10,
+        preservePagination: options.preservePagination !== false,
+        targetGroupCount: options.targetGroupIds?.length ?? 0,
+        recoveryAttempt: options.recoveryAttempt ?? 0,
+      };
+      // PerformanceMeasureOptions support varies across Safari versions. A
+      // measurement must never be able to turn a successful Board load into a
+      // rejected promise, so keep this optional and guarded.
+      try {
+        performance.measure(`crm-board-load:${loadReason}:${loadOutcome}`, {
+          start: loadStartedAt,
+          duration: detail.durationMs,
+        });
+      } catch {}
+      window.dispatchEvent(
+        new CustomEvent("crm:board-load-measured", { detail }),
+      );
+      console.debug("[CRM Board load]", detail);
     }
   }, [boardQuery, cacheBoardQuerySnapshot, groups]);
 
@@ -1851,6 +1889,7 @@ export default function Page() {
           // within a filtered result set. This is one of the few cases where
           // replacing the query snapshot is required for correctness.
           preservePagination: false,
+          reason: "realtime-filtered-reconciliation",
         });
         return;
       }
@@ -2084,7 +2123,7 @@ export default function Page() {
       } catch (error) {
         console.warn("Could not reconcile targeted realtime changes", error);
         if (refreshSequence === recordsRefreshSequence.current) {
-          await reloadClients();
+          await reloadClients({ reason: "realtime-targeted-fallback" });
         }
       }
     },
@@ -2135,7 +2174,9 @@ export default function Page() {
         // Keep the current snapshot visible while the first request for this
         // query runs. Clearing this state made every group count flash to zero.
       }
-      setExpandedClientIds([]);
+      // Keep expanded rows mounted while the new query is loading. IDs which
+      // are absent from the result do not render, while matching clients retain
+      // their open detail state instead of visibly collapsing and re-opening.
       setBoardQuery(query);
     },
     [
@@ -2412,7 +2453,10 @@ export default function Page() {
       return;
     }
     // A Board-query change intentionally defines a new result set.
-    void reloadClients({ preservePagination: false });
+    void reloadClients({
+      preservePagination: false,
+      reason: "board-query-change",
+    });
   }, [boardQuery, reloadClients, roleLoaded]);
 
   useEffect(() => {
