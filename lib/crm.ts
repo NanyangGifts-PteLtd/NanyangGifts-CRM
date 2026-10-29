@@ -2396,6 +2396,10 @@ export async function updateClientRow(
   // resolved by their canonical board names.
   if (nextUpdates.status !== undefined) {
     const quotedLabel = await resolveSystemOption("client_status", "quoted");
+    const contactedLabel = await resolveSystemOption(
+      "client_status",
+      "contacted",
+    );
     const failedLabel = await resolveSystemOption("client_status", "failed");
     // Enforce the automation whenever the stable Quoted option is saved.
     // Older/imported rows can have a correct option ID with stale display
@@ -2403,6 +2407,8 @@ export async function updateClientRow(
     // allowed those partially migrated rows to keep the wrong group.
     const isQuotedStatusUpdate =
       clientOptionIds.status_option_id === quotedLabel.id;
+    const isContactedStatusUpdate =
+      clientOptionIds.status_option_id === contactedLabel.id;
     const isFailedStatusUpdate =
       clientOptionIds.status_option_id === failedLabel.id;
 
@@ -2433,6 +2439,14 @@ export async function updateClientRow(
         nextUpdates.replyStatusOptionId = repliedLabel.id;
         clientOptionIds.reply_status_option_id = repliedLabel.id;
       }
+    } else if (isContactedStatusUpdate) {
+      const repliedLabel = await resolveSystemOption(
+        "reply_status",
+        "replied",
+      );
+      nextUpdates.replyStatus = repliedLabel.value;
+      nextUpdates.replyStatusOptionId = repliedLabel.id;
+      clientOptionIds.reply_status_option_id = repliedLabel.id;
     } else if (isFailedStatusUpdate) {
       const { data: failedGroup, error: failedGroupError } = await supabase
         .from("crm_groups")

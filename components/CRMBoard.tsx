@@ -8063,6 +8063,11 @@ export function CRMBoard({
         "client_status_quoted",
         "Quoted",
       );
+      const contactedStatus = findSystemOption(
+        clientStatusEntries,
+        "client_status_contacted",
+        "Contacted",
+      );
       const failedStatus = findSystemOption(
         clientStatusEntries,
         "client_status_failed",
@@ -8083,18 +8088,24 @@ export function CRMBoard({
           (updates.statusOptionId === undefined &&
             updates.status === quotedStatus.value)
         : updates.status === quotedStatus.value;
+      const isContactedStatusUpdate = contactedStatus.id
+        ? updates.statusOptionId === contactedStatus.id ||
+          (updates.statusOptionId === undefined &&
+            updates.status === contactedStatus.value)
+        : updates.status === contactedStatus.value;
       const isFailedStatusUpdate = failedStatus.id
         ? updates.statusOptionId === failedStatus.id ||
           (updates.statusOptionId === undefined &&
             updates.status === failedStatus.value)
         : updates.status === failedStatus.value;
       if (
-        isQuotedStatusUpdate &&
-        existingClient &&
-        existingClient.replyStatusOptionId === waitingReplyStatus.id
+        (isContactedStatusUpdate ||
+          (isQuotedStatusUpdate &&
+            existingClient?.replyStatusOptionId === waitingReplyStatus.id)) &&
+        existingClient
       ) {
-        // Mirror the server-side rule in the optimistic board state so the
-        // reply cell does not briefly remain Waiting before realtime arrives.
+        // Mirror the server-side status rule in the optimistic board state so
+        // the reply cell does not briefly remain Waiting before realtime arrives.
         nextUpdates.replyStatus = doneReplyStatus.value;
         nextUpdates.replyStatusOptionId = doneReplyStatus.id ?? null;
       }
