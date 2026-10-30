@@ -307,6 +307,7 @@ type Subitems = {
     payment_received_option_id?: string | null;
     mode_of_payment: string | null;
     mode_of_payment_option_id: string | null;
+      remarks?: string | null;
   }> | null;
   details_hydrated?: boolean | null;
   timeline_rows: any[] | null;
@@ -622,6 +623,7 @@ export function mapSubitems(row: Subitems): Subitem {
         paymentReceivedOptionId: paymentRow.payment_received_option_id ?? null,
         modeOfPayment: paymentRow.mode_of_payment ?? "",
         modeOfPaymentOptionId: paymentRow.mode_of_payment_option_id ?? null,
+        remarks: paymentRow.remarks ?? "",
       }))
       .sort((first, second) => first.position - second.position),
     detailsHydrated: row.details_hydrated ?? true,
@@ -1023,7 +1025,7 @@ export async function fetchClientsWithSubitems(params?: {
   const paymentRowSelect = [
     "id", "subitem_id", "position", "amount", "order_number",
     "payment_received", "payment_received_label", "payment_received_option_id",
-    "mode_of_payment", "mode_of_payment_option_id",
+    "mode_of_payment", "mode_of_payment_option_id", "remarks",
   ].join(", ");
   let excludedGroupIds: string[] = [];
   if (params?.excludeGroupNames?.length) {
@@ -3185,9 +3187,10 @@ export async function createSubitemRow(
       payment_received_option_id: null,
       mode_of_payment: "",
       mode_of_payment_option_id: null,
+      remarks: "",
     })
     .select(
-      "id, position, amount, order_number, payment_received, payment_received_label, payment_received_option_id, mode_of_payment, mode_of_payment_option_id",
+      "id, position, amount, order_number, payment_received, payment_received_label, payment_received_option_id, mode_of_payment, mode_of_payment_option_id, remarks",
     )
     .single();
 
@@ -4143,7 +4146,7 @@ export async function createSubitemPaymentRow(subitemId: string) {
       mode_of_payment_option_id: null,
     })
     .select(
-      "id, position, amount, order_number, payment_received, payment_received_label, payment_received_option_id, mode_of_payment, mode_of_payment_option_id",
+      "id, position, amount, order_number, payment_received, payment_received_label, payment_received_option_id, mode_of_payment, mode_of_payment_option_id, remarks",
     )
     .single();
   if (error) throw error;
@@ -4164,6 +4167,7 @@ export async function createSubitemPaymentRow(subitemId: string) {
     paymentReceivedOptionId: created.payment_received_option_id ?? null,
     modeOfPayment: created.mode_of_payment ?? "",
     modeOfPaymentOptionId: created.mode_of_payment_option_id ?? null,
+    remarks: created.remarks ?? "",
   } satisfies PaymentRow;
 }
 
@@ -4225,6 +4229,7 @@ export async function updateSubitemPaymentRow(
           mode_of_payment_option_id: modeOfPaymentOptionId,
         }
       : {}),
+    ...(updates.remarks !== undefined ? { remarks: updates.remarks } : {}),
   };
   const { data: updated, error } = await supabase
     .from("subitem_payment_rows")
@@ -4232,7 +4237,7 @@ export async function updateSubitemPaymentRow(
     .eq("id", paymentRowId)
     .eq("subitem_id", subitemId)
     .select(
-      "id, position, amount, order_number, payment_received, payment_received_label, payment_received_option_id, mode_of_payment, mode_of_payment_option_id",
+      "id, position, amount, order_number, payment_received, payment_received_label, payment_received_option_id, mode_of_payment, mode_of_payment_option_id, remarks",
     )
     .single();
   if (error) throw error;
@@ -4259,6 +4264,7 @@ export async function updateSubitemPaymentRow(
     paymentReceivedOptionId: updated.payment_received_option_id ?? null,
     modeOfPayment: updated.mode_of_payment ?? "",
     modeOfPaymentOptionId: updated.mode_of_payment_option_id ?? null,
+    remarks: updated.remarks ?? "",
   } satisfies PaymentRow;
 }
 

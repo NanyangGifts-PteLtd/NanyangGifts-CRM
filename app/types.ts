@@ -102,6 +102,7 @@ export interface PaymentRow {
   paymentReceivedOptionId?: string | null;
   modeOfPayment: string;
   modeOfPaymentOptionId?: string | null;
+  remarks: string;
 }
 
 export interface Subitem {

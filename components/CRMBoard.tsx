@@ -389,6 +389,7 @@ const SUBPAYMENT_SEARCH_COLS = [
   { key: "orderNumber", label: "Order number" },
   { key: "paymentReceivedLabel", label: "Payment done?" },
   { key: "modeOfPayment", label: "Mode of payment" },
+  { key: "remarks", label: "Remarks" },
 ];
 const TIMELINE_SEARCH_COLS = [
   { key: "name", label: "Timeline" },
@@ -9699,6 +9700,7 @@ export function CRMBoard({
                                     paymentRow.mode_of_payment ?? "",
                                   modeOfPaymentOptionId:
                                     paymentRow.mode_of_payment_option_id ?? null,
+                                  remarks: paymentRow.remarks ?? "",
                                 },
                               ],
                             },

@@ -4572,8 +4572,8 @@ export function SubitemsTable({
                         colSpan={totalColSpan}
                         className="border-b border-r border-[#D0D4E4] bg-[#fafcff] px-9 py-3"
                       >
-                        <div className="max-w-[980px] overflow-hidden rounded-md border border-[#D0D4E4] bg-white text-xs text-[#334155] shadow-sm">
-                          <div className="grid grid-cols-[112px_minmax(155px,1fr)_minmax(170px,1fr)_150px_minmax(185px,1fr)_36px] border-b border-[#D0D4E4] bg-[#f4f7fb] text-[12.6px] font-semibold text-gray-500">
+                        <div className="relative max-w-[1180px] overflow-visible rounded-md border border-[#D0D4E4] bg-white text-xs text-[#334155] shadow-sm">
+                          <div className="grid grid-cols-[112px_minmax(155px,1fr)_minmax(170px,1fr)_150px_minmax(185px,1fr)_minmax(230px,1.35fr)_36px] border-b border-[#D0D4E4] bg-[#f4f7fb] text-[12.6px] font-semibold text-gray-500">
                             <span className="px-3 py-2">Subpayment</span>
                             <span className="border-l border-[#D0D4E4] px-3 py-2">
                               Sub-amount
@@ -4587,13 +4587,16 @@ export function SubitemsTable({
                             <span className="border-l border-[#D0D4E4] px-3 py-2">
                               Mode of payment
                             </span>
+                            <span className="border-l border-[#D0D4E4] px-3 py-2">
+                              Remarks
+                            </span>
                             <span className="border-l border-slate-200" />
                           </div>
                           {(sub.paymentRows ?? []).map(
                             (paymentRow: PaymentRow, paymentIndex) => (
                               <div
                                 key={paymentRow.id}
-                                className="grid grid-cols-[112px_minmax(155px,1fr)_minmax(170px,1fr)_150px_minmax(185px,1fr)_36px] border-b border-[#e2e8f0] last:border-b-0"
+                                className="grid grid-cols-[112px_minmax(155px,1fr)_minmax(170px,1fr)_150px_minmax(185px,1fr)_minmax(230px,1.35fr)_36px] border-b border-[#e2e8f0] last:border-b-0"
                               >
                                 <div className="flex items-center justify-center px-3 py-2 font-medium text-slate-500">
                                   {paymentIndex + 1}
@@ -4714,6 +4717,20 @@ export function SubitemsTable({
                                     sectionCount={3}
                                     small
                                     readOnly={!canEditSubitem(sub.id)}
+                                  />
+                                </div>
+                                <div className="relative border-l border-[#e2e8f0]">
+                                  <EditableCell
+                                    readOnly={!canEditSubitem(sub.id)}
+                                    value={paymentRow.remarks ?? ""}
+                                    onChange={(value) =>
+                                      savePaymentRow(sub.id, paymentRow.id, {
+                                        remarks: value,
+                                      })
+                                    }
+                                    multiline
+                                    resizableMultiline
+                                    className="!justify-start px-3 py-2"
                                   />
                                 </div>
                                 <button
