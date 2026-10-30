@@ -178,6 +178,7 @@ export function TimelineSection({
   onRenameOption,
   onReorderOptions,
   readOnly = false,
+  datePickerPopoverClassName,
 }: {
   rows: TimelineRow[];
   onUpdate: (rows: TimelineRow[]) => void;
@@ -219,6 +220,8 @@ export function TimelineSection({
     layout: Array<{ id?: string; value: string; section: number }>,
   ) => void | Promise<void>;
   readOnly?: boolean;
+  /** Additional layer styling for date menus when TimelineSection is in a dialog. */
+  datePickerPopoverClassName?: string;
 }) {
   const [permissionNotice, setPermissionNotice] = useState<{
     left: number;
@@ -835,6 +838,7 @@ export function TimelineSection({
                         }
                         label={`${row.name || "Timeline"} start date`}
                         className="min-w-32 rounded px-2 text-xs text-gray-700 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7BCBD5]"
+                        popoverClassName={datePickerPopoverClassName}
                       />
                       {(row.id !== "nbd" && row.name.trim().toLowerCase() !== "nbd") && (
                         <InlineDatePicker
@@ -844,6 +848,7 @@ export function TimelineSection({
                           }
                           label={`${row.name || "Timeline"} end date`}
                           className="min-w-32 rounded px-2 text-xs text-gray-700 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7BCBD5]"
+                          popoverClassName={datePickerPopoverClassName}
                         />
                       )}
                     </div>

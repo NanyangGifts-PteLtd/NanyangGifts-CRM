@@ -2517,6 +2517,9 @@ export default function GanttChart({
                   }
                   shipperOptions={shipperOptions}
                   timelineProgressOptions={timelineProgressOptions}
+                  // Popovers are portalled to document.body. They must sit
+                  // above this modal rather than beneath its dialog layer.
+                  datePickerPopoverClassName="!z-nested"
                   readOnly={
                     !canEditSubitem(
                       selectedTimelineData.client.id,

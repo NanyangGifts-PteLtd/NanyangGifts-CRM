@@ -13,6 +13,8 @@ type InlineDatePickerProps = {
   onChange: (date: string) => void;
   label: string;
   className?: string;
+  /** Use when the picker is rendered inside a higher stacking layer, e.g. a dialog. */
+  popoverClassName?: string;
 };
 
 function isDateValue(value: string) {
@@ -32,6 +34,7 @@ export function InlineDatePicker({
   onChange,
   label,
   className,
+  popoverClassName,
 }: InlineDatePickerProps) {
   const [open, setOpen] = useState(false);
   const selected = useMemo(
@@ -69,7 +72,7 @@ export function InlineDatePicker({
       </PopoverTrigger>
       <PopoverContent
         align="start"
-        className="z-tooltip w-[248px] !border-slate-200 !bg-white !p-3 !text-slate-800 !opacity-100 shadow-xl"
+        className={`z-tooltip w-[248px] !border-slate-200 !bg-white !p-3 !text-slate-800 !opacity-100 shadow-xl ${popoverClassName ?? ""}`}
         style={{ backgroundColor: "#ffffff", opacity: 1 }}
       >
         <div className="mb-2 flex items-center justify-between">
