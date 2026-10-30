@@ -1595,7 +1595,6 @@ export default function Page() {
           boardLoadRecoveryTimer.current = null;
           if (
             document.visibilityState !== "visible" ||
-            !document.hasFocus() ||
             boardQueryKeyRef.current !== failedQueryKey
           )
             return;
@@ -1645,7 +1644,6 @@ export default function Page() {
       groupCountsRefreshTimer.current = null;
       if (
         document.visibilityState !== "visible" ||
-        !document.hasFocus() ||
         activePanelRef.current !== "crm"
       )
         return;
@@ -1727,7 +1725,6 @@ export default function Page() {
             groupCountsRefreshTimer.current = null;
             if (
               document.visibilityState !== "visible" ||
-              !document.hasFocus() ||
               activePanelRef.current !== "crm" ||
               boardQueryKeyRef.current !== queryKey
             ) return;
@@ -2994,7 +2991,7 @@ export default function Page() {
       )
       .subscribe();
     const refreshWhenVisible = () => {
-      if (document.visibilityState === "visible" && document.hasFocus())
+      if (document.visibilityState === "visible")
         void loadEmailReviewPending();
     };
     document.addEventListener("visibilitychange", refreshWhenVisible);
@@ -3016,7 +3013,7 @@ export default function Page() {
     // catch-up covers a browser that suspended its socket without leaving a
     // one-minute polling loop running in every open tab.
     const refreshWhenVisible = () => {
-      if (document.visibilityState === "visible" && document.hasFocus())
+      if (document.visibilityState === "visible")
         void loadNotifications();
     };
     document.addEventListener("visibilitychange", refreshWhenVisible);

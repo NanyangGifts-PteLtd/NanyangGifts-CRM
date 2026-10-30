@@ -78,8 +78,10 @@ export function AppLiveRefresh({
     let recordsRefreshInFlight = false;
     let recordsRefreshQueued = false;
     const hiddenRefreshKinds = new Set<RefreshKind>();
-    const canRefreshNow = () =>
-      document.visibilityState === "visible" && document.hasFocus();
+    // A Friday window can remain plainly visible on a second monitor while
+    // another app has keyboard focus. Treat visibility—not focus—as the
+    // background-work boundary, so that scenario continues to reconcile.
+    const canRefreshNow = () => document.visibilityState === "visible";
     const runRefresh = (kind: RefreshKind) => {
       if (kind === "records") {
         if (recordsRefreshInFlight) {
