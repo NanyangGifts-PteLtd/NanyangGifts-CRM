@@ -270,6 +270,12 @@ export interface Client {
   };
   assignedProfileIds?: string[];
   customFields?: Record<string, string>;
+  /** Transient metadata for the currently active Board search/filter. */
+  boardMatch?: {
+    clientScopeMatched: boolean;
+    suppressNonmatchingSubitems: boolean;
+    matchingSubitemIds: string[];
+  };
 }
 export type ClientAssigneeMap = Record<string, string[]>;
 

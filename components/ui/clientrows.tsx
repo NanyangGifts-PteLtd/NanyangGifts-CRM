@@ -343,6 +343,7 @@ function readArtwork(value?: string): AttachmentItem | null {
 
 export type ClientRowProps = {
   client: Client;
+  visibleSubitemIds?: string[] | null;
   isBlacklisted: boolean;
   isSelected: boolean;
   canSelect?: boolean;
@@ -546,6 +547,7 @@ export type ClientRowProps = {
 
 export function ClientRow({
   client,
+  visibleSubitemIds = null,
   isBlacklisted,
   isSelected,
   canSelect = true,
@@ -684,6 +686,11 @@ export function ClientRow({
   companyProfileSaving = false,
   phoneProfileSaving = false,
 }: ClientRowProps) {
+  const renderedSubitems = useMemo(() => {
+    if (visibleSubitemIds === null) return client.subitems;
+    const visibleIds = new Set(visibleSubitemIds);
+    return client.subitems.filter((subitem) => visibleIds.has(subitem.id));
+  }, [client.subitems, visibleSubitemIds]);
   const confirm = useAppConfirmation();
   const [permissionNotice, setPermissionNotice] = useState<{
     left: number;
@@ -5418,7 +5425,7 @@ export function ClientRow({
         <SubitemsTable
           clientId={client.id}
           subitemsLocked={subitemsLocked}
-          subitems={client.subitems}
+          subitems={renderedSubitems}
           clientColor={groupAccentColor}
           onUpdateSubitem={onUpdateSubitem}
           onApplySelectedSubitemStatus={onApplySelectedSubitemStatus}

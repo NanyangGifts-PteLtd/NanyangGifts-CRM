@@ -1297,7 +1297,12 @@ export default function Page() {
             fullHydration.clients.map((client) => [client.id, client]),
           );
           rows = rows.map(
-            (client) => fullClientsById.get(client.id) ?? client,
+            (client) => {
+              const hydrated = fullClientsById.get(client.id);
+              return hydrated
+                ? { ...hydrated, boardMatch: client.boardMatch }
+                : client;
+            },
           );
           Object.assign(
             clientAssignmentMaps.people,
@@ -1369,7 +1374,14 @@ export default function Page() {
           // replacing the loaded page set. Replacing it with only the first
           // page makes every open group flash its loading state.
           const incomingClients = new Map(rows.map((client) => [client.id, client]));
-          return current.map((client) => incomingClients.get(client.id) ?? client);
+          return current.map((client) => {
+            const incoming = incomingClients.get(client.id);
+            if (!incoming) return client;
+            return {
+              ...incoming,
+              boardMatch: incoming.boardMatch ?? client.boardMatch,
+            };
+          });
         }
         const incomingClientIds = new Set(rows.map((client) => client.id));
         const reconciledClients = rows.flatMap((incomingClient) => {
@@ -1396,7 +1408,11 @@ export default function Page() {
           );
 
           if (isBoardRecordProtected("client", incomingClient.id)) {
-            return [{ ...localClient, subitems: mergedSubitems }];
+            return [{
+              ...localClient,
+              subitems: mergedSubitems,
+              boardMatch: incomingClient.boardMatch ?? localClient.boardMatch,
+            }];
           }
           return [{ ...incomingClient, subitems: mergedSubitems }];
         });
@@ -2177,7 +2193,10 @@ export default function Page() {
                   : { ...client, subitems: remainingSubitems },
               ];
             }
-            return [incoming];
+            return [{
+              ...incoming,
+              boardMatch: incoming.boardMatch ?? client.boardMatch,
+            }];
           });
           const retainedIds = new Set(retained.map((client) => client.id));
           return [

@@ -13829,6 +13829,11 @@ export function CRMBoard({
                         <ClientRow
                           key={client.id}
                           client={client}
+                          visibleSubitemIds={
+                            client.boardMatch?.suppressNonmatchingSubitems
+                              ? client.boardMatch.matchingSubitemIds
+                              : null
+                          }
                           isBlacklisted={
                             blacklistedClientIds.has(client.id) ||
                             (blacklistedPhones.has(

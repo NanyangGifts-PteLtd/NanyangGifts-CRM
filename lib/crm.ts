@@ -397,6 +397,13 @@ type HydratedBoardPageRpcRow = HydratedClientRpcRow & {
   total_count: number | string | null;
 };
 
+type BoardClientSubitemMatchRpcRow = {
+  client_id: string;
+  client_scope_matched: boolean;
+  suppress_nonmatching_subitems: boolean;
+  matching_subitem_ids: string[] | null;
+};
+
 type HydratedSubitemDetailsRpcRow = {
   subitem_id: string;
   client_id: string;
@@ -1528,6 +1535,67 @@ export type CrmBoardQuery = {
 
 export type CrmQuickFilterCounts = Record<string, Record<string, number>>;
 
+function boardQueryNeedsSubitemMatchMetadata(query: CrmBoardQuery) {
+  const searchColumns = query.searchColumns ?? [];
+  const searchCanMatchSubitems = Boolean(
+    query.search?.trim() &&
+      (searchColumns.length === 0 ||
+        searchColumns.some((column) => !column.startsWith("client:"))),
+  );
+  return Boolean(
+    searchCanMatchSubitems ||
+      query.advancedRules?.some(
+        (rule) => !rule.column.startsWith("client:"),
+      ) ||
+      query.subitemStatusOptionId ||
+      query.paymentOptionId ||
+      query.paymentStatusOptionId ||
+      query.subprogressOptionId ||
+      query.personId,
+  );
+}
+
+async function fetchBoardClientSubitemMatches(
+  clientIds: string[],
+  query: CrmBoardQuery,
+  signal?: AbortSignal,
+) {
+  if (!clientIds.length || !boardQueryNeedsSubitemMatchMetadata(query))
+    return new Map<string, Client["boardMatch"]>();
+  const request = supabase.rpc("crm_board_client_subitem_matches_v1", {
+    p_client_ids: clientIds,
+    p_search: query.search?.trim() || null,
+    p_search_columns: query.searchColumns ?? null,
+    p_advanced_rules: query.advancedRules ?? [],
+    p_advanced_join: query.advancedJoin ?? "and",
+    p_subitem_status_option_id: query.subitemStatusOptionId ?? null,
+    p_payment_option_id: query.paymentOptionId ?? null,
+    p_payment_status_option_id: query.paymentStatusOptionId ?? null,
+    p_subprogress_option_id: query.subprogressOptionId ?? null,
+    p_person_id: query.personId ?? null,
+  });
+  const { data, error } = signal
+    ? await request.abortSignal(signal)
+    : await request;
+  // Safe deployment ordering: old application instances continue showing all
+  // subitems until PostgREST sees the new metadata function.
+  if (error && ["PGRST202", "42883"].includes(error.code ?? ""))
+    return new Map<string, Client["boardMatch"]>();
+  if (error) throw error;
+  return new Map(
+    ((data ?? []) as BoardClientSubitemMatchRpcRow[]).map((row) => [
+      String(row.client_id),
+      {
+        clientScopeMatched: Boolean(row.client_scope_matched),
+        suppressNonmatchingSubitems: Boolean(
+          row.suppress_nonmatching_subitems,
+        ),
+        matchingSubitemIds: (row.matching_subitem_ids ?? []).map(String),
+      },
+    ]),
+  );
+}
+
 export type CrmBoardClientMembership = {
   clientId: string;
   groupId: string | null;
@@ -2074,10 +2142,19 @@ export async function fetchHydratedClientGroupPage(
 
   const rows = (data ?? []) as HydratedBoardPageRpcRow[];
   const orderedIds = rows.map((row) => String(row.client_id));
-  const hydration = await hydrateBoardAttachmentMetadata(
-    mapHydratedClientRpcRows(rows, orderedIds),
-    options?.signal,
-  );
+  const [hydration, matchMetadata] = await Promise.all([
+    hydrateBoardAttachmentMetadata(
+      mapHydratedClientRpcRows(rows, orderedIds),
+      options?.signal,
+    ),
+    fetchBoardClientSubitemMatches(orderedIds, query, options?.signal),
+  ]);
+  if (matchMetadata.size) {
+    hydration.clients = hydration.clients.map((client) => {
+      const boardMatch = matchMetadata.get(client.id);
+      return boardMatch ? { ...client, boardMatch } : client;
+    });
+  }
   const total = Number(rows[0]?.total_count ?? 0);
 
   return {
