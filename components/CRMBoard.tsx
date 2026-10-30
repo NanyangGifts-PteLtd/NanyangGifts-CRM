@@ -1009,6 +1009,41 @@ export function CRMBoard({
     Record<string, boolean>
   >({});
 
+  const focusDuplicatedClients = useCallback(
+    (duplicates: DuplicatedClientPayload[]) => {
+      const firstDuplicate = duplicates[0];
+      if (!firstDuplicate) return;
+
+      // The duplicate endpoint places every copy in New Lead. Open that group
+      // before looking for its row, then retry briefly while React commits the
+      // optimistic insert. This changes neither the current search nor any
+      // user-selected filters.
+      if (firstDuplicate.group_id) {
+        setCollapsedGroups((current) =>
+          current[firstDuplicate.group_id!]
+            ? { ...current, [firstDuplicate.group_id!]: false }
+            : current,
+        );
+      }
+      let attempts = 0;
+      const focus = () => {
+        const row = document.querySelector<HTMLElement>(
+          `[data-client-id="${firstDuplicate.id}"]`,
+        );
+        if (!row && attempts++ < 25) {
+          window.setTimeout(focus, 120);
+          return;
+        }
+        if (!row) return;
+        row.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
+        row.classList.add("search-result-highlight");
+        window.setTimeout(() => row.classList.remove("search-result-highlight"), 1800);
+      };
+      window.setTimeout(focus, 0);
+    },
+    [],
+  );
+
   const clientDetailHydrationRequestsRef = useRef(new Map<string, Promise<void>>());
   const hydratedClientCustomFieldsRef = useRef(new Set<string>());
   // Custom fields are stored as one JSON object. Keep a local, merged source
@@ -9372,6 +9407,7 @@ export function CRMBoard({
           holdBoardRecordProtection("client", client.id),
         );
         setClients((previous) => [...localDuplicates, ...previous]);
+        focusDuplicatedClients(duplicated.map(({ duplicate }) => duplicate));
         if (currentUserId) {
           setClientAssignees((previous) => ({
             ...previous,
@@ -9416,6 +9452,7 @@ export function CRMBoard({
       canEditClientRecord,
       clients,
       currentUserId,
+      focusDuplicatedClients,
       reloadClients,
       selectedIds,
       setClientAssignees,
@@ -9448,6 +9485,7 @@ export function CRMBoard({
           localClientDuplicate(source, duplicate),
           ...previous,
         ]);
+        focusDuplicatedClients([duplicate]);
         if (currentUserId) {
           setClientAssignees((previous) => ({
             ...previous,
@@ -9483,6 +9521,7 @@ export function CRMBoard({
       canEditClientRecord,
       clients,
       currentUserId,
+      focusDuplicatedClients,
       reloadClients,
       setClientAssignees,
       setClientPmAssignees,

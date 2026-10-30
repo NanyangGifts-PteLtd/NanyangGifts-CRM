@@ -293,7 +293,9 @@ export function SubitemDetailView({
           value={
             formulaFields.has(String(key))
               ? displayFormulaValue(String(key))
-              : String(subitem[key] ?? "")
+              : key === "up"
+                ? normalizeUnitPriceInput(String(subitem.up ?? ""))
+                : String(subitem[key] ?? "")
           }
           normalizeOnSave={key === "up" ? normalizeUnitPriceInput : undefined}
           onChange={(value) =>

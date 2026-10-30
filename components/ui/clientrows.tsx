@@ -3583,7 +3583,7 @@ export function ClientRow({
               title="Total Price from awarded and later CRM subitems"
             >
               <span className="block px-2 text-center text-[12.6px] font-medium text-amber-950">
-                {trackingAmount(client.trackingTotalPrice)}
+                {trackingAmount(aggregateSubitemValues.totalPrice)}
               </span>
             </div>
             <div

@@ -2944,7 +2944,9 @@ export function SubitemsTable({
             className={`h-full w-full ${highlightedUpSubitemId === sub.id ? "bg-amber-200 animate-pulse" : ""}`}
           >
             <EditableCell
-              value={sub.up}
+              // Older rows can contain a trailing decimal separator ("12.").
+              // Render the same canonical value used when this field is saved.
+              value={normalizeUnitPriceInput(sub.up)}
               normalizeOnSave={normalizeUnitPriceInput}
               onChange={(v) =>
                 onUpdateSubitem(sub.id, { up: normalizeUnitPriceInput(v) })

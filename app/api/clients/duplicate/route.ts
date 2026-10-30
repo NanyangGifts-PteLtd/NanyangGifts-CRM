@@ -110,12 +110,32 @@ export async function POST(request: NextRequest) {
       "activity_log",
       "deletion_owner_id",
     ]);
-    const newLeadLabel = await getSystemLabel("client_status", "client_status_new_lead");
+    // A duplicate is a fresh lead, not a copy of the source client's current
+    // workflow location. Resolve the group on the server so this remains true
+    // even when the action is initiated from a filtered Board.
+    const [newLeadLabel, newLeadGroupResult] = await Promise.all([
+      getSystemLabel("client_status", "client_status_new_lead"),
+      supabaseAdmin
+        .from("crm_groups")
+        .select("id")
+        .ilike("name", "New Lead")
+        .order("sort_order", { ascending: true })
+        .limit(1)
+        .maybeSingle(),
+    ]);
+    if (newLeadGroupResult.error) throw newLeadGroupResult.error;
+    if (!newLeadGroupResult.data?.id) {
+      return NextResponse.json(
+        { error: 'CRM group "New Lead" is not configured' },
+        { status: 500 },
+      );
+    }
     const { data: duplicate, error: duplicateError } = await supabaseAdmin
       .from("clients")
       .insert({
         ...clientCopy,
         name: sourceClientResult.data.name ?? "New Client",
+        group_id: newLeadGroupResult.data.id,
         status: newLeadLabel.value,
         status_option_id: newLeadLabel.id,
         created_by: user.id,
