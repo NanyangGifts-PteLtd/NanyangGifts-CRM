@@ -866,12 +866,11 @@ export function SubitemsTable({
     window.setTimeout(() => setPermissionNotice(null), 2600);
   };
   const [tableMode, setTableMode] = useState<TableMode | null>(null);
-  const [showSubpaymentTables, setShowSubpaymentTables] = useState(false);
   const [subitemViewById, setSubitemViewById] = useState<
-    Record<string, "timeline" | "sample" | null>
+    Record<string, "timeline" | "subpayment" | "sample" | null>
   >({});
   const subitemView = (
-    current: Record<string, "timeline" | "sample" | null>,
+    current: Record<string, "timeline" | "subpayment" | "sample" | null>,
     subitem: Subitem,
   ) =>
     Object.hasOwn(current, subitem.id)
@@ -883,7 +882,10 @@ export function SubitemsTable({
           : null;
   const activeSubitemView = (subitem: Subitem) =>
     subitemView(subitemViewById, subitem);
-  const toggleSubitemView = (subitem: Subitem, view: "timeline" | "sample") => {
+  const toggleSubitemView = (
+    subitem: Subitem,
+    view: "timeline" | "subpayment" | "sample",
+  ) => {
     setSubitemViewById((current) => ({
       ...current,
       [subitem.id]: subitemView(current, subitem) === view ? null : view,
@@ -946,34 +948,21 @@ export function SubitemsTable({
       return;
     }
 
-    const eligibleSubitems = subitems.filter((subitem) =>
-      isPaymentViewEligible(subitem),
-    );
     setSubitemViewById((current) => {
-      const allTimelinesOpen =
-        tableMode === "payment" &&
-        eligibleSubitems.every(
-          (subitem) => subitemView(current, subitem) === "timeline",
-        );
-      return eligibleSubitems.reduce(
-        (next, subitem) => ({
-          ...next,
-          [subitem.id]: allTimelinesOpen ? null : "timeline",
-        }),
-        { ...current },
-      );
+      const nextView =
+        subitemView(current, clickedSubitem) === "timeline" ? null : "timeline";
+      return { ...current, [clickedSubitem.id]: nextView };
     });
     setTableMode("payment");
   };
   React.useEffect(() => {
     if (tableMode === "payment" && !hasPaymentEligibleSubitems) {
       setTableMode(null);
-      setShowSubpaymentTables(false);
       setSubitemViewById((current) =>
         Object.fromEntries(
           Object.entries(current).map(([id, view]) => [
             id,
-            view === "timeline" ? null : view,
+            view === "timeline" || view === "subpayment" ? null : view,
           ]),
         ),
       );
@@ -992,12 +981,11 @@ export function SubitemsTable({
     }
     if (tableMode === "payment") {
       setTableMode(null);
-      setShowSubpaymentTables(false);
       setSubitemViewById((current) =>
         Object.fromEntries(
           Object.entries(current).map(([id, view]) => [
             id,
-            view === "timeline" ? null : view,
+            view === "timeline" || view === "subpayment" ? null : view,
           ]),
         ),
       );
@@ -1017,7 +1005,13 @@ export function SubitemsTable({
       return;
     }
     setTableMode("payment");
-    setShowSubpaymentTables((current) => !current);
+    setSubitemViewById((current) => ({
+      ...current,
+      [clickedSubitem.id]:
+        subitemView(current, clickedSubitem) === "subpayment"
+          ? null
+          : "subpayment",
+    }));
   };
   const [newSubitemName, setNewSubitemName] = useState("");
   const newSubitemNameRef = useRef("");
@@ -2447,7 +2441,7 @@ export function SubitemsTable({
               data-view-action
               onClick={() => toggleClientSubpayments(sub)}
               className={`flex items-center justify-center rounded-sm border p-1 transition active:scale-95 ${
-                tableMode === "payment" && showSubpaymentTables
+                tableMode === "payment" && activeSubitemView(sub) === "subpayment"
                   ? "border-[#7a9bc9] bg-[#7a9bc9] text-white"
                   : "border-blue-200 bg-transparent text-[#6887b5] hover:bg-blue-100"
               }`}
@@ -4567,7 +4561,7 @@ export function SubitemsTable({
                 </tr>
 
                 {tableMode === "payment" &&
-                  showSubpaymentTables &&
+                  activeSubitemView(sub) === "subpayment" &&
                   isPaymentViewEligible(sub) && (
                     <tr className="bg-slate-50/70">
                       <td

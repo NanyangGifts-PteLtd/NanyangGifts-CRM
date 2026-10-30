@@ -412,7 +412,13 @@ function buildSchedulerData(
           const progress = progressById.get(row.subProgressOptionId ?? "");
           const start = parseDate(row?.timelineStart);
           const explicitEnd = parseDate(row?.timelineEnd);
-          const end = start ? (explicitEnd ?? addOneDay(start)) : null;
+          // The NBD is a single date, not a duration. The scheduler treats
+          // its end boundary inclusively, so using the usual next-day
+          // fallback incorrectly paints it across two days.
+          const isNbd = String(row?.name ?? "").trim().toLowerCase() === "nbd";
+          const end = start
+            ? (explicitEnd ?? (isNbd ? new Date(start) : addOneDay(start)))
+            : null;
           if (!start || !end) return [];
           return [
             {
@@ -1956,6 +1962,12 @@ export default function GanttChart({
             overflow: hidden !important;
             text-overflow: ellipsis !important;
             white-space: nowrap !important;
+          }
+          /* react-scheduler always renders a subtitle paragraph. For a
+             one-word block such as NBD it is empty, but still participates
+             in the flex gap and makes the title look left-shifted. */
+          #reactSchedulerCanvasWrapper button[style*="background-color"] p:nth-child(2):empty {
+            display: none !important;
           }
           #reactSchedulerCanvasWrapper button[style*="background-color"] p:nth-child(3) {
             display: none !important;

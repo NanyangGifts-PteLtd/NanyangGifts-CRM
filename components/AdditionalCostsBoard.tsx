@@ -2580,18 +2580,18 @@ export function AdditionalCostsBoard({
           <span className="text-sm text-slate-500">{group.rows.length} vouchers</span>
         </div>
 
-        {group.id === "quickbooks_bills_only" && (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              openVoucherCreator(group.id);
-            }}
-            className="ml-2 rounded border border-sky-300 bg-sky-50 px-3 py-1.5 text-sm font-medium text-sky-700 hover:bg-sky-100"
-          >
-            + Add QuickBooks Bill
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            openVoucherCreator(group.id);
+          }}
+          className="ml-2 rounded border border-sky-300 bg-sky-50 px-3 py-1.5 text-sm font-medium text-sky-700 hover:bg-sky-100"
+        >
+          {group.id === "quickbooks_bills_only"
+            ? "+ Add QuickBooks Bill"
+            : "+ Add payment voucher"}
+        </button>
       </div>
         {!collapsedVoucherGroups[group.id] && (
           <div className="overflow-visible">
@@ -3190,59 +3190,7 @@ export function AdditionalCostsBoard({
           <div className="border-t border-slate-200 px-3 py-2">
             <button
               type="button"
-              onClick={() => {
-                setPickerQuery("");
-                setExpandedPickerGroups(
-                  new Set([
-                    ...groups.map((section) => section.id),
-                    "ungrouped",
-                  ]),
-                );
-                setVoucherCreationGroup(group.id);
-                setQuickBooksBillOnlyMode(group.id === "quickbooks_bills_only");
-                setSelectedVoucherClientId(null);
-                setOtherBillChoice(
-                  group.id === "quickbooks_bills_only" ? "add" : null,
-                );
-                setBillTargetVoucher(null);
-                setEditingQuickBooksBill(false);
-                setBillDocumentPreview(null);
-                setPrefillFileSignature(null);
-                setVoucherDraft({
-                  cost: "",
-                  reason: "",
-                  reasonOptionId: "",
-                  relatedSubitemIds: [],
-                  courier: "",
-                  remarks: "",
-                  orderNumber: "",
-                  modeOfPayment: "",
-                  modeOfPaymentOptionId: "",
-                });
-                const today = new Date().toISOString().slice(0, 10);
-                setBillDraft({
-                  supplierId: "",
-                  supplierName: "",
-                  mailingAddress: "",
-                  termId: "",
-                  billDate: today,
-                  dueDate: today,
-                  billNumber: "",
-                  memo: "",
-                  overallGstAmount: "",
-                  attachments: [],
-                  lines: [
-                    {
-                      categoryId: "",
-                      categoryName: "",
-                      description: "",
-                      amount: "",
-                      taxCodeId: "",
-                    },
-                  ],
-                });
-                setPickerOpen(true);
-              }}
+            onClick={() => openVoucherCreator(group.id)}
               className="text-sm font-medium text-sky-700 hover:text-sky-800"
             >
               {group.id === "quickbooks_bills_only"
