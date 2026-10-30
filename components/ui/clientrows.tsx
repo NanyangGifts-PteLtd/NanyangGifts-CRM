@@ -30,7 +30,7 @@ import {
 import { EditableCell } from "./editablecell";
 import { StatusBadge } from "./statusbadge";
 import { SubitemsTable } from "./subitems";
-import { AssigneeMultiSelect } from "./assignee-multiselect";
+import { AssigneeMultiSelect, gradientForId } from "./assignee-multiselect";
 import {
   AlertDialog,
   AlertDialogContent,
@@ -2188,6 +2188,13 @@ export function ClientRow({
     : creatorProfile?.full_name?.trim() ||
       creatorProfile?.email ||
       "Created by Unknown user";
+  const creatorInitials = (() => {
+    const label = (creatorProfile?.full_name || creatorProfile?.email || "U").trim();
+    const words = label.split(/\s+/).filter(Boolean);
+    return words.length >= 2
+      ? `${words[0][0]}${words[1][0]}`.toUpperCase()
+      : label.slice(0, 2).toUpperCase();
+  })();
   const clientCreatedTooltip = client.createdAt
     ? `${creatorLabel} on ${new Date(client.createdAt).toLocaleDateString("en-GB")} at ${new Date(client.createdAt).toLocaleTimeString("en-GB")}`
     : "";
@@ -5291,14 +5298,31 @@ export function ClientRow({
             order: columnOrderMap.dateCreated ?? 20,
           }}
         >
-          <span
+          <div
             title={clientCreatedTooltip}
-            className="block px-1 text-[12.6px] text-gray-700"
+            className="flex h-full min-w-0 items-center gap-1 px-1 text-[12.6px] text-gray-700"
           >
-            {client.createdAt
-              ? new Date(client.createdAt).toLocaleDateString("en-GB")
-              : "-"}
-          </span>
+            {client.createdBy ? (
+              <span
+                className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[8px] font-bold text-white"
+                style={{
+                  background: gradientForId(
+                    client.createdBy,
+                    creatorProfile?.avatar_color,
+                  ),
+                }}
+                title={creatorLabel}
+                aria-label={creatorLabel}
+              >
+                {creatorInitials || "U"}
+              </span>
+            ) : null}
+            <span className="min-w-0 truncate">
+              {client.createdAt
+                ? new Date(client.createdAt).toLocaleDateString("en-GB")
+                : "-"}
+            </span>
+          </div>
         </div>
         {/* custom cols */}
         {clientCustomCols.map((col) => (

@@ -25,7 +25,10 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { AssigneeMultiSelect } from "@/components/ui/assignee-multiselect";
+import {
+  AssigneeMultiSelect,
+  gradientForId,
+} from "@/components/ui/assignee-multiselect";
 import {
   StatusBadge,
   type BadgeOptionLayout,
@@ -242,6 +245,44 @@ const compareByDefaultClientBoardOrder = (first: Client, second: Client) =>
   new Date(second.createdAt || 0).getTime() -
   new Date(first.createdAt || 0).getTime();
 const PAYMENT_VOUCHER_CLIENT_PAGE_SIZE = 30;
+
+function CreatorDate({
+  createdAt,
+  createdBy,
+  profiles,
+}: {
+  createdAt: string;
+  createdBy?: string | null;
+  profiles: Profile[];
+}) {
+  const profile = createdBy
+    ? profiles.find((candidate) => candidate.id === createdBy)
+    : null;
+  const label = profile?.full_name?.trim() || profile?.email || "Unknown user";
+  const initials = (() => {
+    const parts = label.split(/\s+/).filter(Boolean);
+    return parts.length >= 2
+      ? `${parts[0][0]}${parts[1][0]}`.toUpperCase()
+      : label.slice(0, 2).toUpperCase();
+  })();
+  const timestamp = new Date(createdAt);
+  const tooltip = `${timestamp.toLocaleString("en-SG")}${createdBy ? ` · Created by ${label}` : ""}`;
+
+  return (
+    <div title={tooltip} className="flex h-10 items-center gap-1.5 whitespace-nowrap text-xs text-slate-500">
+      {createdBy ? (
+        <span
+          className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[8px] font-bold text-white"
+          style={{ background: gradientForId(createdBy, profile?.avatar_color) }}
+          aria-label={`Created by ${label}`}
+        >
+          {initials || "U"}
+        </span>
+      ) : null}
+      <span>{timestamp.toLocaleDateString("en-SG")}</span>
+    </div>
+  );
+}
 const supplierSearchKey = (value: string) =>
   value.toLocaleLowerCase().replace(/[^a-z0-9]/g, "");
 const levenshteinDistance = (first: string, second: string) => {
@@ -3115,9 +3156,13 @@ export function AdditionalCostsBoard({
                         <td
                           data-voucher-col="created"
                           title={`${new Date(row.created_at).toLocaleString("en-SG")}${row.created_by ? ` · Created by ${profiles.find((profile) => profile.id === row.created_by)?.full_name || profiles.find((profile) => profile.id === row.created_by)?.email || "Unknown user"}` : ""}`}
-                          className="whitespace-nowrap border-b border-slate-200 px-3 py-2 text-xs text-slate-500"
+                          className="border-b border-slate-200 px-3 py-0"
                         >
-                          {new Date(row.created_at).toLocaleDateString("en-SG")}
+                          <CreatorDate
+                            createdAt={row.created_at}
+                            createdBy={row.created_by}
+                            profiles={profiles}
+                          />
                         </td>
                         {String(group.id) !== "quickbooks_bills_only" ? (
                           <td
@@ -3467,9 +3512,13 @@ export function AdditionalCostsBoard({
                 {cell(
                   <div
                     title={`${new Date(row.created_at).toLocaleString("en-SG")}${row.created_by ? ` · Created by ${profiles.find((profile) => profile.id === row.created_by)?.full_name || profiles.find((profile) => profile.id === row.created_by)?.email || "Unknown user"}` : ""}`}
-                    className="flex h-10 items-center whitespace-nowrap px-2 text-xs text-slate-500"
+                    className="contents"
                   >
-                    {new Date(row.created_at).toLocaleDateString("en-SG")}
+                    <CreatorDate
+                      createdAt={row.created_at}
+                      createdBy={row.created_by}
+                      profiles={profiles}
+                    />
                   </div>,
                   "created",
                 )}

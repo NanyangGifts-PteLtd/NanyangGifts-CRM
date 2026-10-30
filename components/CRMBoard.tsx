@@ -380,7 +380,7 @@ const CLIENT_HEADER_COLS: HeaderCol[] = [
   },
   { key: "moonCake", label: "Mooncake", width: 100, minWidth: 80 },
   { key: "timesReassigned", label: "Times Reassigned", width: 125, minWidth: 105 },
-  { key: "dateCreated", label: "Date Created", width: 90, minWidth: 7 },
+  { key: "dateCreated", label: "Date Created", width: 120, minWidth: 105 },
   { key: "closedDate", label: "Closed Date", width: 90, minWidth: 7 },
   { key: "addClientCol", label: "", width: 44, minWidth: 44 },
   { key: "empty", label: "", width: 44, minWidth: 44 },
@@ -705,6 +705,7 @@ type DuplicatedClientPayload = {
   status?: string | null;
   status_option_id?: string | null;
   group_id?: string | null;
+  created_by?: string | null;
   created_at?: string | null;
 };
 
@@ -720,6 +721,7 @@ function localClientDuplicate(
     status: (duplicate.status as ClientStatus) ?? source.status,
     statusOptionId: duplicate.status_option_id ?? null,
     groupId: duplicate.group_id ?? source.groupId,
+    createdBy: duplicate.created_by ?? null,
     createdAt: duplicate.created_at ?? source.createdAt,
     timesReassigned: 0,
     // Child rows are filled by reconciliation. Reusing the source IDs here
@@ -9141,6 +9143,7 @@ export function CRMBoard({
           totalPrice: createdClient.total_price ?? "",
           timesReassigned: 0,
           billingAddress: createdClient.billing_address ?? "",
+          createdBy: createdClient.created_by ?? currentUserId ?? null,
           createdAt: createdClient.created_at ?? "",
           expanded: createdClient.expanded ?? true,
           color: createdClient.color ?? "#7BCBD5",
