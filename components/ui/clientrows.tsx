@@ -2141,6 +2141,36 @@ export function ClientRow({
       { totalPrice: 0, totalMarkup: 0 },
     );
 
+  // The match badge must use the same live awarded-subitem total that is
+  // displayed beside it. The persisted rollup remains useful for server-side
+  // filtering, but can briefly lag after a subitem/status or invoice update.
+  const displayedTrackingMatch = (() => {
+    const verified = trackingPriceInvoiceMatchLabelOptions.find(
+      (option) => option.systemKey === "tracking_price_invoice_match_verified",
+    );
+    const storedIsVerified =
+      trackingMatchOverride?.optionId === verified?.id ||
+      client.trackingOverallPriceInvoiceMatchOptionId === verified?.id ||
+      client.trackingOverallPriceInvoiceMatch === verified?.value;
+    if (storedIsVerified) {
+      return trackingMatchOverride?.value ?? client.trackingOverallPriceInvoiceMatch ?? "";
+    }
+
+    const invoiceSubtotal = Number(client.trackingInvoiceSubtotal ?? 0);
+    const hasInvoices = Boolean(String(client.trackingInvoiceNumbers ?? "").trim());
+    if (!hasInvoices) return "";
+    const matches = Math.abs(aggregateSubitemValues.totalPrice - invoiceSubtotal) < 0.005;
+    return (
+      trackingPriceInvoiceMatchLabelOptions.find(
+        (option) =>
+          option.systemKey ===
+          (matches
+            ? "tracking_price_invoice_match_yes"
+            : "tracking_price_invoice_match_mismatch"),
+      )?.value ?? (matches ? "Yes" : "ERROR - MISMATCH")
+    );
+  })();
+
   const inboundSource = String(client.customFields?.source ?? "").trim();
   const inboundSourceLabel =
     inboundSource === "email"
@@ -3646,9 +3676,7 @@ export function ClientRow({
             >
               <StatusBadge
                 value={
-                  trackingMatchOverride?.value ??
-                  client.trackingOverallPriceInvoiceMatch ??
-                  ""
+                  displayedTrackingMatch
                 }
                 onChange={(value) => void setVerifiedTrackingMatch(value)}
                 options={trackingPriceInvoiceMatchLabelOptions}
