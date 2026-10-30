@@ -1194,9 +1194,20 @@ export function CRMBoard({
   );
 
   useEffect(() => {
-    const requestedClientIds = new Set(expandedIds);
-    if (detailClientId) requestedClientIds.add(detailClientId);
-    if (detailSubitem) requestedClientIds.add(detailSubitem.clientId);
+    // Expanded IDs intentionally survive a search/filter transition so that
+    // clearing it restores the user's open rows. They may therefore refer to
+    // clients that are not part of the *currently mounted* result set. Do not
+    // request activity for those absent IDs: its response cannot be installed
+    // into state and the next Board update would otherwise issue the same GET
+    // again forever.
+    const visibleClientIds = new Set(clients.map((client) => client.id));
+    const requestedClientIds = new Set(
+      expandedIds.filter((clientId) => visibleClientIds.has(clientId)),
+    );
+    if (detailClientId && visibleClientIds.has(detailClientId))
+      requestedClientIds.add(detailClientId);
+    if (detailSubitem && visibleClientIds.has(detailSubitem.clientId))
+      requestedClientIds.add(detailSubitem.clientId);
 
     for (const clientId of requestedClientIds) {
       if (clients.find((client) => client.id === clientId)?.activityLog === undefined)

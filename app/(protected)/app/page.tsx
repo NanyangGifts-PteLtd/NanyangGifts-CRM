@@ -2127,7 +2127,18 @@ export default function Page() {
           detailHydration?.clients.map((client) => [client.id, client]) ?? [],
         );
         const hydratedVisibleGroupPageClients = visibleGroupPageClients.map(
-          (client) => detailedClientsById.get(client.id) ?? client,
+          (client) => {
+            const hydratedClient = detailedClientsById.get(client.id) ?? client;
+            const currentClient = knownClients.get(client.id);
+            // Board hydrators deliberately omit activity history. Preserve it
+            // across a targeted realtime reconciliation so an open client does
+            // not make a fresh activity_log request after every unrelated row
+            // update in its visible group.
+            return hydratedClient.activityLog === undefined &&
+              currentClient?.activityLog !== undefined
+              ? { ...hydratedClient, activityLog: currentClient.activityLog }
+              : hydratedClient;
+          },
         );
         const refreshedClientsById = new Map(
           [...leanHydration.clients, ...expandedHydration.clients].map(
@@ -2193,6 +2204,7 @@ export default function Page() {
             return [{
               ...incoming,
               boardMatch: incoming.boardMatch ?? client.boardMatch,
+              activityLog: incoming.activityLog ?? client.activityLog,
             }];
           });
           const retainedIds = new Set(retained.map((client) => client.id));
