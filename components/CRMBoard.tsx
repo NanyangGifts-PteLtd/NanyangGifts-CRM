@@ -528,13 +528,16 @@ interface CRMBoardProps {
       loaded: boolean;
       loadedCount: number;
       isCountExact: boolean;
+      error?: string | null;
     }
   >;
   groupCountsSettled?: boolean;
+  groupCountsError?: boolean;
   quickFilterCounts?: CrmQuickFilterCounts;
   quickFilterCountsLoading?: boolean;
   onLoadMoreGroup?: (groupId: string) => Promise<void> | void;
   onPrimeGroup?: (groupId: string) => Promise<void> | void;
+  onRetryGroupCounts?: () => void;
   onVisibleGroupsChange?: (groupIds: string[]) => void;
   onServerQueryChange?: (query: CrmBoardQuery) => void;
   search?: string;
@@ -804,10 +807,12 @@ export function CRMBoard({
   hasMoreBoardQueryResults = false,
   groupPageState = {},
   groupCountsSettled = false,
+  groupCountsError = false,
   quickFilterCounts = {},
   quickFilterCountsLoading = false,
   onLoadMoreGroup,
   onPrimeGroup,
+  onRetryGroupCounts,
   onVisibleGroupsChange,
   onServerQueryChange,
   search = "",
@@ -860,7 +865,8 @@ export function CRMBoard({
   // this separate from `collapsedGroups` is important: the latter is also the
   // user's manual expand/collapse preference while a filter is active.
   const pendingResultGroupExpansionRef = useRef<string | null>(null);
-  const appliedResultGroupExpansionRef = useRef<string | null>(null);
+  const autoExpandedResultQueryRef = useRef<string | null>(null);
+  const autoExpandedResultGroupIdsRef = useRef<Set<string>>(new Set());
   const [resultGroupExpansionRequest, setResultGroupExpansionRequest] =
     useState(0);
   const boardSearchRef = useRef<HTMLDivElement>(null);
@@ -6749,7 +6755,20 @@ export function CRMBoard({
   // first page and cannot tell us whether another group has a result.
   const searchResultGroupIds = shouldExpandGroupsForResults
     ? groups
-        .filter((group) => (groupPageState[group.id]?.total ?? 0) > 0)
+        .filter((group) => {
+          const state = groupPageState[group.id];
+          return Boolean(
+            state?.loaded &&
+              !state.loading &&
+              !state.hasMore &&
+              !state.error &&
+              (state.total > 0 ||
+                groupedClients.some(
+                  (entry) =>
+                    entry.group.id === group.id && entry.clients.length > 0,
+                )),
+          );
+        })
         .map((group) => group.id)
     : resultGroupIds;
   const searchResultGroupIdsKey = searchResultGroupIds.join(",");
@@ -6761,37 +6780,49 @@ export function CRMBoard({
         searchCollapsedGroupsRef.current = null;
       }
       pendingResultGroupExpansionRef.current = null;
-      appliedResultGroupExpansionRef.current = null;
+      autoExpandedResultQueryRef.current = null;
+      autoExpandedResultGroupIdsRef.current.clear();
       return;
     }
 
     const expansionKey = pendingResultGroupExpansionRef.current;
-    // Wait until the requested query has supplied its complete per-group
-    // totals. This avoids applying a new filter's layout to the prior query's
-    // visible rows during the hand-off.
+    // Reveal and expand each completely assembled group independently. Waiting
+    // for every deferred count used to create one large layout jump which
+    // could move a user away from the group they were reading.
     if (
       !expansionKey ||
       boardQueryLoading ||
-      !clientsLoaded ||
-      !groupCountsSettled ||
-      appliedResultGroupExpansionRef.current === expansionKey
+      !clientsLoaded
     )
       return;
 
     if (!searchCollapsedGroupsRef.current)
       searchCollapsedGroupsRef.current = collapsedGroups;
 
-    const groupsWithResults = new Set(searchResultGroupIds);
-    setCollapsedGroups(
-      Object.fromEntries(
-        groups.map((group) => [group.id, !groupsWithResults.has(group.id)]),
-      ),
+    if (autoExpandedResultQueryRef.current !== expansionKey) {
+      autoExpandedResultQueryRef.current = expansionKey;
+      autoExpandedResultGroupIdsRef.current.clear();
+    }
+    const completedGroups = new Set(searchResultGroupIds);
+    const newlyCompletedGroups = [...completedGroups].filter(
+      (groupId) => !autoExpandedResultGroupIdsRef.current.has(groupId),
     );
-    appliedResultGroupExpansionRef.current = expansionKey;
+    if (!newlyCompletedGroups.length) return;
+    for (const groupId of newlyCompletedGroups)
+      autoExpandedResultGroupIdsRef.current.add(groupId);
+    setCollapsedGroups((current) => {
+      let changed = false;
+      const next = { ...current };
+      for (const groupId of newlyCompletedGroups) {
+        if (next[groupId] === false) continue;
+        next[groupId] = false;
+        changed = true;
+      }
+      return changed ? next : current;
+    });
   }, [
     boardQueryLoading,
     clientsLoaded,
-    groupCountsSettled,
     groups,
     resultGroupExpansionRequest,
     searchResultGroupIdsKey,
@@ -6801,26 +6832,32 @@ export function CRMBoard({
   const searchScopedGroups = trackingView
     ? groupedClients.filter(({ group }) => /^closed leads\s*-/i.test(group.name))
     : groupedClients;
-  // Filtering, like text search, should not leave *known* empty group shells
-  // behind. A missing/inexact group count is not evidence of zero results:
-  // the first global page may simply not have reached that group yet, and the
-  // deferred count query can time out. Keep those groups visible (collapsed,
-  // with their existing "Loading count" status) until the server explicitly
-  // confirms a zero. Otherwise a partial result page is falsely presented as
-  // the complete result set.
+  const completedResultGroupIds = new Set(searchResultGroupIds);
+  const pendingResultGroups = shouldExpandGroupsForResults && !boardQueryLoading
+    ? searchScopedGroups.filter(({ group, clients: groupClients }) => {
+        const state = groupPageState[group.id];
+        const knownToHaveResults =
+          groupClients.length > 0 || (state?.total ?? 0) > 0;
+        return knownToHaveResults && !completedResultGroupIds.has(group.id);
+      })
+    : [];
+  const nextPendingResultGroup = pendingResultGroups[0] ?? null;
+  // Search/filter groups remain suppressed until their complete matching page
+  // set is assembled. This prevents within-group paging from repeatedly
+  // changing the height of everything below the user's working area.
   const boardVisibleGroups = shouldExpandGroupsForResults
-    ? !groupCountsSettled
-      ? searchScopedGroups
-      : searchScopedGroups.filter(
-        ({ group, clients: groupClients }) => {
-          const state = groupPageState[group.id];
-          const isKnownEmpty = state?.isCountExact === true && state.total === 0;
-          return groupClients.length > 0 || !isKnownEmpty;
-        },
-      )
+    ? boardQueryLoading
+      ? []
+      : searchScopedGroups.filter(({ group }) =>
+          completedResultGroupIds.has(group.id),
+        )
     : visibleSearchGroups(searchScopedGroups, false);
   const noBoardSearchResults =
-    shouldExpandGroupsForResults && boardVisibleGroups.length === 0;
+    shouldExpandGroupsForResults &&
+    !boardQueryLoading &&
+    groupCountsSettled &&
+    boardVisibleGroups.length === 0 &&
+    pendingResultGroups.length === 0;
 
   const parentClientOptions = useMemo(
     () =>
@@ -14286,6 +14323,81 @@ export function CRMBoard({
                 </div>
               );
             })
+          )}
+          {shouldExpandGroupsForResults && !noBoardSearchResults && (
+            nextPendingResultGroup ? (
+              <div
+                className="sticky left-0 mt-4 w-[min(42rem,calc(100vw-15rem))] rounded-md border border-slate-200 bg-white shadow-sm"
+                style={{ minWidth: Math.min(totalMinWidth, 672) }}
+              >
+                <div className="border-b border-slate-100 px-4 py-2 text-xs font-medium text-slate-600">
+                  Preparing matching group: {nextPendingResultGroup.group.name}
+                </div>
+                {groupPageState[nextPendingResultGroup.group.id]?.error ? (
+                  <div className="flex items-center justify-between gap-4 px-4 py-3 text-xs">
+                    <span className="text-red-600">
+                      This group could not be completed. Other matching groups
+                      have not been hidden as final results.
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void (onPrimeGroup ?? onLoadMoreGroup)?.(
+                          nextPendingResultGroup.group.id,
+                        )
+                      }
+                      className="shrink-0 rounded border border-slate-300 bg-white px-3 py-1.5 font-medium text-slate-700 hover:bg-slate-50"
+                    >
+                      Retry
+                    </button>
+                  </div>
+                ) : (
+                  <GroupPageSentinel
+                    key={nextPendingResultGroup.group.id}
+                    loading={Boolean(
+                      groupPageState[nextPendingResultGroup.group.id]?.loading,
+                    )}
+                    onVisible={() =>
+                      void (onPrimeGroup ?? onLoadMoreGroup)?.(
+                        nextPendingResultGroup.group.id,
+                      )
+                    }
+                    minWidth={Math.min(totalMinWidth, 672)}
+                    compact
+                  />
+                )}
+              </div>
+            ) : !groupCountsSettled || boardQueryLoading ? (
+              <div
+                role="status"
+                className={`sticky left-0 mt-4 flex w-[min(42rem,calc(100vw-15rem))] items-center gap-2 rounded-md border bg-white px-4 py-3 text-xs shadow-sm ${
+                  groupCountsError
+                    ? "border-amber-300 text-amber-800"
+                    : "border-slate-200 text-slate-600"
+                }`}
+              >
+                {groupCountsError ? (
+                  <>
+                    <span className="flex-1">
+                      Some matching groups could not be checked. The results
+                      currently shown are not being treated as complete.
+                    </span>
+                    <button
+                      type="button"
+                      onClick={onRetryGroupCounts}
+                      className="rounded border border-amber-300 bg-white px-3 py-1.5 font-medium hover:bg-amber-50"
+                    >
+                      Retry
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <LoaderCircle size={14} className="animate-spin" />
+                    Checking for additional matching groups…
+                  </>
+                )}
+              </div>
+            ) : null
           )}
           <div className="flex px-2 py-6">
             <button

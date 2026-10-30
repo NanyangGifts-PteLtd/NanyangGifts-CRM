@@ -1807,6 +1807,57 @@ export async function fetchClientGroupPage(
 }
 
 /**
+ * Returns only the server-authoritative client order for an existing Board
+ * result group. This is used when a search/filter remains unchanged and only
+ * its client sort changes; re-hydrating clients and all nested rows would be
+ * redundant and much slower.
+ */
+export async function fetchCrmBoardClientOrderPage(
+  groupId: string,
+  offset = 0,
+  limit = 100,
+  query: CrmBoardQuery = {},
+  signal?: AbortSignal,
+) {
+  const request = supabase.rpc("crm_board_client_page_indexed_v1", {
+    p_group_id: groupId,
+    p_limit: limit,
+    p_offset: offset,
+    p_search: query.search?.trim() || null,
+    p_search_columns: query.searchColumns ?? null,
+    p_sort_category: query.sortCategory ?? "client",
+    p_sort_column: query.sortColumn ?? "dateCreated",
+    p_sort_value_type: query.sortValueType ?? "date",
+    p_sort_direction: query.sortDirection ?? "desc",
+    p_advanced_rules: query.advancedRules ?? [],
+    p_advanced_join: query.advancedJoin ?? "and",
+    p_status_option_id: query.statusOptionId ?? null,
+    p_importance_option_id: query.importanceOptionId ?? null,
+    p_reply_status_option_id: query.replyStatusOptionId ?? null,
+    p_channel_option_id: query.channelOptionId ?? null,
+    p_subitem_status_option_id: query.subitemStatusOptionId ?? null,
+    p_payment_option_id: query.paymentOptionId ?? null,
+    p_payment_status_option_id: query.paymentStatusOptionId ?? null,
+    p_subprogress_option_id: query.subprogressOptionId ?? null,
+    p_person_id: query.personId ?? null,
+  });
+  const { data, error } = signal
+    ? await request.abortSignal(signal)
+    : await request;
+  if (error) throw error;
+  const clientIds = (data ?? []).map((row: { client_id: string }) =>
+    String(row.client_id),
+  );
+  const total = Number(data?.[0]?.total_count ?? 0);
+  return {
+    clientIds,
+    total,
+    hasMore: offset + clientIds.length < total,
+    nextOffset: offset + clientIds.length,
+  };
+}
+
+/**
  * Fetches a display-ready lean Board page in one RPC. The older
  * `fetchClientGroupPage` remains available as a rollback path while this
  * rollout is verified in production.

@@ -16,6 +16,7 @@ import type {
 import {
   fetchClientGroupCounts,
   fetchCrmBoardClientMemberships,
+  fetchCrmBoardClientOrderPage,
   fetchCrmBoardQuickFilterCounts,
   fetchGanttResourcePage,
   fetchHydratedClientGroupPage,
@@ -127,6 +128,10 @@ type GroupPageState = Record<
     hasMore: boolean;
     loading: boolean;
     loaded: boolean;
+    // Filtered/search groups are assembled completely before being revealed.
+    // A failure remains explicit so a partial result is never presented as
+    // the final contents of the group.
+    error?: string | null;
       // A page can prove matching rows exist, but not the group's full total.
       // Keep provisional page rows out of the count displayed to the user.
       isCountExact: boolean;
@@ -170,6 +175,49 @@ type GroupCountsCache = {
   data: Record<string, number>;
   cachedAt: number;
 };
+
+function isResultNarrowingBoardQuery(query: CrmBoardQuery) {
+  return Boolean(
+    query.search?.trim() ||
+      query.advancedRules?.length ||
+      query.statusOptionId ||
+      query.importanceOptionId ||
+      query.replyStatusOptionId ||
+      query.channelOptionId ||
+      query.subitemStatusOptionId ||
+      query.paymentOptionId ||
+      query.paymentStatusOptionId ||
+      query.subprogressOptionId ||
+      query.personId,
+  );
+}
+
+function boardQueryResultScopeKey(query: CrmBoardQuery) {
+  return JSON.stringify({
+    search: query.search,
+    searchColumns: query.searchColumns,
+    advancedRules: query.advancedRules,
+    advancedJoin: query.advancedJoin,
+    statusOptionId: query.statusOptionId,
+    importanceOptionId: query.importanceOptionId,
+    replyStatusOptionId: query.replyStatusOptionId,
+    channelOptionId: query.channelOptionId,
+    subitemStatusOptionId: query.subitemStatusOptionId,
+    paymentOptionId: query.paymentOptionId,
+    paymentStatusOptionId: query.paymentStatusOptionId,
+    subprogressOptionId: query.subprogressOptionId,
+    personId: query.personId,
+  });
+}
+
+function boardQuerySortKey(query: CrmBoardQuery) {
+  return JSON.stringify({
+    sortCategory: query.sortCategory,
+    sortColumn: query.sortColumn,
+    sortValueType: query.sortValueType,
+    sortDirection: query.sortDirection,
+  });
+}
 
 type ReloadClientsOptions = {
   preservePagination?: boolean;
@@ -283,6 +331,8 @@ export default function Page() {
   // count pass has completed.
   const [groupCountsSettledQueryKey, setGroupCountsSettledQueryKey] =
     useState("");
+  const [groupCountsErrorQueryKey, setGroupCountsErrorQueryKey] =
+    useState<string | null>(null);
   const [quickFilterCounts, setQuickFilterCounts] =
     useState<CrmQuickFilterCounts>({});
   const [quickFilterCountsLoading, setQuickFilterCountsLoading] =
@@ -337,6 +387,7 @@ export default function Page() {
   // reload (or an import-time query storm).
   const visibleCrmGroupIdsRef = useRef<Set<string>>(new Set());
   const recordsRefreshSequence = useRef(0);
+  const sortedGroupRefreshSequence = useRef(0);
   const ganttRefreshSequence = useRef(0);
   const ganttPageLoadInFlightRef = useRef(false);
   const boardQueryKeyRef = useRef(JSON.stringify({}));
@@ -1162,8 +1213,10 @@ export default function Page() {
       const hasExactGroupCounts = hasFreshGroupCounts;
       if (hasExactGroupCounts) {
         setGroupCountsSettledQueryKey(groupCountsQueryKey);
+        setGroupCountsErrorQueryKey(null);
       } else if (displayedBoardQueryKeyRef.current !== groupCountsQueryKey) {
         setGroupCountsSettledQueryKey("");
+        setGroupCountsErrorQueryKey(null);
       }
       const targetedPagesByGroupId = new Map(
         targetGroupIds.map((groupId, index) => [
@@ -1611,12 +1664,16 @@ export default function Page() {
               loaded: state?.loaded ?? false,
               loadedCount: state?.loadedCount ?? 0,
               isCountExact: true,
+              error: state?.error ?? null,
             };
           }
           return changed ? next : current;
         });
       };
       const requestBatch = (groupIds: string[]) => {
+        setGroupCountsErrorQueryKey((current) =>
+          current === queryKey ? null : current,
+        );
         groupCountsAbortController.current?.abort();
         const abortController = new AbortController();
         groupCountsAbortController.current = abortController;
@@ -1646,6 +1703,7 @@ export default function Page() {
                 cachedAt: Date.now(),
               });
               setGroupCountsSettledQueryKey(queryKey);
+              setGroupCountsErrorQueryKey(null);
             }
             return;
           }
@@ -1665,16 +1723,29 @@ export default function Page() {
                   cachedAt: Date.now(),
                 });
                 setGroupCountsSettledQueryKey(queryKey);
+                setGroupCountsErrorQueryKey(null);
               })
               .catch((error) => {
-                if (!isAbortError(error))
+                if (!isAbortError(error)) {
                   console.warn("Could not refresh deferred CRM group counts", error);
+                  setGroupCountsErrorQueryKey(queryKey);
+                  groupCountsRefreshTimer.current = window.setTimeout(
+                    () => scheduleGroupCountsRefreshRef.current(),
+                    20_000 + Math.floor(Math.random() * 10_000),
+                  );
+                }
               });
           }, 8_000 + Math.floor(Math.random() * 12_000));
         })
         .catch((error) => {
-          if (!isAbortError(error))
+          if (!isAbortError(error)) {
             console.warn("Could not refresh priority CRM group counts", error);
+            setGroupCountsErrorQueryKey(queryKey);
+            groupCountsRefreshTimer.current = window.setTimeout(
+              () => scheduleGroupCountsRefreshRef.current(),
+              20_000 + Math.floor(Math.random() * 10_000),
+            );
+          }
         });
     }, 1_000 + Math.floor(Math.random() * 3_000));
   }, [boardQuery, groups]);
@@ -2237,6 +2308,99 @@ export default function Page() {
     ],
   );
 
+  const refreshCompletedGroupsForSort = useCallback(
+    async (query: CrmBoardQuery, groupIds: string[]) => {
+      const queryKey = JSON.stringify(query);
+      const refreshSequence = ++sortedGroupRefreshSequence.current;
+      const pendingGroupIds = [...groupIds];
+      const reorderGroup = async (groupId: string) => {
+        if (
+          refreshSequence !== sortedGroupRefreshSequence.current ||
+          boardQueryKeyRef.current !== queryKey
+        ) return;
+
+        const abortController = new AbortController();
+        groupPagePrefetchAbortControllers.current.set(groupId, abortController);
+        try {
+          let offset = 0;
+          let hasMore = true;
+          const orderedClientIds: string[] = [];
+          while (hasMore) {
+            const page = await fetchCrmBoardClientOrderPage(
+              groupId,
+              offset,
+              100,
+              query,
+              abortController.signal,
+            );
+            if (page.hasMore && page.nextOffset <= offset) {
+              throw new Error(
+                "CRM group pagination did not advance during sorting.",
+              );
+            }
+            orderedClientIds.push(...page.clientIds);
+            offset = page.nextOffset;
+            hasMore = page.hasMore;
+          }
+          if (
+            refreshSequence !== sortedGroupRefreshSequence.current ||
+            boardQueryKeyRef.current !== queryKey
+          ) return;
+
+          setClients((current) => {
+            const existingGroupClients = current.filter(
+              (client) => client.groupId === groupId,
+            );
+            const existingById = new Map(
+              existingGroupClients.map((client) => [client.id, client]),
+            );
+            const orderedIds = new Set(orderedClientIds);
+            // Preserve expanded/detail-hydrated client objects while adopting
+            // the server-authoritative order for the new sort.
+            const reordered = orderedClientIds.flatMap((clientId) => {
+              const client = existingById.get(clientId);
+              return client ? [client] : [];
+            });
+            const concurrentLocalRows = existingGroupClients.filter(
+              (client) => !orderedIds.has(client.id),
+            );
+            return [
+              ...current.filter((client) => client.groupId !== groupId),
+              ...reordered,
+              ...concurrentLocalRows,
+            ];
+          });
+        } catch (error) {
+          if (!isAbortError(error))
+            console.error("Failed to reorder a loaded CRM group", error);
+        } finally {
+          if (
+            groupPagePrefetchAbortControllers.current.get(groupId) ===
+            abortController
+          ) {
+            groupPagePrefetchAbortControllers.current.delete(groupId);
+          }
+        }
+      };
+      // Two groups at a time is enough to remove the visible serial delay
+      // without recreating the former all-groups query storm.
+      const worker = async () => {
+        while (pendingGroupIds.length) {
+          const groupId = pendingGroupIds.shift();
+          if (!groupId) return;
+          await reorderGroup(groupId);
+        }
+      };
+      await Promise.all(
+        Array.from(
+          { length: Math.min(2, pendingGroupIds.length) },
+          () => worker(),
+        ),
+      );
+    },
+    [],
+  );
+
   const handleServerQueryChange = useCallback(
     (query: CrmBoardQuery) => {
       const queryKey = JSON.stringify(query);
@@ -2253,6 +2417,73 @@ export default function Page() {
       const cached = boardQueryCacheRef.current.get(queryKey);
       const cacheIsFresh =
         cached && Date.now() - cached.cachedAt < BOARD_QUERY_CACHE_TTL_MS;
+      const previousQueryKey = JSON.stringify(boardQuery);
+      const isSortOnlyResultTransition =
+        !cacheIsFresh &&
+        isResultNarrowingBoardQuery(query) &&
+        boardQueryResultScopeKey(boardQuery) ===
+          boardQueryResultScopeKey(query) &&
+        boardQuerySortKey(boardQuery) !== boardQuerySortKey(query);
+
+      if (isSortOnlyResultTransition) {
+        const completedGroupIds = groups
+          .map((group) => group.id)
+          .filter((groupId) => {
+            const state = groupPageState[groupId];
+            return Boolean(
+              state?.loaded &&
+                !state.loading &&
+                !state.hasMore &&
+                !state.error,
+            );
+          });
+        const completedGroupIdSet = new Set(completedGroupIds);
+
+        // Any partially assembled group belongs to the old ordering. Cancel
+        // it and let the result boundary restart that group under the new
+        // sort, while already-complete groups remain mounted and usable.
+        for (const controller of groupPagePrefetchAbortControllers.current.values())
+          controller.abort();
+        groupPagePrefetchAbortControllers.current.clear();
+        ++sortedGroupRefreshSequence.current;
+        setClients((current) =>
+          current.filter(
+            (client) =>
+              !client.groupId || completedGroupIdSet.has(client.groupId),
+          ),
+        );
+        setGroupPageState((current) =>
+          Object.fromEntries(
+            Object.entries(current).map(([groupId, state]) => [
+              groupId,
+              completedGroupIdSet.has(groupId)
+                ? state
+                : {
+                    ...state,
+                    loading: false,
+                    loaded: false,
+                    loadedCount: 0,
+                    hasMore: state.total > 0,
+                    error: null,
+                  },
+            ]),
+          ),
+        );
+        const previousCounts = groupCountsCacheRef.current.get(previousQueryKey);
+        if (previousCounts)
+          groupCountsCacheRef.current.set(queryKey, previousCounts);
+        if (groupCountsSettledQueryKey === previousQueryKey)
+          setGroupCountsSettledQueryKey(queryKey);
+
+        boardQueryKeyRef.current = queryKey;
+        displayedBoardQueryKeyRef.current = queryKey;
+        skipBoardReloadForQueryKeyRef.current = queryKey;
+        setClientsLoaded(true);
+        setBoardQuery(query);
+        void refreshCompletedGroupsForSort(query, completedGroupIds);
+        return;
+      }
+
       boardQueryKeyRef.current = queryKey;
       if (cacheIsFresh) {
         skipBoardReloadForQueryKeyRef.current = queryKey;
@@ -2281,8 +2512,12 @@ export default function Page() {
       cacheBoardQuerySnapshot,
       clients,
       clientsLoaded,
+      boardQuery,
+      groupCountsSettledQueryKey,
       groupPageState,
+      groups,
       quickFilterCounts,
+      refreshCompletedGroupsForSort,
     ],
   );
 
@@ -2343,6 +2578,7 @@ export default function Page() {
       [groupId]: {
         total: current[groupId]?.total ?? 0,
         isCountExact: current[groupId]?.isCountExact ?? false,
+        error: null,
         hasMore: current[groupId]?.hasMore ?? true,
         loading: true,
         loaded: current[groupId]?.loaded ?? false,
@@ -2382,7 +2618,11 @@ export default function Page() {
       console.error("Failed to load more CRM clients", error);
       setGroupPageState((current) => ({
         ...current,
-        [groupId]: { ...current[groupId], loading: false },
+        [groupId]: {
+          ...current[groupId],
+          loading: false,
+          error: error instanceof Error ? error.message : "Could not load this group",
+        },
       }));
     }
   }, [
@@ -2421,6 +2661,7 @@ export default function Page() {
       [groupId]: {
         total: current[groupId]?.total ?? 0,
         isCountExact: current[groupId]?.isCountExact ?? false,
+        error: null,
         hasMore: current[groupId]?.hasMore ?? true,
         loading: true,
         loaded: current[groupId]?.loaded ?? false,
@@ -2428,11 +2669,14 @@ export default function Page() {
       },
     }));
     try {
-      // Fetch one page only. The sentinel requests the next page as the user
-      // reaches it; fetching two or three full hydrated pages ahead was a
-      // substantial, avoidable source of concurrent database work.
-      const pagesToFetch = 1;
-      for (let pageNumber = 0; pageNumber < pagesToFetch; pageNumber += 1) {
+      // A filtered group is hidden while it is assembled, then revealed once
+      // complete. Fetch its pages serially (never concurrently) so users do
+      // not see the group repeatedly grow and reorder above their viewport.
+      // The unfiltered Board retains ordinary one-page scroll-ahead loading.
+      const assembleCompleteFilteredGroup =
+        isResultNarrowingBoardQuery(boardQuery);
+      let shouldContinue = true;
+      while (shouldContinue) {
         const page = await fetchHydratedClientGroupPage(
           groupId,
           offset,
@@ -2446,6 +2690,11 @@ export default function Page() {
           { people: page.clientAssignees, pm: page.clientPmAssignees },
           page.subitemAssignees,
         );
+        if (page.hasMore && page.nextOffset <= offset) {
+          throw new Error(
+            "CRM group pagination did not advance; loading stopped to avoid a request loop.",
+          );
+        }
         const viewportAnchor = captureSearchViewportAnchor();
         setClients((current) => {
           const knownIds = new Set(current.map((client) => client.id));
@@ -2459,16 +2708,25 @@ export default function Page() {
             total: page.total,
             isCountExact: true,
             hasMore: page.hasMore,
-            loading: page.hasMore && pageNumber < pagesToFetch - 1,
+            loading: assembleCompleteFilteredGroup && page.hasMore,
             loaded: true,
             loadedCount: page.nextOffset,
+            error: null,
           },
         }));
-        if (!page.hasMore) break;
+        shouldContinue = assembleCompleteFilteredGroup && page.hasMore;
       }
     } catch (error) {
       if (isAbortError(error)) return;
       console.error("Failed to prefetch CRM group pages", error);
+      setGroupPageState((current) => ({
+        ...current,
+        [groupId]: {
+          ...current[groupId],
+          loading: false,
+          error: error instanceof Error ? error.message : "Could not load this group",
+        },
+      }));
     } finally {
       if (
         groupPagePrefetchAbortControllers.current.get(groupId) !==
@@ -2885,6 +3143,10 @@ export default function Page() {
               groupCountsSettled={
                 groupCountsSettledQueryKey === JSON.stringify(boardQuery)
               }
+            groupCountsError={
+              groupCountsErrorQueryKey === JSON.stringify(boardQuery)
+            }
+            onRetryGroupCounts={scheduleGroupCountsRefresh}
             quickFilterCounts={quickFilterCounts}
             quickFilterCountsLoading={quickFilterCountsLoading}
             onLoadMoreGroup={loadMoreClientsForGroup}
