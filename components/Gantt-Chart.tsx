@@ -14,6 +14,7 @@ import dynamic from "next/dynamic";
 import {
   ChevronDown,
   ChevronRight,
+  Info,
   ListFilter,
   LoaderCircle,
   Pin,
@@ -34,6 +35,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "./ui/dialog";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import type {
   Client,
   ClientAssigneeMap,
@@ -109,6 +111,7 @@ type SchedulerResource = {
   clientDisplayId: string;
   subitemName: string;
   subitemDisplayId: string;
+  subitemDescription: string;
   timelineName: string;
   timelineIndex: number;
   processNames: string[];
@@ -388,6 +391,7 @@ function buildSchedulerData(
       return subitems.flatMap((subitem) => {
         const subitemName = subitem.name || "Untitled subitem";
         const subitemDisplayId = subitem.displayId || "";
+        const subitemDescription = subitem.description?.trim() ?? "";
         const timelines = Array.isArray(subitem.timelineGroups) && subitem.timelineGroups.length
           ? subitem.timelineGroups
           : [{ id: "default", name: "", rows: subitem.timelineRows ?? [] }];
@@ -468,6 +472,7 @@ function buildSchedulerData(
           clientDisplayId,
           subitemName,
           subitemDisplayId,
+          subitemDescription,
           timelineName,
           timelineIndex,
           processNames,
@@ -2223,10 +2228,11 @@ export default function GanttChart({
                   </button>
                 )}
               {!isGroupCollapsed && !isClientCollapsed && (
-                  <button
-                    type="button"
-                    disabled={!resource.subitemId}
-                    className={`absolute left-[350px] w-[220px] min-w-0 border-b border-slate-200 px-3 text-left hover:bg-sky-50 disabled:cursor-default disabled:text-slate-400 disabled:hover:bg-transparent ${resource.data.some((item) => item.isOverdue) ? "bg-red-50 font-semibold text-red-700" : ""}`}
+                  <div
+                    role="button"
+                    tabIndex={resource.subitemId ? 0 : -1}
+                    aria-label={`Open timeline for ${resource.subitemName}`}
+                    className={`absolute left-[350px] flex w-[220px] min-w-0 items-center gap-1 border-b border-slate-200 px-3 text-left hover:bg-sky-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-sky-500 ${!resource.subitemId ? "cursor-default text-slate-400" : ""} ${resource.data.some((item) => item.isOverdue) ? "bg-red-50 font-semibold text-red-700" : ""}`}
                     style={{ top: clientTop, height: element.offsetHeight }}
                     onClick={(event) => {
                       event.stopPropagation();
@@ -2236,18 +2242,47 @@ export default function GanttChart({
                           resource.subitemId,
                         );
                     }}
-                    title={`${resource.subitemName} · Subitem ID: ${resource.subitemDisplayId || resource.subitemId}${resource.timelineName ? ` · ${resource.timelineName}` : ""}`}
+                    onKeyDown={(event) => {
+                      if (event.key !== "Enter" && event.key !== " ") return;
+                      event.preventDefault();
+                      if (resource.subitemId)
+                        onOpenClientTimeline(resource.clientId, resource.subitemId);
+                    }}
+                    title={`${resource.subitemName}${resource.timelineName ? ` · ${resource.timelineName}` : ""}`}
                   >
-                    <span className="block break-words leading-4">
-                      {resource.data.some((item) => item.isOverdue)
-                        ? `Overdue process in ${resource.subitemName}`
-                        : resource.subitemName}
+                    <span className="min-w-0 flex-1">
+                      <span className="block break-words leading-4">
+                        {resource.data.some((item) => item.isOverdue)
+                          ? `Overdue process in ${resource.subitemName}`
+                          : resource.subitemName}
+                      </span>
+                      {resource.timelineName ? (
+                        <span className="mt-0.5 block text-[10px] font-normal text-slate-500">
+                          {resource.timelineName}
+                        </span>
+                      ) : null}
                     </span>
-                    <span className="mt-0.5 block text-[10px] font-normal text-slate-500">
-                      ID: {resource.subitemDisplayId || resource.subitemId}
-                      {resource.timelineName ? ` · ${resource.timelineName}` : ""}
-                    </span>
-                  </button>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          aria-label="Show subitem description"
+                          onClick={(event) => event.stopPropagation()}
+                          onKeyDown={(event) => event.stopPropagation()}
+                          className="shrink-0 rounded-full text-slate-400 hover:text-sky-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+                        >
+                          <Info size={15} />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent
+                        side="right"
+                        sideOffset={8}
+                        className="z-context-menu max-w-[360px] whitespace-pre-wrap break-words bg-slate-800 text-white"
+                      >
+                        {resource.subitemDescription || "No description"}
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
                 )}
                   </div>
                   );
