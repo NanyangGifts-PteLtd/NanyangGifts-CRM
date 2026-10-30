@@ -1,5 +1,6 @@
 import "server-only";
 
+import { createHash } from "node:crypto";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
 type OutboxRow = {
@@ -219,9 +220,24 @@ export async function queueLeadAssignedMakeEvent(input: LeadAssignedEvent) {
     .single();
   if (error) throw new Error(error.message);
 
+  // A replay that repairs missing inbound subitems must be able to deliver a
+  // corrected order-detail email. Identical retries retain the same key,
+  // while a materially different persisted subitem set receives one new,
+  // intentional delivery.
+  const subitemFingerprint = createHash("sha256")
+    .update(
+      JSON.stringify(
+        input.subitems.map((subitem) => ({
+          name: subitem.name,
+          qty: subitem.qty,
+        })),
+      ),
+    )
+    .digest("hex")
+    .slice(0, 16);
   const row = await enqueueMakeEvent(
     "lead.assigned",
-    `lead.assigned:${input.ingestionId}`,
+    `lead.assigned:${input.ingestionId}:${subitemFingerprint}`,
     {
       assignmentType: "initial",
       isReassignment: false,

@@ -81,10 +81,28 @@ export async function GET(request: NextRequest) {
 
     const now = new Date();
     const waitingLabel = await getSystemLabel("reply_status", "reply_status_waiting");
+    // Reassignment is a first-response safeguard for fresh leads only.  An
+    // ingested client can retain its Waiting reply state after being moved to
+    // Unqualified (or another workflow group), but must never be reassigned
+    // there.
+    const { data: newLeadGroup, error: newLeadGroupError } = await supabase
+        .from("crm_groups")
+        .select("id")
+        .ilike("name", "New Lead")
+        .order("sort_order", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+    if (newLeadGroupError) {
+        return NextResponse.json({ error: newLeadGroupError.message }, { status: 500 });
+    }
+    if (!newLeadGroup) {
+        return NextResponse.json({ error: 'CRM group "New Lead" is not configured' }, { status: 500 });
+    }
     const { data: clients, error } = await supabase
         .from("clients")
         .select("id, name, reply_status, reply_status_option_id, waiting_started_at, custom_fields, client_assignees(user_id, assignment_type)")
         .eq("reply_status_option_id", waitingLabel.id)
+        .eq("group_id", newLeadGroup.id)
         .not("waiting_started_at", "is", null)
         .is("deleted_at", null);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
