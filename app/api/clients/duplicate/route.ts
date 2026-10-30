@@ -138,6 +138,8 @@ export async function POST(request: NextRequest) {
         group_id: newLeadGroupResult.data.id,
         status: newLeadLabel.value,
         status_option_id: newLeadLabel.id,
+        // A duplicate is a fresh lead, never a historical reassignment.
+        times_reassigned: 0,
         created_by: user.id,
         custom_fields: withoutFileCustomFields(sourceClientResult.data.custom_fields),
         activity_log: [],

@@ -256,6 +256,8 @@ export interface Client {
   unqualifiedReason: string;
   nbd: string;
   totalPrice: string;
+  /** Server-managed count of completed automatic lead reassignments. */
+  timesReassigned: number;
   createdBy?: string | null;
   createdAt: string;
   waitingStartedAt?: string | null;

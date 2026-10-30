@@ -153,6 +153,12 @@ export async function GET(request: NextRequest) {
             .eq("reply_status_option_id", waitingLabel.id);
         if (resetWaitingError) throw resetWaitingError;
 
+        const { error: reassignmentCountError } = await supabase.rpc(
+            "increment_client_times_reassigned",
+            { p_client_id: client.id },
+        );
+        if (reassignmentCountError) throw reassignmentCountError;
+
         const reassignmentKey = `reply_timeout:${client.id}:${client.waiting_started_at}`;
         const { data: existingReassignmentActivity, error: activityReadError } = await supabase
             .from("activity_log")

@@ -5268,13 +5268,27 @@ export function ClientRow({
           />
         </div>
         <div
+          data-client-column="timesReassigned"
+          className="flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis"
+          style={{
+            height: 30,
+            minWidth: colWidth.timesReassigned,
+            width: colWidth.timesReassigned,
+            order: columnOrderMap.timesReassigned ?? 19,
+          }}
+        >
+          <span className="block px-1 text-center text-[12.6px] text-gray-700">
+            {client.timesReassigned > 0 ? client.timesReassigned : ""}
+          </span>
+        </div>
+        <div
           data-client-column="dateCreated"
           className="flex-1 min-w-0 py-1.5 border-r border-[#D0D4E4] overflow-hidden whitespace-nowrap text-ellipsis"
           style={{
             height: 30,
             minWidth: colWidth.dateCreated,
             width: colWidth.dateCreated,
-            order: columnOrderMap.dateCreated ?? 19,
+            order: columnOrderMap.dateCreated ?? 20,
           }}
         >
           <span

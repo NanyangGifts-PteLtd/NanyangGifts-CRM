@@ -379,6 +379,7 @@ const CLIENT_HEADER_COLS: HeaderCol[] = [
     minWidth: 145,
   },
   { key: "moonCake", label: "Mooncake", width: 100, minWidth: 80 },
+  { key: "timesReassigned", label: "Times Reassigned", width: 125, minWidth: 105 },
   { key: "dateCreated", label: "Date Created", width: 90, minWidth: 7 },
   { key: "closedDate", label: "Closed Date", width: 90, minWidth: 7 },
   { key: "addClientCol", label: "", width: 44, minWidth: 44 },
@@ -720,6 +721,7 @@ function localClientDuplicate(
     statusOptionId: duplicate.status_option_id ?? null,
     groupId: duplicate.group_id ?? source.groupId,
     createdAt: duplicate.created_at ?? source.createdAt,
+    timesReassigned: 0,
     // Child rows are filled by reconciliation. Reusing the source IDs here
     // would make immediate edits target the wrong records.
     subitems: [],
@@ -2552,11 +2554,25 @@ export function CRMBoard({
           if (dateCreatedIndex >= 0) next.splice(dateCreatedIndex, 0, "moonCake");
           return next;
         })();
-    const ordered = mergedOrderWithMoonCake
+    // Saved layouts predate Times Reassigned. Keep the managed counter
+    // immediately left of Date Created, matching the default Board layout.
+    const mergedOrderWithTimesReassigned = clientMergedOrderKeys.includes(
+      "timesReassigned",
+    )
+      ? mergedOrderWithMoonCake
+      : (() => {
+          const next = [...mergedOrderWithMoonCake];
+          const dateCreatedIndex = next.indexOf("dateCreated");
+          if (dateCreatedIndex >= 0) {
+            next.splice(dateCreatedIndex, 0, "timesReassigned");
+          }
+          return next;
+        })();
+    const ordered = mergedOrderWithTimesReassigned
       .map((key) => middle.find((col) => col.key === key))
       .filter(Boolean) as HeaderCol[];
     const remaining = middle.filter(
-      (col) => !mergedOrderWithMoonCake.includes(col.key),
+      (col) => !mergedOrderWithTimesReassigned.includes(col.key),
     );
 
     return [
@@ -9123,6 +9139,7 @@ export function CRMBoard({
           nbd: createdClient.nbd ?? "",
           groupId: createdClient.group_id ?? defaultGroupId,
           totalPrice: createdClient.total_price ?? "",
+          timesReassigned: 0,
           billingAddress: createdClient.billing_address ?? "",
           createdAt: createdClient.created_at ?? "",
           expanded: createdClient.expanded ?? true,

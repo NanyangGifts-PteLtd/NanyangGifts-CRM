@@ -361,6 +361,7 @@ type Clients = {
   qty: string | null;
   nbd: string | null;
   total_price: string | null;
+  times_reassigned?: number | null;
   billing_address: string | null;
   created_by?: string | null;
   created_at: string | null;
@@ -692,6 +693,7 @@ function mapClients(row: Clients): Client {
     unqualifiedReason: row.unqualified_reason ?? "",
     nbd: row.nbd ?? "",
     totalPrice: row.total_price ?? "",
+    timesReassigned: Number(row.times_reassigned ?? 0),
     billingAddress: row.billing_address ?? "",
     createdBy: row.created_by ?? null,
     createdAt: row.created_at ?? "",
@@ -1000,7 +1002,7 @@ export async function fetchClientsWithSubitems(params?: {
     "tracking_overall_invoice_payment_status_option_id",
     "tracking_invoice_status_summary", "company", "email",
     "phone", "requirements", "unqualified_reason", "nbd",
-    "total_price", "billing_address", "created_by", "created_at", "waiting_started_at",
+    "total_price", "times_reassigned", "billing_address", "created_by", "created_at", "waiting_started_at",
     "group_id", "expanded", "color", "custom_fields", "deleted_at",
     "deleted_by",
   ].join(", ");
