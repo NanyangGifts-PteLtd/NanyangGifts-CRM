@@ -158,6 +158,7 @@ function timelineTrackingNumbers(
 
 type TimelineGroup = Record<string, unknown> & {
   id?: string;
+  name?: string;
   cnTracking?: string;
   numOfCartons?: string;
   shipper?: string;
@@ -193,13 +194,15 @@ function timelineOptions(timelineGroups: unknown) {
   const groups = Array.isArray(timelineGroups)
     ? (timelineGroups as TimelineGroup[])
     : [];
-  return groups.flatMap((group, index) => {
+  return groups.flatMap((group) => {
     const id = String(group.id ?? "").trim();
     return id
       ? [
           {
             id,
-            label: `Project Timeline ${index + 1}`,
+            // Timeline names are optional. Keep an unnamed entry visibly
+            // neutral rather than inventing a numbered name.
+            label: String(group.name ?? "").trim() || "Unnamed timeline",
             cnTracking: String(group.cnTracking ?? "").trim(),
             cartons: group.numOfCartons ?? null,
             shipper: String(group.shipper ?? ""),

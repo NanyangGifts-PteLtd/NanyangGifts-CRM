@@ -109,6 +109,7 @@ type SchedulerResource = {
   clientDisplayId: string;
   subitemName: string;
   subitemDisplayId: string;
+  timelineName: string;
   timelineIndex: number;
   processNames: string[];
   pmIds: string[];
@@ -389,8 +390,9 @@ function buildSchedulerData(
         const subitemDisplayId = subitem.displayId || "";
         const timelines = Array.isArray(subitem.timelineGroups) && subitem.timelineGroups.length
           ? subitem.timelineGroups
-          : [{ id: "default", rows: subitem.timelineRows ?? [] }];
+          : [{ id: "default", name: "", rows: subitem.timelineRows ?? [] }];
         return timelines.flatMap((timeline, timelineIndex) => {
+        const timelineName = timeline.name?.trim() ?? "";
         const storedTimelineRows = (timeline.rows ?? []).filter(
           (row): row is TimelineRow => !!row && typeof row === "object",
         );
@@ -453,7 +455,7 @@ function buildSchedulerData(
         const resource = {
           id: resourceId,
           label: {
-            title: `${groupName} ${clientName} ${subitemName} Timeline ${timelineIndex + 1} ${processNames.join(" ")}`,
+            title: `${groupName} ${clientName} ${subitemName} ${timelineName} ${processNames.join(" ")}`.trim(),
             subtitle: resourceId,
             icon: "",
           },
@@ -466,6 +468,7 @@ function buildSchedulerData(
           clientDisplayId,
           subitemName,
           subitemDisplayId,
+          timelineName,
           timelineIndex,
           processNames,
           pmIds: clientPmAssignees[client.id] ?? parsePmIds(client),
@@ -1074,6 +1077,7 @@ export default function GanttChart({
     if (!client || !subitem) return null;
     const fallbackTimeline: TimelineGroup = {
       id: "default",
+      name: "",
       cnTracking: subitem.cnTracking ?? "",
       sgTracking: subitem.sgTracking ?? "",
       rows: subitem.timelineRows ?? [],
@@ -2232,7 +2236,7 @@ export default function GanttChart({
                           resource.subitemId,
                         );
                     }}
-                    title={`${resource.subitemName} · Subitem ID: ${resource.subitemDisplayId || resource.subitemId} · Timeline ${resource.timelineIndex + 1}`}
+                    title={`${resource.subitemName} · Subitem ID: ${resource.subitemDisplayId || resource.subitemId}${resource.timelineName ? ` · ${resource.timelineName}` : ""}`}
                   >
                     <span className="block break-words leading-4">
                       {resource.data.some((item) => item.isOverdue)
@@ -2240,7 +2244,8 @@ export default function GanttChart({
                         : resource.subitemName}
                     </span>
                     <span className="mt-0.5 block text-[10px] font-normal text-slate-500">
-                      ID: {resource.subitemDisplayId || resource.subitemId} · Timeline {resource.timelineIndex + 1} 
+                      ID: {resource.subitemDisplayId || resource.subitemId}
+                      {resource.timelineName ? ` · ${resource.timelineName}` : ""}
                     </span>
                   </button>
                 )}
@@ -2495,12 +2500,26 @@ export default function GanttChart({
                 </DialogTitle>
                 <DialogDescription>
                   {selectedTimelineData.client.name || "Unnamed client"} ·
-                  Project Timeline {selectedTimelineData.timelineIndex + 1}
+                  {selectedTimelineData.timeline.name?.trim() || ""}
                 </DialogDescription>
               </DialogHeader>
               <div className="flex min-h-0 justify-center overflow-auto bg-white px-6 py-5">
                 <TimelineSection
-                  title={`Project Timeline ${selectedTimelineData.timelineIndex + 1}`}
+                  timelineName={selectedTimelineData.timeline.name ?? ""}
+                  onTimelineNameChange={(name) =>
+                    void onUpdateSubitem(
+                      selectedTimelineData.client.id,
+                      selectedTimelineData.subitem.id,
+                      {
+                        timelineGroups: selectedTimelineData.timelines.map(
+                          (candidate) =>
+                            candidate.id === selectedTimelineData.timeline.id
+                              ? { ...candidate, name }
+                              : candidate,
+                        ),
+                      },
+                    )
+                  }
                   rows={selectedTimelineData.timeline.rows}
                   cnTracking={selectedTimelineData.timeline.cnTracking}
                   sgTracking={selectedTimelineData.timeline.sgTracking}

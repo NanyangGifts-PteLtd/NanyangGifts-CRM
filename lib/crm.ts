@@ -631,10 +631,16 @@ export function mapSubitems(row: Subitems): Subitem {
     timelineRows: row.timeline_rows ?? [],
     timelineGroups:
       Array.isArray(row.timeline_groups) && row.timeline_groups.length
-        ? row.timeline_groups
+        ? row.timeline_groups.map((timeline) => ({
+            ...timeline,
+            // Legacy timelines had no stored name. Keep them intentionally
+            // blank rather than deriving a numbered display name.
+            name: typeof timeline.name === "string" ? timeline.name : "",
+          }))
         : [
             {
               id: "default",
+              name: "",
               cnTracking: row.cn_tracking ?? "",
               sgTracking: row.sg_tracking ?? "",
               rows: row.timeline_rows ?? [],

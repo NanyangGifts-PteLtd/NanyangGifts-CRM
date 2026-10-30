@@ -155,7 +155,8 @@ export const DEFAULT_TIMELINE_ROWS = [
 export function TimelineSection({
   rows,
   onUpdate,
-  title = "Project Timeline 1",
+  timelineName = "",
+  onTimelineNameChange,
   cnTracking = "",
   sgTracking = "",
   numOfCartons = "",
@@ -182,7 +183,8 @@ export function TimelineSection({
 }: {
   rows: TimelineRow[];
   onUpdate: (rows: TimelineRow[]) => void;
-  title?: string;
+  timelineName?: string;
+  onTimelineNameChange?: (name: string) => void;
   cnTracking?: string;
   sgTracking?: string;
   numOfCartons?: string;
@@ -235,6 +237,7 @@ export function TimelineSection({
   );
   const [draftCnTracking, setDraftCnTracking] = useState(cnTracking);
   const [draftSgTracking, setDraftSgTracking] = useState(sgTracking);
+  const [draftTimelineName, setDraftTimelineName] = useState(timelineName);
   const cnShipperTrackingSite = getCnShipperTrackingSite(shipper);
   const progressBySystemKey = useMemo(
     () =>
@@ -261,6 +264,7 @@ export function TimelineSection({
 
   useEffect(() => setDraftCnTracking(cnTracking), [cnTracking]);
   useEffect(() => setDraftSgTracking(sgTracking), [sgTracking]);
+  useEffect(() => setDraftTimelineName(timelineName), [timelineName]);
 
   const saveTracking = (field: "cn" | "sg") => {
     const nextCnTracking = field === "cn" ? draftCnTracking : cnTracking;
@@ -270,6 +274,11 @@ export function TimelineSection({
       cnTracking: nextCnTracking,
       sgTracking: nextSgTracking,
     });
+  };
+  const saveTimelineName = () => {
+    const nextName = draftTimelineName.trim();
+    setDraftTimelineName(nextName);
+    if (nextName !== timelineName.trim()) onTimelineNameChange?.(nextName);
   };
   useEffect(() => {
     if (readOnly) return;
@@ -603,7 +612,23 @@ export function TimelineSection({
       </AlertDialog>
       <div className="flex min-h-12 flex-wrap items-center gap-3 bg-gradient-to-r from-[#9bd9e0] to-[#7BCBD5] px-3 py-2">
         <Calendar size={12} className="text-white" />
-        <span className="text-xs font-semibold text-white">{title}</span>
+        {readOnly ? (
+          timelineName.trim() ? (
+            <span className="text-xs font-semibold text-white">{timelineName}</span>
+          ) : null
+        ) : (
+          <input
+            value={draftTimelineName}
+            onChange={(event) => setDraftTimelineName(event.target.value)}
+            onBlur={saveTimelineName}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") event.currentTarget.blur();
+            }}
+            placeholder="Timeline name (optional)"
+            className="h-7 w-48 rounded border border-white/60 bg-white/15 px-2 text-xs font-semibold text-white placeholder:text-white/75 outline-none focus:bg-white/25"
+            aria-label="Timeline name"
+          />
+        )}
         <label className="flex items-center gap-1 text-[11px] font-medium text-white">
           No. of Cartons
           <input

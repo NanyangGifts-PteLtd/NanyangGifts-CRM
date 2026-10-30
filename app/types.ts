@@ -79,6 +79,8 @@ export interface TimelineRow {
 
 export interface TimelineGroup {
   id: string;
+  /** Optional user-facing name. Array order remains the source of timeline order. */
+  name?: string;
   cnTracking: string;
   sgTracking: string;
   /** Cartons belong to this shipment timeline, not the parent subitem. */

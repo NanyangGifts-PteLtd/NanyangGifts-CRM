@@ -1155,7 +1155,7 @@ export function SubitemsTable({
   const [pendingTimelineRemoval, setPendingTimelineRemoval] = useState<{
     subitemId: string;
     timelineId: string;
-    timelineNumber: number;
+    timelineName: string;
   } | null>(null);
   const hasSubitemEditPermission = (subitemId: string) =>
     !!currentUserId &&
@@ -3655,7 +3655,7 @@ export function SubitemsTable({
           <AlertDialogHeader>
             <AlertDialogTitle>Remove this timeline?</AlertDialogTitle>
             <AlertDialogDescription>
-              Remove Project Timeline {pendingTimelineRemoval?.timelineNumber}?
+              Remove {pendingTimelineRemoval?.timelineName || "this timeline"}?
               Its tracking numbers and all timeline processes will be removed.
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -4804,6 +4804,7 @@ export function SubitemsTable({
                           : [
                               {
                                 id: "default",
+                                name: "",
                                 cnTracking: sub.cnTracking,
                                 sgTracking: sub.sgTracking,
                                 rows: sub.timelineRows?.length
@@ -4815,7 +4816,30 @@ export function SubitemsTable({
                         ).map((timeline: TimelineGroup, index) => (
                           <TimelineSection
                             key={timeline.id}
-                            title={`Project Timeline ${index + 1}`}
+                            timelineName={timeline.name ?? ""}
+                            onTimelineNameChange={(name) =>
+                              onUpdateSubitem(sub.id, {
+                                timelineGroups: (sub.timelineGroups?.length
+                                  ? sub.timelineGroups
+                                  : [
+                                      {
+                                        id: "default",
+                                        name: "",
+                                        cnTracking: sub.cnTracking,
+                                        sgTracking: sub.sgTracking,
+                                        rows: sub.timelineRows?.length
+                                          ? sub.timelineRows
+                                          : DEFAULT_TIMELINE_ROWS,
+                                        isDefault: true,
+                                      },
+                                    ]
+                                ).map((candidate) =>
+                                  candidate.id === timeline.id
+                                    ? { ...candidate, name }
+                                    : candidate,
+                                ),
+                              })
+                            }
                             rows={timeline.rows}
                             cnTracking={timeline.cnTracking}
                             sgTracking={timeline.sgTracking}
@@ -4852,6 +4876,7 @@ export function SubitemsTable({
                                   : [
                                       {
                                         id: "default",
+                                        name: "",
                                         cnTracking: sub.cnTracking,
                                         sgTracking: sub.sgTracking,
                                         rows: sub.timelineRows?.length
@@ -4891,6 +4916,7 @@ export function SubitemsTable({
                                   : [
                                       {
                                         id: "default",
+                                        name: "",
                                         cnTracking: sub.cnTracking,
                                         sgTracking: sub.sgTracking,
                                         rows: sub.timelineRows?.length
@@ -4913,6 +4939,7 @@ export function SubitemsTable({
                                   : [
                                       {
                                         id: "default",
+                                        name: "",
                                         cnTracking: sub.cnTracking,
                                         sgTracking: sub.sgTracking,
                                         rows: sub.timelineRows?.length
@@ -4940,7 +4967,7 @@ export function SubitemsTable({
                                     setPendingTimelineRemoval({
                                       subitemId: sub.id,
                                       timelineId: timeline.id,
-                                      timelineNumber: index + 1,
+                                      timelineName: timeline.name?.trim() ?? "",
                                     })
                             }
                             onUpdate={(rows) =>
@@ -4950,6 +4977,7 @@ export function SubitemsTable({
                                   : [
                                       {
                                         id: "default",
+                                        name: "",
                                         cnTracking: sub.cnTracking,
                                         sgTracking: sub.sgTracking,
                                         rows: sub.timelineRows?.length
@@ -5018,6 +5046,7 @@ export function SubitemsTable({
                                 ...current,
                                 {
                                   id: crypto.randomUUID(),
+                                  name: "",
                                   cnTracking: "",
                                   sgTracking: "",
                                   numOfCartons: "",
