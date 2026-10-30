@@ -51,6 +51,7 @@ import {
   fetchGanttClientFilterOptions,
   type GanttServerQuery,
 } from "@/lib/crm";
+import { AWARDED_OR_LATER_SUBITEM_STATUS_SYSTEM_KEYS } from "@/lib/board-labels";
 
 const Scheduler = dynamic(
   () => import("@bitnoi.se/react-scheduler").then((mod) => mod.Scheduler),
@@ -85,6 +86,8 @@ type Props = {
   onServerQueryChange?: (query: GanttServerQuery) => void;
   onLoadMoreResources?: () => void;
   loadedQueryKey?: string;
+  /** Initial PM filter only; users may freely change or clear it afterward. */
+  defaultPmFilterId?: string | null;
 };
 type SchedulerItem = {
   id: string;
@@ -306,23 +309,16 @@ function parsePmIds(client: Client): string[] {
 }
 
 // Timelines become operational only once their subitem reaches the Awarded
-// phase. Keep this in step with the eligibility rule used by the expanded CRM
-// subitem view and OCF workflow. A stored draft timeline is not, by itself, a
-// reason for an unawarded subitem to appear on the operational Gantt.
-const GANTT_ELIGIBLE_SUBITEM_STATUSES = new Set([
-  "awarded",
-  "verify later",
-  "verified",
-  "variation cost difference",
-]);
-
-function isGanttEligibleSubitem(subitem: Subitem) {
-  const normalizedStatus = String(subitem.status ?? "")
-    .trim()
-    .toLowerCase()
-    .replace(/[/_-]+/g, " ")
-    .replace(/\s+/g, " ");
-  return GANTT_ELIGIBLE_SUBITEM_STATUSES.has(normalizedStatus);
+// phase. Compare stable option IDs, resolved from the shared managed keys,
+// because label text is editable and cannot be used as business logic.
+function isGanttEligibleSubitem(
+  subitem: Subitem,
+  awardedOrLaterStatusIds: Set<string>,
+) {
+  return Boolean(
+    subitem.statusOptionId &&
+      awardedOrLaterStatusIds.has(subitem.statusOptionId),
+  );
 }
 
 function isCompletedTimelineProcess(
@@ -343,11 +339,8 @@ function isCompletedTimelineProcess(
   return displayValue === "done" || displayValue === "delivered";
 }
 
-function isDefaultFreightProcess(row: TimelineRow) {
-  return (
-    row.isCustom !== true &&
-    String(row.name ?? "").trim().toLowerCase().startsWith("sea/air freight")
-  );
+function isNbdProcess(row: TimelineRow) {
+  return String(row.name ?? "").trim().toLowerCase() === "nbd";
 }
 
 function buildSchedulerData(
@@ -365,6 +358,7 @@ function buildSchedulerData(
       section?: number;
     }
   >,
+  awardedOrLaterStatusIds: Set<string>,
   allowedResourceIds?: Set<string>,
 ): SchedulerResource[] {
   const groupMap = new Map(groups.map((group) => [group.id, group]));
@@ -382,7 +376,7 @@ function buildSchedulerData(
             (subitem): subitem is Subitem =>
               !!subitem &&
               typeof subitem === "object" &&
-              isGanttEligibleSubitem(subitem),
+              isGanttEligibleSubitem(subitem, awardedOrLaterStatusIds),
           )
         : [];
       // The Gantt chart represents subitem processes. Clients without a
@@ -400,19 +394,12 @@ function buildSchedulerData(
         const storedTimelineRows = (timeline.rows ?? []).filter(
           (row): row is TimelineRow => !!row && typeof row === "object",
         );
-        if (
-          storedTimelineRows.some(
-            (row) =>
-              isDefaultFreightProcess(row) &&
-              isCompletedTimelineProcess(row, progressById),
-          )
-        ) {
-          return [];
-        }
         const timelineRows = storedTimelineRows.filter(
           (row) => !isCompletedTimelineProcess(row, progressById),
         );
         if (!timelineRows.length) return [];
+        const disappearedProcessCount =
+          storedTimelineRows.length - timelineRows.length;
         const resourceId = `${client.id}::${subitem.id}::${timeline.id}`;
         const items = timelineRows.flatMap((row): SchedulerItem[] => {
           const progress = progressById.get(row.subProgressOptionId ?? "");
@@ -452,6 +439,21 @@ function buildSchedulerData(
           ];
         });
         if (!items.length) return [];
+
+        // A completed process disappears from the Gantt. If that leaves this
+        // timeline with only NBD visible, the row no longer represents active
+        // operational work and should disappear too. This deliberately does
+        // not assume Sea/Air Freight is the final process.
+        const visibleRows = timelineRows.filter((row) =>
+          Boolean(parseDate(row.timelineStart)),
+        );
+        if (
+          disappearedProcessCount > 0 &&
+          visibleRows.length > 0 &&
+          visibleRows.every(isNbdProcess)
+        ) {
+          return [];
+        }
 
         const processNames = timelineRows.map(
           (row) => row.name || "Untitled Process",
@@ -513,6 +515,7 @@ export default function GanttChart({
   onServerQueryChange,
   onLoadMoreResources,
   loadedQueryKey = "",
+  defaultPmFilterId = null,
 }: Props) {
   const [progressById, setProgressById] = useState<
     Map<
@@ -525,6 +528,9 @@ export default function GanttChart({
       }
     >
   >(new Map());
+  const [awardedOrLaterStatusIds, setAwardedOrLaterStatusIds] = useState<
+    Set<string> | null
+  >(null);
   const [shipperOptions, setShipperOptions] = useState<OptionEntry[]>([]);
   useEffect(() => {
     const supabase = createSupabaseClient();
@@ -554,6 +560,41 @@ export default function GanttChart({
         );
     })();
     return () => { active = false; };
+  }, []);
+  useEffect(() => {
+    const supabase = createSupabaseClient();
+    let active = true;
+    void (async () => {
+      try {
+        const { data: group, error: groupError } = await supabase
+          .from("option_groups")
+          .select("id")
+          .eq("code", "subitem_status")
+          .maybeSingle();
+        if (groupError) throw groupError;
+        if (!group) throw new Error("Subitem Status labels are not configured.");
+
+        const { data, error } = await supabase
+          .from("option_values")
+          .select("id")
+          .eq("group_id", group.id)
+          .in("system_key", AWARDED_OR_LATER_SUBITEM_STATUS_SYSTEM_KEYS);
+        if (error) throw error;
+        if (active) {
+          setAwardedOrLaterStatusIds(
+            new Set((data ?? []).map((option) => option.id)),
+          );
+        }
+      } catch (error) {
+        console.warn("Could not load Gantt Awarded-phase labels", error);
+        // Do not fall back to label names. An empty set is safer than
+        // accidentally showing unqualified subitems.
+        if (active) setAwardedOrLaterStatusIds(new Set());
+      }
+    })();
+    return () => {
+      active = false;
+    };
   }, []);
   const getOptionGroupId = useCallback(async (code: string) => {
     const supabase = createSupabaseClient();
@@ -848,7 +889,15 @@ export default function GanttChart({
   } | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchScope, setSearchScope] = useState<SearchScope>("all");
-  const [filters, setFilters] = useState<GanttFilters>(EMPTY_FILTERS);
+  const [filters, setFilters] = useState<GanttFilters>(() => ({
+    ...EMPTY_FILTERS,
+    groupIds: new Set(),
+    clientIds: new Set(),
+    pmIds: defaultPmFilterId ? new Set([defaultPmFilterId]) : new Set(),
+    peopleIds: new Set(),
+    processStatuses: new Set(),
+  }));
+  const defaultPmFilterAppliedRef = useRef(Boolean(defaultPmFilterId));
   const [filterMenu, setFilterMenu] = useState<FilterMenu | null>(null);
   const [serverClientOptions, setServerClientOptions] = useState<FilterOption[]>(
     [],
@@ -868,6 +917,17 @@ export default function GanttChart({
   const resourcePanelWidth = resourcePaneCollapsed
     ? 0
     : RESOURCE_PANEL_WIDTH;
+
+  useEffect(() => {
+    // Auth can resolve just after the Gantt mounts. Apply this only once, and
+    // never reapply it after the user has changed or cleared their filters.
+    if (defaultPmFilterAppliedRef.current || !defaultPmFilterId) return;
+    defaultPmFilterAppliedRef.current = true;
+    setFilters((current) => ({
+      ...current,
+      pmIds: new Set([defaultPmFilterId]),
+    }));
+  }, [defaultPmFilterId]);
 
   useEffect(() => {
     let active = true;
@@ -958,9 +1018,10 @@ export default function GanttChart({
         clientPmAssignees,
         subitemAssignees,
         progressById,
+        awardedOrLaterStatusIds ?? new Set<string>(),
         allowedResourceIds,
       ),
-    [orderedClients, orderedGroups, clientAssignees, clientPmAssignees, subitemAssignees, progressById, allowedResourceIds],
+    [orderedClients, orderedGroups, clientAssignees, clientPmAssignees, subitemAssignees, progressById, awardedOrLaterStatusIds, allowedResourceIds],
   );
   const data = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -1849,7 +1910,7 @@ export default function GanttChart({
   // existing query can always be edited or cleared.
   const toolbarHost = schedulerRootHost;
 
-  if (isLoading) {
+  if (isLoading || awardedOrLaterStatusIds === null) {
     return (
       <div className="flex h-full min-h-0 w-full items-center justify-center rounded-xl border border-slate-200 bg-white text-sm text-slate-500">
         <span className="inline-flex items-center gap-2">

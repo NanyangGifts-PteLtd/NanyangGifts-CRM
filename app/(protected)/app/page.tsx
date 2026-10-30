@@ -3226,6 +3226,11 @@ export default function Page() {
               onServerQueryChange={handleGanttQueryChange}
               onLoadMoreResources={loadMoreGanttResources}
               loadedQueryKey={ganttLoadedQueryKey}
+              defaultPmFilterId={
+                String(currentUserRole ?? "").trim().toLowerCase() === "pm"
+                  ? user?.id ?? null
+                  : null
+              }
             />
           </div>
         );
