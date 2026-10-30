@@ -468,11 +468,16 @@ function formatMoney(v: number | null | undefined) {
   return v.toFixed(2);
 }
 
-// Derived per-unit values can expose useful precision without implying that
-// their underlying calculation has been rounded to five places.
+// C-SGD can expose useful derived precision without implying that its
+// underlying calculation has been rounded.
 function formatFiveDecimalValue(v: number | null | undefined) {
   if (v == null || Number.isNaN(v)) return "";
   return String(Number(v.toFixed(5)));
+}
+
+function formatThreeDecimalValue(v: number | null | undefined) {
+  if (v == null || Number.isNaN(v)) return "";
+  return String(Number(v.toFixed(3)));
 }
 
 function normalizeUnitPriceInput(value: string) {
@@ -2577,7 +2582,9 @@ export function SubitemsTable({
     const uc = qty > 0 ? tc / qty : null;
     const idealMarkup = parseNumber(sub.customFields?.idealMarkup);
     const priceToSet =
-      qty > 0 ? (idealMarkup != 0 ? (idealMarkup + tc) / qty : null) : null;
+      qty > 0
+        ? (idealMarkup != 0 ? roundUnitPrice((idealMarkup + tc) / qty) : null)
+        : null;
     const updateSelectedField = (
       field: "qty" | "description" | "remarks" | "supplier" | "idealMarkup",
       value: string,
@@ -2983,7 +2990,7 @@ export function SubitemsTable({
         return (
           <div className="flex justify-center text-xs text-gray-800">
             {hasCurrency && priceToSet !== null
-              ? formatFiveDecimalValue(priceToSet)
+              ? formatThreeDecimalValue(priceToSet)
               : ""}
           </div>
         );

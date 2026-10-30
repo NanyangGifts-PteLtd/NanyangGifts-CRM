@@ -17,6 +17,8 @@ const numberValue = (value: unknown) => {
   const parsed = Number(String(value ?? "").replace(/,/g, "").trim());
   return Number.isFinite(parsed) ? parsed : 0;
 };
+const unitPriceValue = (value: unknown) =>
+  Math.round((numberValue(value) + Number.EPSILON) * 1_000) / 1_000;
 
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -221,7 +223,9 @@ function incomingPreview(
     .sort((a: any, b: any) => Number(a.position ?? Number.MAX_SAFE_INTEGER) - Number(b.position ?? Number.MAX_SAFE_INTEGER))
     .map((item: any) => {
       const qty = numberValue(item.qty) || 1;
-      const unitPrice = numberValue(item.up) || numberValue(item.price) / qty;
+      const unitPrice = unitPriceValue(
+        numberValue(item.up) || numberValue(item.price) / qty,
+      );
       return {
         id: item.id,
         name: item.name || "Unnamed item",
@@ -519,7 +523,7 @@ export async function POST(request: NextRequest) {
         SalesItemLineDetail: {
           ItemRef: { value: item.Id, name: item.Name },
           Qty: line.qty,
-          UnitPrice: line.unitPrice,
+          UnitPrice: unitPriceValue(line.unitPrice),
           TaxCodeRef: { value: line.taxCode },
         },
       };

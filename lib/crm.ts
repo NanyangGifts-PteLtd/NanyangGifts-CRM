@@ -3349,7 +3349,7 @@ export async function updateSubitemRow(
   }
 
   if ("qty" in updates || "up" in updates) {
-    // Keep a manually entered U.P at the same five-decimal precision used by
+    // Keep a manually entered U.P at the same three-decimal precision used by
     // the calculator. The line total remains a two-decimal stored amount and
     // must use the existing counterpart when only Qty or U.P was edited.
     if (nextUpdates.up !== undefined && nextUpdates.up.trim() !== "") {

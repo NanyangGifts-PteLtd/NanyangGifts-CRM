@@ -5575,9 +5575,11 @@ export function CRMBoard({
       if (key === "priceToSet") {
         const idealMarkup = Number(subitem.customFields?.idealMarkup || 0);
         return quantity > 0
-          ? (idealMarkup +
-              calculateSubitemFinancials(subitem, currencyEntries).tc) /
-              quantity
+          ? roundUnitPrice(
+              (idealMarkup +
+                calculateSubitemFinancials(subitem, currencyEntries).tc) /
+                quantity,
+            )
           : "";
       }
       if (key === "totalUc") return totalUc;
@@ -5876,11 +5878,13 @@ export function CRMBoard({
                 : key === "idealMarkup"
                   ? subitem.customFields?.idealMarkup
                   : key === "priceToSet"
-                    ? quantity > 0
-                      ? (Number(subitem.customFields?.idealMarkup || 0) +
-                          calculateSubitemFinancials(subitem, currencyEntries)
-                            .tc) /
-                        quantity
+                      ? quantity > 0
+                        ? roundUnitPrice(
+                            (Number(subitem.customFields?.idealMarkup || 0) +
+                              calculateSubitemFinancials(subitem, currencyEntries)
+                                .tc) /
+                              quantity,
+                          )
                       : ""
                     : key === "totalUc"
                       ? totalUc
@@ -6623,7 +6627,7 @@ export function CRMBoard({
     if (column === "priceToSet") {
       const idealMarkup = Number(subitem.customFields?.idealMarkup || 0);
       return financials.quantity > 0
-        ? (idealMarkup + financials.tc) / financials.quantity
+        ? roundUnitPrice((idealMarkup + financials.tc) / financials.quantity)
         : "";
     }
     if (column === "idealMarkup")

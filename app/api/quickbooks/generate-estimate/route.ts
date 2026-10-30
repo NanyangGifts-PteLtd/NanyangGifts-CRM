@@ -27,6 +27,9 @@ function numberValue(value: unknown) {
   );
   return Number.isFinite(parsed) ? parsed : 0;
 }
+function unitPriceValue(value: unknown) {
+  return Math.round((numberValue(value) + Number.EPSILON) * 1_000) / 1_000;
+}
 
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -373,9 +376,10 @@ export async function POST(req: NextRequest) {
 
       // `price` on the CRM board is the line total (Qty × U.P.), not the unit price.
       const qty = numberValue(subitem.qty) || 1;
-      const unitPrice =
+      const unitPrice = unitPriceValue(
         numberValue(subitem.up) ||
-        (qty > 0 ? numberValue(subitem.price) / qty : 0);
+          (qty > 0 ? numberValue(subitem.price) / qty : 0),
+      );
       const amount = qty * unitPrice;
       const taxCodeValue =
         isFreightLine(subitem.name) ||
@@ -426,7 +430,7 @@ export async function POST(req: NextRequest) {
 
     const estimate = estimateRes?.Estimate;
 
-    const { data: generation, error: generationError } = await supabase
+    const { data: generation, error: generationError } = await supabaseAdmin
       .from("estimate_generations")
       .insert({
         client_id: client.id,

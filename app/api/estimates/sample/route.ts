@@ -54,6 +54,9 @@ function numberValue(value: unknown) {
   );
   return Number.isFinite(parsed) ? parsed : 0;
 }
+function unitPriceValue(value: unknown) {
+  return Math.round((numberValue(value) + Number.EPSILON) * 1_000) / 1_000;
+}
 function dataUrlBytes(dataUrl: string) {
   const match = /^data:(image\/(?:png|jpeg|jpg));base64,([a-z0-9+/=]+)$/i.exec(
     dataUrl,
@@ -205,6 +208,8 @@ async function makePdf({
   };
   const money = (value: number) =>
     `$${value.toLocaleString("en-SG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const unitPriceMoney = (value: number) =>
+    `$${value.toLocaleString("en-SG", { minimumFractionDigits: 0, maximumFractionDigits: 3 })}`;
   const subtotal = rows.reduce((sum, row) => sum + row.amount, 0),
     gst = subtotal * 0.09,
     total = subtotal + gst;
@@ -328,7 +333,7 @@ async function makePdf({
       8.5,
     );
     centeredText(
-      money(row.unitPrice),
+      unitPriceMoney(row.unitPrice),
       cols[3],
       top + 15,
       cols[4] - cols[3],
@@ -527,8 +532,9 @@ export async function POST(req: NextRequest) {
     .maybeSingle();
   const rows = subitems.map((item: any) => {
     const qty = numberValue(item.qty) || 1;
-    const unitPrice =
-      numberValue(item.up) || (qty > 0 ? numberValue(item.price) / qty : 0);
+    const unitPrice = unitPriceValue(
+      numberValue(item.up) || (qty > 0 ? numberValue(item.price) / qty : 0),
+    );
     return {
       name: item.name || "Unnamed item",
       description: item.description || "",

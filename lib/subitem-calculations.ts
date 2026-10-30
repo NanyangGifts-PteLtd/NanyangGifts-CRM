@@ -9,11 +9,11 @@ function parseNumericValue(value: string | number | undefined | null) {
 }
 
 /**
- * Unit prices may be quoted to five decimal places. This is deliberately
+ * Unit prices may be quoted to three decimal places. This is deliberately
  * separate from line totals, which remain commercial two-decimal amounts.
  */
 export function roundUnitPrice(value: number) {
-    return Math.round((value + Number.EPSILON) * 100_000) / 100_000;
+    return Math.round((value + Number.EPSILON) * 1_000) / 1_000;
 }
 
 /** A persisted line total is always stored and displayed to two decimals. */
@@ -40,7 +40,7 @@ export function calculateSubitemFinancials(subitem: Subitem, currencyOptions: Cu
     const tcSgd = cSgd * quantity;
     const tc = tcSgd + manpower + localShipping + overseasShipping;
     // Do not round U.P. down to cents before multiplication: the full
-    // five-decimal U.P is used, then the resulting line total is rounded to
+    // three-decimal U.P is used, then the resulting line total is rounded to
     // the CRM's two-decimal monetary precision.
     const price = roundMonetaryAmount(unitPrice * quantity);
     const markup = price - tc;

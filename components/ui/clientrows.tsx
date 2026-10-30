@@ -43,7 +43,7 @@ import {
 } from "../ui/alert-dialog";
 import { Tooltip } from "radix-ui";
 import type { CustomColumn } from "@/lib/custom-columns";
-import { calculateSubitemFinancials } from "@/lib/subitem-calculations";
+import { calculateSubitemFinancials, roundUnitPrice } from "@/lib/subitem-calculations";
 import {
   currencySystemKey,
   sgdToCurrencyMultiplier,
@@ -209,6 +209,13 @@ const formatQuickBooksAmount = (value: number) =>
     style: "currency",
     currency: "SGD",
     minimumFractionDigits: 2,
+  }).format(value);
+const formatQuickBooksUnitPrice = (value: number) =>
+  new Intl.NumberFormat("en-SG", {
+    style: "currency",
+    currency: "SGD",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 3,
   }).format(value);
 
 const addOneMonthDateInput = (value: Date = new Date()) => {
@@ -1367,9 +1374,10 @@ export function ClientRow({
       )
       .map((subitem) => {
         const qty = quickBooksNumber(subitem.qty) || 1;
-        const unitPrice =
+        const unitPrice = roundUnitPrice(
           quickBooksNumber(subitem.up) ||
-          (qty > 0 ? quickBooksNumber(subitem.price) / qty : 0);
+            (qty > 0 ? quickBooksNumber(subitem.price) / qty : 0),
+        );
         const amount = qty * unitPrice;
         const freight = isFreightLine(subitem.name);
         const delivery = freight
@@ -2843,7 +2851,7 @@ export function ClientRow({
                                     {line.qty}
                                   </td>
                                   <td className="whitespace-nowrap px-2 py-2 text-right">
-                                    {formatQuickBooksAmount(line.unitPrice)}
+                                    {formatQuickBooksUnitPrice(line.unitPrice)}
                                   </td>
                                   <td className="whitespace-nowrap px-3 py-2 text-right font-medium">
                                     {formatQuickBooksAmount(line.amount)}
@@ -3101,7 +3109,7 @@ export function ClientRow({
                             </td>
                             <td className="px-2 py-2 text-right">{line.qty}</td>
                             <td className="px-2 py-2 text-right">
-                              {formatQuickBooksAmount(line.unitPrice)}
+                              {formatQuickBooksUnitPrice(line.unitPrice)}
                             </td>
                             <td className="px-2 py-2 text-right font-medium">
                               {formatQuickBooksAmount(line.amount)}

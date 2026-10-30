@@ -60,9 +60,10 @@ const fmt = (n: number | null | undefined) => {
   const rounded = Number(n.toFixed(2));
   return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(2);
 };
-// Unit prices and exchange-converted unit costs can be shown to five places;
+// Unit prices are stored to three places; exchange-converted unit costs retain
+// five places where useful.
 // their source calculations retain full precision.
-const fmtPrecision = (n: number | null | undefined, digits = 5) => {
+const fmtPrecision = (n: number | null | undefined, digits = 3) => {
   if (n == null || !Number.isFinite(n)) return "—";
   return String(Number(n.toFixed(digits)));
 };
@@ -155,7 +156,7 @@ export function PriceCalculatorDialog(props: Props) {
     const up = financials.quantity
       ? roundUnitPrice(unroundedPrice / financials.quantity)
       : null;
-    // Price uses the displayed five-decimal U.P, then retains the CRM's
+    // Price uses the displayed three-decimal U.P, then retains the CRM's
     // normal two-decimal monetary precision.
     const price = up == null
       ? roundMonetaryAmount(unroundedPrice)
@@ -270,7 +271,7 @@ export function PriceCalculatorDialog(props: Props) {
           </div>
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <Formula label="Cost in SGD" value={fmtPrecision(financials.cSgd)} />
+          <Formula label="Cost in SGD" value={fmtPrecision(financials.cSgd, 5)} />
           <Formula label="Total Cost in SGD" value={fmt(financials.tcSgd)} />
         </div>
         <div className="grid grid-cols-3 gap-3">
