@@ -402,14 +402,34 @@ export async function DELETE(request: NextRequest) {
       }
       const { data: quote, error: quoteError } = await supabaseAdmin
         .from("estimate_generations")
-        .select("id, link_source")
+        .select("id, link_source, quickbooks_estimate_id")
         .eq("id", estimateGenerationId)
         .eq("client_id", clientId)
         .is("archived_at", null)
         .maybeSingle();
       if (quoteError) throw quoteError;
-      if (!quote || quote.link_source !== "manual") {
-        return NextResponse.json({ error: "Only manually linked quotes can be unlinked." }, { status: 400 });
+      if (!quote) {
+        return NextResponse.json({ error: "The selected quote is unavailable." }, { status: 404 });
+      }
+      let isCrossClientDuplicate = false;
+      const estimateId = String(quote.quickbooks_estimate_id ?? "").trim();
+      if (quote.link_source !== "manual" && estimateId) {
+        const { data: duplicate, error: duplicateError } = await supabaseAdmin
+          .from("estimate_generations")
+          .select("id")
+          .eq("quickbooks_estimate_id", estimateId)
+          .neq("id", quote.id)
+          .neq("client_id", clientId)
+          .is("archived_at", null)
+          .limit(1)
+          .maybeSingle();
+        if (duplicateError) throw duplicateError;
+        isCrossClientDuplicate = Boolean(duplicate);
+      }
+      if (quote.link_source !== "manual" && !isCrossClientDuplicate) {
+        return NextResponse.json({
+          error: "Only manually linked quotes, or an exact QuickBooks quote duplicate on another client, can be unlinked.",
+        }, { status: 400 });
       }
 
       const { error: invoiceDeleteError } = await supabaseAdmin
@@ -424,7 +444,7 @@ export async function DELETE(request: NextRequest) {
         .eq("id", quote.id);
       if (archiveError) throw archiveError;
       await refreshClientTrackingRollups(clientId);
-      return NextResponse.json({ unlinked: true });
+      return NextResponse.json({ unlinked: true, duplicateRecovery: isCrossClientDuplicate });
     }
 
     if (kind === "direct-invoice") {

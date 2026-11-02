@@ -17,12 +17,40 @@ export async function GET(request: NextRequest) {
     const { data: generations, error: generationsError } = await supabase
       .from("estimate_generations")
       .select(
-        "id, title, quickbooks_estimate_doc_number, created_at, quote_total, quote_subtotal, invoice_total, invoice_subtotal, invoice_count, total_balance, payment_status, invoice_payment_status, invoice_payment_status_option_id, tracking_summary, tracking_remarks, last_invoice_synced_at, link_source",
+        "id, title, quickbooks_estimate_id, quickbooks_estimate_doc_number, created_at, quote_total, quote_subtotal, invoice_total, invoice_subtotal, invoice_count, total_balance, payment_status, invoice_payment_status, invoice_payment_status_option_id, tracking_summary, tracking_remarks, last_invoice_synced_at, link_source",
       )
       .eq("client_id", clientId)
       .is("archived_at", null)
       .order("created_at", { ascending: false });
     if (generationsError) throw generationsError;
+
+    // Generated quote rows normally cannot be unlinked. The exception is an
+    // exact QuickBooks Estimate-ID duplicate across clients, which can occur
+    // in historical imports. Return only a boolean so this view does not leak
+    // the other client's identity.
+    const estimateIds = Array.from(
+      new Set(
+        (generations ?? [])
+          .map((quote) => String(quote.quickbooks_estimate_id ?? "").trim())
+          .filter(Boolean),
+      ),
+    );
+    const { data: estimateLinks, error: estimateLinksError } = estimateIds.length
+      ? await supabaseAdmin
+          .from("estimate_generations")
+          .select("client_id, quickbooks_estimate_id")
+          .in("quickbooks_estimate_id", estimateIds)
+          .is("archived_at", null)
+      : { data: [], error: null };
+    if (estimateLinksError) throw estimateLinksError;
+    const linkedClientsByEstimateId = new Map<string, Set<string>>();
+    for (const link of estimateLinks ?? []) {
+      const estimateId = String(link.quickbooks_estimate_id ?? "").trim();
+      if (!estimateId) continue;
+      const clients = linkedClientsByEstimateId.get(estimateId) ?? new Set();
+      clients.add(link.client_id);
+      linkedClientsByEstimateId.set(estimateId, clients);
+    }
 
     const quoteIds = (generations ?? []).map((quote) => quote.id);
     const { data: invoices, error: invoicesError } = quoteIds.length
@@ -67,6 +95,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       quotes: (generations ?? []).map((quote) => ({
         ...quote,
+        can_unlink_duplicate:
+          (linkedClientsByEstimateId.get(
+            String(quote.quickbooks_estimate_id ?? "").trim(),
+          )?.size ?? 0) > 1,
         invoices: invoicesByQuote.get(quote.id) ?? [],
       })),
       directInvoices: directInvoices ?? [],

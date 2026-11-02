@@ -123,7 +123,9 @@ type Invoice = {
 type Quote = {
   id: string;
   title: string | null;
+  quickbooks_estimate_id?: string | null;
   quickbooks_estimate_doc_number: string | null;
+  can_unlink_duplicate?: boolean;
   created_at: string;
   quote_total: number | null;
   quote_subtotal: number | null;
@@ -930,7 +932,7 @@ export function TrackingQuoteList({
                     ? "Synchronizing…"
                     : "Sync invoices"}
                 </button>
-                {quote.link_source === "manual" && (
+                {(quote.link_source === "manual" || quote.can_unlink_duplicate) && (
                   <button
                     type="button"
                     disabled={!canEdit}
@@ -943,12 +945,14 @@ export function TrackingQuoteList({
                     }
                     title={
                       canEdit
-                        ? "Unlink this manually linked quote"
+                        ? quote.link_source === "manual"
+                          ? "Unlink this manually linked quote"
+                          : "Unlink this duplicate QuickBooks quote link"
                         : "You can only edit items that are assigned to you"
                     }
                     className="rounded border border-red-300 bg-red-50 px-2 py-1 text-[12.6px] font-semibold text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    Unlink Quote
+                    {quote.link_source === "manual" ? "Unlink Quote" : "Unlink duplicate"}
                   </button>
                 )}
               </div>
