@@ -6,6 +6,15 @@ type RouteContext = {
   params: Promise<{ id: string }>;
 };
 
+async function isPmUser(supabase: Awaited<ReturnType<typeof createClient>>, userId: string) {
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", userId)
+    .maybeSingle();
+  return String(profile?.role ?? "").trim().toLowerCase() === "pm";
+}
+
 export async function GET(_request: NextRequest, { params }: RouteContext) {
   const { id } = await params;
   const supabase = await createClient();
@@ -115,6 +124,13 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
 
     if (userError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    if (await isPmUser(supabase, user.id)) {
+      return NextResponse.json(
+        { error: "PM users can view and print OCFs but cannot edit them." },
+        { status: 403 },
+      );
     }
 
     const body = await request.json();

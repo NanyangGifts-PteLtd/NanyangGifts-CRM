@@ -9,6 +9,17 @@ type PageProps = {
 export default async function OrderConfirmationPage({ params }: PageProps) {
     const { id } = await params;
     const supabase = await createClient();
+    const {
+        data: { user },
+    } = await supabase.auth.getUser();
+    const { data: profile } = user
+        ? await supabase
+              .from("profiles")
+              .select("role")
+              .eq("id", user.id)
+              .maybeSingle()
+        : { data: null };
+    const readOnly = String(profile?.role ?? "").trim().toLowerCase() === "pm";
 
     const { data: ocf, error } = await supabase
         .from("order_confirmations")
@@ -99,6 +110,7 @@ export default async function OrderConfirmationPage({ params }: PageProps) {
 
     return (
         <OcfInternalView
+            readOnly={readOnly}
             ocf={{
                 ...ocf,
                 client_signature_url: clientSignatureUrl,

@@ -2211,7 +2211,7 @@ export function ClientRow({
     ? `Created via ${inboundSourceLabel} ingestion`
     : creatorProfile?.full_name?.trim() ||
       creatorProfile?.email ||
-      "Created by Unknown user";
+      "Unknown user";
   const creatorInitials = (() => {
     const label = (creatorProfile?.full_name || creatorProfile?.email || "U").trim();
     const words = label.split(/\s+/).filter(Boolean);
@@ -2220,7 +2220,11 @@ export function ClientRow({
       : label.slice(0, 2).toUpperCase();
   })();
   const clientCreatedTooltip = client.createdAt
-    ? `${creatorLabel} on ${new Date(client.createdAt).toLocaleDateString("en-GB")} at ${new Date(client.createdAt).toLocaleTimeString("en-GB")}`
+    ? `${
+        inboundSourceLabel
+          ? creatorLabel
+          : `Created by ${creatorLabel}`
+      } on ${new Date(client.createdAt).toLocaleDateString("en-GB")} at ${new Date(client.createdAt).toLocaleTimeString("en-GB")}`
     : "";
   const moonCakeOption = moonCakeOptions.find(
     (option) => option.id === client.customFields?.moonCakeOptionId,
@@ -5341,7 +5345,9 @@ export function ClientRow({
               >
                 {creatorInitials || "U"}
               </span>
-            ) : null}
+            ) : (
+              <span aria-hidden="true" className="h-5 w-5 shrink-0" />
+            )}
             <span className="min-w-0 truncate">
               {client.createdAt
                 ? new Date(client.createdAt).toLocaleDateString("en-GB")

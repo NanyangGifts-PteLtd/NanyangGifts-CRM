@@ -6,6 +6,15 @@ import { withOcfNeedByTimeline } from "@/lib/ocf-need-by";
 
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
+async function isPmUser(supabase: Awaited<ReturnType<typeof createClient>>, userId: string) {
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", userId)
+    .maybeSingle();
+  return String(profile?.role ?? "").trim().toLowerCase() === "pm";
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
@@ -29,6 +38,12 @@ export async function POST(req: Request) {
     } = await supabase.auth.getUser();
     if (authError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    if (await isPmUser(supabase, user.id)) {
+      return NextResponse.json(
+        { error: "PM users can view and print OCFs but cannot edit them." },
+        { status: 403 },
+      );
     }
 
     const { data: ocf, error: ocfLookupError } = await supabase

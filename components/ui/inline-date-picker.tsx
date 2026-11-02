@@ -13,6 +13,7 @@ type InlineDatePickerProps = {
   onChange: (date: string) => void;
   label: string;
   className?: string;
+  disabled?: boolean;
   /** Use when the picker is rendered inside a higher stacking layer, e.g. a dialog. */
   popoverClassName?: string;
 };
@@ -34,6 +35,7 @@ export function InlineDatePicker({
   onChange,
   label,
   className,
+  disabled = false,
   popoverClassName,
 }: InlineDatePickerProps) {
   const [open, setOpen] = useState(false);
@@ -59,12 +61,13 @@ export function InlineDatePicker({
   );
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={disabled ? false : open} onOpenChange={disabled ? undefined : setOpen}>
       <PopoverTrigger asChild>
         <button
           type="button"
+          disabled={disabled}
           aria-label={label}
-          className={`flex h-full w-full items-center justify-between text-left ${className ?? ""}`}
+          className={`flex h-full w-full items-center justify-between text-left disabled:cursor-default disabled:opacity-70 ${className ?? ""}`}
         >
           <span>{selected ? selected.toLocaleDateString("en-GB") : ""}</span>
           <CalendarDays size={14} className="shrink-0 text-slate-600" />

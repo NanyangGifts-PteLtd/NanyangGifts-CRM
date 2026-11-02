@@ -3,6 +3,18 @@ import { randomUUID } from "crypto";
 import { createClient } from "@/lib/supabase/server";
 import { canEditClient } from "@/lib/client-access";
 
+async function isPmUser(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+) {
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", userId)
+    .maybeSingle();
+  return String(profile?.role ?? "").trim().toLowerCase() === "pm";
+}
+
 export async function POST(req: NextRequest) {
   try {
     const supabase = await createClient();
@@ -13,6 +25,12 @@ export async function POST(req: NextRequest) {
 
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    if (await isPmUser(supabase, user.id)) {
+      return NextResponse.json(
+        { error: "PM users can view and print OCFs but cannot edit them." },
+        { status: 403 },
+      );
     }
 
     const formData = await req.formData();

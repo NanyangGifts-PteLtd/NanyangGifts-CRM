@@ -94,7 +94,13 @@ function getNeedBySnapshot(items: EditableOcfItem[]) {
   );
 }
 
-export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
+export default function OcfInternalView({
+  ocf,
+  readOnly = false,
+}: {
+  ocf: Ocf;
+  readOnly?: boolean;
+}) {
   const router = useRouter();
 
   const [deliveryNotes, setDeliveryNotes] = useState(
@@ -276,6 +282,7 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
   }
 
   async function saveInternalEdits() {
+    if (readOnly) return;
     setSaving(true);
     setSaveMessage(null);
     setSaveError(null);
@@ -358,7 +365,7 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
             </p>
           </div>
           <div className="absolute bottom-3 left-1/2 flex -translate-x-1/2 flex-wrap justify-center gap-3 print:hidden">
-            <button
+            {!readOnly ? <button
               type="button"
               onClick={saveInternalEdits}
               disabled={saving}
@@ -373,7 +380,7 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
                 : hasUnsavedChanges
                   ? "Save Changes (unsaved)"
                   : "Save Changes"}
-            </button>
+            </button> : null}
             <button
               type="button"
               onClick={copyClientLink}
@@ -413,6 +420,7 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
                 <td className="w-[42%] py-1 text-black">
                   <input
                     value={clientNameSnapshot}
+                    disabled={readOnly}
                     onChange={(event) =>
                       setClientNameSnapshot(event.target.value)
                     }
@@ -434,6 +442,7 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
                 <td className="py-1 text-black">
                   <input
                     value={companySnapshot}
+                    disabled={readOnly}
                     onChange={(event) => setCompanySnapshot(event.target.value)}
                     className="w-full rounded border border-gray-300 px-2 py-1"
                     aria-label="Client company name"
@@ -479,6 +488,7 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
                     <input
                       type="checkbox"
                       checked={sameAddressForAllItems}
+                      disabled={readOnly}
                       onChange={(event) =>
                         handleSameAddressToggle(event.target.checked)
                       }
@@ -552,6 +562,7 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
                           }
                           onChange={(value) => updateItemNeedBy(item.id, value)}
                           label={`Need by date for ${item.item_name || "item"}`}
+                          disabled={readOnly}
                           className="text-[10px]"
                         />
                       </div>
@@ -559,6 +570,7 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
                         <input
                           type="checkbox"
                           checked={item.need_by_date === "ASAP"}
+                          disabled={readOnly}
                           onChange={(event) =>
                             updateItemNeedBy(
                               item.id,
@@ -574,6 +586,7 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
                   <td className="border border-black px-2 py-3">
                     <textarea
                       value={item.remarks ?? ""}
+                      disabled={readOnly}
                       onChange={(e) =>
                         updateItemRemarks(item.id, e.target.value)
                       }
@@ -588,6 +601,7 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
                         Name
                         <input
                           value={item.delivery_name ?? ""}
+                          disabled={readOnly}
                           onChange={(event) =>
                             updateItemDeliveryField(
                               item.id,
@@ -602,6 +616,7 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
                         Address
                         <textarea
                           value={item.delivery_address ?? ""}
+                          disabled={readOnly}
                           onChange={(event) =>
                             updateItemDeliveryField(
                               item.id,
@@ -617,6 +632,7 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
                         Contact Number
                         <input
                           value={item.delivery_contact_number ?? ""}
+                          disabled={readOnly}
                           onChange={(event) =>
                             updateItemDeliveryField(
                               item.id,
@@ -631,6 +647,7 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
                         Remarks
                         <textarea
                           value={item.delivery_remarks ?? ""}
+                          disabled={readOnly}
                           onChange={(event) =>
                             updateItemDeliveryField(
                               item.id,
@@ -670,6 +687,7 @@ export default function OcfInternalView({ ocf }: { ocf: Ocf }) {
                 <textarea
                   ref={deliveryNotesRef}
                   value={deliveryNotes}
+                  disabled={readOnly}
                   onChange={(e) => setDeliveryNotes(e.target.value)}
                   rows={1}
                   className="w-full min-w-0 resize-none overflow-hidden rounded border border-gray-300 px-2 py-1.5 whitespace-pre-wrap focus:outline-none focus:ring-1 focus:ring-teal-500 focus:ring-offset-2"
