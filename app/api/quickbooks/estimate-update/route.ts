@@ -346,87 +346,19 @@ export async function GET(request: NextRequest) {
     if (!(await canEditClient(supabase, clientId, user.id))) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
-    const [{ data: client, error: clientError }, { data: storedEstimates, error: estimatesError }] =
-      await Promise.all([
-        supabase
-          .from("clients")
-          .select("id, company")
-          .eq("id", clientId)
-          .maybeSingle(),
-        supabase
-          .from("estimate_generations")
-          .select("id, quickbooks_customer_id, quickbooks_estimate_id, quickbooks_estimate_doc_number, created_at")
-          .eq("client_id", clientId)
-          .not("quickbooks_estimate_id", "is", null)
-          .order("created_at", { ascending: false }),
-      ]);
-    if (clientError) throw clientError;
-    if (!client) return NextResponse.json({ error: "Client not found" }, { status: 404 });
+    const { data: storedEstimates, error: estimatesError } = await supabase
+      .from("estimate_generations")
+      .select("id, quickbooks_customer_id, quickbooks_estimate_id, quickbooks_estimate_doc_number, created_at")
+      .eq("client_id", clientId)
+      .is("archived_at", null)
+      .not("quickbooks_estimate_id", "is", null)
+      .order("created_at", { ascending: false });
     if (estimatesError) throw estimatesError;
 
+    // A QuickBooks customer can represent several CRM clients. Do not infer
+    // a CRM quote link from CustomerRef: this picker may only show quotes
+    // explicitly linked to this client by generation or manual linking.
     const estimates = [...(storedEstimates ?? [])];
-    let quickBooksCustomerId = estimates.find((estimate) => estimate.quickbooks_customer_id)
-      ?.quickbooks_customer_id;
-    if (!quickBooksCustomerId && client.company?.trim()) {
-      const customerResult = await qboQuery(
-        `SELECT * FROM Customer WHERE DisplayName = '${esc(client.company.trim())}'`,
-      );
-      quickBooksCustomerId = customerResult?.QueryResponse?.Customer?.[0]?.Id;
-    }
-    if (quickBooksCustomerId) {
-      const quickBooksResult = await qboQuery(
-        `SELECT * FROM Estimate WHERE CustomerRef = '${esc(String(quickBooksCustomerId))}'`,
-      );
-      const quickBooksEstimates = quickBooksResult?.QueryResponse?.Estimate ?? [];
-      const storedByQuickBooksId = new Map(
-        estimates.map((estimate) => [String(estimate.quickbooks_estimate_id), estimate]),
-      );
-      const reconciledEstimates: typeof estimates = [];
-      for (const quickBooksEstimate of quickBooksEstimates) {
-        if (!quickBooksEstimate?.Id) continue;
-        const existing = storedByQuickBooksId.get(String(quickBooksEstimate.Id));
-        if (existing) {
-          reconciledEstimates.push(existing);
-          continue;
-        }
-        const { data: generation, error: generationError } = await supabase
-          .from("estimate_generations")
-          .insert({
-            client_id: clientId,
-            quickbooks_customer_id: String(quickBooksCustomerId),
-            quickbooks_estimate_id: String(quickBooksEstimate.Id),
-            quickbooks_estimate_doc_number: quickBooksEstimate.DocNumber ?? null,
-            quote_total: numberValue(quickBooksEstimate.TotalAmt),
-            quote_subtotal:
-              numberValue(quickBooksEstimate.TotalAmt) -
-              numberValue(quickBooksEstimate.TxnTaxDetail?.TotalTax),
-          })
-          .select("id, quickbooks_customer_id, quickbooks_estimate_id, quickbooks_estimate_doc_number, created_at")
-          .single();
-        if (generationError) throw generationError;
-        if (generation) reconciledEstimates.push(generation);
-      }
-      // Estimates absent from this live customer query were deleted or made
-      // unavailable in QuickBooks, so they are deliberately omitted.
-      estimates.splice(0, estimates.length, ...reconciledEstimates);
-    } else if (estimates.length) {
-      // A legacy generation can be missing its customer ID. Validate those
-      // individual estimate IDs instead of presenting stale choices.
-      const validEstimates: typeof estimates = [];
-      for (const estimate of estimates) {
-        try {
-          await qboRequest(`/estimate/${estimate.quickbooks_estimate_id}`, {
-            method: "GET",
-          });
-          validEstimates.push(estimate);
-        } catch (error) {
-          if (!/"code":"610"/.test(error instanceof Error ? error.message : "")) {
-            throw error;
-          }
-        }
-      }
-      estimates.splice(0, estimates.length, ...validEstimates);
-    }
     estimates.sort(
       (first, second) =>
         new Date(second.created_at).getTime() - new Date(first.created_at).getTime(),
