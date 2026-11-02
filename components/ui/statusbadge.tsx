@@ -87,6 +87,7 @@ export function StatusBadge({
   readOnlyReason,
   includeBlankOption = true,
   sectionCount = 1,
+  sectionTitles,
   autoOpen = false,
   onAutoOpen,
 }: {
@@ -105,6 +106,8 @@ export function StatusBadge({
   readOnlyReason?: string;
   includeBlankOption?: boolean;
   sectionCount?: number;
+  /** Optional headings for multi-column label-menu sections. */
+  sectionTitles?: string[];
   /** Opens the selector in response to a related field requiring a label. */
   autoOpen?: boolean;
   /** Called once an automatic open request has been handled. */
@@ -149,6 +152,11 @@ export function StatusBadge({
   const options = editingLabels && editorOptions ? editorOptions : baseOptions;
   optionsRef.current = options;
   const normalizedSectionCount = Math.max(1, sectionCount);
+  const hasSectionTitles =
+    normalizedSectionCount > 1 &&
+    Array.from({ length: normalizedSectionCount }).some((_, section) =>
+      Boolean(sectionTitles?.[section]?.trim()),
+    );
   const optionKey = (option: BadgeOption) =>
     option.id ?? `value:${option.value}`;
   const sectionFor = (option: BadgeOption) =>
@@ -183,7 +191,7 @@ export function StatusBadge({
     );
     const fallbackHeight = Math.min(
       normalizedSectionCount > 1
-        ? (largestSectionSize + 1) * 46 + 90
+        ? (largestSectionSize + 1) * 46 + 90 + (hasSectionTitles ? 28 : 0)
         : Math.ceil((options.length + 1) / 3) * 46 + 76,
       620,
     );
@@ -211,7 +219,7 @@ export function StatusBadge({
       ? clampedLeft
       : rect.left + rect.width / 2 - width / 2;
     setMenuStyle({ position: "fixed", top, left, width, zIndex: 9999 });
-  }, [largestSectionSize, normalizedSectionCount, options.length]);
+  }, [hasSectionTitles, largestSectionSize, normalizedSectionCount, options.length]);
 
   const resetMenuState = () => {
     if (localLayoutTimerRef.current !== null) {
@@ -585,6 +593,11 @@ export function StatusBadge({
               }}
               className={`${normalizedSectionCount > 1 ? `min-h-14 space-y-2 px-3 ${section > 0 ? "border-l border-gray-300" : ""}` : "contents"}`}
             >
+              {hasSectionTitles && (
+                <div className="border-b border-slate-200 pb-1 text-center text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  {sectionTitles?.[section]?.trim() || " "}
+                </div>
+              )}
               {sectionOptions.map((option) => renderOption(option, section))}
               {editingLabels && onAddOption && section === 0 && (
                 <div className="flex h-9 items-center gap-1 rounded-md border border-dashed border-gray-300 p-1">

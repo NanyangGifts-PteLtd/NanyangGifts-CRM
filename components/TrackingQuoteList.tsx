@@ -1026,6 +1026,8 @@ export function TrackingQuoteList({
                             value={invoice.tracking_status ?? ""}
                             options={paymentStatusOptions}
                             small
+                            sectionCount={2}
+                            sectionTitles={["Sales", "Admin"]}
                             readOnly={!canEdit || invoice.is_voided}
                             readOnlyReason={invoice.is_voided ? "Voided invoices cannot be updated" : "You can only edit items that are assigned to you"}
                             manageLabel="invoice tracking status"
@@ -1153,6 +1155,8 @@ export function TrackingQuoteList({
                     value={invoice.tracking_status ?? ""}
                     options={paymentStatusOptions}
                     small
+                    sectionCount={2}
+                    sectionTitles={["Sales", "Admin"]}
                     readOnly={!canEdit || invoice.is_voided}
                     readOnlyReason={invoice.is_voided ? "Voided invoices cannot be updated" : "You can only edit items that are assigned to you"}
                     manageLabel="invoice tracking status"

@@ -100,6 +100,8 @@ export async function POST(request: NextRequest) {
             ? 3
             : code === "payment_received"
               ? 2
+              : code === "tracking_payment_status"
+                ? 2
               : 1;
   if (
     !BOARD_OPTION_CODES.has(code) ||
