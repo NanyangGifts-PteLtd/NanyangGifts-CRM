@@ -186,7 +186,7 @@ export function ClientDetailView({
   onLoadActivityLog?: () => void | Promise<void>;
 }) {
   const [tab, setTab] = useState<Tab>(initialTab ?? "overview");
-  const canManageSubitemLock = ["director", "dev"].includes(
+  const canManageSubitemLock = ["admin", "director", "dev"].includes(
     String(currentUserRole ?? "")
       .trim()
       .toLowerCase(),

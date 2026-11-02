@@ -741,7 +741,7 @@ export function ClientRow({
     ["admin", "director", "dev"].includes(
       String(currentUserRole ?? "").toLowerCase(),
     );
-  const canManageSubitemLock = ["director", "dev"].includes(
+  const canManageSubitemLock = ["admin", "director", "dev"].includes(
     String(currentUserRole ?? "")
       .trim()
       .toLowerCase(),

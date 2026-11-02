@@ -1527,7 +1527,7 @@ export function CRMBoard({
       }),
     [canSoftDeleteSubitemRecord, clients, selectedSubitemIds],
   );
-  const canManageSubitemLocks = ["director", "dev"].includes(
+  const canManageSubitemLocks = ["admin", "director", "dev"].includes(
     String(currentUserRole ?? "")
       .trim()
       .toLowerCase(),
