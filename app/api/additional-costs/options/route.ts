@@ -9,6 +9,9 @@ const READ_CODES = new Set([
   // Read-only in this route; its option IDs define Related Subitem eligibility.
   "subitem_status",
   "mode_of_payment",
+  // Reused read-only so the Payment Voucher preview mirrors the CRM Board's
+  // Currency labels, colours, sections, and ordering.
+  "currency",
 ]);
 const MUTABLE_CODES = new Set([
   "additional_cost_status",

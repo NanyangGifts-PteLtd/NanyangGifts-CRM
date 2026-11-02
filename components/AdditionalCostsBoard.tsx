@@ -59,6 +59,8 @@ type AdditionalCost = {
   order_number?: string | null;
   mode_of_payment?: string | null;
   mode_of_payment_option_id?: string | null;
+  currency?: string | null;
+  currency_option_id?: string | null;
   remarks: string;
   status: string;
   status_option_id?: string | null;
@@ -498,6 +500,8 @@ export function AdditionalCostsBoard({
     orderNumber: "",
     modeOfPayment: "",
     modeOfPaymentOptionId: "",
+    currency: "SGD",
+    currencyOptionId: "",
   });
   const relatedSubitemsRef = useRef<HTMLDetailsElement>(null);
   const boardRelatedSubitemsMenuRef = useRef<HTMLDivElement>(null);
@@ -1184,6 +1188,8 @@ export function AdditionalCostsBoard({
         orderNumber: "",
         modeOfPayment: "",
         modeOfPaymentOptionId: "",
+        currency: "SGD",
+        currencyOptionId: "",
       });
       toast.success("Payment voucher added");
     } catch (createError) {
@@ -1246,6 +1252,14 @@ export function AdditionalCostsBoard({
         orderNumber: row.order_number ?? "",
         modeOfPayment: row.mode_of_payment ?? "",
         modeOfPaymentOptionId: row.mode_of_payment_option_id ?? "",
+        currency:
+          client.subitems.find(
+            (subitem) => subitem.customFields?.additionalCostId === row.id,
+          )?.currency ?? row.currency ?? "SGD",
+        currencyOptionId:
+          client.subitems.find(
+            (subitem) => subitem.customFields?.additionalCostId === row.id,
+          )?.currencyOptionId ?? row.currency_option_id ?? "",
       });
       if (row.is_draft) {
         const draftBill = row.draft_bill ?? {};
@@ -1324,6 +1338,7 @@ export function AdditionalCostsBoard({
             remarks: voucherDraft.remarks,
             order_number: voucherDraft.orderNumber,
             mode_of_payment: voucherDraft.modeOfPaymentOptionId,
+            currency: voucherDraft.currencyOptionId,
           },
         }),
       });
@@ -2556,6 +2571,8 @@ export function AdditionalCostsBoard({
       orderNumber: "",
       modeOfPayment: "",
       modeOfPaymentOptionId: "",
+      currency: "SGD",
+      currencyOptionId: "",
     });
     const today = new Date().toISOString().slice(0, 10);
     setBillDraft({
@@ -4590,6 +4607,22 @@ export function AdditionalCostsBoard({
                               <input value={voucherDraft.orderNumber} onChange={(event) => setVoucherDraft((draft) => ({ ...draft, orderNumber: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 px-3 py-2 font-normal" />
                             </label>
                             <label className="text-sm font-medium text-slate-700">
+                              Currency
+                              <div className="mt-1 h-10 overflow-hidden rounded border border-slate-300">
+                                <StatusBadge
+                                  value={voucherDraft.currency}
+                                  onChange={(value, option) =>
+                                    setVoucherDraft((draft) => ({
+                                      ...draft,
+                                      currency: value,
+                                      currencyOptionId: option?.id ?? "",
+                                    }))
+                                  }
+                                  options={labelOptions.currency ?? []}
+                                />
+                              </div>
+                            </label>
+                            <label className="text-sm font-medium text-slate-700">
                               Mode of payment
                               <div className="mt-1 h-10 overflow-hidden rounded border border-slate-300">
                                 <StatusBadge value={voucherDraft.modeOfPayment} onChange={(value, option) => setVoucherDraft((draft) => ({ ...draft, modeOfPayment: value, modeOfPaymentOptionId: option?.id ?? "" }))} options={labelOptions.mode_of_payment ?? []} sectionCount={3} />
@@ -4818,6 +4851,22 @@ export function AdditionalCostsBoard({
                     <label className="text-sm font-medium text-slate-700">
                       Order number
                       <input value={voucherDraft.orderNumber} onChange={(event) => setVoucherDraft((draft) => ({ ...draft, orderNumber: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 px-3 py-2 font-normal" />
+                    </label>
+                    <label className="text-sm font-medium text-slate-700">
+                      Currency
+                      <div className="mt-1 h-10 overflow-hidden rounded border border-slate-300">
+                        <StatusBadge
+                          value={voucherDraft.currency}
+                          onChange={(value, option) =>
+                            setVoucherDraft((draft) => ({
+                              ...draft,
+                              currency: value,
+                              currencyOptionId: option?.id ?? "",
+                            }))
+                          }
+                          options={labelOptions.currency ?? []}
+                        />
+                      </div>
                     </label>
                     <label className="text-sm font-medium text-slate-700">
                       Mode of payment

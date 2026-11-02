@@ -23,6 +23,7 @@ const EDITABLE_FIELDS = new Set([
   "discussed",
   "order_number",
   "mode_of_payment",
+  "currency",
 ]);
 
 async function authorize() {
@@ -348,6 +349,7 @@ export async function POST(request: NextRequest) {
         remarks?: unknown;
         orderNumber?: unknown;
         modeOfPaymentOptionId?: unknown;
+        currencyOptionId?: unknown;
       };
       bill?: Record<string, unknown>;
       ocr?: Record<string, unknown>;
@@ -369,6 +371,9 @@ export async function POST(request: NextRequest) {
         "mode_of_payment",
         body.values?.modeOfPaymentOptionId,
       );
+      const currency = String(body.values?.currencyOptionId ?? "").trim()
+        ? await resolveLabelById("currency", body.values?.currencyOptionId)
+        : await getSystemLabel("currency", "currency_sgd");
       const relatedSubitemIds = Array.isArray(body.values?.relatedSubitemIds)
         ? [
             ...new Set(
@@ -405,6 +410,8 @@ export async function POST(request: NextRequest) {
         order_number: String(body.values?.orderNumber ?? "").trim(),
         mode_of_payment: modeOfPayment.value,
         mode_of_payment_option_id: modeOfPayment.id,
+        currency: currency.value,
+        currency_option_id: currency.id,
         related_subitem_ids: relatedSubitemIds,
         items_sent: itemsSent,
         voucher_group: "other",
@@ -486,6 +493,9 @@ export async function POST(request: NextRequest) {
       "mode_of_payment",
       body.values?.modeOfPaymentOptionId,
     );
+    const currency = String(body.values?.currencyOptionId ?? "").trim()
+      ? await resolveLabelById("currency", body.values?.currencyOptionId)
+      : await getSystemLabel("currency", "currency_sgd");
     const orderNumber = String(body.values?.orderNumber ?? "").trim();
     const relatedSubitemIds = Array.isArray(body.values?.relatedSubitemIds)
       ? [...new Set(body.values.relatedSubitemIds.filter((id): id is string => typeof id === "string" && id.trim().length > 0))]
@@ -557,10 +567,7 @@ export async function POST(request: NextRequest) {
     }
     const createdAt = new Date().toISOString();
     // The financial formula columns resolve exchange rates from the stable
-    // currency label ID. Saving only the rendered "SGD" text left a newly
-    // created Payment Voucher without a usable currency until its cell was
-    // edited manually on the CRM Board.
-    const sgdCurrency = await getSystemLabel("currency", "currency_sgd");
+    // currency label ID, so persist both the chosen label text and ID.
     const status = isOtherVoucher && reason.id === shippingUpsReason.id
       ? await getSystemLabel("subitem_status", "subitem_status_awarded")
       : await ensureAdditionalCostStatus();
@@ -593,6 +600,8 @@ export async function POST(request: NextRequest) {
         order_number: orderNumber,
         mode_of_payment: modeOfPayment.value,
         mode_of_payment_option_id: modeOfPayment.id,
+        currency: currency.value,
+        currency_option_id: currency.id,
       })
       .select("*")
       .single();
@@ -617,8 +626,8 @@ export async function POST(request: NextRequest) {
           status: status.value,
           status_option_id: status.id,
           qty: "1",
-          currency: sgdCurrency.value,
-          currency_option_id: sgdCurrency.id,
+          currency: currency.value,
+          currency_option_id: currency.id,
           cost: String(cost),
           custom_fields: {
             additionalCostId: data.id,
@@ -853,6 +862,12 @@ export async function PATCH(request: NextRequest) {
       values.mode_of_payment = modeOfPayment.value;
       values.mode_of_payment_option_id = modeOfPayment.id;
     }
+    if (values.currency !== undefined) {
+      const currency = await resolveLabelById("currency", values.currency);
+      if (!currency.id) throw new Error("Choose a Currency label.");
+      values.currency = currency.value;
+      values.currency_option_id = currency.id;
+    }
     for (const [field, code] of Object.entries(LABEL_CODE_BY_FIELD)) {
       if (values[field] === undefined) continue;
       const label = await resolveLabel(code, values[field]);
@@ -868,7 +883,7 @@ export async function PATCH(request: NextRequest) {
     const { data: linkedSubitem, error: linkedSubitemError } =
       await supabaseAdmin
         .from("subitems")
-        .select("id, name, cost")
+        .select("id, name, cost, currency, currency_option_id")
         .eq("client_id", existing.client_id)
         .contains("custom_fields", { additionalCostId: existing.id })
         .is("deleted_at", null)
@@ -878,6 +893,12 @@ export async function PATCH(request: NextRequest) {
 
     const linkedChanges = {
       ...(values.cost !== undefined ? { cost: String(values.cost) } : {}),
+      ...(values.currency !== undefined
+        ? {
+            currency: String(values.currency),
+            currency_option_id: values.currency_option_id ?? null,
+          }
+        : {}),
       ...(values.courier !== undefined || values.reason !== undefined
         ? {
             name: paymentVoucherSubitemName(
@@ -974,7 +995,12 @@ export async function PATCH(request: NextRequest) {
       if (Object.keys(linkedChanges).length) {
         await supabaseAdmin
           .from("subitems")
-          .update({ cost: linkedSubitem.cost, name: linkedSubitem.name })
+          .update({
+            cost: linkedSubitem.cost,
+            name: linkedSubitem.name,
+            currency: linkedSubitem.currency,
+            currency_option_id: linkedSubitem.currency_option_id,
+          })
           .eq("id", linkedSubitem.id);
       }
       throw error;

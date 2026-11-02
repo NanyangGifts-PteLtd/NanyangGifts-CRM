@@ -116,6 +116,7 @@ export async function POST(request: NextRequest) {
         relatedSubitemIds?: unknown;
         orderNumber?: unknown;
         modeOfPaymentOptionId?: unknown;
+        currencyOptionId?: unknown;
       };
       bill?: {
         supplierId?: unknown;
@@ -219,6 +220,10 @@ export async function POST(request: NextRequest) {
       "mode_of_payment",
       voucher?.modeOfPaymentOptionId,
     );
+    const currency = String(voucher?.currencyOptionId ?? "").trim()
+      ? await resolveOptionalLabelById("currency", voucher?.currencyOptionId)
+      : await getSystemLabel("currency", "currency_sgd");
+    if (!currency.id) throw new Error("Choose a Currency label.");
     const otherReason = await getSystemLabel(
       "additional_cost_reason",
       "additional_cost_reason_other",
@@ -474,7 +479,6 @@ export async function POST(request: NextRequest) {
         ? "subitem_status_awarded"
         : "subitem_status_variation_cost_difference",
     );
-    const sgdCurrency = await getSystemLabel("currency", "currency_sgd");
     const attachmentErrors: string[] = [];
     const uploadedAttachments: Array<{
       name: string;
@@ -580,6 +584,8 @@ export async function POST(request: NextRequest) {
       order_number: orderNumber,
       mode_of_payment: modeOfPayment.value,
       mode_of_payment_option_id: modeOfPayment.id,
+      currency: currency.value,
+      currency_option_id: currency.id,
     };
     const { data: latest } = existingVoucher?.is_draft
       ? { data: null }
@@ -641,8 +647,8 @@ export async function POST(request: NextRequest) {
           status: linkedSubitemStatus.value,
           status_option_id: linkedSubitemStatus.id,
           qty: "1",
-          currency: sgdCurrency.value,
-          currency_option_id: sgdCurrency.id,
+          currency: currency.value,
+          currency_option_id: currency.id,
           cost: String(cost),
           custom_fields: {
             additionalCostId: voucherRow.id,
