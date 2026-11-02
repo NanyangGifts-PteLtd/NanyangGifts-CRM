@@ -5430,7 +5430,10 @@ export function ClientRow({
           className="box-border border-b border-r border-[#D0D4E4] bg-[#f7fbfc] px-10 py-2"
           style={{ width: boardWidth, minWidth: boardWidth }}
         >
-          <div className="max-w-[860px]">
+          <div
+            className="w-max min-w-full"
+            style={{ minWidth: Math.max(0, boardWidth - 80) }}
+          >
             <TrackingQuoteList
               key={trackingQuoteListVersion}
               clientId={client.id}
