@@ -1,58 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { canEditClient } from "@/lib/client-access";
+import { duplicateSubitemValues } from "@/lib/subitem-duplication";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-
-function copyWithoutFiles(value: unknown) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
-  return Object.fromEntries(
-    Object.entries(value as Record<string, unknown>).filter(([key]) => {
-      const tokens = key
-        .replace(/([a-z])([A-Z])/g, "$1_$2")
-        .toLowerCase()
-        .split(/[^a-z0-9]+/);
-      return !tokens.some((token) =>
-        ["file", "files", "attachment", "attachments", "artwork"].includes(token),
-      );
-    }),
-  );
-}
-
-function duplicateValues(row: Record<string, unknown>) {
-  const copy = { ...row };
-  for (const key of [
-    "id",
-    "display_id",
-    "created_at",
-    "updated_at",
-    "created_by",
-    "updated_by",
-    "waiting_started_at",
-    "deletion_owner_id",
-  ]) delete copy[key];
-  return copy;
-}
-
-function duplicateTimelineRows(value: unknown) {
-  return Array.isArray(value)
-    ? value.map((row) => ({ ...row, id: crypto.randomUUID() }))
-    : [];
-}
-
-function duplicateTimelineGroups(value: unknown) {
-  return Array.isArray(value)
-    ? value.map((group) => ({
-        ...group,
-        id: crypto.randomUUID(),
-        rows: Array.isArray(group.rows)
-          ? group.rows.map((row: Record<string, unknown>) => ({
-              ...row,
-              id: crypto.randomUUID(),
-            }))
-          : group.rows,
-      }))
-    : value;
-}
 
 export async function POST(request: NextRequest) {
   const createdSubitemIds: string[] = [];
@@ -112,30 +62,25 @@ export async function POST(request: NextRequest) {
     const duplicatedRows: Record<string, unknown>[] = [];
 
     for (const [clientId, sources] of sourcesByClient) {
-      const [{ data: siblings, error: siblingsError }, { data: assignees, error: assigneesError }] = await Promise.all([
-        supabaseAdmin
-          .from("subitems")
-          .select("id, position, created_at")
-          .eq("client_id", clientId)
-          .is("deleted_at", null)
-          .order("position", { ascending: true }),
-        supabaseAdmin
-          .from("subitem_assignees")
-          .select("subitem_id, user_id")
-          .in("subitem_id", sources.map((source) => source.id)),
-      ]);
-      if (siblingsError || assigneesError) throw siblingsError ?? assigneesError;
+      const { data: siblings, error: siblingsError } = await supabaseAdmin
+        .from("subitems")
+        .select("id, position, created_at")
+        .eq("client_id", clientId)
+        .is("deleted_at", null)
+        .order("position", { ascending: true });
+      if (siblingsError) throw siblingsError;
 
       const nextPosition = Math.max(
         -1,
         ...(siblings ?? []).map((sibling) => Number(sibling.position ?? -1)),
       ) + 1;
       const copies = sources.map((source, index) => ({
-        ...duplicateValues(source),
+        ...duplicateSubitemValues(source),
+        // client_id is intentionally not part of the copied business values,
+        // but a duplicate must remain under the same source client.
+        client_id: clientId,
+        created_by: user.id,
         position: nextPosition + index,
-        timeline_rows: duplicateTimelineRows(source.timeline_rows),
-        timeline_groups: duplicateTimelineGroups(source.timeline_groups),
-        custom_fields: copyWithoutFiles(source.custom_fields),
       }));
       const { data: copiesResult, error: copyError } = await supabaseAdmin
         .from("subitems")
@@ -156,14 +101,9 @@ export async function POST(request: NextRequest) {
         throw new Error("Could not match duplicated subitems to their source rows");
       }
 
-      const copiedAssignees = (assignees ?? []).flatMap((assignee) => {
-        const duplicate = duplicateBySourceId.get(assignee.subitem_id);
-        return duplicate
-          ? [{ subitem_id: duplicate.id, user_id: assignee.user_id, assigned_by: null }]
-          : [];
-      });
-      const [paymentRowsResult, assigneeRowsResult] = await Promise.all([
-        supabaseAdmin.from("subitem_payment_rows").insert(
+      const { error: paymentRowsError } = await supabaseAdmin
+        .from("subitem_payment_rows")
+        .insert(
           copiesResult.map((row) => ({
             subitem_id: row.id,
             position: 0,
@@ -175,13 +115,8 @@ export async function POST(request: NextRequest) {
             mode_of_payment: "",
             mode_of_payment_option_id: null,
           })),
-        ),
-        copiedAssignees.length
-          ? supabaseAdmin.from("subitem_assignees").insert(copiedAssignees)
-          : Promise.resolve({ error: null }),
-      ]);
-      if (paymentRowsResult.error) throw paymentRowsResult.error;
-      if (assigneeRowsResult.error) throw assigneeRowsResult.error;
+        );
+      if (paymentRowsError) throw paymentRowsError;
 
       const copiesAfterSource = new Map(
         sources.map((source) => [source.id, duplicateBySourceId.get(source.id)!.id]),

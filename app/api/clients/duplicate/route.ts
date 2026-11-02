@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getSystemLabel } from "@/lib/system-labels";
+import { duplicateSubitemValues } from "@/lib/subitem-duplication";
 
 const INTERNAL_ROLES = new Set(["sales", "pm", "admin", "director", "dev"]);
 const PRIVILEGED_ROLES = new Set(["admin", "director", "dev"]);
@@ -179,52 +180,16 @@ export async function POST(request: NextRequest) {
       ? sourceSubitemsResult.data ?? []
       : [];
     if (sourceSubitems.length) {
-      const { data: sourceAssignees, error: sourceAssigneesError } = await supabaseAdmin
-        .from("subitem_assignees")
-        .select("subitem_id, user_id")
-        .in("subitem_id", sourceSubitems.map((subitem) => subitem.id));
-      if (sourceAssigneesError) throw sourceAssigneesError;
-
       // Assign fresh contiguous positions while retaining the source order.
       // This gives each bulk-inserted row a stable source-to-copy mapping even
       // when old records contain position gaps.
       const copies = sourceSubitems.map((sourceSubitem, position) => {
-      const subitemCopy = duplicateValues(sourceSubitem, [
-        "id",
-        "display_id",
-        "client_id",
-        "created_at",
-        "updated_at",
-        "created_by",
-        "updated_by",
-        "waiting_started_at",
-        "deletion_owner_id",
-      ]);
-      const timelineRows = Array.isArray(subitemCopy.timeline_rows)
-        ? subitemCopy.timeline_rows.map((row: Record<string, unknown>) => ({
-            ...row,
-            id: crypto.randomUUID(),
-          }))
-        : [];
-      const timelineGroups = Array.isArray(subitemCopy.timeline_groups)
-        ? subitemCopy.timeline_groups.map((group: Record<string, unknown>) => ({
-            ...group,
-            id: crypto.randomUUID(),
-            rows: Array.isArray(group.rows)
-              ? group.rows.map((row: Record<string, unknown>) => ({
-                  ...row,
-                  id: crypto.randomUUID(),
-                }))
-              : group.rows,
-          }))
-        : subitemCopy.timeline_groups;
+      const subitemCopy = duplicateSubitemValues(sourceSubitem);
         return {
           ...subitemCopy,
           client_id: duplicate.id,
           position,
-          timeline_rows: timelineRows,
-          timeline_groups: timelineGroups,
-          custom_fields: withoutFileCustomFields(sourceSubitem.custom_fields),
+          created_by: user.id,
         };
       });
       const { data: duplicateSubitems, error: subitemInsertError } = await supabaseAdmin
@@ -240,42 +205,20 @@ export async function POST(request: NextRequest) {
       if (copiedIdByPosition.size !== sourceSubitems.length) {
         throw new Error("Could not match copied subitems to their source rows");
       }
-      const sourcePositionById = new Map(
-        sourceSubitems.map((subitem, position) => [subitem.id, position]),
-      );
-      const copiedAssignees = (sourceAssignees ?? []).flatMap((assignee) => {
-        const position = sourcePositionById.get(assignee.subitem_id);
-        const copiedSubitemId = position === undefined
-          ? undefined
-          : copiedIdByPosition.get(position);
-        return copiedSubitemId
-          ? [{
-              subitem_id: copiedSubitemId,
-              user_id: assignee.user_id,
-              assigned_by: user.id,
-            }]
-          : [];
-      });
-      const [paymentRowsResult, assigneesResult] = await Promise.all([
-        supabaseAdmin
-          .from("subitem_payment_rows")
-          .insert(
-            [...copiedIdByPosition.values()].map((subitemId) => ({
-              subitem_id: subitemId,
-              position: 0,
-              amount: "",
-              order_number: "",
-              payment_received: null,
-              mode_of_payment: "",
-              mode_of_payment_option_id: null,
-            })),
-          ),
-        copiedAssignees.length
-          ? supabaseAdmin.from("subitem_assignees").insert(copiedAssignees)
-          : Promise.resolve({ error: null }),
-      ]);
-      if (paymentRowsResult.error) throw paymentRowsResult.error;
-      if (assigneesResult.error) throw assigneesResult.error;
+      const { error: paymentRowsError } = await supabaseAdmin
+        .from("subitem_payment_rows")
+        .insert(
+          [...copiedIdByPosition.values()].map((subitemId) => ({
+            subitem_id: subitemId,
+            position: 0,
+            amount: "",
+            order_number: "",
+            payment_received: null,
+            mode_of_payment: "",
+            mode_of_payment_option_id: null,
+          })),
+        );
+      if (paymentRowsError) throw paymentRowsError;
     }
 
     const actorName = profile?.full_name?.trim() || profile?.email || user.email || "CRM user";
