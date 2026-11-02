@@ -159,6 +159,7 @@ export const PAYMENT_COLS: ColumnDef[] = [
   { key: "name", label: "Subitem", width: 290, minWidth: 170 },
   { key: "payment", label: "Payment", width: 82, minWidth: 7 },
   { key: "status", label: "Status", width: 100, minWidth: 7 },
+  { key: "progressSummary", label: "Progress Summary", width: 150, minWidth: 105 },
   { key: "cnTracking", label: "CN Tracking #", width: 130, minWidth: 7 },
   { key: "sgTracking", label: "SG Tracking #", width: 130, minWidth: 7 },
   { key: "supplier", label: "Supplier", width: 80, minWidth: 7 },
@@ -221,6 +222,19 @@ function refreshColumnDefinitions(
   if (leadTimeIndex >= 0 && slIndex >= 0 && leadTimeIndex !== slIndex + 1) {
     orderedKeys.splice(leadTimeIndex, 1);
     orderedKeys.splice(orderedKeys.indexOf("sl") + 1, 0, "leadTime");
+  }
+  // The managed timeline progress summary is part of the PM/payment status
+  // context, so it belongs immediately beside Status even for saved layouts
+  // created before this column existed.
+  const progressSummaryIndex = orderedKeys.indexOf("progressSummary");
+  const statusIndex = orderedKeys.indexOf("status");
+  if (
+    progressSummaryIndex >= 0 &&
+    statusIndex >= 0 &&
+    progressSummaryIndex !== statusIndex + 1
+  ) {
+    orderedKeys.splice(progressSummaryIndex, 1);
+    orderedKeys.splice(orderedKeys.indexOf("status") + 1, 0, "progressSummary");
   }
   const nextColumns = orderedKeys.map((key) => {
     const definition = definitionByKey.get(key)!;
@@ -492,6 +506,58 @@ function normalizeUnitPriceInput(value: string) {
 
 function formatQuantity(v: number) {
   return Number.isInteger(v) ? String(v) : String(Number(v.toFixed(2)));
+}
+
+function TimelineProgressSummary({
+  subitem,
+  options,
+}: {
+  subitem: Subitem;
+  options: OptionEntry[];
+}) {
+  const timelines = subitem.timelineGroups?.length
+    ? subitem.timelineGroups
+    : [{ id: "default", progress: "", progressOptionId: null, rows: subitem.timelineRows ?? [], cnTracking: "", sgTracking: "" }];
+  if (timelines.length === 1) {
+    const timeline = timelines[0];
+    return (
+      <StatusBadge
+        value={timeline.progress ?? ""}
+        options={options}
+        onChange={() => undefined}
+        readOnly
+        readOnlyReason="Managed from this subitem's timeline progress."
+        manageLabel="timeline progress"
+        small
+      />
+    );
+  }
+  const optionById = new Map(
+    options.filter((option) => option.id).map((option) => [option.id as string, option]),
+  );
+  const counts = new Map<string, number>();
+  for (const timeline of timelines) {
+    const key = timeline.progressOptionId || "__unassigned";
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  const total = timelines.length;
+  return (
+    <div className="mx-2 flex h-3.5 flex-1 overflow-hidden rounded-sm bg-slate-200">
+      {[...counts.entries()].map(([optionId, count]) => {
+        const option = optionById.get(optionId);
+        const label = optionId === "__unassigned" ? "No progress" : (option?.value ?? "Unknown progress");
+        const percentage = (count / total) * 100;
+        return (
+          <span
+            key={optionId}
+            className="relative h-full min-w-[2px] cursor-help border-r border-white/70 transition-transform duration-150 ease-out last:border-r-0 hover:z-10 hover:-translate-y-0.5 hover:scale-y-125 hover:shadow-md"
+            style={{ width: `${percentage}%`, backgroundColor: option?.color ?? "#94a3b8" }}
+            title={`${label} ${count}/${total} ${percentage.toFixed(1)}%`}
+          />
+        );
+      })}
+    </div>
+  );
 }
 
 function ExpandedRow({
@@ -3153,6 +3219,18 @@ export function SubitemsTable({
               }
               sectionCount={4}
               small
+            />
+          </div>
+        );
+      case "progressSummary":
+        return (
+          <div
+            className="flex h-[33.1px] min-w-0 items-center overflow-hidden border-r border-[#D0D4E4] bg-white"
+            title="Managed from the progress labels on this subitem's timelines"
+          >
+            <TimelineProgressSummary
+              subitem={sub}
+              options={timelineProgressOptions}
             />
           </div>
         );
