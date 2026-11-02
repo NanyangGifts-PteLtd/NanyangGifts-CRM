@@ -190,13 +190,17 @@ function timelineShipper(
   };
 }
 
-function timelineOptions(timelineGroups: unknown) {
+function timelineOptions(
+  timelineGroups: unknown,
+  options: { isSupported?: (shipper: string) => boolean } = {},
+) {
   const groups = Array.isArray(timelineGroups)
     ? (timelineGroups as TimelineGroup[])
     : [];
   return groups.flatMap((group) => {
     const id = String(group.id ?? "").trim();
-    return id
+    const shipper = String(group.shipper ?? "").trim();
+    return id && (!options.isSupported || options.isSupported(shipper))
       ? [
           {
             id,
@@ -205,7 +209,7 @@ function timelineOptions(timelineGroups: unknown) {
             label: String(group.name ?? "").trim() || "Unnamed timeline",
             cnTracking: String(group.cnTracking ?? "").trim(),
             cartons: group.numOfCartons ?? null,
-            shipper: String(group.shipper ?? ""),
+            shipper,
             shipperOptionId: group.shipperOptionId ?? null,
           },
         ]
@@ -358,6 +362,10 @@ export async function POST(req: NextRequest) {
         .trim();
       return shipperByName.get(baseName) ?? null;
     };
+    const supportedTimelineOptionsFor = (timelineGroups: unknown) =>
+      timelineOptions(timelineGroups, {
+        isSupported: (shipper) => Boolean(resolveShipperId(shipper)),
+      });
 
     // From this point onward, access is controlled explicitly by the
     // assignment check below. Use the server client for CRM reads/writes so a
@@ -466,6 +474,62 @@ export async function POST(req: NextRequest) {
     const suppliedBySubitemId = new Map(
       (body.values ?? []).map((value) => [value.subitemId, value]),
     );
+    const selectableTimelineOptionsBySubitemId = new Map(
+      (rawSubitems ?? []).map((item) => [
+        item.id,
+        supportedTimelineOptionsFor(item.timeline_groups),
+      ]),
+    );
+    const unsupportedTimelineSubitems = (rawSubitems ?? []).filter((item) => {
+      const allTimelineOptions = timelineOptions(item.timeline_groups);
+      return (
+        allTimelineOptions.length > 0 &&
+        (selectableTimelineOptionsBySubitemId.get(item.id)?.length ?? 0) === 0
+      );
+    });
+
+    // Opening the preview must not be blocked by another timeline which is
+    // not ready for shipper sending. A subitem is eligible when it has at
+    // least one supported timeline; the picker below exposes only those.
+    if (body.preview && unsupportedTimelineSubitems.length > 0) {
+      return NextResponse.json(
+        {
+          error:
+            "No project timeline has a supported shipper. Select a supported shipper on a timeline before sending.",
+        },
+        { status: 400 },
+      );
+    }
+
+    // Do not trust the client-side picker: a real send with timeline groups
+    // must use a timeline whose shipper is supported. Legacy subitems with no
+    // timeline groups retain their existing subitem-level shipper behaviour.
+    if (!body.preview) {
+      const invalidSelections = (rawSubitems ?? []).filter((item) => {
+        const allTimelineOptions = timelineOptions(item.timeline_groups);
+        if (allTimelineOptions.length === 0) return false;
+        const selectable = selectableTimelineOptionsBySubitemId.get(item.id) ?? [];
+        const selection: Record<string, unknown> =
+          suppliedBySubitemId.get(item.id) ?? {};
+        const timelineId = String(selection.timeline_id ?? "").trim();
+        const trackingNumber = String(selection.cn_tracking_no ?? "").trim();
+        return !selectable.some(
+          (timeline) =>
+            timeline.id === timelineId ||
+            (trackingNumber && timeline.cnTracking === trackingNumber),
+        );
+      });
+      if (invalidSelections.length > 0) {
+        return NextResponse.json(
+          {
+            error:
+              "Choose a project timeline with a supported shipper before sending.",
+          },
+          { status: 400 },
+        );
+      }
+    }
+
     const subitems = (rawSubitems ?? []).map((item) => {
       const timeline = timelineShipper(
         item.timeline_groups,
@@ -485,7 +549,10 @@ export async function POST(req: NextRequest) {
     });
     const unresolvedItems = subitems.filter((item) => !item.shipper_id);
 
-    if (subitems.length === 0 || unresolvedItems.length > 0) {
+    if (
+      subitems.length === 0 ||
+      (!body.preview && unresolvedItems.length > 0)
+    ) {
       return NextResponse.json(
         {
           error:
@@ -564,10 +631,18 @@ export async function POST(req: NextRequest) {
 
     const defaults: Array<Record<string, any>> = subitems.map((item) => {
       const ocfItem = ocfItemBySubitemId.get(item.id);
-      const trackingOptions = timelineTrackingNumbers(
-        item.timeline_groups,
-        item.cn_tracking,
-      );
+      const allTimelineOptions = timelineOptions(item.timeline_groups);
+      const selectableTimelineOptions =
+        selectableTimelineOptionsBySubitemId.get(item.id) ?? [];
+      const trackingOptions = allTimelineOptions.length
+        ? selectableTimelineOptions
+            .map((timeline) => timeline.cnTracking)
+            .filter(Boolean)
+        : timelineTrackingNumbers(item.timeline_groups, item.cn_tracking);
+      const soleSelectableTimeline =
+        selectableTimelineOptions.length === 1
+          ? selectableTimelineOptions[0]
+          : null;
 
       return {
         subitem_id: item.id,
@@ -595,11 +670,14 @@ export async function POST(req: NextRequest) {
         cn_tracking_no:
           trackingOptions.length === 1 ? trackingOptions[0] : null,
         tracking_options: trackingOptions,
-        timeline_options: timelineOptions(item.timeline_groups),
+        // The send preview must never offer an unsupported timeline as a
+        // selectable destination.
+        timeline_options: selectableTimelineOptions,
         // Cartons belong to the selected shipment timeline. With a single
         // tracking number (or a single timeline), we can prefill it now;
         // otherwise the preview updates it when the user chooses a timeline.
         cartons: timelineCartons(item.timeline_groups, {
+          timelineId: soleSelectableTimeline?.id,
           trackingNumber:
             trackingOptions.length === 1 ? trackingOptions[0] : undefined,
         }),
@@ -609,7 +687,7 @@ export async function POST(req: NextRequest) {
         qty: item.qty ?? null,
         up: item.cost ?? null,
         value: Number(item.qty ?? 0) * Number(item.cost ?? 0),
-        sea_or_air: getSeaOrAir(item.shipper),
+        sea_or_air: getSeaOrAir(soleSelectableTimeline?.shipper ?? item.shipper),
         tax_refund:
           Number(item.qty ?? 0) * Number(item.cost ?? 0) > 2500 ? "退" : "X",
         shipper_remarks: null,
