@@ -186,6 +186,7 @@ const BOARD_OPTION_GROUP_CODES = [
   "channel",
   "importance",
   "progress",
+  "timeline_progress",
   "payment",
   "payment_status",
   "overall_payment_status",
@@ -1572,6 +1573,7 @@ export function CRMBoard({
   const [importanceEntries, setImportanceEntries] = useState<OptionEntry[]>([]);
   const [moonCakeEntries, setMoonCakeEntries] = useState<OptionEntry[]>([]);
   const [progressEntries, setProgressEntries] = useState<OptionEntry[]>([]);
+  const [timelineProgressEntries, setTimelineProgressEntries] = useState<OptionEntry[]>([]);
   const [paymentEntries, setPaymentEntries] = useState<OptionEntry[]>([]);
   const [paymentStatusEntries, setPaymentStatusEntries] = useState<
     OptionEntry[]
@@ -3433,6 +3435,7 @@ export function CRMBoard({
       setImportanceEntries(optionsFor("importance"));
       setMoonCakeEntries(optionsFor("moon_cake"));
       setProgressEntries(optionsFor("progress"));
+      setTimelineProgressEntries(optionsFor("timeline_progress"));
       setPaymentEntries(optionsFor("payment"));
       setPaymentStatusEntries(
         canonicalPaymentStatusOptions(
@@ -3900,6 +3903,7 @@ export function CRMBoard({
         importance: setImportanceEntries,
         moon_cake: setMoonCakeEntries,
         progress: setProgressEntries,
+        timeline_progress: setTimelineProgressEntries,
         payment: setPaymentEntries,
         payment_status: setPaymentStatusEntries,
         overall_payment_status: setOverallPaymentStatusEntries,
@@ -3985,6 +3989,7 @@ export function CRMBoard({
         importance: setImportanceEntries,
         moon_cake: setMoonCakeEntries,
         progress: setProgressEntries,
+        timeline_progress: setTimelineProgressEntries,
         payment: setPaymentEntries,
         payment_status: setPaymentStatusEntries,
         overall_payment_status: setOverallPaymentStatusEntries,
@@ -4445,6 +4450,7 @@ export function CRMBoard({
   );
 
   const trackingOptionEntries: Record<string, OptionEntry[]> = {
+    timeline_progress: timelineProgressEntries,
     tracking_summary: trackingSummaryEntries,
     tracking_invoice_created: trackingInvoiceCreatedEntries,
     tracking_multiple_invoices: trackingMultipleInvoicesEntries,
@@ -4457,6 +4463,7 @@ export function CRMBoard({
     string,
     React.Dispatch<React.SetStateAction<OptionEntry[]>>
   > = {
+    timeline_progress: setTimelineProgressEntries,
     tracking_summary: setTrackingSummaryEntries,
     tracking_invoice_created: setTrackingInvoiceCreatedEntries,
     tracking_multiple_invoices: setTrackingMultipleInvoicesEntries,
@@ -14043,6 +14050,7 @@ export function CRMBoard({
                           importanceOptions={importanceEntries}
                           moonCakeOptions={moonCakeEntries}
                           progressOptions={progressEntries}
+                          timelineProgressOptions={timelineProgressEntries}
                           paymentOptions={paymentEntries}
                           paymentStatusOptions={paymentStatusEntries}
                           paymentReceivedOptions={paymentReceivedEntries}

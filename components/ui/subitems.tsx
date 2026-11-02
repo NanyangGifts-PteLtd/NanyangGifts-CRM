@@ -380,6 +380,9 @@ type SubitemProps = {
   subitemStatusOptions: OptionEntry[];
   currencyOptions: OptionEntry[];
   subitemSubprogressOptions: OptionEntry[];
+  timelineProgressOptions: OptionEntry[];
+  onAddTrackingOption?: (code: string, name: string) => void | Promise<void>;
+  onDeleteTrackingOption?: (code: string, name: string) => void | Promise<void>;
   onAddSubitemSubprogress?: (name: string) => void | Promise<void>;
   onDeleteSubitemSubprogress?: (name: string) => void | Promise<void>;
   onAddCurrency?: (name: string) => void | Promise<void>;
@@ -551,6 +554,9 @@ export function SubitemsTable({
   subitemStatusOptions,
   currencyOptions,
   subitemSubprogressOptions,
+  timelineProgressOptions,
+  onAddTrackingOption,
+  onDeleteTrackingOption,
   onAddSubitemSubprogress,
   onDeleteSubitemSubprogress,
   onAddCurrency,
@@ -4849,6 +4855,10 @@ export function SubitemsTable({
                               timeline.shipperOptionId ?? sub.shipperOptionId ?? null
                             }
                             shipperOptions={shipperOptions}
+                            timelineHeaderProgress={timeline.progress ?? ""}
+                            timelineHeaderProgressOptionId={timeline.progressOptionId ?? null}
+                            timelineHeaderProgressOptions={timelineProgressOptions}
+                            shippingMark={timeline.shippingMark ?? false}
                             onAddShipper={onAddShipper}
                             onDeleteShipper={onDeleteShipper}
                             onUpdateShipperColor={(name, color, optionId) =>
@@ -4869,6 +4879,45 @@ export function SubitemsTable({
                             }
                             onReorderShippers={(values) =>
                               onReorderOptions?.("shipper", values)
+                            }
+                            onTimelineHeaderProgressChange={(progress, progressOptionId) =>
+                              onUpdateSubitem(sub.id, {
+                                timelineGroups: (sub.timelineGroups?.length
+                                  ? sub.timelineGroups
+                                  : [timeline]
+                                ).map((candidate) =>
+                                  candidate.id === timeline.id
+                                    ? { ...candidate, progress, progressOptionId }
+                                    : candidate,
+                                ),
+                              })
+                            }
+                            onShippingMarkChange={(shippingMark) =>
+                              onUpdateSubitem(sub.id, {
+                                timelineGroups: (sub.timelineGroups?.length
+                                  ? sub.timelineGroups
+                                  : [timeline]
+                                ).map((candidate) =>
+                                  candidate.id === timeline.id
+                                    ? { ...candidate, shippingMark }
+                                    : candidate,
+                                ),
+                              })
+                            }
+                            onAddTimelineHeaderProgress={(name) =>
+                              onAddTrackingOption?.("timeline_progress", name)
+                            }
+                            onDeleteTimelineHeaderProgress={(name) =>
+                              onDeleteTrackingOption?.("timeline_progress", name)
+                            }
+                            onUpdateTimelineHeaderProgressColor={(name, color, optionId) =>
+                              onUpdateOptionColor?.("timeline_progress", name, color, optionId)
+                            }
+                            onRenameTimelineHeaderProgress={(oldName, newName, optionId) =>
+                              onRenameOption?.("timeline_progress", oldName, newName, optionId)
+                            }
+                            onReorderTimelineHeaderProgress={(values) =>
+                              onReorderOptions?.("timeline_progress", values)
                             }
                             onTrackingChange={(tracking) => {
                               const timelineGroups = (sub.timelineGroups?.length

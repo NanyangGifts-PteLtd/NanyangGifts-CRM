@@ -163,14 +163,25 @@ export function TimelineSection({
   shipper = "",
   shipperOptionId = null,
   shipperOptions = [],
+  timelineHeaderProgress = "",
+  timelineHeaderProgressOptionId = null,
+  timelineHeaderProgressOptions = [],
+  shippingMark = false,
   onTrackingChange,
   onCartonsChange,
   onShipperChange,
+  onTimelineHeaderProgressChange,
+  onShippingMarkChange,
   onAddShipper,
   onDeleteShipper,
   onUpdateShipperColor,
   onRenameShipper,
   onReorderShippers,
+  onAddTimelineHeaderProgress,
+  onDeleteTimelineHeaderProgress,
+  onUpdateTimelineHeaderProgressColor,
+  onRenameTimelineHeaderProgress,
+  onReorderTimelineHeaderProgress,
   onRemoveTimeline,
   timelineProgressOptions,
   onAddTimelineProgress,
@@ -191,12 +202,18 @@ export function TimelineSection({
   shipper?: string;
   shipperOptionId?: string | null;
   shipperOptions?: OptionEntry[];
+  timelineHeaderProgress?: string;
+  timelineHeaderProgressOptionId?: string | null;
+  timelineHeaderProgressOptions?: OptionEntry[];
+  shippingMark?: boolean;
   onTrackingChange?: (values: {
     cnTracking: string;
     sgTracking: string;
   }) => void;
   onCartonsChange?: (value: string) => void;
   onShipperChange?: (value: string, optionId: string | null) => void;
+  onTimelineHeaderProgressChange?: (value: string, optionId: string | null) => void;
+  onShippingMarkChange?: (checked: boolean) => void;
   onAddShipper?: (name: string) => void | Promise<void>;
   onDeleteShipper?: (name: string, optionId?: string) => void | Promise<void>;
   onUpdateShipperColor?: (
@@ -210,6 +227,13 @@ export function TimelineSection({
     optionId?: string,
   ) => void | Promise<void>;
   onReorderShippers?: (
+    layout: Array<{ id?: string; value: string; section: number }>,
+  ) => void | Promise<void>;
+  onAddTimelineHeaderProgress?: (name: string) => void | Promise<void>;
+  onDeleteTimelineHeaderProgress?: (name: string, optionId?: string) => void | Promise<void>;
+  onUpdateTimelineHeaderProgressColor?: (name: string, color: string, optionId?: string) => void | Promise<void>;
+  onRenameTimelineHeaderProgress?: (oldName: string, newName: string, optionId?: string) => void | Promise<void>;
+  onReorderTimelineHeaderProgress?: (
     layout: Array<{ id?: string; value: string; section: number }>,
   ) => void | Promise<void>;
   onRemoveTimeline?: () => void;
@@ -610,7 +634,8 @@ export function TimelineSection({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      <div className="flex min-h-12 flex-wrap items-center gap-3 bg-gradient-to-r from-[#9bd9e0] to-[#7BCBD5] px-3 py-2">
+      <div className="space-y-2 bg-gradient-to-r from-[#9bd9e0] to-[#7BCBD5] px-3 py-2">
+        <div className="flex min-h-8 flex-wrap items-center gap-3">
         <Calendar size={12} className="text-white" />
         {readOnly ? (
           timelineName.trim() ? (
@@ -629,16 +654,6 @@ export function TimelineSection({
             aria-label="Timeline name"
           />
         )}
-        <label className="flex items-center gap-1 text-[11px] font-medium text-white">
-          No. of Cartons
-          <input
-            type="number"
-            value={numOfCartons}
-            disabled={readOnly}
-            onChange={(event) => onCartonsChange?.(event.target.value)}
-            className="h-7 w-20 rounded border border-white/60 bg-white px-2 text-xs text-slate-700 outline-none disabled:cursor-not-allowed"
-          />
-        </label>
         <div className="flex items-center gap-1 text-[11px] font-medium text-white">
           Shipper
           <div className="h-8 min-w-[132px]">
@@ -659,7 +674,7 @@ export function TimelineSection({
             />
           </div>
         </div>
-        <label className="ml-auto flex items-center gap-1 text-[11px] font-medium text-white">
+        <label className="flex items-center gap-1 text-[11px] font-medium text-white">
           CN Tracking
           <input
             value={draftCnTracking}
@@ -722,6 +737,48 @@ export function TimelineSection({
             <Trash2 size={15} />
           </button>
         ) : null}
+        </div>
+        <div className="flex min-h-8 flex-wrap items-center gap-3 border-t border-white/25 pt-2">
+          <div className="flex items-center gap-1 text-[11px] font-medium text-white">
+            Progress
+            <div className="h-8 min-w-[132px]">
+              <StatusBadge
+                value={timelineHeaderProgress}
+                options={timelineHeaderProgressOptions}
+                readOnly={readOnly}
+                onChange={(value, option) =>
+                  onTimelineHeaderProgressChange?.(value, option?.id ?? null)
+                }
+                onAddOption={onAddTimelineHeaderProgress}
+                onDeleteOption={onDeleteTimelineHeaderProgress}
+                onUpdateOptionColor={onUpdateTimelineHeaderProgressColor}
+                onRenameOption={onRenameTimelineHeaderProgress}
+                onReorderOptions={onReorderTimelineHeaderProgress}
+                manageLabel="timeline progress"
+              />
+            </div>
+          </div>
+          <label className="flex items-center gap-1 text-[11px] font-medium text-white">
+            No. of Cartons
+            <input
+              type="number"
+              value={numOfCartons}
+              disabled={readOnly}
+              onChange={(event) => onCartonsChange?.(event.target.value)}
+              className="h-7 w-20 rounded border border-white/60 bg-white px-2 text-xs text-slate-700 outline-none disabled:cursor-not-allowed"
+            />
+          </label>
+          <label className="flex items-center gap-1 text-[11px] font-medium text-white">
+            <input
+              type="checkbox"
+              checked={shippingMark}
+              disabled={readOnly}
+              onChange={(event) => onShippingMarkChange?.(event.target.checked)}
+              className="h-4 w-4 rounded border-white/60 accent-sky-700 disabled:cursor-not-allowed"
+            />
+            Shipping Mark
+          </label>
+        </div>
       </div>
 
       <div className="max-w-full overflow-x-auto">

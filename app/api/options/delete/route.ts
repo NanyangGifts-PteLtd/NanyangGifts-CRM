@@ -203,6 +203,25 @@ async function usageFor(
       ),
     };
   }
+  if (code === "timeline_progress") {
+    const { data, error } = await supabaseAdmin
+      .from("subitems")
+      .select("id, timeline_groups");
+    if (error) return { error: error.message, ids: new Set<string>() };
+    return {
+      ids: new Set(
+        (data ?? [])
+          .filter((row) =>
+            Array.isArray(row.timeline_groups) &&
+            row.timeline_groups.some(
+              (timeline: { progressOptionId?: string | null }) =>
+                timeline?.progressOptionId === optionId,
+            ),
+          )
+          .map((row) => row.id),
+      ),
+    };
+  }
 
   const field = LABEL_FIELDS[code];
   if (!field) return { ids: new Set<string>() };
@@ -295,6 +314,29 @@ async function clearUsage(
     }
     return null;
   }
+  if (code === "timeline_progress") {
+    const { data, error } = await supabaseAdmin
+      .from("subitems")
+      .select("id, timeline_groups");
+    if (error) return error;
+    for (const row of data ?? []) {
+      if (!Array.isArray(row.timeline_groups)) continue;
+      const timelineGroups = row.timeline_groups.map(
+        (timeline: { progressOptionId?: string | null }) =>
+          timeline?.progressOptionId === optionId
+            ? { ...timeline, progress: "", progressOptionId: null }
+            : timeline,
+      );
+      if (JSON.stringify(timelineGroups) === JSON.stringify(row.timeline_groups))
+        continue;
+      const { error: updateError } = await supabaseAdmin
+        .from("subitems")
+        .update({ timeline_groups: timelineGroups })
+        .eq("id", row.id);
+      if (updateError) return updateError;
+    }
+    return null;
+  }
 
   const field = LABEL_FIELDS[code];
   if (!field) return null;
@@ -335,6 +377,7 @@ export async function POST(request: NextRequest) {
       ...Object.keys(LABEL_FIELDS),
       "overall_payment_status",
       "subitem_subprogress",
+      "timeline_progress",
       ...Object.keys(TRACKING_CUSTOM_FIELD_BY_CODE),
       ...Object.keys(CLIENT_CUSTOM_OPTION_ID_FIELD_BY_CODE),
     ].includes(code)

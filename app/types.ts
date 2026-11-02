@@ -88,6 +88,11 @@ export interface TimelineGroup {
   /** Shipper ownership belongs to this shipment timeline. */
   shipper?: string;
   shipperOptionId?: string | null;
+  /** Independent per-timeline shipping progress label. */
+  progress?: string;
+  progressOptionId?: string | null;
+  /** A shipment-specific marker; it has no automation behaviour yet. */
+  shippingMark?: boolean;
   rows: TimelineRow[];
   /** The original imported timeline remains protected. */
   isDefault?: boolean;

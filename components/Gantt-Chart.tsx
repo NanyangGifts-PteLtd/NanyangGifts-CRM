@@ -532,6 +532,7 @@ export default function GanttChart({
     Set<string> | null
   >(null);
   const [shipperOptions, setShipperOptions] = useState<OptionEntry[]>([]);
+  const [timelineHeaderProgressOptions, setTimelineHeaderProgressOptions] = useState<OptionEntry[]>([]);
   useEffect(() => {
     const supabase = createSupabaseClient();
     let active = true;
@@ -558,6 +559,37 @@ export default function GanttChart({
             section: option.section_index ?? 0,
           }])),
         );
+    })();
+    return () => { active = false; };
+  }, []);
+  useEffect(() => {
+    const supabase = createSupabaseClient();
+    let active = true;
+    void (async () => {
+      const { data: group } = await supabase
+        .from("option_groups")
+        .select("id")
+        .eq("code", "timeline_progress")
+        .maybeSingle();
+      if (!group) return;
+      const { data } = await supabase
+        .from("option_values")
+        .select("id, value, system_key, color, section_index")
+        .eq("group_id", group.id)
+        .order("section_index")
+        .order("sort_order")
+        .order("id");
+      if (active) {
+        setTimelineHeaderProgressOptions(
+          (data ?? []).map((option) => ({
+            id: option.id,
+            value: option.value,
+            systemKey: option.system_key,
+            color: option.color ?? "#94a3b8",
+            section: option.section_index ?? 0,
+          })),
+        );
+      }
     })();
     return () => { active = false; };
   }, []);
@@ -2608,6 +2640,10 @@ export default function GanttChart({
                     null
                   }
                   shipperOptions={shipperOptions}
+                  timelineHeaderProgress={selectedTimelineData.timeline.progress ?? ""}
+                  timelineHeaderProgressOptionId={selectedTimelineData.timeline.progressOptionId ?? null}
+                  timelineHeaderProgressOptions={timelineHeaderProgressOptions}
+                  shippingMark={selectedTimelineData.timeline.shippingMark ?? false}
                   timelineProgressOptions={timelineProgressOptions}
                   // Popovers are portalled to document.body. They must sit
                   // above this modal rather than beneath its dialog layer.
@@ -2627,6 +2663,34 @@ export default function GanttChart({
                           (candidate) =>
                             candidate.id === selectedTimelineData.timeline.id
                               ? { ...candidate, ...tracking }
+                              : candidate,
+                        ),
+                      },
+                    )
+                  }
+                  onTimelineHeaderProgressChange={(progress, progressOptionId) =>
+                    void onUpdateSubitem(
+                      selectedTimelineData.client.id,
+                      selectedTimelineData.subitem.id,
+                      {
+                        timelineGroups: selectedTimelineData.timelines.map(
+                          (candidate) =>
+                            candidate.id === selectedTimelineData.timeline.id
+                              ? { ...candidate, progress, progressOptionId }
+                              : candidate,
+                        ),
+                      },
+                    )
+                  }
+                  onShippingMarkChange={(shippingMark) =>
+                    void onUpdateSubitem(
+                      selectedTimelineData.client.id,
+                      selectedTimelineData.subitem.id,
+                      {
+                        timelineGroups: selectedTimelineData.timelines.map(
+                          (candidate) =>
+                            candidate.id === selectedTimelineData.timeline.id
+                              ? { ...candidate, shippingMark }
                               : candidate,
                         ),
                       },

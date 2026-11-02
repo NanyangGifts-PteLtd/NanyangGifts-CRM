@@ -8,6 +8,7 @@ const BOARD_OPTION_CODES = new Set([
   "channel",
   "importance",
   "progress",
+  "timeline_progress",
   "payment",
   "payment_status",
   "mode_of_payment",

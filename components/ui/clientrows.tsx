@@ -429,6 +429,7 @@ export type ClientRowProps = {
   importanceOptions: OptionEntry[];
   moonCakeOptions: OptionEntry[];
   progressOptions: OptionEntry[];
+  timelineProgressOptions: OptionEntry[];
   onAddReplyStatus?: (name: string) => void | Promise<void>;
   onDeleteReplyStatus?: (name: string) => void | Promise<void>;
   onAddStatus?: (name: string) => void | Promise<void>;
@@ -609,6 +610,7 @@ export function ClientRow({
   importanceOptions,
   moonCakeOptions,
   progressOptions,
+  timelineProgressOptions,
   onAddReplyStatus,
   onDeleteReplyStatus,
   onAddStatus,
@@ -5544,6 +5546,9 @@ export function ClientRow({
           subitemStatusOptions={subitemStatusOptions}
           currencyOptions={currencyOptions}
           subitemSubprogressOptions={subitemSubprogressOptions}
+          timelineProgressOptions={timelineProgressOptions}
+          onAddTrackingOption={onAddTrackingOption}
+          onDeleteTrackingOption={onDeleteTrackingOption}
           onAddSubitemSubprogress={onAddSubitemSubprogress}
           onDeleteSubitemSubprogress={onDeleteSubitemSubprogress}
           onAddCurrency={onAddCurrency}
