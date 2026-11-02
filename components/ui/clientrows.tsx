@@ -77,10 +77,21 @@ const UNASSIGNED_TRACKING_STATUS_KEY = "__unassigned";
 function TrackingStatusSummaryBar({
   summary,
   options,
+  forcePaid = false,
 }: {
   summary: Record<string, number> | undefined;
   options: OptionEntry[];
+  /** Overall invoice payment is PAID, so the aggregate is deliberately shown as paid. */
+  forcePaid?: boolean;
 }) {
+  if (forcePaid) {
+    return (
+      <div
+        className="mx-2 h-3.5 flex-1 rounded-sm bg-emerald-500"
+        title="PAID — all active invoices are paid"
+      />
+    );
+  }
   const optionById = new Map(
     options.filter((option) => option.id).map((option) => [option.id as string, option]),
   );
@@ -817,6 +828,17 @@ export function ClientRow({
     "payment_status_resolved",
     "Resolved",
   );
+  const trackingInvoicePaidOption = findSystemOption(
+    trackingInvoicePaymentStatusLabelOptions,
+    "tracking_invoice_payment_status_paid",
+    "PAID",
+  );
+  const trackingStatusSummaryIsPaid =
+    (Boolean(trackingInvoicePaidOption.id) &&
+      client.trackingOverallInvoicePaymentStatusOptionId ===
+        trackingInvoicePaidOption.id) ||
+    client.trackingOverallInvoicePaymentStatus?.trim().toUpperCase() ===
+      "PAID";
   const closedClientStatus = useMemo(
     () =>
       statusOptions.find(
@@ -3754,6 +3776,7 @@ export function ClientRow({
               <TrackingStatusSummaryBar
                 summary={trackingStatusSummary}
                 options={trackingPaymentStatusLabelOptions}
+                forcePaid={trackingStatusSummaryIsPaid}
               />
             </div>
             <div
