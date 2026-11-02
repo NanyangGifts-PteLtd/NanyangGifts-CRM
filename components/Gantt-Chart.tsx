@@ -860,7 +860,6 @@ export default function GanttChart({
   const schedulerRootRef = useRef<HTMLDivElement | null>(null);
   const timelinePanRef = useRef<TimelinePan | null>(null);
   const suppressTimelineClickRef = useRef(false);
-  const previousPageButtonRef = useRef<HTMLButtonElement | null>(null);
   const [pinnedClientIds, setPinnedClientIds] = useState<Set<string>>(
     new Set(),
   );
@@ -1623,8 +1622,6 @@ export default function GanttChart({
           const searchContainer = searchInput?.parentElement;
           const previousPageControl =
             searchContainer?.nextElementSibling as HTMLElement | null;
-          previousPageButtonRef.current =
-            previousPageControl?.querySelector("button") ?? null;
           if (searchContainer) {
             setStyle(searchContainer, "display", "none");
           }
@@ -1705,30 +1702,6 @@ export default function GanttChart({
       );
     };
   }, [data, resourcePaneCollapsed, resourcePanelWidth]);
-
-  useEffect(() => {
-    let frame = 0;
-    let cancelled = false;
-    const returnToFirstPage = () => {
-      if (cancelled) return;
-      const button = previousPageButtonRef.current;
-      if (button && window.getComputedStyle(button).pointerEvents !== "none") {
-        button.click();
-        frame = window.requestAnimationFrame(returnToFirstPage);
-      }
-    };
-    frame = window.requestAnimationFrame(returnToFirstPage);
-    return () => {
-      cancelled = true;
-      window.cancelAnimationFrame(frame);
-    };
-  }, [
-    collapsedClientIds,
-    collapsedGroupIds,
-    filters,
-    searchQuery,
-    searchScope,
-  ]);
 
   useEffect(() => {
     if (!contextMenu) return;
@@ -2069,7 +2042,11 @@ export default function GanttChart({
           config={{
             zoom: 1,
             lang: "en",
-            maxRecordsPerPage: 20,
+            // Server pages are loaded progressively, but the scheduler's own
+            // record pagination must never split the already-loaded rows.
+            // Otherwise its fixed 20-row page hides the vertical extent that
+            // triggers our near-bottom "load more" observer.
+            maxRecordsPerPage: Math.max(1, data.length),
             filterButtonState: -1,
             showThemeToggle: false,
             showTooltip: false,
