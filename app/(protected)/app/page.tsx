@@ -192,6 +192,347 @@ function isResultNarrowingBoardQuery(query: CrmBoardQuery) {
   );
 }
 
+function boardQueryMayDependOnRealtimeTable(
+  query: CrmBoardQuery,
+  table: LiveRecordChange["table"],
+) {
+  const searchColumns = query.searchColumns ?? [];
+  const searchAllColumns = Boolean(query.search?.trim() && !searchColumns.length);
+  const searchedScopes = new Set(
+    searchColumns.map((column) => column.split(":", 1)[0]),
+  );
+  const advancedScopes = new Set(
+    (query.advancedRules ?? [])
+      .filter((rule) => rule.column && rule.condition)
+      .map((rule) => rule.column.split(":", 1)[0]),
+  );
+  const searchUses = (scope: string) =>
+    searchAllColumns ||
+    Boolean(query.search?.trim() && searchedScopes.has(scope));
+  const advancedUses = (scope: string) => advancedScopes.has(scope);
+  const hasPersonFilter = Boolean(query.personId);
+
+  if (table === "client_assignees") {
+    return Boolean(
+      hasPersonFilter ||
+        searchAllColumns ||
+        searchColumns.some((column) =>
+          ["client:people", "client:pm"].includes(column),
+        ) ||
+        (query.advancedRules ?? []).some((rule) =>
+          ["client:people", "client:pm"].includes(rule.column),
+        ),
+    );
+  }
+  if (table === "subitem_assignees") {
+    return Boolean(
+      hasPersonFilter ||
+        searchAllColumns ||
+        searchColumns.includes("subitem:people") ||
+        (query.advancedRules ?? []).some(
+          (rule) => rule.column === "subitem:people",
+        ),
+    );
+  }
+  if (table === "clients") {
+    return Boolean(
+      searchUses("client") ||
+        advancedUses("client") ||
+        query.statusOptionId ||
+        query.importanceOptionId ||
+        query.replyStatusOptionId ||
+        query.channelOptionId,
+    );
+  }
+
+  // A few client-level fields are derived from subitems, so a subitem edit
+  // can affect those searches/sorts even though their selector starts with
+  // `client:`.
+  const derivedClientColumns = new Set([
+    "client:totalPrice",
+    "client:totalMarkup",
+    "client:overallPaymentStatus",
+  ]);
+  return Boolean(
+    searchUses("subitem") ||
+      searchUses("subpayment") ||
+      searchUses("timeline") ||
+      searchUses("sample") ||
+      searchColumns.some((column) => derivedClientColumns.has(column)) ||
+      advancedUses("subitem") ||
+      advancedUses("subpayment") ||
+      advancedUses("timeline") ||
+      advancedUses("sample") ||
+      (query.advancedRules ?? []).some((rule) =>
+        derivedClientColumns.has(rule.column),
+      ) ||
+      query.subitemStatusOptionId ||
+      query.paymentOptionId ||
+      query.paymentStatusOptionId ||
+      query.subprogressOptionId,
+  );
+}
+
+const CLIENT_QUERY_COLUMN_MAP: Record<string, string | null> = {
+  client: "name",
+  replyStatus: "reply_status_option_id",
+  followUp: "follow_up",
+  status: "status_option_id",
+  channel: "channel_option_id",
+  importance: "importance_option_id",
+  company: "company",
+  billingAddress: "billing_address",
+  email: "email",
+  phone: "phone",
+  requirements: "requirements",
+  unqualifiedReason: "unqualified_reason",
+  nbd: "nbd",
+  progress: "progress_option_id",
+  dateCreated: "created_at",
+  timesReassigned: "times_reassigned",
+  people: null,
+  pm: null,
+};
+
+const SUBITEM_QUERY_COLUMN_MAP: Record<string, string | null> = {
+  name: "name",
+  people: null,
+  status: "status_option_id",
+  qty: "qty",
+  description: "description",
+  remarks: "remarks",
+  supplier: "supplier",
+  cost: "cost",
+  currency: "currency_option_id",
+  cSgd: "c_sgd",
+  tcSgd: "tc_sgd",
+  manpower: "manpower",
+  ls: "ls",
+  os: "os",
+  tc: "tc",
+  uc: "uc",
+  pl: "pl",
+  sl: "sl",
+  price: "price",
+  up: "up",
+  totalUc: "total_uc",
+  totalC: "total_c",
+  localOverseas: "local_overseas_option_id",
+  shipper: "shipper_option_id",
+  payment: "payment_option_id",
+  paymentStatus: "payment_status_option_id",
+  modeOfPayment: "mode_of_payment_option_id",
+  orderNumber: "order_number",
+  quantityProduced: "quantity_produced",
+  qtyFree: "qty_free",
+  qtyTotal: "qty_total",
+  qtyWeKeep: "qty_we_keep",
+  qtyFor: "qty_for",
+  paymentAmount: "payment_amount",
+  difference: "difference",
+  paymentRemarks: "payment_remarks",
+  cnTracking: "cn_tracking",
+  sgTracking: "sg_tracking",
+  numOfCartons: "num_of_cartons",
+  createdAt: "created_at",
+};
+
+function queryColumnDatabaseField(
+  table: "clients" | "subitems",
+  selector: string,
+) {
+  const [scope, key, customId] = selector.split(":");
+  if (table === "clients") {
+    if (scope !== "client") return undefined;
+    if (key === "custom" && customId) return "custom_fields";
+    return Object.prototype.hasOwnProperty.call(CLIENT_QUERY_COLUMN_MAP, key)
+      ? CLIENT_QUERY_COLUMN_MAP[key]
+      : undefined;
+  }
+  if (scope === "subitem") {
+    if (key === "custom" && customId) return "custom_fields";
+    return Object.prototype.hasOwnProperty.call(SUBITEM_QUERY_COLUMN_MAP, key)
+      ? SUBITEM_QUERY_COLUMN_MAP[key]
+      : undefined;
+  }
+  if (scope === "timeline") return "timeline_groups";
+  if (scope === "sample") return "sample_rows";
+  // Subpayments live in their own relation and are not present in a subitem
+  // Realtime row. Keep this dependency conservative until that relation is
+  // included in the live-change payload.
+  if (scope === "subpayment") return undefined;
+  if (
+    scope === "client" &&
+    ["totalPrice", "totalMarkup", "overallPaymentStatus"].includes(key)
+  )
+    return key === "overallPaymentStatus"
+      ? "payment_status_option_id"
+      : "price";
+  return undefined;
+}
+
+function boardQueryDatabaseFieldsForTable(
+  query: CrmBoardQuery,
+  table: "clients" | "subitems",
+) {
+  const fields = new Set<string>();
+  if (table === "clients") {
+    if (query.statusOptionId) fields.add("status_option_id");
+    if (query.importanceOptionId) fields.add("importance_option_id");
+    if (query.replyStatusOptionId) fields.add("reply_status_option_id");
+    if (query.channelOptionId) fields.add("channel_option_id");
+  } else {
+    if (query.subitemStatusOptionId) fields.add("status_option_id");
+    if (query.paymentOptionId) fields.add("payment_option_id");
+    if (query.paymentStatusOptionId) fields.add("payment_status_option_id");
+    if (query.subprogressOptionId) fields.add("timeline_groups");
+  }
+
+  const selectors = [
+    ...(query.search?.trim() ? (query.searchColumns ?? []) : []),
+    ...(query.advancedRules ?? [])
+      .filter((rule) => rule.column && rule.condition)
+      .map((rule) => rule.column),
+  ];
+  if (query.search?.trim() && !(query.searchColumns ?? []).length) return null;
+  for (const selector of selectors) {
+    const field = queryColumnDatabaseField(table, selector);
+    // undefined means this selector belongs to another table or is not yet
+    // mapped. Only treat an unmapped selector in this table's scope as an
+    // unknown dependency; selectors from other scopes can be ignored.
+    const selectorScope = selector.split(":", 1)[0];
+    const belongsToTable =
+      table === "clients"
+        ? selectorScope === "client"
+        : ["subitem", "timeline", "sample", "subpayment"].includes(
+              selectorScope,
+            ) ||
+            (selectorScope === "client" &&
+              [
+                "client:totalPrice",
+                "client:totalMarkup",
+                "client:overallPaymentStatus",
+              ].includes(selector));
+    if (field === undefined && belongsToTable) return null;
+    if (field) fields.add(field);
+  }
+  return fields;
+}
+
+function localDatabaseValue(
+  table: "clients" | "subitems",
+  field: string,
+  client: Client | undefined,
+  subitem: Subitem | undefined,
+) {
+  const clientValues: Record<string, unknown> = client
+    ? {
+        name: client.name,
+        reply_status_option_id: client.replyStatusOptionId ?? null,
+        follow_up: client.followUp,
+        status_option_id: client.statusOptionId ?? null,
+        channel_option_id: client.channelOptionId ?? null,
+        importance_option_id: client.importanceOptionId ?? null,
+        company: client.company,
+        billing_address: client.billingAddress,
+        email: client.email,
+        phone: client.phone,
+        requirements: client.requirements,
+        unqualified_reason: client.unqualifiedReason,
+        nbd: client.nbd,
+        progress_option_id: client.progressOptionId ?? null,
+        created_at: client.createdAt,
+        times_reassigned: client.timesReassigned,
+        custom_fields: client.customFields ?? {},
+      }
+    : {};
+  const subitemValues: Record<string, unknown> = subitem
+    ? {
+        name: subitem.name,
+        status_option_id: subitem.statusOptionId ?? null,
+        qty: subitem.qty,
+        description: subitem.description,
+        remarks: subitem.remarks,
+        supplier: subitem.supplier,
+        cost: subitem.cost,
+        currency_option_id: subitem.currencyOptionId ?? null,
+        c_sgd: subitem.cSgd,
+        tc_sgd: subitem.tcSgd,
+        manpower: subitem.manpower,
+        ls: subitem.ls,
+        os: subitem.os,
+        tc: subitem.tc,
+        uc: subitem.uc,
+        pl: subitem.pl,
+        sl: subitem.sl,
+        price: subitem.price,
+        up: subitem.up,
+        total_uc: subitem.totalUc,
+        total_c: subitem.totalC,
+        local_overseas_option_id: subitem.localOverseasOptionId ?? null,
+        shipper_option_id: subitem.shipperOptionId ?? null,
+        payment_option_id: subitem.paymentOptionId ?? null,
+        payment_status_option_id: subitem.paymentStatusOptionId ?? null,
+        mode_of_payment_option_id: subitem.modeOfPaymentOptionId ?? null,
+        order_number: subitem.orderNumber,
+        quantity_produced: subitem.quantityProduced,
+        qty_free: subitem.qtyFree,
+        qty_total: subitem.qtyTotal,
+        qty_we_keep: subitem.qtyWeKeep,
+        qty_for: subitem.qtyFor,
+        payment_amount: subitem.paymentAmount,
+        difference: subitem.difference,
+        payment_remarks: subitem.paymentRemarks,
+        cn_tracking: subitem.cnTracking,
+        sg_tracking: subitem.sgTracking,
+        num_of_cartons: subitem.numOfCartons,
+        created_at: subitem.createdAt,
+        custom_fields: subitem.customFields ?? {},
+        timeline_groups: subitem.timelineGroups,
+        sample_rows: subitem.sampleRows,
+      }
+    : {};
+  const values = table === "clients" ? clientValues : subitemValues;
+  return Object.prototype.hasOwnProperty.call(values, field)
+    ? { known: true, value: values[field] }
+    : { known: false, value: undefined };
+}
+
+function realtimeChangeTouchesBoardQueryFields(
+  change: LiveRecordChange,
+  query: CrmBoardQuery,
+  client: Client | undefined,
+  subitem: Subitem | undefined,
+) {
+  if (
+    change.eventType !== "UPDATE" ||
+    (change.table !== "clients" && change.table !== "subitems")
+  )
+    return true;
+  const fields = boardQueryDatabaseFieldsForTable(query, change.table);
+  if (fields === null) return true;
+  if (!fields.size) return false;
+
+  let comparedAny = false;
+  for (const field of fields) {
+    if (!Object.prototype.hasOwnProperty.call(change.new, field)) return true;
+    if (Object.prototype.hasOwnProperty.call(change.old, field)) {
+      comparedAny = true;
+      if (
+        JSON.stringify(change.old[field]) !== JSON.stringify(change.new[field])
+      )
+        return true;
+      continue;
+    }
+    const local = localDatabaseValue(change.table, field, client, subitem);
+    if (!local.known) return true;
+    comparedAny = true;
+    if (JSON.stringify(local.value) !== JSON.stringify(change.new[field]))
+      return true;
+  }
+  return !comparedAny;
+}
+
 function boardQueryResultScopeKey(query: CrmBoardQuery) {
   return JSON.stringify({
     search: query.search,
@@ -324,6 +665,8 @@ export default function Page() {
   const [clientsLoaded, setClientsLoaded] = useState(false);
   const [hasLoadedInitialClients, setHasLoadedInitialClients] =
     useState(false);
+  const hasLoadedInitialClientsRef = useRef(false);
+  hasLoadedInitialClientsRef.current = hasLoadedInitialClients;
   const [boardQuery, setBoardQuery] = useState<CrmBoardQuery>({});
   const [groupPageState, setGroupPageState] = useState<GroupPageState>({});
   // A result query should settle its group layout once, rather than removing
@@ -362,6 +705,7 @@ export default function Page() {
   const [roundRobinVersion, setRoundRobinVersion] = useState(0);
   const mainScrollRef = useRef<HTMLElement | null>(null);
   const searchViewportAnchorClientIdRef = useRef<string | null>(null);
+  const pendingFocusedFilterRemovalIdsRef = useRef(new Set<string>());
   const reconciliationTimer = useRef<number | null>(null);
   const boardLoadRecoveryTimer = useRef<number | null>(null);
   const boardLoadAbortController = useRef<AbortController | null>(null);
@@ -405,6 +749,39 @@ export default function Page() {
     null,
   );
   const scheduleQuickFilterCountsRefreshRef = useRef<() => void>(() => {});
+
+  useEffect(() => {
+    let settleTimer: number | null = null;
+    const settleFocusedFilterRemoval = () => {
+      if (settleTimer !== null) window.clearTimeout(settleTimer);
+      settleTimer = window.setTimeout(() => {
+        settleTimer = null;
+        const activeElement = document.activeElement;
+        const activeClientId =
+          activeElement instanceof HTMLElement
+            ? activeElement.closest<HTMLElement>("[data-client-row]")?.dataset
+                .clientId ?? null
+            : null;
+        const removableIds = [...pendingFocusedFilterRemovalIdsRef.current].filter(
+          (clientId) => clientId !== activeClientId,
+        );
+        if (!removableIds.length) return;
+        const removableIdSet = new Set(removableIds);
+        setClients((current) =>
+          current.filter((client) => !removableIdSet.has(client.id)),
+        );
+        for (const clientId of removableIds)
+          pendingFocusedFilterRemovalIdsRef.current.delete(clientId);
+      }, 250);
+    };
+    document.addEventListener("focusin", settleFocusedFilterRemoval);
+    document.addEventListener("focusout", settleFocusedFilterRemoval);
+    return () => {
+      document.removeEventListener("focusin", settleFocusedFilterRemoval);
+      document.removeEventListener("focusout", settleFocusedFilterRemoval);
+      if (settleTimer !== null) window.clearTimeout(settleTimer);
+    };
+  }, []);
 
   const captureSearchViewportAnchor = useCallback((): SearchViewportAnchor | null => {
     const clientId = searchViewportAnchorClientIdRef.current;
@@ -1169,7 +1546,7 @@ export default function Page() {
       // inspect a client's related rows. Do not run a second full matcher for
       // group totals alongside the page request: on a migrated Board that can
       // exceed Postgres's statement timeout before either result is returned.
-      const [initialPage, targetedGroupPages] = await Promise.all([
+      const [initialPage, initiallyTargetedGroupPages] = await Promise.all([
           fetchHydratedClientGroupPage(null, 0, 30, boardQuery, {
             // Preserve the landing-page policy previously implemented by
             // fetchInitialCrmClientBundle, without a preliminary ID query.
@@ -1186,6 +1563,85 @@ export default function Page() {
             ),
           ),
         ]);
+      const resolvedTargetGroupIds = [...targetGroupIds];
+      const targetedGroupPages = [...initiallyTargetedGroupPages];
+
+      // During a search/filter transition, keep the currently mounted Board
+      // usable until at least one replacement group is complete. Installing
+      // only the global first page leaves every result group incomplete; the
+      // result renderer then correctly suppresses them all and the user sees
+      // an empty Board while paging catches up.
+      //
+      // Complete only the first matching group here. Remaining groups retain
+      // the staggered, one-at-a-time loader, so this does not recreate the
+      // former all-groups request storm.
+      if (
+        !preservePagination &&
+        hasLoadedInitialClientsRef.current &&
+        isResultNarrowingBoardQuery(boardQuery)
+      ) {
+        const firstMatchingGroupId = groups
+          .map((group) => group.id)
+          .find(
+            (groupId) =>
+              initialPage.clients.some((client) => client.groupId === groupId) ||
+              targetedGroupPages.some(
+                (page, index) =>
+                  resolvedTargetGroupIds[index] === groupId && page.total > 0,
+              ),
+          );
+        if (firstMatchingGroupId) {
+          const existingTargetIndex = resolvedTargetGroupIds.indexOf(
+            firstMatchingGroupId,
+          );
+          let completedPage =
+            existingTargetIndex >= 0
+              ? targetedGroupPages[existingTargetIndex]
+              : await fetchHydratedClientGroupPage(
+                  firstMatchingGroupId,
+                  0,
+                  30,
+                  boardQuery,
+                  { signal: abortController.signal },
+                );
+          while (completedPage.hasMore) {
+            const nextPage = await fetchHydratedClientGroupPage(
+              firstMatchingGroupId,
+              completedPage.nextOffset,
+              30,
+              boardQuery,
+              { signal: abortController.signal },
+            );
+            if (nextPage.nextOffset <= completedPage.nextOffset) {
+              throw new Error(
+                "CRM group pagination did not advance while preparing results.",
+              );
+            }
+            completedPage = {
+              ...nextPage,
+              clients: [...completedPage.clients, ...nextPage.clients],
+              clientAssignees: {
+                ...completedPage.clientAssignees,
+                ...nextPage.clientAssignees,
+              },
+              clientPmAssignees: {
+                ...completedPage.clientPmAssignees,
+                ...nextPage.clientPmAssignees,
+              },
+              subitemAssignees: {
+                ...completedPage.subitemAssignees,
+                ...nextPage.subitemAssignees,
+              },
+            };
+          }
+          if (existingTargetIndex >= 0) {
+            targetedGroupPages[existingTargetIndex] = completedPage;
+          } else {
+            resolvedTargetGroupIds.push(firstMatchingGroupId);
+            targetedGroupPages.push(completedPage);
+          }
+        }
+      }
       // Exact group totals are useful metadata, but the production statement
       // report showed this aggregate running thousands of times and delaying
       // otherwise-ready Board pages. Install the page immediately using a
@@ -1219,7 +1675,7 @@ export default function Page() {
         setGroupCountsErrorQueryKey(null);
       }
       const targetedPagesByGroupId = new Map(
-        targetGroupIds.map((groupId, index) => [
+        resolvedTargetGroupIds.map((groupId, index) => [
           groupId,
           targetedGroupPages[index],
         ]),
@@ -1365,6 +1821,18 @@ export default function Page() {
       }
 
       const protectionDelay = boardProtectionDelay();
+      const focusedClientId = (() => {
+        if (loadReason === "board-query-change") return null;
+        const activeElement = document.activeElement;
+        return activeElement instanceof HTMLElement
+          ? activeElement.closest<HTMLElement>("[data-client-row]")?.dataset
+              .clientId ?? null
+          : null;
+      })();
+      const focusedGroupId = focusedClientId
+        ? clientsRef.current.find((client) => client.id === focusedClientId)
+            ?.groupId ?? null
+        : null;
       setClients((current) => {
         const currentClients = new Map(
           current.map((client) => [client.id, client]),
@@ -1424,7 +1892,19 @@ export default function Page() {
             !incomingClientIds.has(client.id) &&
             isBoardRecordProtected("client", client.id),
         );
-        return [...reconciledClients, ...protectedLocalOnly];
+        const focusedGroupLocalOnly = focusedGroupId
+          ? current.filter(
+              (client) =>
+                client.groupId === focusedGroupId &&
+                !incomingClientIds.has(client.id) &&
+                !protectedLocalOnly.some((item) => item.id === client.id),
+            )
+          : [];
+        return [
+          ...reconciledClients,
+          ...protectedLocalOnly,
+          ...focusedGroupLocalOnly,
+        ];
       });
       setClientAssignees((current) => {
         const next = { ...current, ...clientAssignmentMaps.people };
@@ -1504,7 +1984,17 @@ export default function Page() {
       setClientsLoaded(true);
       setHasLoadedInitialClients(true);
       setGroupPageState((current) => {
-        if (!preservePagination) return nextGroupPageState;
+        if (!preservePagination) {
+          if (!focusedGroupId || !current[focusedGroupId])
+            return nextGroupPageState;
+          return {
+            ...nextGroupPageState,
+            // A recovery/reconciliation must not hide the group containing
+            // the active editor merely because that group was not part of
+            // the replacement's first page.
+            [focusedGroupId]: current[focusedGroupId],
+          };
+        }
 
         // Preserve each group's pagination/loading state while still making
         // its total and "has more" indicator authoritative.
@@ -1831,9 +2321,11 @@ export default function Page() {
       const refreshSequence = ++recordsRefreshSequence.current;
       const knownClients = new Map(clients.map((client) => [client.id, client]));
       const clientIdBySubitemId = new Map<string, string>();
+      const knownSubitems = new Map<string, Subitem>();
       for (const client of clients) {
         for (const subitem of client.subitems) {
           clientIdBySubitemId.set(subitem.id, client.id);
+          knownSubitems.set(subitem.id, subitem);
         }
       }
 
@@ -1842,6 +2334,7 @@ export default function Page() {
       const deletedClientIds = new Set<string>();
       const deletedSubitemIds = new Set<string>();
       const filteredOutClientIds = new Set<string>();
+      const deferredFocusedFilterRemovalIds = new Set<string>();
       const targetGroupIds = new Set<string>();
       const visibleGroupReconcileIds = new Set<string>();
       const initiallyExcludedGroupIds = new Set(
@@ -1852,7 +2345,7 @@ export default function Page() {
           .map((group) => group.id),
       );
       let requiresFilteredFallback = false;
-      let hasNonRemovalChange = false;
+      let hasMembershipRelevantChange = false;
 
       const shouldReconcileVisibleGroup = (groupId: string | null) =>
         Boolean(
@@ -1890,9 +2383,12 @@ export default function Page() {
               );
 
         if (!clientId) {
-          if (!isRemoval) {
+          if (
+            !isRemoval &&
+            boardQueryMayDependOnRealtimeTable(boardQuery, change.table)
+          ) {
             requiresFilteredFallback = true;
-            hasNonRemovalChange = true;
+            hasMembershipRelevantChange = true;
           }
           continue;
         }
@@ -1914,14 +2410,31 @@ export default function Page() {
           // Removing a subitem can make its parent stop matching a subitem,
           // payment, search, Person, or Advanced filter. Re-evaluate only that
           // parent rather than treating the child deletion as display-only.
-          if (Object.keys(boardQuery).length) {
+          if (
+            Object.keys(boardQuery).length &&
+            boardQueryMayDependOnRealtimeTable(boardQuery, change.table)
+          ) {
             candidateClientIds.add(clientId);
-            hasNonRemovalChange = true;
+            hasMembershipRelevantChange = true;
           }
           continue;
         }
-        hasNonRemovalChange = true;
-        candidateClientIds.add(clientId);
+        const changedSubitemId =
+          change.table === "subitems"
+            ? realtimeSubitemId(currentRow) ?? realtimeSubitemId(previousRow)
+            : null;
+        const canAffectMembership =
+          boardQueryMayDependOnRealtimeTable(boardQuery, change.table) &&
+          realtimeChangeTouchesBoardQueryFields(
+            change,
+            boardQuery,
+            knownClients.get(clientId),
+            changedSubitemId ? knownSubitems.get(changedSubitemId) : undefined,
+          );
+        if (canAffectMembership) {
+          hasMembershipRelevantChange = true;
+          candidateClientIds.add(clientId);
+        }
         if (change.table === "clients") {
           const localGroupId = knownClients.get(clientId)?.groupId;
           const nextGroupId =
@@ -1977,7 +2490,7 @@ export default function Page() {
             // Both parents are explicitly hydrated below. No global Board
             // reconciliation is necessary for a subitem move.
             targetClientIds.add(localClientId);
-            if (Object.keys(boardQuery).length) {
+            if (Object.keys(boardQuery).length && canAffectMembership) {
               candidateClientIds.add(localClientId);
             }
           }
@@ -1991,8 +2504,8 @@ export default function Page() {
       // place. The complete filtered Board is retained as a safety fallback
       // only when an event cannot identify its parent or the matcher is not
       // available yet during deployment.
-      if (Object.keys(boardQuery).length && hasNonRemovalChange) {
-        if (requiresFilteredFallback || candidateClientIds.size > 100) {
+      if (Object.keys(boardQuery).length && hasMembershipRelevantChange) {
+        if (requiresFilteredFallback) {
           await reloadClients({
             targetGroupIds: [...targetGroupIds],
             preservePagination: false,
@@ -2002,10 +2515,21 @@ export default function Page() {
         }
 
         try {
-          const memberships = await fetchCrmBoardClientMemberships(
-            [...candidateClientIds],
-            boardQuery,
-          );
+          const membershipCandidates = [...candidateClientIds];
+          const memberships: Awaited<
+            ReturnType<typeof fetchCrmBoardClientMemberships>
+          > = [];
+          // The membership RPC accepts at most 100 IDs. Process large import
+          // bursts in bounded serial batches rather than escalating them to a
+          // destructive full filtered-board reload.
+          for (let offset = 0; offset < membershipCandidates.length; offset += 100) {
+            memberships.push(
+              ...(await fetchCrmBoardClientMemberships(
+                membershipCandidates.slice(offset, offset + 100),
+                boardQuery,
+              )),
+            );
+          }
           for (const membership of memberships) {
             const currentGroupId = knownClients.get(membership.clientId)?.groupId;
             if (!membership.matches) {
@@ -2168,12 +2692,27 @@ export default function Page() {
         const incomingClients = new Map(
           hydrated.clients.map((client) => [client.id, client]),
         );
+        const activeElement = document.activeElement;
+        const focusedClientId =
+          activeElement instanceof HTMLElement
+            ? activeElement.closest<HTMLElement>("[data-client-row]")?.dataset
+                .clientId ?? null
+            : null;
+        if (focusedClientId && filteredOutClientIds.has(focusedClientId)) {
+          deferredFocusedFilterRemovalIds.add(focusedClientId);
+          pendingFocusedFilterRemovalIdsRef.current.add(focusedClientId);
+        }
         setClients((current) => {
           const retained = current.flatMap((client) => {
             if (
               deletedClientIds.has(client.id) ||
               filteredOutClientIds.has(client.id)
             ) {
+              if (
+                !deletedClientIds.has(client.id) &&
+                deferredFocusedFilterRemovalIds.has(client.id)
+              )
+                return [client];
               return isBoardRecordProtected("client", client.id) ? [client] : [];
             }
             if (
@@ -2290,7 +2829,9 @@ export default function Page() {
 
         const removedClientIds = new Set([
           ...deletedClientIds,
-          ...filteredOutClientIds,
+          ...[...filteredOutClientIds].filter(
+            (clientId) => !deferredFocusedFilterRemovalIds.has(clientId),
+          ),
         ]);
         if (removedClientIds.size) {
           setClientAssignees((current) => {

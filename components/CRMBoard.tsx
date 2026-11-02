@@ -1974,6 +1974,11 @@ export function CRMBoard({
     [setClients],
   );
   const boardToolbarRef = useRef<HTMLDivElement>(null);
+  const boardViewportAnchorRef = useRef<{
+    clientId: string;
+    top: number;
+    scrollTop: number;
+  } | null>(null);
   const [boardToolbarWidth, setBoardToolbarWidth] = useState<number | null>(
     null,
   );
@@ -2044,6 +2049,65 @@ export function CRMBoard({
     observer.observe(toolbar);
     return () => observer.disconnect();
   }, []);
+
+  // Preserve the focused row (or the first visible row) when result groups
+  // are inserted/expanded above it. The scrollTop guard ensures that a real
+  // user scroll always wins over this automatic compensation.
+  useLayoutEffect(() => {
+    const toolbar = boardToolbarRef.current;
+    const scrollViewport = toolbar?.closest("main");
+    if (!toolbar || !scrollViewport) return;
+
+    const viewportRect = scrollViewport.getBoundingClientRect();
+    const visibleTop = Math.max(
+      viewportRect.top,
+      toolbar.getBoundingClientRect().bottom,
+    );
+    const visibleBottom = viewportRect.bottom;
+    const allRows = Array.from(
+      scrollViewport.querySelectorAll<HTMLElement>("[data-client-row]"),
+    );
+
+    const previous = boardViewportAnchorRef.current;
+    if (
+      previous &&
+      Math.abs(scrollViewport.scrollTop - previous.scrollTop) <= 2
+    ) {
+      const previousRow = allRows.find(
+        (row) => row.dataset.clientId === previous.clientId,
+      );
+      if (previousRow) {
+        const displacement =
+          previousRow.getBoundingClientRect().top - previous.top;
+        if (Math.abs(displacement) > 0.5) {
+          scrollViewport.scrollTop += displacement;
+        }
+      }
+    }
+
+    const rows = allRows.filter((row) => {
+      const rect = row.getBoundingClientRect();
+      return rect.bottom > visibleTop && rect.top < visibleBottom;
+    });
+
+    const focusedRow =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement.closest<HTMLElement>("[data-client-row]")
+        : null;
+    const anchorRow =
+      (focusedRow && rows.includes(focusedRow) ? focusedRow : null) ??
+      rows.find((row) => row.getBoundingClientRect().top >= visibleTop) ??
+      rows[0];
+    const clientId = anchorRow?.dataset.clientId;
+    boardViewportAnchorRef.current =
+      anchorRow && clientId
+        ? {
+            clientId,
+            top: anchorRow.getBoundingClientRect().top,
+            scrollTop: scrollViewport.scrollTop,
+          }
+        : null;
+  });
 
   useEffect(() => {
     if (!pendingCloseLead) {
@@ -6919,7 +6983,10 @@ export function CRMBoard({
   // changing the height of everything below the user's working area.
   const boardVisibleGroups = shouldExpandGroupsForResults
     ? boardQueryLoading
-      ? []
+      // The rows still belong to the last successfully displayed query while
+      // its replacement is loading. Keep that mounted working surface visible
+      // instead of clearing the Board to an empty preparation state.
+      ? visibleSearchGroups(searchScopedGroups, false)
       : searchScopedGroups.filter(({ group }) =>
           completedResultGroupIds.has(group.id),
         )
