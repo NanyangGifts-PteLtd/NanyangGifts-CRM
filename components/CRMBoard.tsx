@@ -144,7 +144,14 @@ import {
   visibleSearchGroups,
 } from "@/lib/board-search";
 
-const DEFAULT_BOARD_SEARCH_COLUMNS = ["client:client", "subitem:name"];
+const DEFAULT_BOARD_SEARCH_COLUMNS = [
+  "client:client",
+  "subitem:name",
+  "client:status",
+  "client:company",
+  "client:phone",
+  "client:email",
+];
 
 type PendingOptionDeletion = {
   code: string;
