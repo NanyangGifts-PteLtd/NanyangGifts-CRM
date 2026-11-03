@@ -711,6 +711,13 @@ export default function Page() {
   const reconciliationTimer = useRef<number | null>(null);
   const boardLoadRecoveryTimer = useRef<number | null>(null);
   const boardLoadAbortController = useRef<AbortController | null>(null);
+  // A query change can cancel an earlier request before the replacement
+  // effect takes ownership. Track that rare orphaned-loading state so the
+  // Board cannot remain indefinitely blank with no active request.
+  const orphanedBoardLoadRecoveryRef = useRef<{
+    queryKey: string;
+    attempts: number;
+  } | null>(null);
   // Group-page priming is optional scroll-ahead work. Keep it independently
   // cancellable so a full Board refresh always has database headroom.
   const groupPagePrefetchAbortControllers = useRef(
@@ -3221,6 +3228,7 @@ export default function Page() {
       }
       return;
     }
+    const queryKeyAtStart = JSON.stringify(boardQuery);
     let offset = groupPageState[groupId]?.loaded
       ? groupPageState[groupId]?.loadedCount ?? 0
       : 0;
@@ -3255,7 +3263,11 @@ export default function Page() {
           boardQuery,
           { signal: abortController.signal },
         );
-        if (abortController.signal.aborted) return;
+        if (
+          abortController.signal.aborted ||
+          boardQueryKeyRef.current !== queryKeyAtStart
+        )
+          return;
         mergeAssignmentDataForClients(
           page.clients,
           { people: page.clientAssignees, pm: page.clientPmAssignees },
@@ -3289,6 +3301,7 @@ export default function Page() {
       }
     } catch (error) {
       if (isAbortError(error)) return;
+      if (boardQueryKeyRef.current !== queryKeyAtStart) return;
       console.error("Failed to prefetch CRM group pages", error);
       setGroupPageState((current) => ({
         ...current,
@@ -3299,16 +3312,26 @@ export default function Page() {
         },
       }));
     } finally {
-      if (
-        groupPagePrefetchAbortControllers.current.get(groupId) !==
-        abortController
-      )
-        return;
-      groupPagePrefetchAbortControllers.current.delete(groupId);
-      setGroupPageState((current) => ({
-        ...current,
-        [groupId]: { ...current[groupId], loading: false },
-      }));
+      const currentController =
+        groupPagePrefetchAbortControllers.current.get(groupId);
+      // A newer request owns this group now; it alone may change its state.
+      if (currentController && currentController !== abortController) return;
+      // Do not let cleanup from an abandoned search/filter result alter the
+      // loading state assembled for a newer query.
+      if (boardQueryKeyRef.current !== queryKeyAtStart) return;
+      if (currentController === abortController)
+        groupPagePrefetchAbortControllers.current.delete(groupId);
+      // A Board query transition clears the controller map before the old
+      // promise settles. Release the old loading marker as well; otherwise
+      // the observer will refuse to request this group again.
+      setGroupPageState((current) =>
+        current[groupId]
+          ? {
+              ...current,
+              [groupId]: { ...current[groupId], loading: false },
+            }
+          : current,
+      );
     }
   }, [
     boardQuery,
@@ -3385,6 +3408,41 @@ export default function Page() {
       reason: "board-query-change",
     });
   }, [boardQuery, reloadClients, roleLoaded]);
+
+  useEffect(() => {
+    if (
+      !roleLoaded ||
+      activePanel !== "crm" ||
+      clientsLoaded ||
+      boardLoadAbortController.current !== null
+    )
+      return;
+
+    const queryKey = JSON.stringify(boardQuery);
+    const timer = window.setTimeout(() => {
+      // The normal query-change effect installs its controller immediately.
+      // If this remains unowned, a rapid cancellation left the Board in an
+      // orphaned loading state rather than merely a debounced wait.
+      if (
+        activePanelRef.current !== "crm" ||
+        clientsLoaded ||
+        boardLoadAbortController.current !== null ||
+        boardQueryKeyRef.current !== queryKey
+      )
+        return;
+      const previous = orphanedBoardLoadRecoveryRef.current;
+      const attempts =
+        previous?.queryKey === queryKey ? previous.attempts + 1 : 1;
+      if (attempts > 2) return;
+      orphanedBoardLoadRecoveryRef.current = { queryKey, attempts };
+      console.warn("Restarting orphaned CRM Board load", { queryKey, attempts });
+      void reloadClients({
+        preservePagination: false,
+        reason: "orphaned-query-load-recovery",
+      });
+    }, 900);
+    return () => window.clearTimeout(timer);
+  }, [activePanel, boardQuery, clientsLoaded, reloadClients, roleLoaded]);
 
   useEffect(() => {
     if (searchParams.get("panel") !== "crm" || !clientsLoaded) return;
