@@ -293,6 +293,7 @@ const CLIENT_HEADER_COLS: HeaderCol[] = [
   { key: "email", label: "Email", width: 90, minWidth: 7 },
   { key: "phone", label: "Phone", width: 80, minWidth: 7 },
   { key: "requirements", label: "Requirements", width: 90, minWidth: 7 },
+  { key: "quantity", label: "Quantity", width: 80, minWidth: 7 },
   { key: "nbd", label: "NBD", width: 100, minWidth: 7 },
   {
     key: "logoRequirementsFile",
@@ -2616,14 +2617,24 @@ export function CRMBoard({
       ),
       ...customClientHeaderCols,
     ];
-    // Saved layouts predate Follow Up Done. Insert this new action beside its
-    // source date instead of appending it at the far end of an old layout.
-    const mergedOrderWithFollowUpDone = clientMergedOrderKeys.includes(
-      "followUpDone",
-    )
+    // Saved layouts predate Quantity. Keep it immediately beside Requirements
+    // rather than silently appending it to the far end of an old layout.
+    const mergedOrderWithQuantity = clientMergedOrderKeys.includes("quantity")
       ? clientMergedOrderKeys
       : (() => {
           const next = [...clientMergedOrderKeys];
+          const requirementsIndex = next.indexOf("requirements");
+          if (requirementsIndex >= 0) next.splice(requirementsIndex + 1, 0, "quantity");
+          return next;
+        })();
+    // Saved layouts predate Follow Up Done. Insert this new action beside its
+    // source date instead of appending it at the far end of an old layout.
+    const mergedOrderWithFollowUpDone = mergedOrderWithQuantity.includes(
+      "followUpDone",
+    )
+      ? mergedOrderWithQuantity
+      : (() => {
+          const next = [...mergedOrderWithQuantity];
           const followUpIndex = next.indexOf("followUp");
           if (followUpIndex >= 0) next.splice(followUpIndex + 1, 0, "followUpDone");
           return next;
@@ -5637,7 +5648,7 @@ export function CRMBoard({
       const options = labelOptionsFor(category, key);
       return options ? labelColors(options) : undefined;
     };
-    const numericClientKeys = new Set(["totalPrice", "totalMarkup"]);
+    const numericClientKeys = new Set(["quantity", "totalPrice", "totalMarkup"]);
     const numericSubitemKeys = new Set([
       "qty", "cost", "cSgd", "tcSgd", "manpower", "ls", "os", "tc",
       "uc", "pl", "sl", "leadTime", "price", "up", "markup",
@@ -8978,6 +8989,7 @@ export function CRMBoard({
           email: "email",
           phone: "phone",
           requirements: "requirements",
+          quantity: "quantity",
           unqualifiedReason: "unqualifiedReason",
           nbd: "nbd",
           totalPrice: "totalPrice",
@@ -9256,6 +9268,11 @@ export function CRMBoard({
           email: createdClient.email ?? "",
           phone: createdClient.phone ?? "",
           requirements: createdClient.requirements ?? "",
+          quantity:
+            createdClient.client_quantity === null ||
+            createdClient.client_quantity === undefined
+              ? ""
+              : String(createdClient.client_quantity),
           unqualifiedReason: createdClient.unqualified_reason ?? "",
           nbd: createdClient.nbd ?? "",
           groupId: createdClient.group_id ?? defaultGroupId,

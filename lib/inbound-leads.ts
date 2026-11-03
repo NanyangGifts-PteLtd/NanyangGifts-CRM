@@ -371,6 +371,7 @@ export async function ingestLead(lead: NormalizedInboundLead): Promise<InboundRe
         email: lead.email,
         phone: lead.phone,
         requirements: lead.notes,
+        client_quantity: lead.qty === "" ? null : Number(lead.qty),
         nbd: lead.nbd,
         total_price: lead.orderTotal,
         billing_address: lead.billingAddress,
@@ -380,7 +381,7 @@ export async function ingestLead(lead: NormalizedInboundLead): Promise<InboundRe
         color: "#7BCBD5",
         activity_log: [],
         group_id: groupId,
-        custom_fields: { source: lead.source, submissionType: lead.submissionType, external_id: lead.externalId, qty: lead.qty, orderNumber: lead.orderNumber, currency: lead.currency, requested_nbd: lead.nbd },
+        custom_fields: { source: lead.source, submissionType: lead.submissionType, external_id: lead.externalId, orderNumber: lead.orderNumber, currency: lead.currency, requested_nbd: lead.nbd },
       }).select("id").single();
       if (clientError) throw new InboundLeadError(clientError.message);
       ingestion = await updateIngestion(ingestion.id, { client_id: client.id });

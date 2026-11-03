@@ -358,7 +358,7 @@ type Clients = {
   phone: string | null;
   requirements: string | null;
   unqualified_reason: string | null;
-  qty: string | null;
+  client_quantity: string | number | null;
   nbd: string | null;
   total_price: string | null;
   times_reassigned?: number | null;
@@ -696,6 +696,10 @@ function mapClients(row: Clients): Client {
     email: row.email ?? "",
     phone: row.phone ?? "",
     requirements: row.requirements ?? "",
+    quantity:
+      row.client_quantity === null || row.client_quantity === undefined
+        ? ""
+        : String(row.client_quantity),
     unqualifiedReason: row.unqualified_reason ?? "",
     nbd: row.nbd ?? "",
     totalPrice: row.total_price ?? "",
@@ -1007,7 +1011,7 @@ export async function fetchClientsWithSubitems(params?: {
     "tracking_overall_invoice_payment_status",
     "tracking_overall_invoice_payment_status_option_id",
     "tracking_invoice_status_summary", "company", "email",
-    "phone", "requirements", "unqualified_reason", "nbd",
+    "phone", "requirements", "client_quantity", "unqualified_reason", "nbd",
     "total_price", "times_reassigned", "billing_address", "created_by", "created_at", "waiting_started_at",
     "group_id", "expanded", "color", "custom_fields", "deleted_at",
     "deleted_by",
@@ -2445,6 +2449,7 @@ export async function createClientRow(
       email: "",
       phone: "",
       requirements: "",
+      client_quantity: null,
       unqualified_reason: "",
       nbd: "",
       total_price: "",
@@ -2774,6 +2779,12 @@ export async function updateClientRow(
     ...(nextUpdates.phone !== undefined ? { phone: nextUpdates.phone } : {}),
     ...(nextUpdates.requirements !== undefined
       ? { requirements: nextUpdates.requirements }
+      : {}),
+    ...(nextUpdates.quantity !== undefined
+      ? {
+          client_quantity:
+            nextUpdates.quantity.trim() === "" ? null : nextUpdates.quantity,
+        }
       : {}),
     ...(nextUpdates.unqualifiedReason !== undefined
       ? { unqualified_reason: nextUpdates.unqualifiedReason }

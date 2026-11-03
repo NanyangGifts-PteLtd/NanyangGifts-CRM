@@ -11,6 +11,7 @@ type IncomingPayload = {
   phone?: string;
   notes?: string;
   qty?: string | number | null;
+  quantity?: string | number | null;
   nbd?: string | Date | null;
 };
 
@@ -46,7 +47,8 @@ export async function POST(request: NextRequest) {
       currency: "SGD",
       orderTotal: "",
       billingAddress: "",
-      qty: asNumberString(body.qty),
+      // Accept both names while the WPForms/Zapier mapping is transitioned.
+      qty: asNumberString(body.qty ?? body.quantity),
       subitems: [],
     });
     return NextResponse.json(result, { status: result.statusCode });

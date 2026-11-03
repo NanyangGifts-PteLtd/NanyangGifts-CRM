@@ -260,6 +260,8 @@ export interface Client {
   email: string;
   phone: string;
   requirements: string;
+  /** Client-level requested quantity, separate from per-subitem quantities. */
+  quantity: string;
   unqualifiedReason: string;
   nbd: string;
   totalPrice: string;

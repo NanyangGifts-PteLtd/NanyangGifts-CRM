@@ -74,6 +74,13 @@ import { crmCellText } from "@/lib/crm-cell-context";
 const CLIENT_ROW_ACCENT_LEFT_OFFSET_PX = -0.2;
 const UNASSIGNED_TRACKING_STATUS_KEY = "__unassigned";
 
+function normalizeClientQuantity(value: string) {
+  const text = value.trim();
+  if (!text) return "";
+  const number = Number(text);
+  return Number.isFinite(number) ? String(number) : "";
+}
+
 function TrackingStatusSummaryBar({
   summary,
   options,
@@ -4804,13 +4811,32 @@ export function ClientRow({
           />
         </div>
         <div
+          data-client-column="quantity"
+          className="flex items-center border-r border-[#D0D4E4] overflow-hidden"
+          style={{
+            height: 30,
+            minWidth: colWidth.quantity,
+            width: colWidth.quantity,
+            order: columnOrderMap.quantity ?? 12,
+          }}
+        >
+          <EditableCell
+            className="!w-full justify-start px-1"
+            value={client.quantity}
+            onChange={(v) => onUpdate({ quantity: v })}
+            normalizeOnSave={normalizeClientQuantity}
+            type="number"
+            placeholder=""
+          />
+        </div>
+        <div
           data-client-column="nbd"
           className="flex items-center border-r border-[#D0D4E4] transition transform active:scale-95 duration-150"
           style={{
             height: 30,
             minWidth: colWidth.nbd,
             width: colWidth.nbd,
-            order: columnOrderMap.nbd ?? 12,
+            order: columnOrderMap.nbd ?? 13,
           }}
         >
           <InlineDatePicker
@@ -4827,7 +4853,7 @@ export function ClientRow({
             height: 30,
             minWidth: colWidth.logoRequirementsFile,
             width: colWidth.logoRequirementsFile,
-            order: columnOrderMap.logoRequirementsFile ?? 13,
+            order: columnOrderMap.logoRequirementsFile ?? 14,
           }}
         >
           {renderAttachmentField("logoRequirementsFile")}
@@ -4839,7 +4865,7 @@ export function ClientRow({
             height: 30,
             minWidth: colWidth.filesMiscellaneous,
             width: colWidth.filesMiscellaneous,
-            order: columnOrderMap.filesMiscellaneous ?? 14,
+            order: columnOrderMap.filesMiscellaneous ?? 15,
           }}
         >
           {renderAttachmentField(
