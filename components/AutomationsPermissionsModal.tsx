@@ -228,9 +228,9 @@ const restrictions: ReferenceItem[] = [
     title: "Subitem lock",
     trigger: "A client’s subitems are locked.",
     behaviour:
-      "Prevents protected subitem/payment-voucher changes. Only directors and developers can toggle the lock.",
+      "Prevents protected subitem/payment-voucher changes and all moves to another CRM group, including status-driven automatic moves. Admins, directors, and developers can toggle the lock.",
     source:
-      "components/CRMBoard.tsx; components/ui/subitems.tsx; app/api/additional-costs/route.ts",
+      "components/CRMBoard.tsx; components/ui/subitems.tsx; lib/crm.ts; database locked-client group guard",
   },
   {
     title: "CRM groups and custom columns",

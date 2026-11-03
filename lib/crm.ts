@@ -2735,6 +2735,21 @@ export async function updateClientRow(
         : null;
   }
 
+  // A client lock protects the client's position as well as its subitems.
+  // This runs after status automations resolve their destination, so a status
+  // such as Quoted or Failed cannot use its automatic group move to bypass the
+  // lock. The database trigger in add_locked_client_group_guard.sql enforces
+  // the same rule for every other current and future write path.
+  if (
+    existing.custom_fields?.subitemsLocked === "true" &&
+    nextUpdates.groupId !== undefined &&
+    nextUpdates.groupId !== existing.group_id
+  ) {
+    throw new Error(
+      "This client is locked. Unlock its subitems before moving it to another group.",
+    );
+  }
+
   const payload = {
     ...(nextUpdates.name !== undefined ? { name: nextUpdates.name } : {}),
     ...(nextUpdates.people !== undefined ? { people: nextUpdates.people } : {}),
