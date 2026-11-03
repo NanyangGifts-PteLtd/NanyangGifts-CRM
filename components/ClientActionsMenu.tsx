@@ -62,6 +62,12 @@ export function ClientActionsMenu({
   const [processing, setProcessing] = useState<"duplicate" | "move" | null>(
     null,
   );
+  // Closed Leads groups are archival destinations created by the closing
+  // workflow. They should remain reachable only through that automation, not
+  // as a manual client-move target.
+  const movableGroups = groups.filter(
+    (group) => !/^closed leads\b/i.test(group.name.trim()),
+  );
   const run = async (
     kind: "duplicate" | "move",
     action: () => void | Promise<void>,
@@ -257,7 +263,7 @@ export function ClientActionsMenu({
                     className="h-9 w-full rounded border border-slate-200 pl-8 pr-2 text-xs outline-none focus:border-sky-400"
                   />
                 </div>
-                {groups
+                {movableGroups
                   .filter((group) =>
                     group.name.toLowerCase().includes(search.toLowerCase()),
                   )
@@ -272,7 +278,7 @@ export function ClientActionsMenu({
                       {group.name}
                     </button>
                   ))}
-                {!groups.some((group) =>
+                {!movableGroups.some((group) =>
                   group.name.toLowerCase().includes(search.toLowerCase()),
                 ) && (
                   <p className="px-2 py-4 text-center text-xs text-slate-400">

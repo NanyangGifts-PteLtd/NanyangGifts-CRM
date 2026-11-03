@@ -10945,6 +10945,7 @@ export function CRMBoard({
                     />
                   </div>
                   {groups
+                    .filter((group) => !/^closed leads\b/i.test(group.name.trim()))
                     .filter((group) =>
                       group.name
                         .toLowerCase()
@@ -10960,11 +10961,13 @@ export function CRMBoard({
                         {group.name}
                       </button>
                     ))}
-                  {groups.filter((group) =>
-                    group.name
-                      .toLowerCase()
-                      .includes(clientMoveSearch.toLowerCase()),
-                  ).length === 0 && (
+                  {groups
+                    .filter((group) => !/^closed leads\b/i.test(group.name.trim()))
+                    .filter((group) =>
+                      group.name
+                        .toLowerCase()
+                        .includes(clientMoveSearch.toLowerCase()),
+                    ).length === 0 && (
                     <div className="px-2 py-5 text-center text-sm text-slate-400">
                       No groups found.
                     </div>
