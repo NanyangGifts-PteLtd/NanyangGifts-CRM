@@ -14,7 +14,12 @@ import {
   X,
   Trash2,
   LoaderCircle,
+  KeyRound,
+  LogOut,
+  Moon,
+  Sun,
 } from "lucide-react";
+import { useTheme } from "next-themes";
 import { Notification } from "../app/types";
 import { LogoutButton } from "./logout-button";
 import type { User } from "@supabase/supabase-js";
@@ -505,6 +510,7 @@ export default function TopBar({
   const [showAutomationsReference, setShowAutomationsReference] =
     useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
+  const { resolvedTheme, setTheme } = useTheme();
   const [hasNewNotification, setHasNewNotification] = useState(false);
   const [serverSearchClients, setServerSearchClients] = useState<Client[]>([]);
   const [serverSearchLoading, setServerSearchLoading] = useState(false);
@@ -1166,13 +1172,29 @@ export default function TopBar({
                 setShowProfile(false);
                 setShowChangePassword(true);
               }}
-              className="w-full text-left px-4 py-2 text-xs hover:bg-[#e7fdff] text-gray-700"
+              className="flex w-full items-center gap-2 px-4 py-2 text-left text-xs text-gray-700 hover:bg-[#e7fdff]"
             >
-              Change Password
+              <KeyRound size={13} className="text-[#43adc4]" /> Change Password
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setTheme(resolvedTheme === "dark" ? "light" : "dark");
+              }}
+              className="flex w-full items-center gap-2 border-t border-gray-100 px-4 py-2 text-left text-xs text-gray-700 hover:bg-[#e7fdff]"
+            >
+              {resolvedTheme === "dark" ? (
+                <Sun size={13} className="text-[#43adc4]" />
+              ) : (
+                <Moon size={13} className="text-[#43adc4]" />
+              )}
+              {resolvedTheme === "dark" ? "Light Mode" : "Dark Mode"}
             </button>
 
             <div className="text-left">
-              <LogoutButton className="w-full justify-start px-4 py-2 text-xs bg-white hover:bg-[#e7fdff] text-red-500" />
+              <LogoutButton className="w-full justify-start gap-2 px-4 py-2 text-xs bg-white hover:bg-[#e7fdff] text-red-500">
+                <LogOut size={13} /> Logout
+              </LogoutButton>
             </div>
           </div>
         )}

@@ -11,6 +11,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import dynamic from "next/dynamic";
+import { useTheme } from "next-themes";
 import {
   ChevronDown,
   ChevronRight,
@@ -517,6 +518,7 @@ export default function GanttChart({
   loadedQueryKey = "",
   defaultPmFilterId = null,
 }: Props) {
+  const { resolvedTheme } = useTheme();
   const [progressById, setProgressById] = useState<
     Map<
       string,
@@ -1478,6 +1480,11 @@ export default function GanttChart({
         0,
         Math.min(canvas.height - 1, Math.round(10 * scale)),
       );
+      // The scheduler marks today's day column with its theme's `secondary`
+      // colour. The overlay below uses that column as its anchor. Keep the
+      // detector in sync with the explicit light/dark theme values instead
+      // of assuming the library's light-theme RGB value.
+      const todayFill = resolvedTheme === "dark" ? [59, 63, 93] : [230, 243, 255];
       try {
         const pixels = context.getImageData(0, y, canvas.width, 1).data;
         let currentStart = -1;
@@ -1486,9 +1493,9 @@ export default function GanttChart({
         for (let x = 0; x < canvas.width; x += 1) {
           const offset = x * 4;
           const isTodayFill =
-            Math.abs(pixels[offset] - 230) <= 2 &&
-            Math.abs(pixels[offset + 1] - 243) <= 2 &&
-            Math.abs(pixels[offset + 2] - 255) <= 2;
+            Math.abs(pixels[offset] - todayFill[0]) <= 2 &&
+            Math.abs(pixels[offset + 1] - todayFill[1]) <= 2 &&
+            Math.abs(pixels[offset + 2] - todayFill[2]) <= 2;
           if (isTodayFill && currentStart < 0) currentStart = x;
           if ((!isTodayFill || x === canvas.width - 1) && currentStart >= 0) {
             const end = isTodayFill && x === canvas.width - 1 ? x : x - 1;
@@ -1512,7 +1519,7 @@ export default function GanttChart({
     timers.push(window.setTimeout(locateHighlightedToday, 80));
     timers.push(window.setTimeout(locateHighlightedToday, 400));
     return () => timers.forEach((timer) => window.clearTimeout(timer));
-  }, [schedulerRange, timelineCanvasHost, timelineCanvasWidth]);
+  }, [resolvedTheme, schedulerRange, timelineCanvasHost, timelineCanvasWidth]);
 
   useEffect(() => {
     const root = schedulerRootRef.current;
@@ -2049,6 +2056,7 @@ export default function GanttChart({
           }
         `}</style>
         <Scheduler
+          key={resolvedTheme === "dark" ? "dark" : "light"}
           data={data}
           onRangeChange={handleRangeChange}
           onItemClick={(item) => {
@@ -2074,6 +2082,24 @@ export default function GanttChart({
           config={{
             zoom: 1,
             lang: "en",
+            defaultTheme: resolvedTheme === "dark" ? "dark" : "light",
+            theme: {
+              dark: {
+                background: "#181b34",
+                gridBackground: "#1f2340",
+                primary: "#343856",
+                secondary: "#3b3f5d",
+                tertiary: "#515573",
+                textPrimary: "#e7e9f7",
+                textSecondary: "#d2d5e7",
+                placeholder: "#a9aec7",
+                border: "#515573",
+                button: "#343856",
+                hover: "#3d5067",
+                tooltip: "#343856",
+                disabled: "#2c304d",
+              },
+            },
             // Server pages are loaded progressively, but the scheduler's own
             // record pagination must never split the already-loaded rows.
             // Otherwise its fixed 20-row page hides the vertical extent that

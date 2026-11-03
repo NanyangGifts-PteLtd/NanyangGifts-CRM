@@ -149,6 +149,161 @@
     --chart-5: 340 75% 55%;
   }
 }
+
+/* Friday dark mode: the palette follows Monday's Board view.  Deliberate
+   label/accent colours are intentionally not remapped; only neutral canvas,
+   surface, text, and grid colours change. */
+.dark {
+  color-scheme: dark;
+  --background: #181b34;
+  --foreground: #e7e9f7;
+  --card: #303451;
+  --card-foreground: #e7e9f7;
+  --popover: #303451;
+  --popover-foreground: #e7e9f7;
+  --border: #515573;
+  --input: #444866;
+  --muted: #272b49;
+  --muted-foreground: #a9aec7;
+}
+
+.dark,
+.dark body {
+  background-color: #181b34;
+  color: #e7e9f7;
+}
+
+/* Shared neutral backgrounds used throughout the shell, boards, menus, and
+   dialogs. These leave status labels and explicit accent colours untouched. */
+.dark .bg-white { background-color: #343856 !important; }
+.dark .bg-\[\#ffffff\],
+.dark .bg-\[\#f8fafc\],
+.dark .bg-\[\#f8f9fb\],
+.dark .bg-\[\#f7fbfc\] { background-color: #343856 !important; }
+.dark .bg-gray-50,
+.dark .bg-slate-50 { background-color: #2c304d !important; }
+.dark .bg-gray-100,
+.dark .bg-slate-100 { background-color: #3b3f5d !important; }
+.dark .bg-gray-200,
+.dark .bg-slate-200 { background-color: #464a68 !important; }
+.dark .bg-slate-950 { background-color: #111326 !important; }
+.dark .hover\:bg-gray-50:hover,
+.dark .hover\:bg-slate-50:hover { background-color: #3b3f5d !important; }
+.dark .hover\:bg-slate-100:hover,
+.dark .hover\:bg-gray-100:hover { background-color: #464a68 !important; }
+.dark .hover\:bg-\[\#e7fdff\]:hover { background-color: #3d5067 !important; }
+.dark .animated-background {
+  background-image: none;
+  background-color: #181b34;
+}
+
+/* Neutral typography and grid lines. */
+.dark .text-black,
+.dark .text-gray-900,
+.dark .text-gray-800,
+.dark .text-slate-900,
+.dark .text-slate-800 { color: #e7e9f7 !important; }
+.dark .text-gray-700,
+.dark .text-slate-700,
+.dark .text-gray-600,
+.dark .text-slate-600 { color: #d2d5e7 !important; }
+.dark .text-gray-500,
+.dark .text-slate-500,
+.dark .text-gray-400,
+.dark .text-slate-400,
+.dark .text-gray-300,
+.dark .text-slate-300 { color: #a9aec7 !important; }
+.dark .placeholder-gray-500::placeholder { color: #a9aec7 !important; }
+.dark .border,
+.dark .border-gray-50,
+.dark .border-gray-100,
+.dark .border-gray-200,
+.dark .border-gray-300,
+.dark .border-slate-100,
+.dark .border-slate-200,
+.dark .border-slate-300,
+.dark .border-\[\#D0D4E4\] { border-color: #515573 !important; }
+
+/* The CRM Board uses bespoke row and selection classes rather than only the
+   general Tailwind neutrals above. */
+.dark .crm-board [data-client-row],
+.dark .crm-board table tbody tr,
+.dark .crm-board [data-client-header] {
+  border-color: #515573;
+}
+.dark .crm-board [data-client-row]:not(.bg-sky-100\/80) {
+  background-color: #343856;
+}
+.dark .crm-board [data-client-row].bg-sky-100\/80 {
+  background-color: #1a5875 !important;
+}
+.dark .crm-board input,
+.dark .crm-board textarea,
+.dark .crm-board select {
+  background-color: #343856;
+  color: #e7e9f7;
+  border-color: #515573;
+}
+
+.dark .AlertDialogContent,
+.dark .TooltipContent {
+  background-color: #343856;
+  color: #e7e9f7;
+}
+.dark .AlertDialogOverlay { background-color: rgb(10 12 28 / 72%); }
+.dark .TooltipArrow { fill: #343856; }
+
+/* Calculated and managed board cells use amber to distinguish them from
+   editable cells. The light amber has insufficient contrast on the navy
+   canvas, so retain the distinction with a darker warm surface instead. */
+.dark .crm-board .bg-amber-50 {
+  background-color: #5a4a28 !important;
+}
+.dark .crm-board .text-amber-950 {
+  color: #fff1c2 !important;
+}
+
+/* An OCF is a document, not application chrome. Keep both internal and
+   client-facing OCFs in their printable light treatment even when the shell
+   is dark. */
+.dark .ocf-light-document {
+  color-scheme: light;
+  background-color: #f3f4f6 !important;
+  color: #111827 !important;
+}
+.dark .ocf-light-document .bg-white { background-color: #fff !important; }
+.dark .ocf-light-document .bg-\[\#f3f4f6\],
+.dark .ocf-light-document .bg-gray-50,
+.dark .ocf-light-document .bg-slate-50 { background-color: #f3f4f6 !important; }
+.dark .ocf-light-document .bg-gray-100,
+.dark .ocf-light-document .bg-slate-100 { background-color: #e5e7eb !important; }
+.dark .ocf-light-document .text-black { color: #000 !important; }
+.dark .ocf-light-document .text-gray-900,
+.dark .ocf-light-document .text-gray-800,
+.dark .ocf-light-document .text-slate-900,
+.dark .ocf-light-document .text-slate-800 { color: #111827 !important; }
+.dark .ocf-light-document .text-gray-700,
+.dark .ocf-light-document .text-gray-600,
+.dark .ocf-light-document .text-slate-700,
+.dark .ocf-light-document .text-slate-600 { color: #374151 !important; }
+.dark .ocf-light-document .text-gray-500,
+.dark .ocf-light-document .text-slate-500 { color: #6b7280 !important; }
+.dark .ocf-light-document .border,
+.dark .ocf-light-document .border-gray-50,
+.dark .ocf-light-document .border-gray-100,
+.dark .ocf-light-document .border-gray-200,
+.dark .ocf-light-document .border-gray-300,
+.dark .ocf-light-document .border-slate-100,
+.dark .ocf-light-document .border-slate-200,
+.dark .ocf-light-document .border-slate-300 { border-color: #d1d5db !important; }
+.dark .ocf-light-document input,
+.dark .ocf-light-document textarea,
+.dark .ocf-light-document select {
+  color-scheme: light;
+  background-color: #fff !important;
+  color: #111827 !important;
+  border-color: #d1d5db !important;
+}
 /* Alert styles */
 .AlertDialogOverlay {
   background-color: white;

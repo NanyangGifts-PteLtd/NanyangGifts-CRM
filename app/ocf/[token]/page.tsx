@@ -7,7 +7,7 @@ type PageProps = {
 
 function LoadingFallback() {
     return (
-        <main className="min-h-screen bg-[#f3f4f6] px-4 py-8">
+        <main className="ocf-light-document min-h-screen bg-[#f3f4f6] px-4 py-8">
             <div className="mx-auto max-w-5xl bg-white p-6 shadow-lg">
                 <div className="animate-pulse space-y-4">
                     <div className="h-8 w-64 rounded bg-gray-200" />

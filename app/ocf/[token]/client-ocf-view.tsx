@@ -221,7 +221,7 @@ export default function ClientOcfView({ ocf }: { ocf: Ocf }) {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [expandedImage]);
   return (
-    <main className="min-h-screen bg-[#f3f4f6] px-4 py-8 print:bg-white print:p-0">
+    <main className="ocf-light-document min-h-screen bg-[#f3f4f6] px-4 py-8 print:bg-white print:p-0">
       <div className="mx-auto max-w-5xl bg-white p-6 shadow-lg print:max-w-none print:p-0 print:shadow-none">
         <div className="mb-4 flex items-start justify-between gap-4 border-b border-black pb-4 print:hidden">
           <div>

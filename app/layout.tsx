@@ -1,6 +1,15 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { ConfirmationProvider } from "@/components/ui/confirmation-provider";
+import { ThemeProvider } from "@/components/theme-provider";
+
+const themeBootScript = `
+try {
+  var theme = localStorage.getItem('friday-theme');
+  if (theme === 'dark') document.documentElement.classList.add('dark');
+  else document.documentElement.classList.remove('dark');
+} catch (_) {}
+`;
 
 const defaultUrl = process.env.VERCEL_URL
     ? `https://${process.env.VERCEL_URL}`
@@ -26,8 +35,13 @@ export default function RootLayout({
 }) {
     return (
         <html lang="en" suppressHydrationWarning>
+            <head>
+                <script dangerouslySetInnerHTML={{ __html: themeBootScript }} />
+            </head>
             <body className="antialiased">
-                <ConfirmationProvider>{children}</ConfirmationProvider>
+                <ThemeProvider>
+                    <ConfirmationProvider>{children}</ConfirmationProvider>
+                </ThemeProvider>
                 <div id="portal" />
             </body>
         </html>

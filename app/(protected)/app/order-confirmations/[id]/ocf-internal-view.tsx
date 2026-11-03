@@ -338,7 +338,7 @@ export default function OcfInternalView({
   }
 
   return (
-    <main className="min-h-screen bg-[#f3f4f6] print:bg-white">
+    <main className="ocf-light-document min-h-screen bg-[#f3f4f6] print:bg-white">
       <div className="mx-auto max-w-5xl bg-white p-6 shadow-lg print:max-w-none print:p-0 print:shadow-none">
         <div className="relative mb-4 flex min-h-28 items-start justify-between gap-4 border-b border-black pb-14 print:hidden">
           <div>
