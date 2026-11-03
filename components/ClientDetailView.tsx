@@ -7,6 +7,7 @@ import {
   ChevronRight,
   Copy,
   FileText,
+  Pencil,
   Paperclip,
   Send,
   ShieldAlert,
@@ -1019,6 +1020,17 @@ export function ClientDetailView({
                               className="text-xs text-red-500"
                             >
                               Remove
+                            </button>
+                          )}
+                          {field === "ocfFiles" && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                toast.info("OCF editing will be available here soon.")
+                              }
+                              className="inline-flex items-center gap-1 text-xs font-medium text-sky-700 hover:underline"
+                            >
+                              <Pencil size={12} /> Edit
                             </button>
                           )}
                         </div>

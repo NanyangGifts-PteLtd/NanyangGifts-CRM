@@ -14732,13 +14732,6 @@ export function CRMBoard({
           setIsOcfChooserOpen(false);
           setOcfClient(null);
         }}
-        onView={() => {
-          if (!ocfClient) return;
-          setIsOcfChooserOpen(false);
-          setDetailClientInitialTab("files");
-          setDetailClientId(ocfClient.id);
-          setOcfClient(null);
-        }}
         onGenerate={() => {
           setIsOcfChooserOpen(false);
           setIsOcfModalOpen(true);

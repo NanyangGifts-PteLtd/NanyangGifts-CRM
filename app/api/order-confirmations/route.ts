@@ -19,7 +19,7 @@ export async function GET(request: Request) {
 
   const { data, error } = await supabase
     .from("order_confirmations")
-    .select("id, generated_at, client_signed_at, status, client_name_snapshot")
+    .select("id, generated_at, client_signed_at, status, client_name_snapshot, company_snapshot")
     .eq("client_id", clientId)
     .order("generated_at", { ascending: false });
 
@@ -29,7 +29,14 @@ export async function GET(request: Request) {
   return NextResponse.json(
     (data ?? []).map((ocf) => ({
       id: ocf.id,
-      name: `Order Confirmation Form${ocf.client_name_snapshot ? ` - ${ocf.client_name_snapshot}` : ""}`,
+      name: (() => {
+        const details = [ocf.client_name_snapshot, ocf.company_snapshot]
+          .filter((part): part is string => Boolean(part?.trim()))
+          .join(" ");
+        return details
+          ? `Order Confirmation Form - ${details}`
+          : "Order Confirmation Form";
+      })(),
       url: `/app/order-confirmations/${ocf.id}`,
       createdAt: ocf.generated_at,
       signed: Boolean(ocf.client_signed_at) || ocf.status === "submitted",
