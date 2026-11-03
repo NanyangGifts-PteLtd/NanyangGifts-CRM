@@ -206,6 +206,15 @@ const BOARD_OPTION_GROUP_CODES = [
   "tracking_verified_invoice_monday",
   "moon_cake",
 ] as const;
+
+// These statuses have a per-lead confirmation flow (or will have one very
+// shortly).  A bulk operation cannot safely supply that confirmation/evidence
+// for every selected row, so keep them strictly row-level.
+const BULK_STATUS_EXCLUDED_SYSTEM_KEYS = new Set([
+  "client_status_closed",
+  "client_status_unqualified",
+  "client_status_failed",
+]);
 const normalizeBlacklistPhone = (value: string) => value.replace(/\D/g, "");
 type CustomerMatchPending = {
   clientId: string;
@@ -9845,6 +9854,55 @@ export function CRMBoard({
     ],
   );
 
+  const updateSelectedClientStatus = useCallback(
+    async (status: string, statusOptionId: string | null) => {
+      const statusOption = clientStatusEntries.find(
+        (option) => option.id === statusOptionId,
+      );
+      if (!statusOption?.id) return;
+      if (BULK_STATUS_EXCLUDED_SYSTEM_KEYS.has(statusOption.systemKey ?? "")) {
+        toast.info("Set this status one lead at a time", {
+          description:
+            "Closed, Unqualified, and Failed use their own per-lead confirmation flow.",
+        });
+        return;
+      }
+
+      const clientIds = [...selectedIds];
+      if (!clientIds.length) return;
+      if (clientIds.some((clientId) => !canEditClientRecord(clientId))) {
+        showAssignmentPermissionError();
+        return;
+      }
+
+      const results = await Promise.all(
+        clientIds.map((clientId) =>
+          updateClient(clientId, {
+            status: status as ClientStatus,
+            statusOptionId,
+          }),
+        ),
+      );
+      const succeeded = results.filter(Boolean).length;
+      if (succeeded === clientIds.length) {
+        toast.success("Client statuses updated", {
+          description: `${succeeded} selected client${succeeded === 1 ? "" : "s"} set to ${status}.`,
+        });
+      } else if (succeeded) {
+        toast.warning("Some client statuses were not updated", {
+          description: `${succeeded} of ${clientIds.length} selected clients were updated.`,
+        });
+      }
+    },
+    [
+      canEditClientRecord,
+      clientStatusEntries,
+      selectedIds,
+      showAssignmentPermissionError,
+      updateClient,
+    ],
+  );
+
   const addSubitem = useCallback(
     async (clientId: string, name: string) => {
       const trimmedName = name.trim();
@@ -14167,6 +14225,11 @@ export function CRMBoard({
                           }
                           onUpdate={(updates) =>
                             updateClient(client.id, updates)
+                          }
+                          onApplySelectedClientStatus={
+                            selectedIds.size > 1
+                              ? updateSelectedClientStatus
+                              : undefined
                           }
                           onTrackingStatusSummaryChanged={
                             handleTrackingStatusSummaryChanged

@@ -44,9 +44,10 @@ const automations: ReferenceItem[] = [
     title: "Follow Up date",
     trigger: "A new inbound lead is created.",
     behaviour:
-      "Sets Follow Up to the second Singapore working day after creation.",
+      "Sets Follow Up to the second Singapore working day after creation. Completing Follow Up moves it one working day ahead for the managed High-importance label, or two working days ahead for every other importance.",
     scope: "Working days exclude weekends and entries in the Working Calendar.",
-    source: "lib/inbound-leads.ts; lib/working-calendar.ts",
+    source:
+      "lib/inbound-leads.ts; components/ui/clientrows.tsx; lib/working-calendar.ts",
   },
   {
     title: "QuickBooks estimate invoice sync",

@@ -67,6 +67,12 @@ import { overallPaymentStatus as calculateOverallPaymentStatus } from "@/lib/pay
 import { InlineDatePicker } from "./inline-date-picker";
 import { crmCellText } from "@/lib/crm-cell-context";
 
+const CLIENT_STATUS_BULK_EXCLUDED_SYSTEM_KEYS = new Set([
+  "client_status_closed",
+  "client_status_unqualified",
+  "client_status_failed",
+]);
+
 // Manual visual tuning point for the solid accent on every client row.
 // Use a negative value to move the client-row rail left, or a positive value
 // to move it right. The client header is aligned to the row's border edge in
@@ -371,6 +377,10 @@ export type ClientRowProps = {
   onToggleExpand: () => void;
   onToggleSelect: (shiftKey: boolean) => void;
   onUpdate: (u: Partial<Client>) => void;
+  onApplySelectedClientStatus?: (
+    status: string,
+    statusOptionId: string | null,
+  ) => void | Promise<void>;
   onTrackingStatusSummaryChanged?: (
     clientId: string,
     summary: Record<string, number>,
@@ -580,6 +590,7 @@ export function ClientRow({
   onToggleExpand,
   onToggleSelect,
   onUpdate,
+  onApplySelectedClientStatus,
   onTrackingStatusSummaryChanged,
   onUpdateSubitem,
   onApplySelectedSubitemStatus,
@@ -757,6 +768,21 @@ export function ClientRow({
       .trim()
       .toLowerCase(),
   );
+  // Compare the option ID selected on the client with the managed High
+  // importance option.  The display name can be renamed, so it must not be
+  // used to decide the automatic follow-up window.
+  const highImportanceOption = useMemo(
+    () =>
+      importanceOptions.find(
+        (option) => option.systemKey === "importance_high",
+      ) ?? null,
+    [importanceOptions],
+  );
+  const followUpWorkingDays =
+    highImportanceOption?.id &&
+    client.importanceOptionId === highImportanceOption.id
+      ? 1
+      : 2;
   const canVerifyTrackingMatch = ["director", "dev"].includes(
     String(currentUserRole ?? "").trim().toLowerCase(),
   );
@@ -800,7 +826,7 @@ export function ClientRow({
     setIsCompletingFollowUp(true);
     try {
       const response = await fetch(
-        "/api/working-calendar/add-working-days?days=2",
+        `/api/working-calendar/add-working-days?days=${followUpWorkingDays}`,
       );
       const result = await response.json();
       if (!response.ok || !result?.date) {
@@ -4402,7 +4428,7 @@ export function ClientRow({
             onClick={() => void completeFollowUp()}
             title={
               canEditClient
-                ? "Move Follow Up to two Singapore working days from today"
+                ? `Move Follow Up to ${followUpWorkingDays} Singapore working day${followUpWorkingDays === 1 ? "" : "s"} from today`
                 : "You must be assigned to this client to complete its follow-up"
             }
             className="w-full rounded bg-[#12b8aa] px-2 py-1 text-xs font-semibold text-white transition hover:bg-[#0e9f93] disabled:cursor-not-allowed disabled:opacity-45"
@@ -4424,6 +4450,20 @@ export function ClientRow({
             value={client.status}
             onChange={(v, option) => {
               const nextStatus = v as ClientStatus;
+              // Match subitem bulk status editing: the label menu stays on
+              // the row itself, while an eligible choice applies to every
+              // selected client. Confirmation-based statuses deliberately
+              // remain a single-row action.
+              if (
+                isSelected &&
+                onApplySelectedClientStatus &&
+                !CLIENT_STATUS_BULK_EXCLUDED_SYSTEM_KEYS.has(
+                  option?.systemKey ?? "",
+                )
+              ) {
+                void onApplySelectedClientStatus(v, option?.id ?? null);
+                return;
+              }
               onUpdate({
                 status: nextStatus,
                 statusOptionId: option?.id ?? null,
