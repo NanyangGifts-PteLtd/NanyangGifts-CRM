@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   Copy,
+  Eraser,
   ExternalLink,
   MoreHorizontal,
   MoveRight,
@@ -27,6 +28,7 @@ export function ClientActionsMenu({
   onDuplicate,
   onMove,
   onDelete,
+  onClearCell,
   canManageSubitemLock = false,
   subitemsLocked = false,
   onToggleSubitemsLock,
@@ -42,6 +44,7 @@ export function ClientActionsMenu({
   onDuplicate: () => void | Promise<void>;
   onMove: (groupId: string) => void | Promise<void>;
   onDelete: () => void;
+  onClearCell?: (cellKey: string) => void | Promise<void>;
   canManageSubitemLock?: boolean;
   subitemsLocked?: boolean;
   onToggleSubitemsLock?: () => void;
@@ -56,6 +59,10 @@ export function ClientActionsMenu({
   } | null>(null);
   const [moving, setMoving] = useState(false);
   const [contextCellText, setContextCellText] = useState<string | null>(null);
+  const [contextCellKey, setContextCellKey] = useState<string | null>(null);
+  const [canClearContextCell, setCanClearContextCell] = useState(false);
+  const [clearCellDisabledReason, setClearCellDisabledReason] = useState("");
+  const [clearingCell, setClearingCell] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const [search, setSearch] = useState("");
@@ -106,6 +113,15 @@ export function ClientActionsMenu({
           ? detail.cellText
           : null,
       );
+      setContextCellKey(
+        typeof detail !== "string" ? detail.cellKey ?? null : null,
+      );
+      setCanClearContextCell(
+        typeof detail !== "string" && detail.canClearCell === true,
+      );
+      setClearCellDisabledReason(
+        typeof detail !== "string" ? detail.clearCellDisabledReason ?? "" : "",
+      );
       setOpen(true);
     };
     window.addEventListener("crm:client-actions", handler);
@@ -140,6 +156,9 @@ export function ClientActionsMenu({
         onClick={(event) => {
           event.stopPropagation();
           setContextCellText(null);
+          setContextCellKey(null);
+          setCanClearContextCell(false);
+          setClearCellDisabledReason("");
           const rect = event.currentTarget.getBoundingClientRect();
           setOpen((value) => {
             if (!value) {
@@ -179,6 +198,36 @@ export function ClientActionsMenu({
                 className="flex w-full items-center gap-2 rounded px-2 py-2 text-xs text-slate-700 hover:bg-slate-50"
               >
                 <Copy size={14} /> Copy cell
+              </button>
+              <button
+                type="button"
+                disabled={
+                  !contextCellKey ||
+                  !canClearContextCell ||
+                  !onClearCell ||
+                  clearingCell
+                }
+                title={
+                  canClearContextCell
+                    ? "Clear cell"
+                    : clearCellDisabledReason ||
+                      "This cell cannot be cleared."
+                }
+                onClick={() => {
+                  if (!contextCellKey || !canClearContextCell || !onClearCell)
+                    return;
+                  setClearingCell(true);
+                  void Promise.resolve(onClearCell(contextCellKey))
+                    .then(() => {
+                      toast.success("Cell cleared");
+                      setOpen(false);
+                    })
+                    .catch(() => toast.error("Could not clear this cell"))
+                    .finally(() => setClearingCell(false));
+                }}
+                className="flex w-full items-center gap-2 rounded px-2 py-2 text-xs text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-400 disabled:hover:bg-transparent"
+              >
+                <Eraser size={14} /> Clear cell
               </button>
               <div className="my-1 border-t border-slate-200" />
             </>

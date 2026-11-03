@@ -103,6 +103,30 @@ const LOCKED_COST_INPUTS = new Set([
   "paymentAmount",
 ]);
 
+// Keep labels, calculated values, tracking fields managed by timelines, and
+// action cells out of this list. The explicit mapping means Clear cell cannot
+// accidentally turn into a second label-management or formula-edit pathway.
+const SUBITEM_CLEARABLE_FIELDS: Record<string, keyof Subitem> = {
+  name: "name",
+  qty: "qty",
+  description: "description",
+  remarks: "remarks",
+  supplier: "supplier",
+  cost: "cost",
+  manpower: "manpower",
+  ls: "ls",
+  os: "os",
+  pl: "pl",
+  sl: "sl",
+  up: "up",
+  idealMarkup: "customFields",
+  orderNumber: "orderNumber",
+  qtyFree: "qtyFree",
+  sample: "sample",
+  qtyWeKeep: "qtyWeKeep",
+  paymentRemarks: "paymentRemarks",
+};
+
 // Shared horizontal adjustment for the nested subitem accent rails.
 // Use a more-negative value to move both rails left; use a larger value to
 // move them right. This is intentionally kept in pixels for visual tuning.
@@ -1245,6 +1269,34 @@ export function SubitemsTable({
       (subitemAssigneeMap[subitemId] ?? []).includes(currentUserId));
   const canEditSubitem = (subitemId: string) =>
     hasSubitemEditPermission(subitemId) && !subitemsLocked;
+  const canClearSubitemCell = (subitem: Subitem, cellKey: string | undefined) => {
+    if (!canEditSubitem(subitem.id) || !cellKey) return false;
+    if (cellKey.startsWith("custom:")) {
+      return subitemCustomCols.some((column) => column.id === cellKey.slice(7));
+    }
+    if (!Object.hasOwn(SUBITEM_CLEARABLE_FIELDS, cellKey)) return false;
+    return !(isCostLocked(subitem) && LOCKED_COST_INPUTS.has(cellKey));
+  };
+  const clearSubitemCell = (subitem: Subitem, cellKey: string) => {
+    if (!canClearSubitemCell(subitem, cellKey)) return;
+    if (cellKey.startsWith("custom:")) {
+      onUpdateSubitem(subitem.id, {
+        customFields: {
+          ...(subitem.customFields ?? {}),
+          [cellKey.slice(7)]: "",
+        },
+      });
+      return;
+    }
+    if (cellKey === "idealMarkup") {
+      onUpdateSubitem(subitem.id, {
+        customFields: { ...(subitem.customFields ?? {}), idealMarkup: "" },
+      });
+      return;
+    }
+    const field = SUBITEM_CLEARABLE_FIELDS[cellKey];
+    if (field) onUpdateSubitem(subitem.id, { [field]: "" } as Partial<Subitem>);
+  };
   const subitemEditBlockMessage = (subitemId: string) =>
     !hasSubitemEditPermission(subitemId)
       ? "You can only edit items that are assigned to you"
@@ -4460,6 +4512,10 @@ export function SubitemsTable({
                   }
                   onContextMenu={(event) => {
                     event.preventDefault();
+                    const cellKey = (event.target as HTMLElement).closest<HTMLElement>(
+                      "[data-subitem-column]",
+                    )?.dataset.subitemColumn;
+                    const canClear = canClearSubitemCell(sub, cellKey);
                     window.dispatchEvent(new Event("crm:close-cell-overlays"));
                     window.dispatchEvent(
                       new CustomEvent("crm:subitem-actions", {
@@ -4467,7 +4523,18 @@ export function SubitemsTable({
                           id: sub.id,
                           clientX: event.clientX,
                           clientY: event.clientY,
-                          cellText: crmCellText(event.target, "td"),
+                          cellText: crmCellText(event.target, "[data-subitem-column]"),
+                          cellKey: cellKey ?? null,
+                          canClearCell: canClear,
+                          clearCellDisabledReason: canClear
+                            ? undefined
+                            : !cellKey
+                              ? "Select a cell to clear."
+                              : !canEditSubitem(sub.id)
+                                ? subitemEditBlockMessage(sub.id)
+                                : isCostLocked(sub) && LOCKED_COST_INPUTS.has(cellKey)
+                                  ? PAID_COST_LOCK_MESSAGE
+                                  : "Labels, calculated fields, and managed fields cannot be cleared.",
                         },
                       }),
                     );
@@ -4536,6 +4603,7 @@ export function SubitemsTable({
                       }
                       onSearchMoveTargets={onSearchMoveTargets}
                       onDelete={() => onDeleteSubitem(sub.id)}
+                      onClearCell={(cellKey) => clearSubitemCell(sub, cellKey)}
                       hideMoveAndDuplicate={isAdditionalCostSubitem(sub)}
                       triggerOffsetPx={-70}
                     />
@@ -4572,6 +4640,7 @@ export function SubitemsTable({
                   {visibleCols.map((col) => (
                     <td
                       key={col.key}
+                      data-subitem-column={col.key}
                       className={`align-middle border-r border-[#D0D4E4] p-0 ${
                         [
                           "name",
@@ -4600,6 +4669,7 @@ export function SubitemsTable({
                   {visibleCustomCols.map((col) => (
                     <td
                       key={col.id}
+                      data-subitem-column={`custom:${col.id}`}
                       className="overflow-hidden align-middle border-r border-[#D0D4E4] px-1 py-1 bg-teal-50/20"
                       style={{
                         minWidth: CUSTOM_COL_WIDTH,

@@ -3,6 +3,15 @@ export type CrmRowActionsEventDetail = {
   clientX?: number;
   clientY?: number;
   cellText?: string;
+  /** Stable Board column key for actions that operate on the clicked cell. */
+  cellKey?: string | null;
+  /**
+   * Calculated by the row that owns the field. This deliberately keeps the
+   * context menu from having to guess whether a field is a label, formula, or
+   * currently locked by a business rule.
+   */
+  canClearCell?: boolean;
+  clearCellDisabledReason?: string;
 };
 
 const normalizeCellText = (value: string) =>

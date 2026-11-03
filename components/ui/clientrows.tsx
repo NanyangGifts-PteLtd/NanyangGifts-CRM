@@ -73,6 +73,22 @@ const CLIENT_STATUS_BULK_EXCLUDED_SYSTEM_KEYS = new Set([
   "client_status_failed",
 ]);
 
+// Label, formula and system-managed fields intentionally do not appear here.
+// Clear cell is a value-reset action, not a way to remove a label selection or
+// to overwrite a calculated value.
+const CLIENT_CLEARABLE_FIELDS: Record<string, keyof Client> = {
+  client: "name",
+  followUp: "followUp",
+  company: "company",
+  billingAddress: "billingAddress",
+  email: "email",
+  phone: "phone",
+  requirements: "requirements",
+  quantity: "quantity",
+  nbd: "nbd",
+  unqualifiedReason: "unqualifiedReason",
+};
+
 // Manual visual tuning point for the solid accent on every client row.
 // Use a negative value to move the client-row rail left, or a positive value
 // to move it right. The client header is aligned to the row's border edge in
@@ -758,6 +774,23 @@ export function ClientRow({
     (canEditWithoutAssignment ||
       clientAssignedIds.includes(currentUserId) ||
       pmAssignedIds.includes(currentUserId));
+  const canClearClientCell = (cellKey: string | undefined) =>
+    Boolean(
+      canEditClient &&
+        cellKey &&
+        (Object.hasOwn(CLIENT_CLEARABLE_FIELDS, cellKey) ||
+          (cellKey.startsWith("custom:") &&
+            clientCustomCols.some((column) => column.id === cellKey.slice(7)))),
+    );
+  const clearClientCell = (cellKey: string) => {
+    if (!canClearClientCell(cellKey)) return;
+    if (cellKey.startsWith("custom:")) {
+      updateClientCustomField(client.id, cellKey.slice(7), "");
+      return;
+    }
+    const field = CLIENT_CLEARABLE_FIELDS[cellKey];
+    if (field) onUpdate({ [field]: "" } as Partial<Client>);
+  };
   const canManageClient =
     canEditClient ||
     ["admin", "director", "dev"].includes(
@@ -3487,6 +3520,10 @@ export function ClientRow({
         data-client-id={client.id}
         onContextMenu={(event) => {
           event.preventDefault();
+          const cellKey = (event.target as HTMLElement).closest<HTMLElement>(
+            "[data-client-column]",
+          )?.dataset.clientColumn;
+          const canClear = canClearClientCell(cellKey);
           window.dispatchEvent(new Event("crm:close-cell-overlays"));
           window.dispatchEvent(
             new CustomEvent("crm:client-actions", {
@@ -3495,6 +3532,15 @@ export function ClientRow({
                 clientX: event.clientX,
                 clientY: event.clientY,
                 cellText: crmCellText(event.target, "[data-client-column]"),
+                cellKey: cellKey ?? null,
+                canClearCell: canClear,
+                clearCellDisabledReason: canClear
+                  ? undefined
+                  : !cellKey
+                    ? "Select a cell to clear."
+                    : !canEditClient
+                      ? "You can only edit items that are assigned to you."
+                      : "Labels, calculated fields, and managed fields cannot be cleared.",
               },
             }),
           );
@@ -3592,6 +3638,7 @@ export function ClientRow({
             onDuplicate={onDuplicateClient}
             onMove={onMoveClient}
             onDelete={onDelete}
+            onClearCell={clearClientCell}
             canManageSubitemLock={canManageSubitemLock}
             subitemsLocked={subitemsLocked}
             onToggleSubitemsLock={() =>
