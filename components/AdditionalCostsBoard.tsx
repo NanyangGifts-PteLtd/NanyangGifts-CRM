@@ -369,6 +369,15 @@ export function AdditionalCostsBoard({
   const [error, setError] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [relatedSubitemsOpen, setRelatedSubitemsOpen] = useState(false);
+  const draftRelatedSubitemSelectionAnchorRef = useRef<{
+    id: string;
+    baseSelection: string[];
+  } | null>(null);
+  const draftRelatedSubitemShiftClickRef = useRef(false);
+  const boardRelatedSubitemSelectionAnchorsRef = useRef(
+    new Map<string, { id: string; baseSelection: string[] }>(),
+  );
+  const boardRelatedSubitemShiftClickRef = useRef(new Map<string, boolean>());
   const [boardRelatedSubitemsMenu, setBoardRelatedSubitemsMenu] = useState<{
     rowId: string;
     top: number;
@@ -2376,18 +2385,46 @@ export function AdditionalCostsBoard({
                 <input
                   type="checkbox"
                   checked={voucherDraft.relatedSubitemIds.includes(subitem.id)}
-                  onChange={() =>
-                    setVoucherDraft((draft) => ({
-                      ...draft,
-                      relatedSubitemIds: draft.relatedSubitemIds.includes(
-                        subitem.id,
-                      )
-                        ? draft.relatedSubitemIds.filter(
-                          (id) => id !== subitem.id,
-                        )
-                        : [...draft.relatedSubitemIds, subitem.id],
-                    }))
+                  onChange={(event) =>
+                    setVoucherDraft((draft) => {
+                      const anchor =
+                        draftRelatedSubitemSelectionAnchorRef.current;
+                      const anchorIndex = anchor
+                        ? subitems.findIndex((item) => item.id === anchor.id)
+                        : -1;
+                      const targetIndex = subitems.findIndex(
+                        (item) => item.id === subitem.id,
+                      );
+                      const range =
+                        draftRelatedSubitemShiftClickRef.current &&
+                        anchorIndex >= 0 &&
+                        targetIndex >= 0
+                          ? subitems
+                              .slice(
+                                Math.min(anchorIndex, targetIndex),
+                                Math.max(anchorIndex, targetIndex) + 1,
+                              )
+                              .map((item) => item.id)
+                          : [subitem.id];
+                      const nextIds =
+                        draftRelatedSubitemShiftClickRef.current && anchor
+                          ? [...new Set([...anchor.baseSelection, ...range])]
+                          : event.target.checked
+                            ? [...new Set([...draft.relatedSubitemIds, ...range])]
+                            : draft.relatedSubitemIds.filter(
+                                (id) => !range.includes(id),
+                              );
+                      if (!draftRelatedSubitemShiftClickRef.current)
+                        draftRelatedSubitemSelectionAnchorRef.current = {
+                          id: subitem.id,
+                          baseSelection: [...nextIds],
+                        };
+                      return { ...draft, relatedSubitemIds: nextIds };
+                    })
                   }
+                  onClick={(event) => {
+                    draftRelatedSubitemShiftClickRef.current = event.shiftKey;
+                  }}
                 />
                 <span className="min-w-0 truncate">
                   {subitem.name || "Unnamed subitem"}
@@ -2472,10 +2509,39 @@ export function AdditionalCostsBoard({
                     type="checkbox"
                     disabled={!canDelete(row)}
                     checked={selectedIds.includes(subitem.id)}
-                    onChange={() => {
-                      const nextIds = selectedIds.includes(subitem.id)
-                        ? selectedIds.filter((id) => id !== subitem.id)
-                        : [...selectedIds, subitem.id];
+                    onChange={(event) => {
+                      const anchor = boardRelatedSubitemSelectionAnchorsRef.current.get(
+                        row.id,
+                      );
+                      const anchorIndex = anchor
+                        ? subitems.findIndex((item) => item.id === anchor.id)
+                        : -1;
+                      const targetIndex = subitems.findIndex(
+                        (item) => item.id === subitem.id,
+                      );
+                      const range =
+                        boardRelatedSubitemShiftClickRef.current.get(row.id) &&
+                        anchorIndex >= 0 &&
+                        targetIndex >= 0
+                          ? subitems
+                              .slice(
+                                Math.min(anchorIndex, targetIndex),
+                                Math.max(anchorIndex, targetIndex) + 1,
+                              )
+                              .map((item) => item.id)
+                          : [subitem.id];
+                      const nextIds =
+                        boardRelatedSubitemShiftClickRef.current.get(row.id) &&
+                        anchor
+                          ? [...new Set([...anchor.baseSelection, ...range])]
+                          : event.target.checked
+                            ? [...new Set([...selectedIds, ...range])]
+                            : selectedIds.filter((id) => !range.includes(id));
+                      if (!boardRelatedSubitemShiftClickRef.current.get(row.id))
+                        boardRelatedSubitemSelectionAnchorsRef.current.set(
+                          row.id,
+                          { id: subitem.id, baseSelection: [...nextIds] },
+                        );
                       const names = subitems
                         .filter((item) => nextIds.includes(item.id))
                         .map((item) => item.name)
@@ -2484,6 +2550,12 @@ export function AdditionalCostsBoard({
                         relatedSubitemIds: nextIds,
                         items_sent: names,
                       });
+                    }}
+                    onClick={(event) => {
+                      boardRelatedSubitemShiftClickRef.current.set(
+                        row.id,
+                        event.shiftKey,
+                      );
                     }}
                   />
                   <span className="min-w-0 truncate">

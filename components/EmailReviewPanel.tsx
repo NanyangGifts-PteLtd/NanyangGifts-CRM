@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, RefreshCw, Send, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -42,6 +42,11 @@ export function EmailReviewPanel({ currentUserRole }: Props) {
   const [selectedPendingIds, setSelectedPendingIds] = useState<Set<string>>(
     new Set(),
   );
+  const pendingSelectionAnchorRef = useRef<{
+    id: string;
+    baseSelection: Set<string>;
+  } | null>(null);
+  const pendingSelectionShiftClickRef = useRef(false);
   const [selectedReviewedId, setSelectedReviewedId] = useState<string | null>(
     null,
   );
@@ -112,11 +117,30 @@ export function EmailReviewPanel({ currentUserRole }: Props) {
   );
   const allPendingSelected =
     pendingRows.length > 0 && selectedPendingRows.length === pendingRows.length;
-  const togglePendingSelection = (id: string) => {
+  const togglePendingSelection = (id: string, shiftKey = false) => {
     setSelectedPendingIds((current) => {
       const next = new Set(current);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      const anchor = pendingSelectionAnchorRef.current;
+      const anchorIndex = anchor
+        ? pendingRows.findIndex((row) => row.id === anchor.id)
+        : -1;
+      const targetIndex = pendingRows.findIndex((row) => row.id === id);
+      if (shiftKey && anchor && anchorIndex >= 0 && targetIndex >= 0) {
+        const range = pendingRows.slice(
+          Math.min(anchorIndex, targetIndex),
+          Math.max(anchorIndex, targetIndex) + 1,
+        );
+        return new Set([...anchor.baseSelection, ...range.map((row) => row.id)]);
+      } else if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      if (!shiftKey)
+        pendingSelectionAnchorRef.current = {
+          id,
+          baseSelection: new Set(next),
+        };
       return next;
     });
   };
@@ -374,15 +398,25 @@ export function EmailReviewPanel({ currentUserRole }: Props) {
                 return (
                   <article
                     key={row.id}
-                    onClick={() => togglePendingSelection(row.id)}
+                    onClick={(event) =>
+                      togglePendingSelection(row.id, event.shiftKey)
+                    }
                     className="cursor-pointer border-b border-slate-200 p-4 last:border-b-0"
                   >
                     <div className="flex min-w-0 items-start gap-3">
                       <input
                         type="checkbox"
                         checked={selectedPendingIds.has(row.id)}
-                        onClick={(event) => event.stopPropagation()}
-                        onChange={() => togglePendingSelection(row.id)}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          pendingSelectionShiftClickRef.current = event.shiftKey;
+                        }}
+                        onChange={(event) =>
+                          togglePendingSelection(
+                            row.id,
+                            pendingSelectionShiftClickRef.current,
+                          )
+                        }
                         aria-label={`Select ${row.subject || "email"}`}
                         className="mt-1 h-6 w-6 shrink-0 cursor-pointer accent-[#16a5c4]"
                       />

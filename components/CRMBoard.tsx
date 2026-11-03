@@ -992,6 +992,17 @@ export function CRMBoard({
     clients.length > 0 && clients.every((c) => expandedIdSet.has(c.id));
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  // Keep independent range anchors for the three ordered multi-select lists.
+  // An anchor is deliberately local to its list, so Shift+Click never joins
+  // clients, subitems, and Bin entries into one accidental selection.
+  const clientSelectionAnchorRef = useRef<{
+    id: string;
+    baseSelection: Set<string>;
+  } | null>(null);
+  const subitemSelectionAnchorRef = useRef<{
+    id: string;
+    baseSelection: string[];
+  } | null>(null);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [blacklistedPhones, setBlacklistedPhones] = useState<Set<string>>(
     new Set(),
@@ -1123,6 +1134,11 @@ export function CRMBoard({
   const [selectedBinItemKeys, setSelectedBinItemKeys] = useState<Set<string>>(
     new Set(),
   );
+  const binSelectionAnchorRef = useRef<{
+    id: string;
+    baseSelection: Set<string>;
+  } | null>(null);
+  const binSelectionShiftClickRef = useRef(false);
   const [pendingPermanentBinItems, setPendingPermanentBinItems] = useState<
     DeletedBinItem[] | null
   >(null);
@@ -6882,6 +6898,12 @@ export function CRMBoard({
           : { ...client, subitems: [...client.subitems].sort(compareSubitems) },
       ),
   }));
+  const selectableClientIdsInDisplayOrder = groupedClients.flatMap(
+    ({ clients }) =>
+      clients
+        .filter((client) => canEditClientRecord(client.id))
+        .map((client) => client.id),
+  );
 
   const resultGroupIds = groupedClients
     .filter(({ clients: groupClients }) => groupClients.length > 0)
@@ -7657,16 +7679,39 @@ export function CRMBoard({
   }, [toggleCollapseAllGroups, toggleExpandAll]);
 
   const toggleSelect = useCallback(
-    (id: string) => {
+    (id: string, shiftKey = false) => {
       if (selectedSubitemIds.length > 0 || !canEditClientRecord(id)) return;
       setSelectedIds((prev) => {
         const next = new Set(prev);
-        if (next.has(id)) next.delete(id);
-        else next.add(id);
+        const anchor = clientSelectionAnchorRef.current;
+        const anchorIndex = anchor
+          ? selectableClientIdsInDisplayOrder.indexOf(anchor.id)
+          : -1;
+        const targetIndex = selectableClientIdsInDisplayOrder.indexOf(id);
+        if (shiftKey && anchor && anchorIndex >= 0 && targetIndex >= 0) {
+          const range = selectableClientIdsInDisplayOrder.slice(
+            Math.min(anchorIndex, targetIndex),
+            Math.max(anchorIndex, targetIndex) + 1,
+          );
+          return new Set([...anchor.baseSelection, ...range]);
+        } else if (next.has(id)) {
+          next.delete(id);
+        } else {
+          next.add(id);
+        }
+        if (!shiftKey)
+          clientSelectionAnchorRef.current = {
+            id,
+            baseSelection: new Set(next),
+          };
         return next;
       });
     },
-    [canEditClientRecord, selectedSubitemIds.length],
+    [
+      canEditClientRecord,
+      selectableClientIdsInDisplayOrder,
+      selectedSubitemIds.length,
+    ],
   );
 
   const toggleSelectAll = useCallback(() => {
@@ -10183,17 +10228,41 @@ export function CRMBoard({
   );
 
   const toggleSubitemSelection = useCallback(
-    (subitemId: string) => {
+    (subitemId: string, shiftKey = false, orderedSubitemIds?: string[]) => {
       if (selectedIds.size > 0) return;
       const owner = clients.find((client) =>
         client.subitems.some((subitem) => subitem.id === subitemId),
       );
       if (!owner || !canEditSubitemRecord(owner.id, subitemId)) return;
-      setSelectedSubitemIds((previous) =>
-        previous.includes(subitemId)
+      const selectableIds = (
+        orderedSubitemIds ?? owner.subitems.map((subitem) => subitem.id)
+      ).filter((id) => {
+        const candidateOwner = clients.find((client) =>
+          client.subitems.some((subitem) => subitem.id === id),
+        );
+        return !!candidateOwner && canEditSubitemRecord(candidateOwner.id, id);
+      });
+      setSelectedSubitemIds((previous) => {
+        const anchor = subitemSelectionAnchorRef.current;
+        const anchorIndex = anchor ? selectableIds.indexOf(anchor.id) : -1;
+        const targetIndex = selectableIds.indexOf(subitemId);
+        if (shiftKey && anchor && anchorIndex >= 0 && targetIndex >= 0) {
+          const range = selectableIds.slice(
+            Math.min(anchorIndex, targetIndex),
+            Math.max(anchorIndex, targetIndex) + 1,
+          );
+          return [...new Set([...anchor.baseSelection, ...range])];
+        }
+        const next = previous.includes(subitemId)
           ? previous.filter((id) => id !== subitemId)
-          : [...previous, subitemId],
-      );
+          : [...previous, subitemId];
+        if (!shiftKey)
+          subitemSelectionAnchorRef.current = {
+            id: subitemId,
+            baseSelection: [...next],
+          };
+        return next;
+      });
     },
     [canEditSubitemRecord, clients, selectedIds.size],
   );
@@ -10614,11 +10683,50 @@ export function CRMBoard({
                           setSelectedBinItemKeys((current) => {
                             const next = new Set(current);
                             const key = `${item.type}:${item.id}`;
-                            if (event.target.checked) next.add(key);
-                            else next.delete(key);
+                            const anchor = binSelectionAnchorRef.current;
+                            const anchorIndex = anchor
+                              ? binItems.findIndex(
+                                  (candidate) =>
+                                    `${candidate.type}:${candidate.id}` === anchor.id,
+                                )
+                              : -1;
+                            const targetIndex = binItems.findIndex(
+                              (candidate) =>
+                                `${candidate.type}:${candidate.id}` === key,
+                            );
+                            if (
+                              binSelectionShiftClickRef.current &&
+                              anchor &&
+                              anchorIndex >= 0 &&
+                              targetIndex >= 0
+                            ) {
+                              const range = binItems.slice(
+                                Math.min(anchorIndex, targetIndex),
+                                Math.max(anchorIndex, targetIndex) + 1,
+                              );
+                              return new Set([
+                                ...anchor.baseSelection,
+                                ...range.map(
+                                  (candidate) =>
+                                    `${candidate.type}:${candidate.id}`,
+                                ),
+                              ]);
+                            } else if (event.target.checked) {
+                              next.add(key);
+                            } else {
+                              next.delete(key);
+                            }
+                            if (!binSelectionShiftClickRef.current)
+                              binSelectionAnchorRef.current = {
+                                id: key,
+                                baseSelection: new Set(next),
+                              };
                             return next;
                           })
                         }
+                        onClick={(event) => {
+                          binSelectionShiftClickRef.current = event.shiftKey;
+                        }}
                         aria-label={`Select ${item.name}`}
                         className="h-3.5 w-3.5 shrink-0 accent-[#43adc4]"
                       />
@@ -14027,7 +14135,9 @@ export function CRMBoard({
                           onBeginFocusedAction={clearAllSelections}
                           isSelected={selectedIds.has(client.id)}
                           canSelect={canEditClientRecord(client.id)}
-                          onToggleSelect={() => toggleSelect(client.id)}
+                          onToggleSelect={(shiftKey) =>
+                            toggleSelect(client.id, shiftKey)
+                          }
                           onUpdate={(updates) =>
                             updateClient(client.id, updates)
                           }

@@ -363,7 +363,11 @@ type SubitemProps = {
   onAddSubitem: (name: string) => void | Promise<void>;
   onDeleteSubitem: (id: string) => void;
   selectedSubitemIds: string[];
-  onToggleSubitemSelection: (subitemId: string) => void;
+  onToggleSubitemSelection: (
+    subitemId: string,
+    shiftKey?: boolean,
+    orderedSubitemIds?: string[],
+  ) => void;
   clientIsSelected: boolean;
   onToggleAllSubitems: (subitemIds: string[]) => void;
   onSubitemDragStart?: (
@@ -4541,7 +4545,12 @@ export function SubitemsTable({
                       checked={selectedSubitemIds.includes(sub.id)}
                       onClick={(e) => {
                         e.stopPropagation();
-                        if (!clientIsSelected) onToggleSubitemSelection(sub.id);
+                        if (!clientIsSelected)
+                          onToggleSubitemSelection(
+                            sub.id,
+                            e.shiftKey,
+                            displayedSubitems.map((item) => item.id),
+                          );
                       }}
                       onChange={() => {}}
                       disabled={

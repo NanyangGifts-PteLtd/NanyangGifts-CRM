@@ -362,7 +362,7 @@ export type ClientRowProps = {
   hasTopBorder?: boolean;
   groupAccentColor: string;
   onToggleExpand: () => void;
-  onToggleSelect: () => void;
+  onToggleSelect: (shiftKey: boolean) => void;
   onUpdate: (u: Partial<Client>) => void;
   onTrackingStatusSummaryChanged?: (
     clientId: string,
@@ -380,7 +380,11 @@ export type ClientRowProps = {
   onAddSubitem: (name: string) => void | Promise<void>;
   onDeleteSubitem: (id: string) => void;
   selectedSubitemIds: string[];
-  onToggleSubitemSelection: (subitemId: string) => void;
+  onToggleSubitemSelection: (
+    subitemId: string,
+    shiftKey?: boolean,
+    orderedSubitemIds?: string[],
+  ) => void;
   onToggleAllSubitems: (subitemIds: string[]) => void;
   onSubitemDragStart?: (
     subitemId: string,
@@ -3575,7 +3579,8 @@ export function ClientRow({
             data-selection-control
             type="checkbox"
             checked={isSelected}
-            onChange={onToggleSelect}
+            onClick={(event) => onToggleSelect(event.shiftKey)}
+            onChange={() => {}}
             disabled={selectedSubitemIds.length > 0 || !canSelect}
             title={
               selectedSubitemIds.length > 0
