@@ -302,6 +302,12 @@ const CLIENT_HEADER_COLS: HeaderCol[] = [
     width: 180,
     minWidth: 90,
   },
+  {
+    key: "unqualifiedVerified",
+    label: "Verified (Unqualified)",
+    width: 145,
+    minWidth: 115,
+  },
   { key: "channel", label: "Channel", width: 80, minWidth: 7 },
   { key: "importance", label: "Importance", width: 80, minWidth: 7 },
   { key: "company", label: "Company", width: 80, minWidth: 7 },
@@ -8635,6 +8641,66 @@ export function CRMBoard({
     ],
   );
 
+  const updateUnqualifiedVerification = useCallback(
+    async (clientId: string, verified: boolean) => {
+      const canVerify = ["admin", "director", "dev"].includes(
+        String(currentUserRole ?? "").trim().toLowerCase(),
+      );
+      const existingClient = clients.find((client) => client.id === clientId);
+      if (!canVerify || !existingClient) {
+        toast.error("You do not have permission to verify this lead.");
+        return;
+      }
+
+      setClients((current) =>
+        current.map((client) =>
+          client.id === clientId
+            ? { ...client, unqualifiedVerified: verified }
+            : client,
+        ),
+      );
+      try {
+        const response = await fetch(
+          "/api/clients/unqualified-verification",
+          {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ clientId, verified }),
+          },
+        );
+        const result = await response.json();
+        if (!response.ok)
+          throw new Error(result?.error || "Could not update verification.");
+        setClients((current) =>
+          current.map((client) =>
+            client.id === clientId
+              ? { ...client, unqualifiedVerified: result.verified === true }
+              : client,
+          ),
+        );
+        window.dispatchEvent(new Event("crm:unqualified-verification-changed"));
+      } catch (error) {
+        setClients((current) =>
+          current.map((client) =>
+            client.id === clientId
+              ? {
+                  ...client,
+                  unqualifiedVerified: existingClient.unqualifiedVerified,
+                }
+              : client,
+          ),
+        );
+        toast.error("Could not update verification", {
+          description:
+            error instanceof Error
+              ? error.message
+              : "Please try again.",
+        });
+      }
+    },
+    [clients, currentUserRole, setClients],
+  );
+
   const requestOcfCompanyChange = useCallback(
     (companyName: string) =>
       new Promise<{ confirmed: boolean; value: string }>((resolve) => {
@@ -9319,6 +9385,7 @@ export function CRMBoard({
               ? ""
               : String(createdClient.client_quantity),
           unqualifiedReason: createdClient.unqualified_reason ?? "",
+          unqualifiedVerified: createdClient.unqualified_verified === true,
           nbd: createdClient.nbd ?? "",
           groupId: createdClient.group_id ?? defaultGroupId,
           totalPrice: createdClient.total_price ?? "",
@@ -13530,6 +13597,8 @@ export function CRMBoard({
               const groupHiddenColumnKeys = new Set(hiddenColumnKeys);
               if (!isUnqualifiedGroupName(group.name))
                 groupHiddenColumnKeys.add("client:unqualifiedReason");
+              if (!isUnqualifiedGroupName(group.name))
+                groupHiddenColumnKeys.add("client:unqualifiedVerified");
               if (!/^closed leads\b/i.test(group.name.trim()))
                 groupHiddenColumnKeys.add("client:closedDate");
               const groupClientHeaderCols = activeClientHeaderCols.filter(
@@ -14259,6 +14328,9 @@ export function CRMBoard({
                           }
                           onUpdate={(updates) =>
                             updateClient(client.id, updates)
+                          }
+                          onUpdateUnqualifiedVerification={
+                            updateUnqualifiedVerification
                           }
                           onApplySelectedClientStatus={
                             selectedIds.size > 1

@@ -358,6 +358,7 @@ type Clients = {
   phone: string | null;
   requirements: string | null;
   unqualified_reason: string | null;
+  unqualified_verified?: boolean | null;
   client_quantity: string | number | null;
   nbd: string | null;
   total_price: string | null;
@@ -701,6 +702,7 @@ function mapClients(row: Clients): Client {
         ? ""
         : String(row.client_quantity),
     unqualifiedReason: row.unqualified_reason ?? "",
+    unqualifiedVerified: row.unqualified_verified === true,
     nbd: row.nbd ?? "",
     totalPrice: row.total_price ?? "",
     timesReassigned: Number(row.times_reassigned ?? 0),
@@ -1011,7 +1013,7 @@ export async function fetchClientsWithSubitems(params?: {
     "tracking_overall_invoice_payment_status",
     "tracking_overall_invoice_payment_status_option_id",
     "tracking_invoice_status_summary", "company", "email",
-    "phone", "requirements", "client_quantity", "unqualified_reason", "nbd",
+    "phone", "requirements", "client_quantity", "unqualified_reason", "unqualified_verified", "nbd",
     "total_price", "times_reassigned", "billing_address", "created_by", "created_at", "waiting_started_at",
     "group_id", "expanded", "color", "custom_fields", "deleted_at",
     "deleted_by",
@@ -2789,6 +2791,9 @@ export async function updateClientRow(
     ...(nextUpdates.unqualifiedReason !== undefined
       ? { unqualified_reason: nextUpdates.unqualifiedReason }
       : {}),
+    ...(nextUpdates.unqualifiedVerified !== undefined
+      ? { unqualified_verified: nextUpdates.unqualifiedVerified }
+      : {}),
     ...(nextUpdates.nbd !== undefined ? { nbd: nextUpdates.nbd } : {}),
     ...(nextUpdates.totalPrice !== undefined
       ? { total_price: nextUpdates.totalPrice }
@@ -2858,6 +2863,8 @@ export async function updateClientRow(
                 ? "billing_address"
                 : key === "unqualifiedReason"
                   ? "unqualified_reason"
+                  : key === "unqualifiedVerified"
+                    ? "unqualified_verified"
                   : key === "createdAt"
                     ? "created_at"
                     : key === "groupId"

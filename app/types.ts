@@ -263,6 +263,8 @@ export interface Client {
   /** Client-level requested quantity, separate from per-subitem quantities. */
   quantity: string;
   unqualifiedReason: string;
+  /** Managed review flag, available only while the client is in Unqualified Lead. */
+  unqualifiedVerified: boolean;
   nbd: string;
   totalPrice: string;
   /** Server-managed count of completed automatic lead reassignments. */

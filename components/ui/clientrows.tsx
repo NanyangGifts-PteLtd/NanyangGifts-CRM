@@ -393,6 +393,10 @@ export type ClientRowProps = {
   onToggleExpand: () => void;
   onToggleSelect: (shiftKey: boolean) => void;
   onUpdate: (u: Partial<Client>) => void;
+  onUpdateUnqualifiedVerification?: (
+    clientId: string,
+    verified: boolean,
+  ) => void | Promise<void>;
   onApplySelectedClientStatus?: (
     status: string,
     statusOptionId: string | null,
@@ -606,6 +610,7 @@ export function ClientRow({
   onToggleExpand,
   onToggleSelect,
   onUpdate,
+  onUpdateUnqualifiedVerification,
   onApplySelectedClientStatus,
   onTrackingStatusSummaryChanged,
   onUpdateSubitem,
@@ -774,6 +779,14 @@ export function ClientRow({
     (canEditWithoutAssignment ||
       clientAssignedIds.includes(currentUserId) ||
       pmAssignedIds.includes(currentUserId));
+  const isUnqualifiedLeadGroup =
+    groupNamesById[client.groupId ?? ""]?.trim().toLowerCase() ===
+    "unqualified lead";
+  const canVerifyUnqualified =
+    isUnqualifiedLeadGroup &&
+    ["admin", "director", "dev"].includes(
+      String(currentUserRole ?? "").trim().toLowerCase(),
+    );
   const canClearClientCell = (cellKey: string | undefined) =>
     Boolean(
       canEditClient &&
@@ -3581,7 +3594,12 @@ export function ClientRow({
               top: Math.min(rect.bottom + 8, window.innerHeight - 48),
             });
           }
-          if (canEditClient) return;
+          if (
+            canEditClient ||
+            (canVerifyUnqualified &&
+              target.closest("[data-unqualified-verification]"))
+          )
+            return;
           const isAssignmentColumn =
             column === "people" ||
             column === "pm" ||
@@ -4669,6 +4687,36 @@ export function ClientRow({
             value={client.unqualifiedReason}
             onChange={(v) => onUpdate({ unqualifiedReason: v })}
             placeholder=""
+          />
+        </div>
+
+        <div
+          data-client-column="unqualifiedVerified"
+          className="flex min-w-0 items-center justify-center overflow-hidden border-r border-[#D0D4E4] py-1.5"
+          style={{
+            height: 30,
+            minWidth: colWidth.unqualifiedVerified,
+            width: colWidth.unqualifiedVerified,
+            order: columnOrderMap.unqualifiedVerified ?? 5.6,
+          }}
+        >
+          <input
+            data-unqualified-verification
+            type="checkbox"
+            checked={client.unqualifiedVerified === true}
+            disabled={!canVerifyUnqualified || !onUpdateUnqualifiedVerification}
+            onChange={(event) =>
+              void onUpdateUnqualifiedVerification?.(
+                client.id,
+                event.target.checked,
+              )
+            }
+            title={
+              canVerifyUnqualified
+                ? "Mark this Unqualified Lead as verified"
+                : "Only admins, directors, and developers can verify Unqualified Leads."
+            }
+            className="h-4 w-4 cursor-pointer accent-[#16a5c4] disabled:cursor-not-allowed disabled:opacity-45"
           />
         </div>
 

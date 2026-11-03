@@ -287,6 +287,7 @@ const CLIENT_QUERY_COLUMN_MAP: Record<string, string | null> = {
   requirements: "requirements",
   quantity: "client_quantity",
   unqualifiedReason: "unqualified_reason",
+  unqualifiedVerified: "unqualified_verified",
   nbd: "nbd",
   progress: "progress_option_id",
   dateCreated: "created_at",
@@ -441,6 +442,7 @@ function localDatabaseValue(
         requirements: client.requirements,
         client_quantity: client.quantity === "" ? null : client.quantity,
         unqualified_reason: client.unqualifiedReason,
+        unqualified_verified: client.unqualifiedVerified,
         nbd: client.nbd,
         progress_option_id: client.progressOptionId ?? null,
         created_at: client.createdAt,
@@ -663,6 +665,8 @@ export default function Page() {
   const [user, setUser] = useState<User | null>(null);
   const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
   const [emailReviewPending, setEmailReviewPending] = useState(0);
+  const [unqualifiedVerificationPending, setUnqualifiedVerificationPending] =
+    useState(0);
   const [roleLoaded, setRoleLoaded] = useState(false);
   const [clientsLoaded, setClientsLoaded] = useState(false);
   const [hasLoadedInitialClients, setHasLoadedInitialClients] =
@@ -3575,6 +3579,15 @@ export default function Page() {
     setEmailReviewPending(Number(result.pendingCount) || 0);
   }, []);
 
+  const loadUnqualifiedVerificationPending = useCallback(async () => {
+    const response = await fetch(
+      "/api/clients/unqualified-verification?summary=count",
+    );
+    if (!response.ok) return;
+    const result = await response.json();
+    setUnqualifiedVerificationPending(Number(result.pendingCount) || 0);
+  }, []);
+
   useEffect(() => {
     const canReviewEmails = ["admin", "director", "dev"].includes(
       String(currentUserRole ?? "").toLowerCase(),
@@ -3619,6 +3632,54 @@ export default function Page() {
       void supabase.removeChannel(channel);
     };
   }, [currentUserRole, loadEmailReviewPending]);
+
+  useEffect(() => {
+    const canVerifyUnqualified = ["admin", "director", "dev"].includes(
+      String(currentUserRole ?? "").toLowerCase(),
+    );
+    if (!canVerifyUnqualified) {
+      setUnqualifiedVerificationPending(0);
+      return;
+    }
+
+    let disposed = false;
+    let refreshTimer: number | undefined;
+    const scheduleRefresh = () => {
+      if (refreshTimer !== undefined) window.clearTimeout(refreshTimer);
+      refreshTimer = window.setTimeout(() => {
+        refreshTimer = undefined;
+        if (!disposed) void loadUnqualifiedVerificationPending();
+      }, 250);
+    };
+    void loadUnqualifiedVerificationPending();
+    const supabase = createSupabaseClient();
+    const channel = supabase
+      .channel("unqualified-verification-pending-count")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "clients" },
+        scheduleRefresh,
+      )
+      .subscribe();
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible")
+        void loadUnqualifiedVerificationPending();
+    };
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    window.addEventListener("focus", refreshWhenVisible);
+    window.addEventListener("crm:unqualified-verification-changed", scheduleRefresh);
+    return () => {
+      disposed = true;
+      if (refreshTimer !== undefined) window.clearTimeout(refreshTimer);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+      window.removeEventListener("focus", refreshWhenVisible);
+      window.removeEventListener(
+        "crm:unqualified-verification-changed",
+        scheduleRefresh,
+      );
+      void supabase.removeChannel(channel);
+    };
+  }, [currentUserRole, loadUnqualifiedVerificationPending]);
 
   useEffect(() => {
     void loadNotifications();
@@ -3946,6 +4007,7 @@ export default function Page() {
         onChangePanel={changePanel}
         emailUnread={0}
         emailReviewPending={emailReviewPending}
+        unqualifiedVerificationPending={unqualifiedVerificationPending}
         collapsed={sidebarCollapsed}
         onToggleCollapsed={() => setSidebarCollapsed((v) => !v)}
         currentUserRole={currentUserRole}

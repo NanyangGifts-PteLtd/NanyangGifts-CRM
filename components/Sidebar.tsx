@@ -41,6 +41,7 @@ interface SidebarProps {
   onChangePanel: (panel: SidePanel) => void;
   emailUnread: number;
   emailReviewPending: number;
+  unqualifiedVerificationPending: number;
   collapsed: boolean;
   onToggleCollapsed: () => void;
   currentUserRole?: string | null;
@@ -103,6 +104,7 @@ export default function Sidebar({
   onChangePanel,
   emailUnread,
   emailReviewPending,
+  unqualifiedVerificationPending,
   collapsed,
   onToggleCollapsed,
   currentUserRole,
@@ -219,6 +221,15 @@ export default function Sidebar({
                     aria-label={`${emailReviewPending} emails pending review`}
                   >
                     {emailReviewPending}
+                  </span>
+                )}
+                {item.id === "crm" && unqualifiedVerificationPending > 0 && (
+                  <span
+                    className="ml-auto bg-violet-600 text-white rounded-full text-xs px-1.5 py-0.5 hidden lg:flex items-center justify-center min-w-5 leading-none"
+                    style={{ fontSize: "10px" }}
+                    aria-label={`${unqualifiedVerificationPending} Unqualified Leads pending verification`}
+                  >
+                    {unqualifiedVerificationPending}
                   </span>
                 )}
                 <div className="absolute left-full ml-2 px-2 py-1 bg-gray-800 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 lg:hidden">
