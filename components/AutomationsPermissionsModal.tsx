@@ -44,10 +44,19 @@ const automations: ReferenceItem[] = [
     title: "Follow Up date",
     trigger: "A new inbound lead is created.",
     behaviour:
-      "Sets Follow Up to the second Singapore working day after creation. Completing Follow Up moves it one working day ahead for the managed High-importance label, or two working days ahead for every other importance.",
+      "Sets Follow Up to the second Singapore working day after creation. Completing Follow Up, or setting Status to Contacted, Quoted, Follow Up, Follow up once, or Follow up twice (Call), moves it one working day ahead for the managed High-importance label, or two working days ahead for every other importance. Failed, Unqualified, and Closed clear Follow Up.",
     scope: "Working days exclude weekends and entries in the Working Calendar.",
     source:
-      "lib/inbound-leads.ts; components/ui/clientrows.tsx; lib/working-calendar.ts",
+      "lib/inbound-leads.ts; components/ui/clientrows.tsx; database Follow Up status trigger; lib/working-calendar.ts",
+  },
+  {
+    title: "Overdue Follow Up",
+    trigger: "Daily Vercel Cron at 16:05 UTC (00:05 Singapore time).",
+    behaviour:
+      "Marks active clients Overdue when their Follow Up date is before the current Singapore date. Closed Leads, Failed, Unqualified Lead, To Delete, and Test groups are excluded.",
+    scope:
+      "The status change is logged once; leads already marked Overdue are not processed again.",
+    source: "app/api/cron/follow-up-overdue/route.ts",
   },
   {
     title: "QuickBooks estimate invoice sync",

@@ -2815,10 +2815,15 @@ export async function updateClientRow(
     ...clientOptionIds,
   };
 
-  const { error } = await supabase
+  const { data: persistedClient, error } = await supabase
     .from("clients")
     .update(payload)
-    .eq("id", clientId);
+    .eq("id", clientId)
+    // Database triggers can change Follow Up together with Status. Return
+    // that authoritative value so callers do not briefly display the old
+    // date while waiting for Realtime.
+    .select("follow_up")
+    .single();
 
   if (error) throw error;
 
@@ -2877,6 +2882,8 @@ export async function updateClientRow(
       before: existing.custom_fields,
       after: updates.customFields,
     });
+
+  return { followUp: persistedClient?.follow_up ?? "" };
 }
 
 async function assertBinActionAllowed(

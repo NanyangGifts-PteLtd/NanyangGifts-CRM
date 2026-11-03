@@ -8395,6 +8395,17 @@ export function CRMBoard({
         isMovingToUnqualified ||
         (unqualifiedClientStatus?.id != null &&
           updates.statusOptionId === unqualifiedClientStatus.id);
+      const isTerminalStatusUpdate =
+        isBecomingUnqualified ||
+        isFailedStatusUpdate ||
+        (closedClientStatus?.id != null &&
+          updates.statusOptionId === closedClientStatus.id) ||
+        isMovingToClosedLeads;
+      // The database trigger is authoritative for every writer, including
+      // OCF closure. Mirror the clear locally so the date cell does not retain
+      // a stale value while its realtime update is travelling back to the
+      // Board.
+      if (isTerminalStatusUpdate) nextUpdates.followUp = "";
       if (isBecomingUnqualified && !unqualifiedReasonApproved) {
         setUnqualifiedReasonDraft(
           updates.unqualifiedReason ?? existingClient?.unqualifiedReason ?? "",
@@ -8505,7 +8516,7 @@ export function CRMBoard({
         prev.map((c) => (c.id === clientId ? { ...c, ...nextUpdates } : c)),
       );
       try {
-        await enqueueBoardWrite("client", clientId, () =>
+        const persisted = await enqueueBoardWrite("client", clientId, () =>
           updateClientRow(
             clientId,
             nextUpdates,
@@ -8514,6 +8525,22 @@ export function CRMBoard({
               : undefined,
           ),
         );
+        // Status saves can adjust Follow Up in the database (including the
+        // Singapore working-calendar rule). Keep this row aligned with that
+        // returned value without replacing a newer local status edit.
+        if (
+          nextUpdates.statusOptionId !== undefined &&
+          persisted.followUp !== nextUpdates.followUp
+        ) {
+          setClients((current) =>
+            current.map((client) =>
+              client.id === clientId &&
+              client.statusOptionId === nextUpdates.statusOptionId
+                ? { ...client, followUp: persisted.followUp }
+                : client,
+            ),
+          );
+        }
         if (movedToGroupName && nextUpdates.status) {
           const previousClient = clients.find(
             (client) => client.id === clientId,
