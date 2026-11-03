@@ -159,6 +159,7 @@ const initialColumns: Column[] = [
   { key: "remarks", label: "Remarks", width: 260 },
   { key: "trip_id", label: "Reference ID", width: 145 },
   { key: "items_sent", label: "Related Subitems", width: 210 },
+  { key: "mode_of_payment", label: "Mode of payment", width: 165 },
   { key: "courier", label: "Courier", width: 140 },
   { key: "created", label: "Date Created", width: 140 },
   { key: "actions", label: "Actions", width: 190 },
@@ -172,6 +173,7 @@ const otherVoucherColumns: Column[] = [
   { key: "remarks", label: "Remarks", width: 260 },
   { key: "trip_id", label: "Reference ID", width: 145 },
   { key: "items_sent", label: "Related Subitems", width: 210 },
+  { key: "mode_of_payment", label: "Mode of payment", width: 165 },
   { key: "has_quickbooks_bill", label: "Has QuickBooks Bill?", width: 165 },
   {
     key: "quickbooks_invoice_number",
@@ -2997,6 +2999,22 @@ export function AdditionalCostsBoard({
                         >
                           {renderBoardRelatedSubitemSelector(row, client)}
                         </td>
+                        {String(group.id) !== "quickbooks_bills_only" ? (
+                          <td
+                            data-voucher-col="mode_of_payment"
+                            className="min-h-10 h-full border-b border-r border-slate-200 p-0"
+                          >
+                            <StatusBadge
+                              value={row.mode_of_payment ?? ""}
+                              onChange={() => undefined}
+                              options={labelOptions.mode_of_payment ?? []}
+                              sectionCount={3}
+                              manageLabel="mode of payment"
+                              readOnly
+                              readOnlyReason="Edit Mode of payment in the Payment Voucher preview."
+                            />
+                          </td>
+                        ) : null}
                         {group.id === "courier" ? (
                           <td
                             data-voucher-col="courier"
