@@ -2639,6 +2639,10 @@ export async function updateClientRow(
       "contacted",
     );
     const failedLabel = await resolveSystemOption("client_status", "failed");
+    const toDeleteLabel = await resolveSystemOption(
+      "client_status",
+      "to_delete",
+    );
     // Enforce the automation whenever the stable Quoted option is saved.
     // Older/imported rows can have a correct option ID with stale display
     // text (or the reverse); treating this only as a pristine transition
@@ -2649,6 +2653,8 @@ export async function updateClientRow(
       clientOptionIds.status_option_id === contactedLabel.id;
     const isFailedStatusUpdate =
       clientOptionIds.status_option_id === failedLabel.id;
+    const isToDeleteStatusUpdate =
+      clientOptionIds.status_option_id === toDeleteLabel.id;
 
     if (isQuotedStatusUpdate) {
       const { data: followUpGroup, error: followUpGroupError } = await supabase
@@ -2699,6 +2705,22 @@ export async function updateClientRow(
       // Keep the status and group in the same clients UPDATE below.  If the
       // group is unavailable, the error above prevents either change.
       nextUpdates.groupId = failedGroup.id;
+    } else if (isToDeleteStatusUpdate) {
+      const { data: toDeleteGroup, error: toDeleteGroupError } = await supabase
+        .from("crm_groups")
+        .select("id")
+        .eq("name", "To Delete")
+        .maybeSingle();
+      if (toDeleteGroupError) throw toDeleteGroupError;
+      if (!toDeleteGroup) {
+        throw new Error(
+          'The required CRM group "To Delete" is not configured.',
+        );
+      }
+
+      // Match the stable option UUID above, not the visible label text. This
+      // keeps the rule intact if staff later rename the To Delete label.
+      nextUpdates.groupId = toDeleteGroup.id;
     }
   }
 
