@@ -1125,6 +1125,7 @@ export function CRMBoard({
   const [ocfClient, setOcfClient] = useState<Client | null>(null);
   const [isOcfChooserOpen, setIsOcfChooserOpen] = useState(false);
   const [isOcfModalOpen, setIsOcfModalOpen] = useState(false);
+  const [editingOcfId, setEditingOcfId] = useState<string | null>(null);
   const [showAddGroupModal, setShowAddGroupModal] = useState(false);
   const [showBin, setShowBin] = useState(false);
   const [binItems, setBinItems] = useState<DeletedBinItem[]>([]);
@@ -5160,6 +5161,7 @@ export function CRMBoard({
   }
   function handleCloseOcfModal() {
     setIsOcfModalOpen(false);
+    setEditingOcfId(null);
     setOcfClient(null);
   }
 
@@ -10556,6 +10558,11 @@ export function CRMBoard({
               initialTab={detailClientInitialTab ?? undefined}
               activityLoading={loadingActivityClientIdSet.has(detailClient.id)}
               onLoadActivityLog={() => loadClientActivity(detailClient.id)}
+              onEditOcf={(ocfId) => {
+                setOcfClient(detailClient);
+                setEditingOcfId(ocfId);
+                setIsOcfModalOpen(true);
+              }}
               onDuplicate={() => requestClientDuplication(detailClient.id)}
               onMove={(groupId) => moveClientAction(detailClient.id, groupId)}
               onDelete={() => {
@@ -14700,6 +14707,7 @@ export function CRMBoard({
         client={ocfClient}
         subitemStatusOptions={subitemStatusEntries}
         onClose={handleCloseOcfModal}
+        editOcfId={editingOcfId}
         onRequestCompanyChange={requestOcfCompanyChange}
         onSaveFinalArtwork={async (subitemId, file) => {
           if (!ocfClient) return;
@@ -14719,6 +14727,9 @@ export function CRMBoard({
         onCreated={() => {
           void reloadClients({ reason: "ocf-created" });
         }}
+        onUpdated={() => {
+          void reloadClients({ reason: "ocf-revised" });
+        }}
       />
       <OcfChooserModal
         open={isOcfChooserOpen}
@@ -14734,6 +14745,12 @@ export function CRMBoard({
         }}
         onGenerate={() => {
           setIsOcfChooserOpen(false);
+          setEditingOcfId(null);
+          setIsOcfModalOpen(true);
+        }}
+        onEdit={(ocfId) => {
+          setIsOcfChooserOpen(false);
+          setEditingOcfId(ocfId);
           setIsOcfModalOpen(true);
         }}
       />

@@ -288,9 +288,14 @@ export async function POST(request: NextRequest) {
                 .maybeSingle(),
         ]);
         let autoClosed = false;
+        const ocfClosedDate = earliestOcf?.client_signed_at ?? now;
+        const customFields =
+            client?.custom_fields && typeof client.custom_fields === "object"
+                ? client.custom_fields
+                : {};
         if (client && closedStatus && client.status_option_id !== closedStatus.id) {
             const groupName = currentClosedLeadsGroupName(
-                earliestOcf?.client_signed_at ?? now,
+                ocfClosedDate,
             );
             const { data: existingClosedGroup } = await supabase
                 .from("crm_groups")
@@ -316,10 +321,6 @@ export async function POST(request: NextRequest) {
                     .maybeSingle();
                 closedGroupId = createdGroup?.id ?? null;
             }
-            const customFields =
-                client.custom_fields && typeof client.custom_fields === "object"
-                    ? client.custom_fields
-                    : {};
             const { error: closeError } = await supabase
                 .from("clients")
                 .update({
@@ -328,10 +329,11 @@ export async function POST(request: NextRequest) {
                     group_id: closedGroupId ?? client.group_id,
                     custom_fields: {
                         ...customFields,
-                        closedDate:
-                            earliestOcf?.client_signed_at ??
-                            customFields.closedDate ??
-                            now,
+                        // Always recalculate the OCF contribution. A revised
+                        // OCF deliberately loses its old signature, and a
+                        // subsequent signature must therefore use its latest
+                        // signing date in the overall closure calculation.
+                        closedDate: ocfClosedDate,
                     },
                 })
                 .eq("id", ocf.client_id);
@@ -350,6 +352,19 @@ export async function POST(request: NextRequest) {
                     created_at: now,
                 });
             }
+        } else if (client) {
+            // The client may already be closed. Re-signing a revised OCF must
+            // still refresh the OCF-derived closing date instead of retaining
+            // the superseded signature timestamp.
+            await supabase
+                .from("clients")
+                .update({
+                    custom_fields: {
+                        ...customFields,
+                        closedDate: ocfClosedDate,
+                    },
+                })
+                .eq("id", ocf.client_id);
         }
 
         return NextResponse.json({

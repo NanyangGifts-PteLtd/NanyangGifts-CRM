@@ -29,6 +29,7 @@ const OCF_ELIGIBLE_STATUS_KEYS = [
 ] as const;
 
 type UploadRow = {
+  ocfItemId?: string;
   subitemId: string;
   subitemName: string;
   qty: string | number;
@@ -59,6 +60,8 @@ type GenerateOcfModalProps = {
   onRequestCompanyChange?: (
     companyName: string,
   ) => Promise<{ confirmed: boolean; value: string }>;
+  editOcfId?: string | null;
+  onUpdated?: () => void;
 };
 
 function showOcfGenerationLoading(target: Window) {
@@ -168,6 +171,8 @@ export function GenerateOcfModal({
   onCreated,
   onSaveFinalArtwork,
   onRequestCompanyChange,
+  editOcfId = null,
+  onUpdated,
 }: GenerateOcfModalProps) {
   const [awardedSubitems, setAwardedSubitems] = useState<AwardedSubitem[]>([]);
   const [rows, setRows] = useState<UploadRow[]>([]);
@@ -194,8 +199,77 @@ export function GenerateOcfModal({
     [subitemStatusOptions],
   );
 
+  const isEditing = Boolean(editOcfId);
+
   useEffect(() => {
     if (!open || !client) return;
+
+    if (editOcfId) {
+      let active = true;
+      setLoadingItems(true);
+      void fetch(`/api/order-confirmations/${encodeURIComponent(editOcfId)}`)
+        .then(async (response) => {
+          const data = await response.json();
+          if (!response.ok) {
+            throw new Error(data?.error || "Unable to load this OCF for editing");
+          }
+          return data;
+        })
+        .then((data) => {
+          if (!active) return;
+          const currentById = new Map((client.subitems ?? []).map((subitem) => [subitem.id, subitem]));
+          const existingItems = Array.isArray(data.items) ? data.items : [];
+          const mapped = existingItems.map((item: any) => {
+            const current = currentById.get(item.subitem_id) as Subitem | undefined;
+            return {
+              id: item.subitem_id,
+              name: current?.name ?? item.item_name ?? "",
+              qty: current?.qty ?? item.qty ?? "",
+              description: current?.description ?? item.remarks ?? "",
+              status: current?.status ?? "",
+              pl: current?.pl ?? "",
+              sl: current?.sl ?? "",
+              customFields: current?.customFields,
+              timelineRows: current?.timelineRows ?? [],
+              timelineGroups: current?.timelineGroups ?? [],
+            } satisfies AwardedSubitem;
+          });
+          setAwardedSubitems(mapped);
+          setRows(existingItems.map((item: any) => {
+            const current = currentById.get(item.subitem_id) as Subitem | undefined;
+            const finalArtwork = savedFinalArtwork(current?.customFields?.ocfFinalArtworkFile);
+            return {
+              ocfItemId: item.id,
+              subitemId: item.subitem_id,
+              subitemName: current?.name ?? item.item_name ?? "",
+              qty: current?.qty ?? item.qty ?? "",
+              remarks: current?.description ?? item.remarks ?? "",
+              file: null,
+              uploadedPath: item.image_path ?? null,
+              isUploading: false,
+              error: null,
+              finalArtwork,
+              usingFinalArtwork: false,
+              loadingSavedArtwork: false,
+              savedArtworkAttempted: false,
+              needByDate: item.need_by_date === "ASAP" ? "" : dateInputValue(item.need_by_date),
+              needByAsap: item.need_by_date === "ASAP",
+            } satisfies UploadRow;
+          }));
+          setIncludedSubitemIds(existingItems.map((item: any) => String(item.subitem_id)));
+          setEstimatedDeliveryNotes(String(data.ocf?.estimated_delivery_notes ?? ""));
+          setCompanyName(client.company ?? "");
+          setClientEmail(client.email ?? "");
+          setFormError(null);
+        })
+        .catch((error: unknown) => {
+          if (active) setFormError(error instanceof Error ? error.message : "Unable to load this OCF for editing");
+        })
+        .finally(() => {
+          if (active) setLoadingItems(false);
+        });
+      return () => { active = false; };
+    }
 
     const awarded = (client.subitems ?? []).filter(
       (subitem) =>
@@ -249,7 +323,7 @@ export function GenerateOcfModal({
     setFormError(null);
     setCreating(false);
     setLoadingItems(false);
-  }, [open, client, awardedOrLaterStatusIds]);
+  }, [open, client, awardedOrLaterStatusIds, editOcfId]);
 
   useEffect(() => {
     if (!open) setPendingFinalArtworkReplacement(null);
@@ -335,10 +409,8 @@ export function GenerateOcfModal({
 
   useEffect(() => {
     if (!open) return;
-    setEstimatedDeliveryNotes(
-      buildEstimatedDeliveryNotes(selectedAwardedSubitems),
-    );
-  }, [open, selectedAwardedSubitems]);
+    if (!isEditing) setEstimatedDeliveryNotes(buildEstimatedDeliveryNotes(selectedAwardedSubitems));
+  }, [open, selectedAwardedSubitems, isEditing]);
 
   function updateRow(subitemId: string, patch: Partial<UploadRow>) {
     setRows((prev) =>
@@ -515,6 +587,39 @@ export function GenerateOcfModal({
       setCompanyName(outcome.value);
     }
 
+    if (isEditing && editOcfId) {
+      setCreating(true);
+      try {
+        const resolvedRows = await Promise.all(selectedRows.map(async (row) => ({ row, imagePath: row.uploadedPath || (await uploadRowFile(row)) })));
+        if (resolvedRows.some(({ imagePath }) => !imagePath)) throw new Error("One or more artwork images could not be uploaded.");
+        const response = await fetch("/api/order-confirmations/revise", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ocfId: editOcfId,
+            companyName: companyName.trim(),
+            clientEmail: clientEmail.trim(),
+            estimatedDeliveryNotes: estimatedDeliveryNotes || "",
+            items: resolvedRows.map(({ row, imagePath }) => ({
+              id: row.ocfItemId,
+              subitemId: row.subitemId,
+              imagePath,
+              needBy: row.needByAsap ? "ASAP" : row.needByDate,
+            })),
+          }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Failed to revise OCF");
+        onUpdated?.();
+        onClose();
+      } catch (error: unknown) {
+        setFormError(error instanceof Error ? error.message : "Failed to revise OCF");
+      } finally {
+        setCreating(false);
+      }
+      return;
+    }
+
     // Reserve the tab while this click still counts as a direct user gesture.
     // Waiting for artwork uploads before calling window.open allows popup
     // blockers to reject an otherwise successful OCF creation.
@@ -594,7 +699,7 @@ export function GenerateOcfModal({
         <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
           <div>
             <h2 className="text-sm font-semibold text-gray-900">
-              Generate Order Confirmation Form
+              {isEditing ? "Revise Order Confirmation Form" : "Generate Order Confirmation Form"}
             </h2>
             <p className="text-xs text-gray-500">
               {client.name} {client.company ? `• ${client.company}` : ""}
@@ -611,6 +716,11 @@ export function GenerateOcfModal({
         </div>
 
         <div className="max-h-[75vh] overflow-y-auto px-5 py-4">
+          {isEditing && (
+            <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              Saving this revision replaces the OCF artwork and quantities from the CRM Board, and resets any existing client acknowledgement or signature.
+            </div>
+          )}
           {!hasAwarded ? (
             <div className="rounded-lg border border-dashed border-gray-200 p-6 text-sm text-gray-500">
               No awarded subitems found for this client.
@@ -679,6 +789,7 @@ export function GenerateOcfModal({
                             <input
                               type="checkbox"
                               checked={isIncluded}
+                              disabled={isEditing}
                               onChange={(event) =>
                                 toggleIncludedSubitem(
                                   row.subitemId,
@@ -688,9 +799,7 @@ export function GenerateOcfModal({
                               className="h-4 w-4 accent-[#7BCBD5]"
                             />
                             <span>
-                              Include in
-                              <br />
-                              OCF?
+                              {isEditing ? "Included" : <>Include in<br />OCF?</>}
                             </span>
                           </label>
                           <div>
@@ -711,7 +820,7 @@ export function GenerateOcfModal({
                                     type="date"
                                     value={row.needByDate}
                                     disabled={row.needByAsap}
-                                    onChange={(event) =>
+                              onChange={(event) =>
                                       updateRow(row.subitemId, {
                                         needByDate: event.target.value,
                                         needByAsap: false,
@@ -848,7 +957,7 @@ export function GenerateOcfModal({
               disabled={!hasIncludedItems || !companyName.trim() || creating}
               className="rounded-md bg-[#7BCBD5] px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
             >
-              {creating ? "Generating..." : "Generate OCF"}
+              {creating ? (isEditing ? "Saving revision..." : "Generating...") : (isEditing ? "Save OCF revision" : "Generate OCF")}
             </button>
           </div>
         </div>

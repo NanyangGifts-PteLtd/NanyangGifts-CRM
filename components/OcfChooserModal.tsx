@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { FilePlus2, FileText, LoaderCircle, Pencil, X } from "lucide-react";
-import { toast } from "sonner";
 import type { Client } from "@/app/types";
 import { useEscapeClose } from "./hooks/use-escape-close";
 
@@ -20,12 +19,14 @@ export function OcfChooserModal({
   canGenerate,
   onClose,
   onGenerate,
+  onEdit,
 }: {
   open: boolean;
   client: Client | null;
   canGenerate: boolean;
   onClose: () => void;
   onGenerate: () => void;
+  onEdit: (ocfId: string) => void;
 }) {
   const [files, setFiles] = useState<OcfFile[]>([]);
   const [loadingFiles, setLoadingFiles] = useState(false);
@@ -53,6 +54,7 @@ export function OcfChooserModal({
   useEffect(() => {
     if (!open || !client) return;
     let active = true;
+    setFiles([]);
     setLoadingFiles(true);
     void fetch(`/api/order-confirmations?clientId=${encodeURIComponent(client.id)}`)
       .then(async (response) => {
@@ -136,7 +138,7 @@ export function OcfChooserModal({
                         <a href={file.url} target="_blank" rel="noreferrer" className="block truncate text-sm text-sky-700 hover:underline">{file.name}</a>
                         <p className="text-[11px] text-slate-400">{file.signed ? "Signed · " : ""}{file.createdAt ? new Date(file.createdAt).toLocaleString("en-GB") : ""}</p>
                       </div>
-                      <button type="button" onClick={() => toast.info("OCF editing will be available here soon.")} className="inline-flex shrink-0 items-center gap-1 rounded border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100">
+                      <button type="button" disabled={!canGenerate} title={canGenerate ? undefined : "PM users cannot edit OCFs"} onClick={() => onEdit(file.id)} className="inline-flex shrink-0 items-center gap-1 rounded border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50">
                         <Pencil size={12} /> Edit
                       </button>
                     </div>

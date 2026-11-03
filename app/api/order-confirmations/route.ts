@@ -32,7 +32,7 @@ export async function GET(request: Request) {
       name: (() => {
         const details = [ocf.client_name_snapshot, ocf.company_snapshot]
           .filter((part): part is string => Boolean(part?.trim()))
-          .join(" ");
+          .join(" - ");
         return details
           ? `Order Confirmation Form - ${details}`
           : "Order Confirmation Form";

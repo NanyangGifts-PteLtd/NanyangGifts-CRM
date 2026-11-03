@@ -154,6 +154,7 @@ export function ClientDetailView({
   onOpenProfile,
   activityLoading = false,
   onLoadActivityLog,
+  onEditOcf,
 }: {
   client: Client;
   clients: Client[];
@@ -185,6 +186,7 @@ export function ClientDetailView({
   onOpenProfile?: (type: "client" | "company", profileId: string) => void;
   activityLoading?: boolean;
   onLoadActivityLog?: () => void | Promise<void>;
+  onEditOcf?: (ocfId: string) => void;
 }) {
   const [tab, setTab] = useState<Tab>(initialTab ?? "overview");
   const canManageSubitemLock = ["admin", "director", "dev"].includes(
@@ -1025,10 +1027,10 @@ export function ClientDetailView({
                           {field === "ocfFiles" && (
                             <button
                               type="button"
-                              onClick={() =>
-                                toast.info("OCF editing will be available here soon.")
-                              }
-                              className="inline-flex items-center gap-1 text-xs font-medium text-sky-700 hover:underline"
+                              disabled={String(currentUserRole ?? "").trim().toLowerCase() === "pm"}
+                              title={String(currentUserRole ?? "").trim().toLowerCase() === "pm" ? "PM users cannot edit OCFs" : undefined}
+                              onClick={() => onEditOcf?.(item.id) ?? toast.info("OCF editing will be available here soon.")}
+                              className="inline-flex items-center gap-1 text-xs font-medium text-sky-700 hover:underline disabled:cursor-not-allowed disabled:opacity-50"
                             >
                               <Pencil size={12} /> Edit
                             </button>
