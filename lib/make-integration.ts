@@ -24,6 +24,7 @@ type LeadAssignedEvent = {
   clientEmail: string;
   clientPhone: string;
   requirements: string;
+  clientQuantity: string;
   nbd: string;
   billingAddress: string;
   orderNumber: string;
@@ -95,24 +96,43 @@ export async function deliverMakeOutboxEvent(id: string) {
   let persistedSubitems = Array.isArray(client.subitems) ? client.subitems : [];
   let deliveryPayload = row.payload;
   if (typeof client.id === "string" && client.id) {
-    const { data: subitems, error: subitemsError } = await supabaseAdmin
-      .from("subitems")
-      .select("name, qty")
-      .eq("client_id", client.id)
-      .is("deleted_at", null)
-      .order("position", { ascending: true });
+    const [{ data: subitems, error: subitemsError }, { data: persistedClient, error: clientError }] = await Promise.all([
+      supabaseAdmin
+        .from("subitems")
+        .select("name, qty")
+        .eq("client_id", client.id)
+        .is("deleted_at", null)
+        .order("position", { ascending: true }),
+      supabaseAdmin
+        .from("clients")
+        .select("client_quantity")
+        .eq("id", client.id)
+        .maybeSingle(),
+    ]);
     if (subitemsError) throw new Error(subitemsError.message);
+    if (clientError) throw new Error(clientError.message);
     persistedSubitems = (subitems ?? []).map((subitem) => ({
       name: subitem.name ?? "Untitled subitem",
       qty: subitem.qty ?? "",
     }));
     deliveryPayload = {
       ...row.payload,
-      client: { ...client, subitems: persistedSubitems },
+      client: {
+        ...client,
+        quantity:
+          persistedClient?.client_quantity === null ||
+          persistedClient?.client_quantity === undefined
+            ? ""
+            : String(persistedClient.client_quantity),
+        subitems: persistedSubitems,
+      },
     };
   }
   const webhookUrl = process.env.MAKE_LEAD_ASSIGNED_WEBHOOK_URL?.trim();
   const secret = process.env.MAKE_INTEGRATION_SECRET?.trim();
+  const deliveredClient = deliveryPayload.client && typeof deliveryPayload.client === "object"
+    ? deliveryPayload.client as Record<string, unknown>
+    : client;
     if (!webhookUrl || !secret) {
       throw new Error("MAKE_LEAD_ASSIGNED_WEBHOOK_URL or MAKE_INTEGRATION_SECRET is not configured");
     }
@@ -139,6 +159,7 @@ export async function deliverMakeOutboxEvent(id: string) {
         clientEmail: client.email ?? "",
         clientPhone: client.phone ?? "",
         clientRequirements: client.requirements ?? "",
+        clientQuantity: deliveredClient.quantity ?? "",
         clientBoardUrl: client.boardUrl ?? "",
         clientSubitems: persistedSubitems,
         // Keep a top-level alias for Make scenarios that map simple fields
@@ -254,6 +275,7 @@ export async function queueLeadAssignedMakeEvent(input: LeadAssignedEvent) {
         email: input.clientEmail,
         phone: input.clientPhone,
         requirements: input.requirements,
+        quantity: input.clientQuantity,
         nbd: input.nbd,
         billingAddress: input.billingAddress,
         orderNumber: input.orderNumber,
@@ -281,7 +303,7 @@ export async function queueLeadReassignedMakeEvent(input: {
   const [{ data: client, error: clientError }, { data: assignees, error: assigneeError }] = await Promise.all([
     supabaseAdmin
       .from("clients")
-      .select("id, name, email, phone, requirements, nbd, billing_address, total_price, custom_fields, subitems!subitems_client_id_fkey(name, qty, deleted_at)")
+      .select("id, name, email, phone, requirements, client_quantity, nbd, billing_address, total_price, custom_fields, subitems!subitems_client_id_fkey(name, qty, deleted_at)")
       .eq("id", input.clientId)
       .is("deleted_at", null)
       .single(),
@@ -318,6 +340,10 @@ export async function queueLeadReassignedMakeEvent(input: {
       email: client.email ?? "",
       phone: client.phone ?? "",
       requirements: client.requirements ?? "",
+      quantity:
+        client.client_quantity === null || client.client_quantity === undefined
+          ? ""
+          : String(client.client_quantity),
       nbd: client.nbd ?? "",
       billingAddress: client.billing_address ?? "",
       orderNumber: typeof customFields.orderNumber === "string" ? customFields.orderNumber : "",

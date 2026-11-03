@@ -528,6 +528,7 @@ export async function ingestLead(lead: NormalizedInboundLead): Promise<InboundRe
         clientEmail: lead.email,
         clientPhone: lead.phone,
         requirements: lead.notes,
+        clientQuantity: lead.qty,
         nbd: lead.nbd,
         billingAddress: lead.billingAddress,
         orderNumber: lead.orderNumber,
