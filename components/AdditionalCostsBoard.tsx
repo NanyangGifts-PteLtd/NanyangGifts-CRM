@@ -2464,8 +2464,12 @@ export function AdditionalCostsBoard({
       .filter((subitem) => selectedNames.has(subitem.name))
       .map((subitem) => subitem.id);
     const menuOpen = boardRelatedSubitemsMenu?.rowId === row.id;
+    // Groups 1 and 2 use the Payment Voucher preview as their only voucher
+    // editor. This includes drafts: leaving a partially prepared voucher
+    // editable on the board bypasses the preview's validation and can split
+    // its voucher and Bill state.
     const lockedForPreviewEditing =
-      row.voucher_group === "courier" || Boolean(row.is_draft);
+      row.voucher_group !== "quickbooks_bills_only";
     return (
       <>
         <button
@@ -2509,7 +2513,7 @@ export function AdditionalCostsBoard({
                 >
                   <input
                     type="checkbox"
-                    disabled={!canDelete(row)}
+                    disabled={!canDelete(row) || lockedForPreviewEditing}
                     checked={selectedIds.includes(subitem.id)}
                     onChange={(event) => {
                       const anchor = boardRelatedSubitemSelectionAnchorsRef.current.get(
@@ -2842,6 +2846,8 @@ export function AdditionalCostsBoard({
                   group.rows.map((row) => {
                     const client = clientsById.get(row.client_id);
                     const project = projectForVoucher(row);
+                    const voucherInfoLockedToPreview =
+                      String(group.id) !== "quickbooks_bills_only";
                     const displayedBillMemo =
                       row.quickbooks_memo ||
                       (row.is_draft ? row.draft_bill?.memo?.trim() : "") ||
@@ -2897,15 +2903,17 @@ export function AdditionalCostsBoard({
                             defaultValue={row.cost ?? ""}
                             disabled={
                               !canDelete(row) ||
-                              String(group.id) === "quickbooks_bills_only" ||
-                              String(group.id) === "courier"
+                              voucherInfoLockedToPreview ||
+                              String(group.id) === "quickbooks_bills_only"
                             }
                             onBlur={(event) =>
                               event.target.value !== String(row.cost ?? "") &&
                               void update(row.id, { cost: event.target.value })
                             }
                             title={
-                              String(group.id) === "quickbooks_bills_only"
+                              voucherInfoLockedToPreview
+                                ? "Edit this Payment Voucher in the preview."
+                                : String(group.id) === "quickbooks_bills_only"
                                 ? "Calculated from the QuickBooks Bill expense-line total."
                                 : undefined
                             }
@@ -2967,7 +2975,12 @@ export function AdditionalCostsBoard({
                               reorderLabels("additional_cost_reason", layout)
                             }
                             manageLabel="reason"
-                            readOnly={!canDelete(row) || String(group.id) === "courier"}
+                            readOnly={!canDelete(row) || voucherInfoLockedToPreview}
+                            readOnlyReason={
+                              voucherInfoLockedToPreview
+                                ? "Edit this Payment Voucher in the preview."
+                                : undefined
+                            }
                           />
                         </td>
                         <td
@@ -2977,7 +2990,12 @@ export function AdditionalCostsBoard({
                           <input
                             key={`${row.id}-remarks-${row.remarks}`}
                             defaultValue={row.remarks}
-                            disabled={!canDelete(row) || String(group.id) === "courier"}
+                            disabled={!canDelete(row) || voucherInfoLockedToPreview}
+                            title={
+                              voucherInfoLockedToPreview
+                                ? "Edit this Payment Voucher in the preview."
+                                : undefined
+                            }
                             onBlur={(event) =>
                               event.target.value !== row.remarks &&
                               void update(row.id, {
@@ -3276,7 +3294,7 @@ export function AdditionalCostsBoard({
                             data-voucher-col="actions"
                             className="border-b border-slate-200 p-0 text-center"
                           >
-                          {(String(group.id) === "courier" || row.is_draft) ? (
+                          {String(group.id) !== "quickbooks_bills_only" ? (
                             <button
                               type="button"
                               disabled={!canDelete(row) || creatingFor === row.id}
