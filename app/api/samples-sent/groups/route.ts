@@ -96,6 +96,16 @@ export async function DELETE(request: NextRequest) {
     const id = new URL(request.url).searchParams.get("id")?.trim();
     if (!id) throw new Error("A group is required.");
 
+    // Do not strand records outside the board while status-to-group movement
+    // is still being introduced. A populated group must be emptied/moved
+    // explicitly before it can be deleted.
+    const { count, error: countError } = await supabaseAdmin
+      .from("samples_sent")
+      .select("id", { count: "exact", head: true })
+      .eq("group_id", id);
+    if (countError) throw countError;
+    if (count) throw new Error("Move or deactivate this group's Samples Sent records before deleting it.");
+
     const { error } = await supabaseAdmin
       .from("samples_sent_groups")
       .delete()
