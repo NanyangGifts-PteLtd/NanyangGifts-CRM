@@ -25,7 +25,6 @@ import {
   Calendar,
   CreditCard,
   DollarSign,
-  Package,
   Plus,
   Trash2,
   MoreHorizontal,
@@ -39,7 +38,6 @@ import {
 } from "lucide-react";
 import { StatusBadge } from "./statusbadge";
 import { EditableCell } from "./editablecell";
-import { SamplesSection } from "./sample";
 import { AssigneeMultiSelect } from "./assignee-multiselect";
 import {
   TimelineSection,
@@ -967,30 +965,19 @@ export function SubitemsTable({
   };
   const [tableMode, setTableMode] = useState<TableMode | null>(null);
   const [subitemViewById, setSubitemViewById] = useState<
-    Record<string, "timeline" | "subpayment" | "sample" | null>
+    Record<string, "timeline" | "subpayment" | null>
   >({});
   const subitemView = (
-    current: Record<string, "timeline" | "subpayment" | "sample" | null>,
+    current: Record<string, "timeline" | "subpayment" | null>,
     subitem: Subitem,
   ) =>
     Object.hasOwn(current, subitem.id)
       ? current[subitem.id]
       : subitem.showTimeline
         ? "timeline"
-        : subitem.showSample
-          ? "sample"
-          : null;
+        : null;
   const activeSubitemView = (subitem: Subitem) =>
     subitemView(subitemViewById, subitem);
-  const toggleSubitemView = (
-    subitem: Subitem,
-    view: "timeline" | "subpayment" | "sample",
-  ) => {
-    setSubitemViewById((current) => ({
-      ...current,
-      [subitem.id]: subitemView(current, subitem) === view ? null : view,
-    }));
-  };
   const canCreateSubitems =
     !subitemsLocked &&
     !!currentUserId &&
@@ -2590,20 +2577,6 @@ export function SubitemsTable({
               title="Timeline"
             >
               <Calendar size={15} />
-            </button>
-
-            <button
-              type="button"
-              data-view-action
-              onClick={() => toggleSubitemView(sub, "sample")}
-              className={`flex items-center justify-center rounded-sm border p-1 transition active:scale-95 ${
-                activeSubitemView(sub) === "sample"
-                  ? "border-[#d5a5ec] bg-[#d5a5ec] text-white"
-                  : "border-purple-200 bg-transparent text-[#ac7ec2] hover:bg-purple-100"
-              }`}
-              title="Samples"
-            >
-              <Package size={15} />
             </button>
 
             <button
@@ -5273,15 +5246,6 @@ export function SubitemsTable({
                     </ExpandedRow>
                   )}
 
-                {activeSubitemView(sub) === "sample" && (
-                  <ExpandedRow colSpan={totalColSpan} tone="purple">
-                    <SamplesSection
-                      subitem={sub}
-                      onUpdate={(u) => onUpdateSubitem(sub.id, u)}
-                      readOnly={!canEditSubitem(sub.id)}
-                    />
-                  </ExpandedRow>
-                )}
               </React.Fragment>
             ))}
 

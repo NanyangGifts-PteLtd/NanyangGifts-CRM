@@ -428,13 +428,6 @@ const TIMELINE_SEARCH_COLS = [
   { key: "duration", label: "Duration" },
   { key: "dependency", label: "Dependency" },
 ];
-const SAMPLE_SEARCH_COLS = [
-  { key: "status", label: "Status" },
-  { key: "type", label: "Type" },
-  { key: "returnByDate", label: "Return by" },
-  { key: "returnedDate", label: "Returned date" },
-  { key: "sentDate", label: "Sent date" },
-];
 const UNQUALIFIED_GROUP_NAME = "unqualified lead";
 const isUnqualifiedGroupName = (name?: string | null) =>
   name?.trim().toLowerCase() === UNQUALIFIED_GROUP_NAME;
@@ -5943,23 +5936,6 @@ export function CRMBoard({
       ),
       valueType: valueTypeFor("timeline", column.key),
     }));
-    const sampleColumns = SAMPLE_SEARCH_COLS.map((column) => ({
-      key: `sample:${column.key}`,
-      label: column.label,
-      category: "Sample" as const,
-      values: unique(
-        clients.flatMap((client) =>
-          client.subitems.flatMap((subitem) =>
-            (subitem.sampleRows ?? []).map(
-              (sample) =>
-                (sample as unknown as Record<string, unknown>)[column.key] ??
-                "",
-            ),
-          ),
-        ),
-      ),
-      valueType: valueTypeFor("sample", column.key),
-    }));
     return [
       ...clientColumns,
       ...identificationColumns,
@@ -5967,7 +5943,6 @@ export function CRMBoard({
       ...paymentColumns,
       ...subpaymentColumns,
       ...timelineColumns,
-      ...sampleColumns,
     ];
   }, [
     clientAssignees,
@@ -6064,12 +6039,6 @@ export function CRMBoard({
         values = client.subitems.flatMap((subitem) =>
           (subitem.timelineRows ?? []).map(
             (timeline) => (timeline as unknown as Record<string, unknown>)[key],
-          ),
-        );
-      } else if (category === "sample") {
-        values = client.subitems.flatMap((subitem) =>
-          (subitem.sampleRows ?? []).map(
-            (sample) => (sample as unknown as Record<string, unknown>)[key],
           ),
         );
       } else {
@@ -6334,16 +6303,7 @@ export function CRMBoard({
                       ),
                     ),
                   )
-                : scope === "sample"
-                  ? client.subitems.flatMap((subitem) =>
-                      (subitem.sampleRows ?? []).flatMap((sample) =>
-                        valuesFor(
-                          sample as unknown as Record<string, unknown>,
-                          key,
-                        ),
-                      ),
-                    )
-                  : client.subitems.flatMap((subitem) =>
+                : client.subitems.flatMap((subitem) =>
                       key === "people"
                         ? (subitemAssignees[subitem.id] ?? []).map(profileName)
                         : key === "markup" || key === "percentMarkup"
