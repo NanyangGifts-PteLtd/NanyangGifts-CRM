@@ -300,7 +300,7 @@ export default function ClientOcfView({ ocf }: { ocf: Ocf }) {
                 Need by
               </th>
               <th className="w-[16%] border border-black px-2 py-2 font-semibold">
-                Remarks
+                Description
               </th>
               <th className="w-[45%] border border-black px-2 py-2 font-semibold">
                 <div className="flex items-center justify-between gap-3">

@@ -477,7 +477,7 @@ export default function OcfInternalView({
                 Need by
               </th>
               <th className="w-[16%] border border-black px-2 py-2 font-semibold">
-                Remarks
+                Description
               </th>
               <th className="w-[45%] border border-black px-2 py-2 font-semibold">
                 <div className="flex items-center justify-between gap-3">
@@ -592,7 +592,7 @@ export default function OcfInternalView({
                       }
                       rows={4}
                       className="w-full min-w-0 rounded border border-gray-300 px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-teal-500 focus:ring-offset-2"
-                      placeholder="Item remarks"
+                      placeholder="Item description"
                     />
                   </td>
                   <td className="border border-black px-2 py-3">

@@ -44,7 +44,7 @@ export function PrintArtworkAppendix({ items }: { items: ArtworkItem[] }) {
               <dd>{formatNeedBy(item.need_by_date)}</dd>
               {item.remarks ? (
                 <>
-                  <dt className="font-semibold">Remarks:</dt>
+                  <dt className="font-semibold">Description:</dt>
                   <dd className="whitespace-pre-wrap">{item.remarks}</dd>
                 </>
               ) : null}

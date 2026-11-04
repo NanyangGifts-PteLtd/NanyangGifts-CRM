@@ -810,7 +810,7 @@ export function GenerateOcfModal({
                               Qty: {row.qty || "-"}
                             </p>
                             <p className="mt-1 text-xs text-gray-600">
-                              Remarks: {row.remarks || "-"}
+                              Description: {row.remarks || "-"}
                             </p>
                             {isIncluded && (
                               <div className="mt-3 flex flex-wrap items-end gap-3 rounded border border-amber-200 bg-amber-50 p-2.5">

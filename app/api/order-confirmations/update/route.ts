@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { supabaseAdmin } from "@/lib/supabase/admin";
 import { canEditClient } from "@/lib/client-access";
 import { updateCrmSpreadsheetDeliveryInfo } from "@/lib/shipper/spreadsheet";
 import { withOcfNeedByTimeline } from "@/lib/ocf-need-by";
@@ -46,7 +47,11 @@ export async function POST(req: Request) {
       );
     }
 
-    const { data: ocf, error: ocfLookupError } = await supabase
+    // Permission is established with the caller's authenticated client above.
+    // Use the server-only admin client for the OCF rows themselves: the
+    // child-table RLS policy is not the same as the client-level edit rule and
+    // can otherwise make an existing OCF item look as though it does not exist.
+    const { data: ocf, error: ocfLookupError } = await supabaseAdmin
       .from("order_confirmations")
       .select("client_id, status, locked_at")
       .eq("id", ocfId)
@@ -93,7 +98,7 @@ export async function POST(req: Request) {
       }
     }
 
-    const { error: ocfError } = await supabase
+    const { error: ocfError } = await supabaseAdmin
       .from("order_confirmations")
       .update({
         estimated_delivery_notes: estimatedDeliveryNotes,
@@ -121,7 +126,7 @@ export async function POST(req: Request) {
         "need_by_date",
       );
       const needByDate = hasNeedByDate ? String(item.need_by_date) : null;
-      const { data: updatedItem, error: itemError } = await supabase
+      const { data: updatedItem, error: itemError } = await supabaseAdmin
         .from("order_confirmation_items")
         .update({
           remarks: item.remarks ?? "",
@@ -183,7 +188,7 @@ export async function POST(req: Request) {
     let timelineWarning: string | null = null;
     if (needByUpdates.size > 0) {
       const subitemIds = [...needByUpdates.keys()];
-      const { data: subitems, error: subitemsError } = await supabase
+      const { data: subitems, error: subitemsError } = await supabaseAdmin
         .from("subitems")
         .select("id, timeline_rows, timeline_groups")
         .in("id", subitemIds);
@@ -200,7 +205,7 @@ export async function POST(req: Request) {
               timelineGroups: subitem.timeline_groups,
               needBy: needByUpdates.get(subitem.id)!,
             });
-            const { error } = await supabase
+            const { error } = await supabaseAdmin
               .from("subitems")
               .update({
                 timeline_rows: timelineRows,
@@ -221,7 +226,7 @@ export async function POST(req: Request) {
       }
     }
 
-    await supabase.from("activity_log").insert({
+    await supabaseAdmin.from("activity_log").insert({
       client_id: ocf.client_id,
       subitem_id: null,
       actor_name: "CRM user",
