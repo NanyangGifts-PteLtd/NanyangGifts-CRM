@@ -989,6 +989,10 @@ export function ClientRow({
     "payment_status_resolved",
     "Resolved",
   );
+  const paidPaymentOption = paymentStatusOption(
+    "payment_status_paid",
+    "âœ…",
+  );
   const trackingInvoicePaidOption = findSystemOption(
     trackingInvoicePaymentStatusLabelOptions,
     "tracking_invoice_payment_status_paid",
@@ -1045,29 +1049,44 @@ export function ClientRow({
   );
   const awardedSubitems = client.subitems.filter(contributesToAwardedTotals);
   const paidAwardedSubitems = awardedSubitems.filter(
-    (subitem) =>
-      (Boolean(resolvedPaymentOption.id) &&
-        subitem.paymentStatusOptionId === resolvedPaymentOption.id) ||
-      (() => {
-        const qty = quickBooksNumber(subitem.qty);
-        const cost = quickBooksNumber(subitem.cost);
-        const multiplier = sgdToCurrencyMultiplier(
-          currencySystemKey(
-            subitem.currencyOptionId,
-            currencyOptions,
-            subitem.currency,
-          ),
-        );
-        const totalCost =
-          qty * cost +
-          quickBooksNumber(subitem.manpower) * multiplier +
-          quickBooksNumber(subitem.ls) * multiplier;
-        const totalToPay = totalCost + quickBooksNumber(subitem.sample) * cost;
-        const received = (subitem.paymentRows ?? [])
-          .filter((row) => row.paymentReceived === true)
-          .reduce((sum, row) => sum + quickBooksNumber(row.amount), 0);
-        return Math.abs(received - totalToPay) < 0.005;
-      })(),
+    (subitem) => {
+      const hasPaidOrResolvedStatus = [
+        paidPaymentOption,
+        resolvedPaymentOption,
+      ].some((option) =>
+        option.id
+          ? subitem.paymentStatusOptionId === option.id
+          : subitem.paymentStatus === option.value,
+      );
+      return (
+        // The Board page intentionally leaves payment rows out until expansion.
+        // Prefer the already-loaded managed payment status, otherwise only use
+        // payment-row arithmetic after those detail rows have arrived.
+        hasPaidOrResolvedStatus ||
+        (subitem.detailsHydrated === true &&
+          (() => {
+            const qty = quickBooksNumber(subitem.qty);
+            const cost = quickBooksNumber(subitem.cost);
+            const multiplier = sgdToCurrencyMultiplier(
+              currencySystemKey(
+                subitem.currencyOptionId,
+                currencyOptions,
+                subitem.currency,
+              ),
+            );
+            const totalCost =
+              qty * cost +
+              quickBooksNumber(subitem.manpower) * multiplier +
+              quickBooksNumber(subitem.ls) * multiplier;
+            const totalToPay =
+              totalCost + quickBooksNumber(subitem.sample) * cost;
+            const received = (subitem.paymentRows ?? [])
+              .filter((row) => row.paymentReceived === true)
+              .reduce((sum, row) => sum + quickBooksNumber(row.amount), 0);
+            return Math.abs(received - totalToPay) < 0.005;
+          })())
+      );
+    },
   );
   const overallPaymentStatus = calculateOverallPaymentStatus(
     awardedSubitems.length,
