@@ -265,6 +265,9 @@ export interface Client {
   unqualifiedReason: string;
   /** Managed review flag, available only while the client is in Unqualified Lead. */
   unqualifiedVerified: boolean;
+  /** Multiple structured reasons selected when a lead is failed. */
+  failedReasons: string[];
+  failedRemarks: string;
   nbd: string;
   totalPrice: string;
   /** Server-managed count of completed automatic lead reassignments. */

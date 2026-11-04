@@ -308,6 +308,8 @@ const CLIENT_HEADER_COLS: HeaderCol[] = [
     width: 145,
     minWidth: 115,
   },
+  { key: "failedReasons", label: "Failed Reason", width: 220, minWidth: 120 },
+  { key: "failedRemarks", label: "Failed Remarks", width: 220, minWidth: 120 },
   { key: "channel", label: "Channel", width: 80, minWidth: 7 },
   { key: "importance", label: "Importance", width: 80, minWidth: 7 },
   { key: "company", label: "Company", width: 80, minWidth: 7 },
@@ -436,6 +438,16 @@ const SAMPLE_SEARCH_COLS = [
 const UNQUALIFIED_GROUP_NAME = "unqualified lead";
 const isUnqualifiedGroupName = (name?: string | null) =>
   name?.trim().toLowerCase() === UNQUALIFIED_GROUP_NAME;
+const FAILED_REASON_CATEGORIES = [
+  {
+    label: "PRICE",
+    reasons: ["Price too high", "Competitor price lower", "Price exceeds Budget"],
+  },
+  { label: "LEAD TIME", reasons: ["Cannot fulfil lead time"] },
+  { label: "MOQ", reasons: ["Cannot meet MOQ"] },
+  { label: "PROJECT", reasons: ["Project Cancelled"] },
+  { label: "OTHERS", reasons: ["Others"] },
+] as const;
 const TRACKING_HEADER_COLS: HeaderCol[] = [
   { key: "selectCheckbox", label: "", width: 76, minWidth: 7 },
   { key: "client", label: "Client", width: 250, minWidth: 7 },
@@ -1893,6 +1905,13 @@ export function CRMBoard({
   } | null>(null);
   const [unqualifiedReasonDraft, setUnqualifiedReasonDraft] = useState("");
   const [savingUnqualifiedLead, setSavingUnqualifiedLead] = useState(false);
+  const [pendingFailedLead, setPendingFailedLead] = useState<{
+    clientId: string;
+    updates: Partial<Client>;
+  } | null>(null);
+  const [failedReasonsDraft, setFailedReasonsDraft] = useState<string[]>([]);
+  const [failedRemarksDraft, setFailedRemarksDraft] = useState("");
+  const [savingFailedLead, setSavingFailedLead] = useState(false);
   const [closeLeadFiles, setCloseLeadFiles] = useState<{
     purchaseOrder: File | null;
     signedQuotation: File | null;
@@ -8145,6 +8164,7 @@ export function CRMBoard({
         CustomerMatchPending,
         "requireConfirmation" | "onResolved"
       >,
+      failedReasonApproved = false,
     ) => {
       const existingClient = clients.find((client) => client.id === clientId);
       if (updates.name !== undefined || updates.company !== undefined) {
@@ -8424,6 +8444,16 @@ export function CRMBoard({
           updates.unqualifiedReason ?? existingClient?.unqualifiedReason ?? "",
         );
         setPendingUnqualifiedLead({ changes: [{ clientId, updates }] });
+        return;
+      }
+      if (isFailedStatusUpdate && !failedReasonApproved) {
+        setFailedReasonsDraft(
+          updates.failedReasons ?? existingClient?.failedReasons ?? [],
+        );
+        setFailedRemarksDraft(
+          updates.failedRemarks ?? existingClient?.failedRemarks ?? "",
+        );
+        setPendingFailedLead({ clientId, updates });
         return;
       }
       const isBecomingClosed =
@@ -8762,6 +8792,39 @@ export function CRMBoard({
       setSavingUnqualifiedLead(false);
     }
   }, [pendingUnqualifiedLead, unqualifiedReasonDraft, updateClient]);
+
+  const confirmFailedLead = useCallback(async () => {
+    const pending = pendingFailedLead;
+    const reasons = failedReasonsDraft;
+    const remarks = failedRemarksDraft.trim();
+    if (!pending || reasons.length === 0) return;
+    if (reasons.includes("Others") && !remarks) return;
+    setSavingFailedLead(true);
+    try {
+      const saved = await updateClient(
+        pending.clientId,
+        {
+          ...pending.updates,
+          failedReasons: reasons,
+          failedRemarks: remarks,
+        },
+        false,
+        false,
+        undefined,
+        undefined,
+        true,
+      );
+      if (!saved) return;
+      setPendingFailedLead(null);
+      setFailedReasonsDraft([]);
+      setFailedRemarksDraft("");
+      toast.success("Lead marked as failed", {
+        description: "The failed reason was saved on the Board.",
+      });
+    } finally {
+      setSavingFailedLead(false);
+    }
+  }, [failedReasonsDraft, failedRemarksDraft, pendingFailedLead, updateClient]);
 
   const confirmCloseLead = useCallback(async () => {
     const uploads = [
@@ -9386,6 +9449,10 @@ export function CRMBoard({
               : String(createdClient.client_quantity),
           unqualifiedReason: createdClient.unqualified_reason ?? "",
           unqualifiedVerified: createdClient.unqualified_verified === true,
+          failedReasons: Array.isArray(createdClient.failed_reasons)
+            ? createdClient.failed_reasons
+            : [],
+          failedRemarks: createdClient.failed_remarks ?? "",
           nbd: createdClient.nbd ?? "",
           groupId: createdClient.group_id ?? defaultGroupId,
           totalPrice: createdClient.total_price ?? "",
@@ -12921,6 +12988,85 @@ export function CRMBoard({
       </AlertDialog>
 
       <AlertDialog
+        open={!!pendingFailedLead}
+        onOpenChange={(open) => {
+          if (!open && !savingFailedLead) {
+            setPendingFailedLead(null);
+            setFailedReasonsDraft([]);
+            setFailedRemarksDraft("");
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Mark this lead as failed?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Select at least one reason. Remarks are required when Others is selected.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-3 py-1">
+            {FAILED_REASON_CATEGORIES.map((category) => (
+              <div key={category.label}>
+                <div className="mb-1 text-xs font-bold tracking-wide text-slate-500">
+                  {category.label}
+                </div>
+                <div className="space-y-1">
+                  {category.reasons.map((reason) => {
+                    const selected = failedReasonsDraft.includes(reason);
+                    return (
+                      <label key={reason} className="flex cursor-pointer items-center gap-2 text-sm text-slate-700">
+                        <input
+                          type="checkbox"
+                          checked={selected}
+                          disabled={savingFailedLead}
+                          onChange={() =>
+                            setFailedReasonsDraft((current) =>
+                              selected
+                                ? current.filter((item) => item !== reason)
+                                : [...current, reason],
+                            )
+                          }
+                        />
+                        {reason}
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+            <textarea
+              value={failedRemarksDraft}
+              onChange={(event) => setFailedRemarksDraft(event.target.value)}
+              placeholder={
+                failedReasonsDraft.includes("Others")
+                  ? "Remarks are required for Others"
+                  : "Remarks (optional)"
+              }
+              rows={4}
+              disabled={savingFailedLead}
+              className="w-full resize-y rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-800 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+            />
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={savingFailedLead}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={
+                savingFailedLead ||
+                failedReasonsDraft.length === 0 ||
+                (failedReasonsDraft.includes("Others") && !failedRemarksDraft.trim())
+              }
+              onClick={(event) => {
+                event.preventDefault();
+                void confirmFailedLead();
+              }}
+            >
+              {savingFailedLead ? "Saving..." : "Confirm failed"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
         open={!!pendingSubitemLock}
         onOpenChange={(open) => {
           if (!open && !savingSubitemLock) setPendingSubitemLock(null);
@@ -13599,6 +13745,10 @@ export function CRMBoard({
                 groupHiddenColumnKeys.add("client:unqualifiedReason");
               if (!isUnqualifiedGroupName(group.name))
                 groupHiddenColumnKeys.add("client:unqualifiedVerified");
+              if (group.name.trim().toLowerCase() !== "failed") {
+                groupHiddenColumnKeys.add("client:failedReasons");
+                groupHiddenColumnKeys.add("client:failedRemarks");
+              }
               if (!/^closed leads\b/i.test(group.name.trim()))
                 groupHiddenColumnKeys.add("client:closedDate");
               const groupClientHeaderCols = activeClientHeaderCols.filter(

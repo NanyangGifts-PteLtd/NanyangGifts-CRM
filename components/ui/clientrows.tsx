@@ -66,6 +66,7 @@ import {
 import { overallPaymentStatus as calculateOverallPaymentStatus } from "@/lib/payment-status";
 import { InlineDatePicker } from "./inline-date-picker";
 import { crmCellText } from "@/lib/crm-cell-context";
+import { Popover, PopoverContent, PopoverTrigger } from "./popover";
 
 const CLIENT_STATUS_BULK_EXCLUDED_SYSTEM_KEYS = new Set([
   "client_status_closed",
@@ -87,6 +88,7 @@ const CLIENT_CLEARABLE_FIELDS: Record<string, keyof Client> = {
   quantity: "quantity",
   nbd: "nbd",
   unqualifiedReason: "unqualifiedReason",
+  failedRemarks: "failedRemarks",
 };
 
 // Manual visual tuning point for the solid accent on every client row.
@@ -95,6 +97,78 @@ const CLIENT_CLEARABLE_FIELDS: Record<string, keyof Client> = {
 // CRMBoard.tsx.
 const CLIENT_ROW_ACCENT_LEFT_OFFSET_PX = -0.2;
 const UNASSIGNED_TRACKING_STATUS_KEY = "__unassigned";
+
+const FAILED_REASON_CATEGORIES = [
+  {
+    label: "PRICE",
+    reasons: ["Price too high", "Competitor price lower", "Price exceeds Budget"],
+  },
+  { label: "LEAD TIME", reasons: ["Cannot fulfil lead time"] },
+  { label: "MOQ", reasons: ["Cannot meet MOQ"] },
+  { label: "PROJECT", reasons: ["Project Cancelled"] },
+  { label: "OTHERS", reasons: ["Others"] },
+] as const;
+
+function FailedReasonPicker({
+  value,
+  disabled,
+  onChange,
+}: {
+  value: string[];
+  disabled: boolean;
+  onChange: (value: string[]) => void;
+}) {
+  const selected = Array.isArray(value) ? value : [];
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          disabled={disabled}
+          className="h-full w-full truncate px-2 text-left text-[12px] text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+          title={selected.join(", ")}
+        >
+          {selected.join(", ") || "Select reasons"}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        className="z-[200] w-72 border-slate-300 bg-white p-3 text-slate-800 opacity-100 shadow-xl"
+      >
+        <div className="space-y-3">
+          {FAILED_REASON_CATEGORIES.map((category) => (
+            <div key={category.label}>
+              <div className="mb-1 text-[10px] font-bold tracking-wide text-slate-500">
+                {category.label}
+              </div>
+              <div className="space-y-1">
+                {category.reasons.map((reason) => {
+                  const checked = selected.includes(reason);
+                  return (
+                    <label key={reason} className="flex cursor-pointer items-center gap-2 rounded px-1 py-1 text-sm hover:bg-slate-50">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() =>
+                          onChange(
+                            checked
+                              ? selected.filter((item) => item !== reason)
+                              : [...selected, reason],
+                          )
+                        }
+                      />
+                      {reason}
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 function normalizeClientQuantity(value: string) {
   const text = value.trim();
@@ -782,6 +856,8 @@ export function ClientRow({
   const isUnqualifiedLeadGroup =
     groupNamesById[client.groupId ?? ""]?.trim().toLowerCase() ===
     "unqualified lead";
+  const isFailedLeadGroup =
+    groupNamesById[client.groupId ?? ""]?.trim().toLowerCase() === "failed";
   const canVerifyUnqualified =
     isUnqualifiedLeadGroup &&
     ["admin", "director", "dev"].includes(
@@ -4717,6 +4793,42 @@ export function ClientRow({
                 : "Only admins, directors, and developers can verify Unqualified Leads."
             }
             className="h-4 w-4 cursor-pointer accent-[#16a5c4] disabled:cursor-not-allowed disabled:opacity-45"
+          />
+        </div>
+
+        <div
+          data-client-column="failedReasons"
+          className="min-w-0 overflow-hidden border-r border-[#D0D4E4] py-1"
+          style={{
+            height: 30,
+            minWidth: colWidth.failedReasons,
+            width: colWidth.failedReasons,
+            order: columnOrderMap.failedReasons ?? 5.7,
+          }}
+        >
+          <FailedReasonPicker
+            value={client.failedReasons}
+            disabled={!canEditClient || !isFailedLeadGroup}
+            onChange={(failedReasons) => onUpdate({ failedReasons })}
+          />
+        </div>
+
+        <div
+          data-client-column="failedRemarks"
+          className="min-w-0 overflow-hidden whitespace-nowrap border-r border-[#D0D4E4] py-1.5 text-ellipsis"
+          style={{
+            height: 30,
+            minWidth: colWidth.failedRemarks,
+            width: colWidth.failedRemarks,
+            order: columnOrderMap.failedRemarks ?? 5.8,
+          }}
+        >
+          <EditableCell
+            className="!justify-start px-1"
+            value={client.failedRemarks}
+            onChange={(failedRemarks) => onUpdate({ failedRemarks })}
+            placeholder=""
+            multiline
           />
         </div>
 

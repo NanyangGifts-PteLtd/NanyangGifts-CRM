@@ -359,6 +359,8 @@ type Clients = {
   requirements: string | null;
   unqualified_reason: string | null;
   unqualified_verified?: boolean | null;
+  failed_reasons?: string[] | null;
+  failed_remarks?: string | null;
   client_quantity: string | number | null;
   nbd: string | null;
   total_price: string | null;
@@ -703,6 +705,8 @@ function mapClients(row: Clients): Client {
         : String(row.client_quantity),
     unqualifiedReason: row.unqualified_reason ?? "",
     unqualifiedVerified: row.unqualified_verified === true,
+    failedReasons: Array.isArray(row.failed_reasons) ? row.failed_reasons : [],
+    failedRemarks: row.failed_remarks ?? "",
     nbd: row.nbd ?? "",
     totalPrice: row.total_price ?? "",
     timesReassigned: Number(row.times_reassigned ?? 0),
@@ -1013,7 +1017,7 @@ export async function fetchClientsWithSubitems(params?: {
     "tracking_overall_invoice_payment_status",
     "tracking_overall_invoice_payment_status_option_id",
     "tracking_invoice_status_summary", "company", "email",
-    "phone", "requirements", "client_quantity", "unqualified_reason", "unqualified_verified", "nbd",
+    "phone", "requirements", "client_quantity", "unqualified_reason", "unqualified_verified", "failed_reasons", "failed_remarks", "nbd",
     "total_price", "times_reassigned", "billing_address", "created_by", "created_at", "waiting_started_at",
     "group_id", "expanded", "color", "custom_fields", "deleted_at",
     "deleted_by",
@@ -2794,6 +2798,12 @@ export async function updateClientRow(
     ...(nextUpdates.unqualifiedVerified !== undefined
       ? { unqualified_verified: nextUpdates.unqualifiedVerified }
       : {}),
+    ...(nextUpdates.failedReasons !== undefined
+      ? { failed_reasons: nextUpdates.failedReasons }
+      : {}),
+    ...(nextUpdates.failedRemarks !== undefined
+      ? { failed_remarks: nextUpdates.failedRemarks }
+      : {}),
     ...(nextUpdates.nbd !== undefined ? { nbd: nextUpdates.nbd } : {}),
     ...(nextUpdates.totalPrice !== undefined
       ? { total_price: nextUpdates.totalPrice }
@@ -2865,6 +2875,10 @@ export async function updateClientRow(
                   ? "unqualified_reason"
                   : key === "unqualifiedVerified"
                     ? "unqualified_verified"
+                    : key === "failedReasons"
+                      ? "failed_reasons"
+                      : key === "failedRemarks"
+                        ? "failed_remarks"
                   : key === "createdAt"
                     ? "created_at"
                     : key === "groupId"
