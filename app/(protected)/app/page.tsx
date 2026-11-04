@@ -94,6 +94,13 @@ const AdditionalCostsBoard = dynamic(
     ),
   { ssr: false, loading: PanelLoading },
 );
+const SamplesSentBoard = dynamic(
+  () =>
+    import("@/components/SamplesSentBoard").then(
+      (module) => module.SamplesSentBoard,
+    ),
+  { ssr: false, loading: PanelLoading },
+);
 const EmailReviewPanel = dynamic(
   () => import("@/components/EmailReviewPanel").then((module) => module.EmailReviewPanel),
   { ssr: false, loading: PanelLoading },
@@ -109,6 +116,7 @@ const WorkingCalendarPanel = dynamic(
 const PANEL_IDS: SidePanel[] = [
   "crm",
   "additionalcosts",
+  "samplessent",
   "emails",
   "emailreview",
   "reports",
@@ -3934,10 +3942,13 @@ export default function Page() {
           />
         );
 
+      case "samplessent":
+        return <SamplesSentBoard />;
+
       case "emails":
         return (
           <div className="flex h-full items-center justify-center text-sm text-gray-500">
-            Outlook goes here
+            Native email goes here
           </div>
         );
 

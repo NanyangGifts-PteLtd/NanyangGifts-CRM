@@ -46,6 +46,7 @@ import {
 } from "../app/types";
 import { createClient as createSupabaseClient } from "@/lib/supabase/client";
 import { ClientRow } from "./ui/clientrows";
+import type { SamplesSentClientSummary } from "./SamplesSentClientSummary";
 import { TRACKING_VIEW_MIN_WIDTH } from "./TrackingQuoteList";
 import { gradientForId } from "./ui/assignee-multiselect";
 import { AVATAR_COLOR_OPTIONS } from "@/lib/avatar-colors";
@@ -331,6 +332,7 @@ const CLIENT_HEADER_COLS: HeaderCol[] = [
     width: 170,
     minWidth: 7,
   },
+  { key: "samplesSent", label: "Samples", width: 135, minWidth: 110 },
   { key: "totalPrice", label: "Total Price", width: 80, minWidth: 7 },
   { key: "totalMarkup", label: "Total Markup", width: 90, minWidth: 7 },
   { key: "progress", label: "Progress", width: 110, minWidth: 7 },
@@ -1926,6 +1928,9 @@ export function CRMBoard({
   ).every((key) => !closeLeadFiles[key] || Boolean(closeLeadFileDates[key]));
 
   const [headerCols, setHeaderCols] = useState<HeaderCol[]>(CLIENT_HEADER_COLS);
+  const [samplesSentSummaries, setSamplesSentSummaries] = useState<
+    Record<string, SamplesSentClientSummary>
+  >({});
   const [clientMergedOrderKeys, setClientMergedOrderKeys] = useState<string[]>(
     [],
   );
@@ -2013,6 +2018,35 @@ export function CRMBoard({
       active = false;
     };
   }, [setClients, trackingSummaryHydrationKey, trackingView]);
+
+  // One batched request covers the client page(s) already loaded into the CRM
+  // Board. This deliberately avoids a request per visible Samples cell.
+  const samplesSentSummaryClientIdsKey = useMemo(
+    () => clients.map((client) => client.id).sort().join(","),
+    [clients],
+  );
+  useEffect(() => {
+    if (trackingView || !samplesSentSummaryClientIdsKey) return;
+    const controller = new AbortController();
+    const clientIds = samplesSentSummaryClientIdsKey.split(",");
+    void fetch("/api/samples-sent/summary", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clientIds }),
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        const data = await response.json();
+        if (!response.ok) throw new Error(data?.error ?? "Could not load Samples Sent summaries.");
+        setSamplesSentSummaries((current) => ({ ...current, ...(data.summaries ?? {}) }));
+      })
+      .catch((error) => {
+        if (error?.name !== "AbortError") {
+          console.warn("Could not load Samples Sent summaries", error);
+        }
+      });
+    return () => controller.abort();
+  }, [samplesSentSummaryClientIdsKey, trackingView]);
   const handleTrackingStatusSummaryChanged = useCallback(
     (clientId: string, summary: Record<string, number>) => {
       setClients((current) =>
@@ -2698,11 +2732,23 @@ export function CRMBoard({
           }
           return next;
         })();
-    const ordered = mergedOrderWithTimesReassigned
+    // Keep the Samples entry point beside Files for saved layouts created
+    // before the client-level Samples Sent summary existed.
+    const mergedOrderWithSamplesSent = mergedOrderWithTimesReassigned.includes(
+      "samplesSent",
+    )
+      ? mergedOrderWithTimesReassigned
+      : (() => {
+          const next = [...mergedOrderWithTimesReassigned];
+          const filesIndex = next.indexOf("filesMiscellaneous");
+          if (filesIndex >= 0) next.splice(filesIndex + 1, 0, "samplesSent");
+          return next;
+        })();
+    const ordered = mergedOrderWithSamplesSent
       .map((key) => middle.find((col) => col.key === key))
       .filter(Boolean) as HeaderCol[];
     const remaining = middle.filter(
-      (col) => !mergedOrderWithTimesReassigned.includes(col.key),
+      (col) => !mergedOrderWithSamplesSent.includes(col.key),
     );
 
     return [
@@ -14476,6 +14522,7 @@ export function CRMBoard({
                           onTrackingStatusSummaryChanged={
                             handleTrackingStatusSummaryChanged
                           }
+                          samplesSentSummary={samplesSentSummaries[client.id]}
                           onUpdateSubitem={(subitemId, updates) =>
                             updateSubitem(client.id, subitemId, updates)
                           }

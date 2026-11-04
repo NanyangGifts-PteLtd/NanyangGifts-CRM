@@ -67,6 +67,10 @@ import { overallPaymentStatus as calculateOverallPaymentStatus } from "@/lib/pay
 import { InlineDatePicker } from "./inline-date-picker";
 import { crmCellText } from "@/lib/crm-cell-context";
 import { Popover, PopoverContent, PopoverTrigger } from "./popover";
+import {
+  SamplesSentClientSummaryCell,
+  type SamplesSentClientSummary,
+} from "@/components/SamplesSentClientSummary";
 
 const CLIENT_STATUS_BULK_EXCLUDED_SYSTEM_KEYS = new Set([
   "client_status_closed",
@@ -479,6 +483,7 @@ export type ClientRowProps = {
     clientId: string,
     summary: Record<string, number>,
   ) => void;
+  samplesSentSummary?: SamplesSentClientSummary;
   onUpdateSubitem: (subitemId: string, u: Partial<Subitem>) => void;
   onApplySelectedSubitemStatus?: (
     status: string,
@@ -687,6 +692,7 @@ export function ClientRow({
   onUpdateUnqualifiedVerification,
   onApplySelectedClientStatus,
   onTrackingStatusSummaryChanged,
+  samplesSentSummary,
   onUpdateSubitem,
   onApplySelectedSubitemStatus,
   onApplySelectedSubitemField,
@@ -5159,6 +5165,25 @@ export function ClientRow({
             })(),
           )}
         </div>
+        {!trackingMode && (
+          <div
+            data-client-column="samplesSent"
+            className="flex-1 min-w-0 overflow-hidden border-r border-[#D0D4E4] bg-white"
+            style={{
+              height: 30,
+              minWidth: colWidth.samplesSent,
+              width: colWidth.samplesSent,
+              order: columnOrderMap.samplesSent ?? 15.5,
+            }}
+          >
+            <SamplesSentClientSummaryCell
+              clientId={client.id}
+              clientName={client.name}
+              displayId={client.displayId}
+              summary={samplesSentSummary}
+            />
+          </div>
+        )}
         <div
           data-client-column="totalPrice"
           className="flex-1 min-w-0 overflow-hidden border-r border-[#D0D4E4] bg-amber-50 py-1.5 whitespace-nowrap text-ellipsis"

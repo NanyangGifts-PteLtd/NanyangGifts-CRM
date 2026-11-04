@@ -17,6 +17,7 @@ import {
   Factory,
   ReceiptText,
   MailSearch,
+  Send,
 } from "lucide-react";
 import logo from "./logo.png";
 import Image from "next/image";
@@ -34,6 +35,7 @@ export type SidePanel =
   | "useradmin"
   | "shipper"
   | "additionalcosts"
+  | "samplessent"
   | "emailreview";
 
 interface SidebarProps {
@@ -60,6 +62,7 @@ const navItems: {
     icon: <ReceiptText size={16.5} />,
     label: "Payment Voucher",
   },
+  { id: "samplessent", icon: <Send size={16.5} />, label: "Samples Sent" },
   { id: "emails", icon: <Mail size={16.5} />, label: "Emails" },
   {
     id: "emailreview",
