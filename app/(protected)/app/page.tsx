@@ -3646,40 +3646,52 @@ export default function Page() {
       return;
     }
 
-    let disposed = false;
-    let refreshTimer: number | undefined;
-    const scheduleRefresh = () => {
-      if (refreshTimer !== undefined) window.clearTimeout(refreshTimer);
-      refreshTimer = window.setTimeout(() => {
-        refreshTimer = undefined;
-        if (!disposed) void loadUnqualifiedVerificationPending();
-      }, 250);
+    let lastLoadedAt = 0;
+    let loading = false;
+    const refresh = async (force = false) => {
+      const now = Date.now();
+      // This is a low-urgency sidebar cue. Do not let ordinary edits anywhere
+      // on the busy clients table repeatedly re-run its count query.
+      if (loading || (!force && now - lastLoadedAt < 60_000)) return;
+      loading = true;
+      try {
+        await loadUnqualifiedVerificationPending();
+        lastLoadedAt = Date.now();
+      } finally {
+        loading = false;
+      }
     };
-    void loadUnqualifiedVerificationPending();
+    void refresh(true);
+    // A remote user can move a lead into or out of Unqualified Lead. We keep
+    // the broad subscription for that transition, but its callback is
+    // rate-limited above so normal Board activity cannot create a request
+    // storm.
     const supabase = createSupabaseClient();
     const channel = supabase
       .channel("unqualified-verification-pending-count")
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "clients" },
-        scheduleRefresh,
+        () => void refresh(),
       )
       .subscribe();
     const refreshWhenVisible = () => {
       if (document.visibilityState === "visible")
-        void loadUnqualifiedVerificationPending();
+        void refresh();
     };
     document.addEventListener("visibilitychange", refreshWhenVisible);
     window.addEventListener("focus", refreshWhenVisible);
-    window.addEventListener("crm:unqualified-verification-changed", scheduleRefresh);
+    const refreshAfterLocalVerification = () => void refresh(true);
+    window.addEventListener(
+      "crm:unqualified-verification-changed",
+      refreshAfterLocalVerification,
+    );
     return () => {
-      disposed = true;
-      if (refreshTimer !== undefined) window.clearTimeout(refreshTimer);
       document.removeEventListener("visibilitychange", refreshWhenVisible);
       window.removeEventListener("focus", refreshWhenVisible);
       window.removeEventListener(
         "crm:unqualified-verification-changed",
-        scheduleRefresh,
+        refreshAfterLocalVerification,
       );
       void supabase.removeChannel(channel);
     };

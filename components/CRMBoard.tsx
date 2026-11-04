@@ -5625,6 +5625,16 @@ export function CRMBoard({
         await enqueueBoardWrite("client", localDraggedId, () =>
           updateClientRow(localDraggedId, updates),
         );
+        if (
+          isUnqualifiedGroupName(targetGroup.name) ||
+          isUnqualifiedGroupName(
+            groups.find((group) => group.id === draggedClient.groupId)?.name,
+          )
+        ) {
+          window.dispatchEvent(
+            new Event("crm:unqualified-verification-changed"),
+          );
+        }
       } catch (err) {
         void reloadClients({ reason: "client-move-rollback" });
         console.error("Failed to move client to group", err);
@@ -8582,6 +8592,22 @@ export function CRMBoard({
                 ? { ...client, followUp: persisted.followUp }
                 : client,
             ),
+          );
+        }
+        const previousGroupName = groups.find(
+          (group) => group.id === existingClient?.groupId,
+        )?.name;
+        const nextGroupName = groups.find(
+          (group) => group.id === nextUpdates.groupId,
+        )?.name;
+        if (
+          nextUpdates.groupId !== undefined &&
+          existingClient?.groupId !== nextUpdates.groupId &&
+          (isUnqualifiedGroupName(previousGroupName) ||
+            isUnqualifiedGroupName(nextGroupName))
+        ) {
+          window.dispatchEvent(
+            new Event("crm:unqualified-verification-changed"),
           );
         }
         if (movedToGroupName && nextUpdates.status) {
