@@ -443,47 +443,6 @@ export function SubitemDetailView({
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, [onClose]);
-  useEffect(() => {
-    if (!canEdit) return;
-    const today = new Date().toISOString().slice(0, 10);
-    const completeProgressIds = new Set(
-      options.subProgress
-        .filter((option) =>
-          [
-            "subitem_subprogress_done",
-            "subitem_subprogress_delivered",
-            "subitem_subprogress_shipped_out",
-          ].includes(option.systemKey ?? ""),
-        )
-        .map((option) => option.id)
-        .filter((id): id is string => Boolean(id)),
-    );
-    const lateProgress = options.subProgress.find(
-      (option) => option.systemKey === "subitem_subprogress_late",
-    );
-    const nextRows = (subitem.timelineRows ?? []).map((row) => {
-      return row.timelineEnd &&
-        row.timelineEnd < today &&
-        !completeProgressIds.has(row.subProgressOptionId ?? "") &&
-        row.subProgressOptionId !== lateProgress?.id &&
-        lateProgress
-        ? {
-            ...row,
-            subProgress: lateProgress.value,
-            subProgressOptionId: lateProgress.id ?? null,
-          }
-        : row;
-    });
-    const count = nextRows.filter(
-      (row, index) => row !== subitem.timelineRows[index],
-    ).length;
-    if (count) {
-      onUpdate({ timelineRows: nextRows });
-      toast.warning("Timeline progress updated", {
-        description: `${count} process${count === 1 ? "" : "es"} automatically marked Late because its end date has passed.`,
-      });
-    }
-  }, [subitem.id, canEdit, options.subProgress]);
   return (
     <div
       data-crm-subitem-detail

@@ -273,18 +273,6 @@ export function TimelineSection({
   const pendingProgress = progressBySystemKey.get(
     "subitem_subprogress_pending",
   );
-  const lateProgress = progressBySystemKey.get("subitem_subprogress_late");
-  const completeProgressIds = useMemo(
-    () =>
-      new Set(
-        [
-          progressBySystemKey.get("subitem_subprogress_done")?.id,
-          progressBySystemKey.get("subitem_subprogress_delivered")?.id,
-          progressBySystemKey.get("subitem_subprogress_shipped_out")?.id,
-        ].filter((id): id is string => Boolean(id)),
-      ),
-    [progressBySystemKey],
-  );
 
   useEffect(() => setDraftCnTracking(cnTracking), [cnTracking]);
   useEffect(() => setDraftSgTracking(sgTracking), [sgTracking]);
@@ -306,60 +294,24 @@ export function TimelineSection({
   };
   useEffect(() => {
     if (readOnly) return;
-
-    const markOverdueRows = () => {
-      const today = formatDateUTC(new Date());
-      let normalizedDurationCount = 0;
-      const nextRows = rows.map((row) => {
-        const start = parseDateUTC(row.timelineStart);
-        const end = parseDateUTC(row.timelineEnd);
-        // Older rows stored the exclusive difference. Valid date ranges are
-        // inclusive, so correct them during the normal editable timeline save.
-        const inclusiveDuration = start && end ? diffDaysUTC(start, end) : null;
-        const durationNormalized =
-          inclusiveDuration !== null &&
-          inclusiveDuration >= 1 &&
-          row.duration !== String(inclusiveDuration);
-        if (durationNormalized) normalizedDurationCount += 1;
-        const nextRow = durationNormalized
-          ? { ...row, duration: String(inclusiveDuration) }
-          : row;
-        const isComplete = Boolean(
-          nextRow.subProgressOptionId &&
-          completeProgressIds.has(nextRow.subProgressOptionId),
-        );
-        const isPastEndDate = Boolean(
-          nextRow.timelineEnd && nextRow.timelineEnd < today,
-        );
-        return isPastEndDate &&
-          !isComplete &&
-          nextRow.subProgressOptionId !== lateProgress?.id &&
-          lateProgress
-          ? {
-              ...nextRow,
-              subProgress: lateProgress.value,
-              subProgressOptionId: lateProgress.id,
-            }
-          : nextRow;
-      });
-      const lateCount = nextRows.filter(
-        (row, index) =>
-          row.subProgressOptionId !== rows[index].subProgressOptionId,
-      ).length;
-      if (lateCount > 0 || normalizedDurationCount > 0) {
-        onUpdate(nextRows);
-      }
-      if (lateCount > 0) {
-        toast.warning("Timeline progress updated", {
-          description: `${lateCount} process${lateCount === 1 ? "" : "es"} automatically marked Late because its end date has passed.`,
-        });
-      }
-    };
-
-    markOverdueRows();
-    const interval = window.setInterval(markOverdueRows, 60_000);
-    return () => window.clearInterval(interval);
-  }, [completeProgressIds, lateProgress, onUpdate, readOnly, rows]);
+    let normalizedDurationCount = 0;
+    const nextRows = rows.map((row) => {
+      const start = parseDateUTC(row.timelineStart);
+      const end = parseDateUTC(row.timelineEnd);
+      // Older rows stored the exclusive difference. Valid date ranges are
+      // inclusive, so correct them during the next editable timeline save.
+      const inclusiveDuration = start && end ? diffDaysUTC(start, end) : null;
+      const durationNormalized =
+        inclusiveDuration !== null &&
+        inclusiveDuration >= 1 &&
+        row.duration !== String(inclusiveDuration);
+      if (durationNormalized) normalizedDurationCount += 1;
+      return durationNormalized
+        ? { ...row, duration: String(inclusiveDuration) }
+        : row;
+    });
+    if (normalizedDurationCount > 0) onUpdate(nextRows);
+  }, [onUpdate, readOnly, rows]);
 
   const updateRow = (
     id: string,

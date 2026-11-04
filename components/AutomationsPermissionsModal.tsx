@@ -159,10 +159,10 @@ const automations: ReferenceItem[] = [
   },
   {
     title: "Overdue timeline progress",
-    trigger: "An editable Subitem detail view opens.",
+    trigger: "Daily Vercel Cron at 16:10 UTC (00:10 Singapore time).",
     behaviour:
-      "Marks timeline rows as Late when their end date has passed and they are not already complete, delivered, shipped out, or Late.",
-    source: "components/SubitemDetailView.tsx",
+      "Marks visible Gantt timeline processes as Late when their explicit end date has passed. Done and Delivered processes, non-operational subitems, and timelines suppressed from Gantt are excluded.",
+    source: "app/api/cron/timeline-progress-overdue/route.ts",
   },
   {
     title: "OCF Need By timeline synchronisation",
