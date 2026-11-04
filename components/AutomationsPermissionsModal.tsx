@@ -165,6 +165,14 @@ const automations: ReferenceItem[] = [
     source: "app/api/cron/timeline-progress-overdue/route.ts",
   },
   {
+    title: "Client Progress delivery completion",
+    trigger: "A subitem timeline header Progress is saved.",
+    behaviour:
+      "Sets the client Progress to Delivered when every timeline across that client's active subitems has the Timeline Progress Delivered label. Both label checks use stable option IDs.",
+    source:
+      "database trigger subitems_update_client_progress_on_timeline_delivery; update_timeline_delivery_progress_automation.sql",
+  },
+  {
     title: "OCF Need By timeline synchronisation",
     trigger: "An internal user saves an OCF with a changed Need By value.",
     behaviour:
