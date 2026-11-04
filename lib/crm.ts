@@ -17,6 +17,7 @@ import type {
 import { addClientAssignee } from "./assignments";
 import { capitaliseFirstCharacter } from "./text-format";
 import { roundMonetaryAmount, roundUnitPrice } from "./subitem-calculations";
+import { toNullableDateValue } from "./date-values";
 
 const supabase = createClient();
 
@@ -2768,7 +2769,7 @@ export async function updateClientRow(
       ? { reply_status: nextUpdates.replyStatus }
       : {}),
     ...(nextUpdates.followUp !== undefined
-      ? { follow_up: nextUpdates.followUp }
+      ? { follow_up: toNullableDateValue(nextUpdates.followUp) }
       : {}),
     ...(nextUpdates.status !== undefined ? { status: nextUpdates.status } : {}),
     ...(nextUpdates.channel !== undefined ? { channel: nextUpdates.channel } : {}),
