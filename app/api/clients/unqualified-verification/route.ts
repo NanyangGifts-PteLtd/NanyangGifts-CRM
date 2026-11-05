@@ -68,10 +68,17 @@ export async function PATCH(request: NextRequest) {
     await authorizeReviewer();
     const body = (await request.json()) as {
       clientId?: unknown;
+      clientIds?: unknown;
       verified?: unknown;
     };
-    const clientId = typeof body.clientId === "string" ? body.clientId : "";
-    if (!clientId || typeof body.verified !== "boolean")
+    const clientIds = [
+      ...(typeof body.clientId === "string" ? [body.clientId] : []),
+      ...(Array.isArray(body.clientIds)
+        ? body.clientIds.filter((value): value is string => typeof value === "string")
+        : []),
+    ].map((id) => id.trim()).filter(Boolean);
+    const uniqueClientIds = [...new Set(clientIds)];
+    if (!uniqueClientIds.length || typeof body.verified !== "boolean")
       throw new Error("A client and verification value are required.");
 
     const groupId = await unqualifiedGroupId();
@@ -79,14 +86,17 @@ export async function PATCH(request: NextRequest) {
     const { data, error } = await supabaseAdmin
       .from("clients")
       .update({ unqualified_verified: body.verified })
-      .eq("id", clientId)
+      .in("id", uniqueClientIds)
       .eq("group_id", groupId)
       .is("deleted_at", null)
       .select("id, unqualified_verified")
-      .maybeSingle();
+      ;
     if (error) throw error;
-    if (!data) throw new Error("This client is not an active Unqualified Lead.");
-    return NextResponse.json({ verified: data.unqualified_verified === true });
+    if (!data?.length) throw new Error("This client is not an active Unqualified Lead.");
+    return NextResponse.json({
+      verified: body.verified,
+      clientIds: data.map((client) => client.id),
+    });
   } catch (error) {
     return failure(error);
   }

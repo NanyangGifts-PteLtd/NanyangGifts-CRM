@@ -8724,9 +8724,27 @@ export function CRMBoard({
         return;
       }
 
+      const unqualifiedGroupId = groups.find(
+        (group) => group.name.trim().toLowerCase() === "unqualified lead",
+      )?.id;
+      const targetIds = selectedIds.has(clientId) && selectedIds.size > 1
+        ? clients
+          .filter(
+            (client) =>
+              selectedIds.has(client.id) && client.groupId === unqualifiedGroupId,
+          )
+          .map((client) => client.id)
+        : [clientId];
+      if (!targetIds.length) return;
+      const previousValues = new Map(
+        clients
+          .filter((client) => targetIds.includes(client.id))
+          .map((client) => [client.id, client.unqualifiedVerified]),
+      );
+
       setClients((current) =>
         current.map((client) =>
-          client.id === clientId
+          targetIds.includes(client.id)
             ? { ...client, unqualifiedVerified: verified }
             : client,
         ),
@@ -8737,7 +8755,7 @@ export function CRMBoard({
           {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ clientId, verified }),
+            body: JSON.stringify({ clientIds: targetIds, verified }),
           },
         );
         const result = await response.json();
@@ -8745,7 +8763,7 @@ export function CRMBoard({
           throw new Error(result?.error || "Could not update verification.");
         setClients((current) =>
           current.map((client) =>
-            client.id === clientId
+            result.clientIds?.includes(client.id)
               ? { ...client, unqualifiedVerified: result.verified === true }
               : client,
           ),
@@ -8754,10 +8772,10 @@ export function CRMBoard({
       } catch (error) {
         setClients((current) =>
           current.map((client) =>
-            client.id === clientId
+            previousValues.has(client.id)
               ? {
                   ...client,
-                  unqualifiedVerified: existingClient.unqualifiedVerified,
+                  unqualifiedVerified: previousValues.get(client.id) ?? false,
                 }
               : client,
           ),
@@ -8770,7 +8788,7 @@ export function CRMBoard({
         });
       }
     },
-    [clients, currentUserRole, setClients],
+    [clients, currentUserRole, groups, selectedIds, setClients],
   );
 
   const requestOcfCompanyChange = useCallback(
