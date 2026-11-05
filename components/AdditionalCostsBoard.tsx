@@ -3946,6 +3946,21 @@ export function AdditionalCostsBoard({
                               ) : null}
                             </label>
                             </FileDropTarget>
+                            {voucherCreationGroup === "other" &&
+                            !quickBooksBillOnlyMode &&
+                            (!billTargetVoucher || Boolean(editingVoucher?.is_draft)) ? (
+                              <>
+                                <button
+                                  type="button"
+                                  disabled={creatingFor !== null}
+                                  onClick={() => void savePaymentVoucherDraft(true)}
+                                  className="self-start rounded border border-violet-300 bg-violet-50 px-4 py-2 text-sm font-semibold text-violet-800 hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                  {creatingFor ? "Saving…" : "Save as draft"}
+                                </button>
+                                <div aria-hidden="true" className="h-8 border-b border-slate-100" />
+                              </>
+                            ) : null}
                             {billOptionsLoading ? (
                               <p className="text-sm text-slate-500">
                                 Loading QuickBooks options…
@@ -4764,18 +4779,6 @@ export function AdditionalCostsBoard({
                             />
                           </label>
                         </section>
-                      ) : null}
-                      {voucherCreationGroup === "other" &&
-                      !quickBooksBillOnlyMode &&
-                      (!billTargetVoucher || Boolean(editingVoucher?.is_draft)) ? (
-                        <button
-                          type="button"
-                          disabled={creatingFor !== null}
-                          onClick={() => void savePaymentVoucherDraft(true)}
-                          className="order-3 self-start rounded border border-violet-300 bg-violet-50 px-4 py-2 text-sm font-semibold text-violet-800 hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          {creatingFor ? "Saving…" : "Save as draft"}
-                        </button>
                       ) : null}
                       <button
                         type="button"
