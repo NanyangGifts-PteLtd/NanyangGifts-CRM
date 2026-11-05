@@ -557,6 +557,13 @@ export function AdditionalCostsBoard({
   const voucherReasonIsOther =
     Boolean(otherReasonOptionId) &&
     voucherDraft.reasonOptionId === otherReasonOptionId;
+  // A completed Group 2 voucher can be edited independently of its
+  // QuickBooks Bill. Drafts intentionally remain on the Bill workflow so a
+  // user can continue completing their saved bill details.
+  const isOtherVoucherInformationOnlyEdit =
+    Boolean(editingVoucher) &&
+    voucherCreationGroup === "other" &&
+    !editingVoucher?.is_draft;
   useEffect(() => {
     return () => {
       if (billDocumentPreview?.url)
@@ -1340,7 +1347,11 @@ export function AdditionalCostsBoard({
         body: JSON.stringify({
           id: editingVoucher.id,
           values: {
-            cost: voucherDraft.cost,
+            // Cost for an Other voucher belongs to its QuickBooks Bill. Do
+            // not submit it from the voucher-information-only edit flow.
+            ...(isOtherVoucherInformationOnlyEdit
+              ? {}
+              : { cost: voucherDraft.cost }),
             reason: voucherDraft.reason,
             ...(voucherDraft.relatedSubitemIds.length
               ? { relatedSubitemIds: voucherDraft.relatedSubitemIds }
@@ -3800,7 +3811,8 @@ export function AdditionalCostsBoard({
               </button>
             </div>
             {selectedVoucherClientId || quickBooksBillOnlyMode ? (
-              voucherCreationGroup !== "courier" ? (
+              voucherCreationGroup !== "courier" &&
+              !isOtherVoucherInformationOnlyEdit ? (
                 <div className="flex min-h-0 flex-col gap-4 overflow-y-auto p-5">
                   {!billTargetVoucher && !quickBooksBillOnlyMode ? (
                     <button
@@ -4848,22 +4860,24 @@ export function AdditionalCostsBoard({
                     </p>
                   </div>
                   <div className="grid gap-3 sm:grid-cols-2">
-                    <label className="text-sm font-medium text-slate-700">
-                      Cost *
-                      <input
-                        type="number"
-                        min="0.01"
-                        step="0.01"
-                        value={voucherDraft.cost}
-                        onChange={(event) =>
-                          setVoucherDraft((draft) => ({
-                            ...draft,
-                            cost: event.target.value,
-                          }))
-                        }
-                        className="mt-1 w-full rounded border border-slate-300 px-3 py-2 font-normal"
-                      />
-                    </label>
+                    {!isOtherVoucherInformationOnlyEdit ? (
+                      <label className="text-sm font-medium text-slate-700">
+                        Cost *
+                        <input
+                          type="number"
+                          min="0.01"
+                          step="0.01"
+                          value={voucherDraft.cost}
+                          onChange={(event) =>
+                            setVoucherDraft((draft) => ({
+                              ...draft,
+                              cost: event.target.value,
+                            }))
+                          }
+                          className="mt-1 w-full rounded border border-slate-300 px-3 py-2 font-normal"
+                        />
+                      </label>
+                    ) : null}
                     <label className="text-sm font-medium text-slate-700">
                       Reason *
                       <div className="mt-1 h-10 overflow-hidden rounded border border-slate-300">
@@ -4912,50 +4926,52 @@ export function AdditionalCostsBoard({
                       Related Subitems *
                       {renderRelatedSubitemSelector(selectedVoucherClientId!)}
                     </label>
-                    <label className="text-sm font-medium text-slate-700">
-                      Courier
-                      <div className="mt-1 h-10 overflow-hidden rounded border border-slate-300">
-                        <StatusBadge
-                          value={voucherDraft.courier}
-                          onChange={(courier) =>
-                            setVoucherDraft((draft) => ({
-                              ...draft,
-                              courier,
-                            }))
-                          }
-                          options={labelOptions.additional_cost_courier ?? []}
-                          onAddOption={(value) =>
-                            manageLabel("additional_cost_courier", "add", value)
-                          }
-                          onDeleteOption={(value, optionId) =>
-                            deleteLabel("additional_cost_courier", value, optionId)
-                          }
-                          onUpdateOptionColor={(value, color, optionId) =>
-                            manageLabel(
-                              "additional_cost_courier",
-                              "color",
-                              value,
-                              color,
-                              optionId,
-                            )
-                          }
-                          onRenameOption={(value, nextValue, optionId) =>
-                            manageLabel(
-                              "additional_cost_courier",
-                              "rename",
-                              value,
-                              nextValue,
-                              optionId,
-                            )
-                          }
-                          onReorderOptions={(layout) =>
-                            reorderLabels("additional_cost_courier", layout)
-                          }
-                          manageLabel="courier"
-                          sectionCount={1}
-                        />
-                      </div>
-                    </label>
+                    {!isOtherVoucherInformationOnlyEdit ? (
+                      <label className="text-sm font-medium text-slate-700">
+                        Courier
+                        <div className="mt-1 h-10 overflow-hidden rounded border border-slate-300">
+                          <StatusBadge
+                            value={voucherDraft.courier}
+                            onChange={(courier) =>
+                              setVoucherDraft((draft) => ({
+                                ...draft,
+                                courier,
+                              }))
+                            }
+                            options={labelOptions.additional_cost_courier ?? []}
+                            onAddOption={(value) =>
+                              manageLabel("additional_cost_courier", "add", value)
+                            }
+                            onDeleteOption={(value, optionId) =>
+                              deleteLabel("additional_cost_courier", value, optionId)
+                            }
+                            onUpdateOptionColor={(value, color, optionId) =>
+                              manageLabel(
+                                "additional_cost_courier",
+                                "color",
+                                value,
+                                color,
+                                optionId,
+                              )
+                            }
+                            onRenameOption={(value, nextValue, optionId) =>
+                              manageLabel(
+                                "additional_cost_courier",
+                                "rename",
+                                value,
+                                nextValue,
+                                optionId,
+                              )
+                            }
+                            onReorderOptions={(layout) =>
+                              reorderLabels("additional_cost_courier", layout)
+                            }
+                            manageLabel="courier"
+                            sectionCount={1}
+                          />
+                        </div>
+                      </label>
+                    ) : null}
                     <label className="text-sm font-medium text-slate-700">
                       Order number
                       <input value={voucherDraft.orderNumber} onChange={(event) => setVoucherDraft((draft) => ({ ...draft, orderNumber: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 px-3 py-2 font-normal" />
@@ -5000,7 +5016,8 @@ export function AdditionalCostsBoard({
                     type="button"
                     disabled={
                       creatingFor !== null ||
-                      Number(voucherDraft.cost) <= 0 ||
+                      (!isOtherVoucherInformationOnlyEdit &&
+                        Number(voucherDraft.cost) <= 0) ||
                       !voucherDraft.reason ||
                       (!editingVoucher && !voucherDraft.relatedSubitemIds.length) ||
                       (voucherReasonIsOther && !voucherDraft.remarks.trim())

@@ -7581,14 +7581,18 @@ export function CRMBoard({
           <span className="flex-1">All</span>
           {value === "All" && <span className="text-blue-500">✓</span>}
         </button>
-        {options.map((option) => {
+        {options.map((option, optionIndex) => {
           const optionValue =
             typeof option === "string" ? option : option.value;
           const optionLabel =
             typeof option === "string" ? option : option.label;
           return (
             <button
-              key={optionValue}
+              // Option values are normally unique, but duplicate labels can
+              // exist during label migration/reconciliation. The index keeps
+              // the rendered filter list stable until the labels are cleaned
+              // up without changing the value sent to the filter.
+              key={`${optionValue}-${optionIndex}`}
               onClick={() => onChange(optionValue)}
               className="flex items-center gap-2 w-full rounded-md px-2 py-1.5 text-left text-[10px] font-semibold hover:bg-gray-50"
             >

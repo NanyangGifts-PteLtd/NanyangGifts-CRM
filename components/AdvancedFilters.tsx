@@ -128,9 +128,12 @@ function Combo({
       return groupMap;
     }, new Map<string, typeof filtered>()),
   );
-  const optionButton = (option: (typeof filtered)[number]) => (
+  const optionButton = (
+    option: (typeof filtered)[number],
+    optionIndex: number,
+  ) => (
     <button
-      key={option.id ?? option.value}
+      key={`${option.id ?? option.value}-${optionIndex}`}
       type="button"
       onMouseDown={(event) => event.preventDefault()}
       onClick={() => {
@@ -240,7 +243,9 @@ function Combo({
                             labelOption.value === option.value,
                         )?.section ?? 0) === section,
                     )
-                    .map(optionButton)}
+                    .map((option, optionIndex) =>
+                      optionButton(option, optionIndex),
+                    )}
                 </div>
               ))}
             </div>
@@ -272,11 +277,16 @@ function Combo({
                         {groupOptions.length}
                       </span>
                     </button>
-                    {!collapsed && groupOptions.map(optionButton)}
+                    {!collapsed &&
+                      groupOptions.map((option, optionIndex) =>
+                        optionButton(option, optionIndex),
+                      )}
                   </div>
                 );
               })
-            : filtered.map(optionButton)}
+            : filtered.map((option, optionIndex) =>
+                optionButton(option, optionIndex),
+              )}
           {!filtered.length && (
             <p className="px-3 py-4 text-center text-xs text-slate-400">
               No matching options

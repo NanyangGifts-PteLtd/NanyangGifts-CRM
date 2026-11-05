@@ -199,9 +199,9 @@ function FilterChecklist({
         </div>
       )}
       <div className="max-h-48 space-y-0.5 overflow-y-auto pr-1">
-        {visibleOptions.map((option) => (
+        {visibleOptions.map((option, optionIndex) => (
           <label
-            key={option.value}
+            key={`${option.value}-${optionIndex}`}
             className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-xs text-slate-700 hover:bg-slate-50"
           >
             <input

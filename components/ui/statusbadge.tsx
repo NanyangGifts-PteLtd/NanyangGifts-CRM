@@ -393,7 +393,11 @@ export function StatusBadge({
     void onReorderOptions?.(layout);
   };
 
-  const renderOption = (option: BadgeOption, section: number) => {
+  const renderOption = (
+    option: BadgeOption,
+    section: number,
+    occurrence: number,
+  ) => {
     const optionColor = option.color ?? "#e5e7eb";
     const allowDelete = canDeleteOption ? canDeleteOption(option.value) : true;
     const isStoredOption = configuredOptions.some(
@@ -405,7 +409,11 @@ export function StatusBadge({
       (isStoredOption || option.value === "");
     return (
       <div
-        key={optionKey(option)}
+        // Labels can temporarily contain duplicate values (for example after
+        // a migration or while options are being reconciled). Prefer the
+        // persisted id, but keep the React key unique even when a duplicate
+        // value has no id yet.
+        key={`${optionKey(option)}:${occurrence}`}
         draggable={canDrag}
         onDragStart={(event) => {
           if (!canDrag) return;
@@ -598,7 +606,9 @@ export function StatusBadge({
                   {sectionTitles?.[section]?.trim() || " "}
                 </div>
               )}
-              {sectionOptions.map((option) => renderOption(option, section))}
+              {sectionOptions.map((option, occurrence) =>
+                renderOption(option, section, occurrence),
+              )}
               {editingLabels && onAddOption && section === 0 && (
                 <div className="flex h-9 items-center gap-1 rounded-md border border-dashed border-gray-300 p-1">
                   <input
