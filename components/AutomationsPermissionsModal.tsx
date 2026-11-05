@@ -59,6 +59,17 @@ const automations: ReferenceItem[] = [
     source: "app/api/cron/follow-up-overdue/route.ts",
   },
   {
+    title: "Samples Sent return status and overdue handling",
+    trigger:
+      "A Samples Sent Status is changed, its Returned button is used, or the daily Vercel Cron runs at 16:15 UTC (00:15 Singapore time).",
+    behaviour:
+      "Status labels are evaluated by stable option ID. Overdue moves to Outstanding; Request to not return, Failed to return (Remarks), Returned, and No Need to Return move to their matching groups. Failed return requires remarks confirmation. Returned preserves an existing Date Returned or fills today when blank. The daily job marks eligible past-Return-By records Overdue and moves them to Outstanding.",
+    scope:
+      "Returned, No Need to Return, Request to not return, Failed to return, and deactivated records are not overwritten by the overdue job.",
+    source:
+      "app/api/samples-sent/route.ts; app/api/cron/samples-sent-overdue/route.ts",
+  },
+  {
     title: "QuickBooks estimate invoice sync",
     trigger: "Daily Vercel Cron at 18:00 UTC (02:00 Singapore time).",
     behaviour:

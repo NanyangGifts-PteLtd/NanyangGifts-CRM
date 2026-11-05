@@ -89,15 +89,37 @@ async function assertRecordEditor(clientId: string, userId: string, role: string
 
 async function resolveLabel(code: string, optionId: unknown) {
   const id = String(optionId ?? "").trim();
-  if (!id) return { value: "", id: null };
+  if (!id) return { value: "", id: null, systemKey: null };
   const { data, error } = await supabaseAdmin
     .from("option_values")
-    .select("id, value, option_groups!inner(code)")
+    .select("id, value, system_key, option_groups!inner(code)")
     .eq("id", id)
     .eq("option_groups.code", code)
     .maybeSingle();
   if (error || !data) throw new Error("The selected label is no longer available.");
-  return { value: data.value, id: data.id };
+  return { value: data.value, id: data.id, systemKey: data.system_key };
+}
+
+const STATUS_GROUP_BY_SYSTEM_KEY: Record<string, string> = {
+  samples_sent_status_overdue: "Outstanding",
+  samples_sent_status_request_to_not_return: "Request not to return",
+  samples_sent_status_fail_to_return_remarks: "Failed to return",
+  samples_sent_status_returned: "Returned",
+  samples_sent_status_no_need_to_return: "No need to return",
+};
+
+async function groupIdForStatusSystemKey(systemKey: string | null) {
+  const groupName = systemKey ? STATUS_GROUP_BY_SYSTEM_KEY[systemKey] : null;
+  if (!groupName) return null;
+  const { data, error } = await supabaseAdmin
+    .from("samples_sent_groups")
+    .select("id")
+    .eq("name", groupName)
+    .maybeSingle();
+  if (error || !data) {
+    throw new Error(`The Samples Sent group “${groupName}” is not configured.`);
+  }
+  return data.id;
 }
 
 async function hydrateRows(rows: Array<Record<string, unknown>>) {
@@ -338,7 +360,7 @@ export async function PATCH(request: NextRequest) {
 
     const allowed = new Set([
       "peopleIds", "address", "dateSent", "returnBy", "dateReturned", "cost",
-      "remarks", "photoFiles", "status", "reason", "courier", "items",
+      "remarks", "photoFiles", "status", "reason", "courier", "items", "confirmFailure",
     ]);
     const supplied = Object.fromEntries(Object.entries(values).filter(([key]) => allowed.has(key)));
     if (!Object.keys(supplied).length) throw new Error("No editable changes were supplied.");
@@ -368,6 +390,7 @@ export async function PATCH(request: NextRequest) {
     }
     if (supplied.remarks !== undefined) updates.remarks = String(supplied.remarks ?? "");
     if (supplied.photoFiles !== undefined) updates.photo_files = Array.isArray(supplied.photoFiles) ? supplied.photoFiles : [];
+    let selectedStatusSystemKey: string | null = null;
     for (const [input, code, valueColumn, idColumn] of [
       ["status", "samples_sent_status", "status", "status_option_id"],
       ["reason", "samples_sent_reason", "reason", "reason_option_id"],
@@ -377,6 +400,19 @@ export async function PATCH(request: NextRequest) {
       const label = await resolveLabel(code, supplied[input]);
       updates[valueColumn] = label.value;
       updates[idColumn] = label.id;
+      if (input === "status") selectedStatusSystemKey = label.systemKey;
+    }
+    if (selectedStatusSystemKey === "samples_sent_status_fail_to_return_remarks") {
+      const remarks = String(supplied.remarks ?? existing.remarks ?? "").trim();
+      if (supplied.confirmFailure !== true || !remarks) {
+        throw new Error("Add remarks and confirm the failed return before changing this status.");
+      }
+      updates.remarks = remarks;
+    }
+    const mappedGroupId = await groupIdForStatusSystemKey(selectedStatusSystemKey);
+    if (mappedGroupId) updates.group_id = mappedGroupId;
+    if (selectedStatusSystemKey === "samples_sent_status_returned" && !existing.date_returned) {
+      updates.date_returned = new Date().toISOString().slice(0, 10);
     }
     if (supplied.items !== undefined) {
       if (!Array.isArray(supplied.items) || !supplied.items.length) throw new Error("Add at least one item sent.");

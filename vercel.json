@@ -13,6 +13,10 @@
       "schedule": "10 16 * * *"
     },
     {
+      "path": "/api/cron/samples-sent-overdue",
+      "schedule": "15 16 * * *"
+    },
+    {
       "path": "/api/cron/crm-bin-purge",
       "schedule": "0 17 * * *"
     },

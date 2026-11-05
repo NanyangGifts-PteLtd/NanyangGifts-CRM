@@ -151,6 +151,8 @@ export function SamplesSentBoard() {
   const [labelOptions, setLabelOptions] = useState<Record<string, BadgeOption[]>>({});
   const [canDeleteLabels, setCanDeleteLabels] = useState(false);
   const [itemsEditorRow, setItemsEditorRow] = useState<SampleRow | null>(null);
+  const [failedReturn, setFailedReturn] = useState<{ row: SampleRow; optionId: string } | null>(null);
+  const [failedReturnRemarks, setFailedReturnRemarks] = useState("");
 
   const loadBoard = useCallback(async () => {
     setLoading(true);
@@ -255,11 +257,21 @@ export function SamplesSentBoard() {
     const data = await response.json();
     if (!response.ok) {
       toast.error("Samples Sent record could not be updated", { description: data.error });
-      return;
+      return false;
     }
     setRows((current) => current.map((row) => row.id === id ? data.row : row));
     window.dispatchEvent(new Event("samples-sent:changed"));
+    return true;
   }, [rows]);
+  const updateStatus = useCallback((row: SampleRow, optionId: string) => {
+    const option = (labelOptions.samples_sent_status ?? []).find((entry) => entry.id === optionId);
+    if (option?.systemKey === "samples_sent_status_fail_to_return_remarks") {
+      setFailedReturn({ row, optionId });
+      setFailedReturnRemarks(row.remarks ?? "");
+      return;
+    }
+    void updateRecord(row.id, { status: optionId });
+  }, [labelOptions.samples_sent_status, updateRecord]);
   useEffect(() => {
     const recordId = new URLSearchParams(window.location.search).get("sample");
     const record = rows.find((row) => row.id === recordId);
@@ -317,6 +329,7 @@ export function SamplesSentBoard() {
               canDeleteLabels={canDeleteLabels}
               onManageLabel={manageLabel}
               onUpdate={updateRecord}
+              onUpdateStatus={updateStatus}
               onEditItems={setItemsEditorRow}
               canManage={canManageGroups}
               onToggle={() =>
@@ -357,6 +370,21 @@ export function SamplesSentBoard() {
         row={itemsEditorRow}
         onOpenChange={(open) => !open && setItemsEditorRow(null)}
         onSave={(items) => itemsEditorRow && updateRecord(itemsEditorRow.id, { items })}
+      />
+      <FailedReturnDialog
+        pending={failedReturn}
+        remarks={failedReturnRemarks}
+        onRemarksChange={setFailedReturnRemarks}
+        onOpenChange={(open) => !open && setFailedReturn(null)}
+        onConfirm={async () => {
+          if (!failedReturn) return;
+          const saved = await updateRecord(failedReturn.row.id, {
+            status: failedReturn.optionId,
+            remarks: failedReturnRemarks,
+            confirmFailure: true,
+          });
+          if (saved) setFailedReturn(null);
+        }}
       />
     </section>
   );
@@ -412,6 +440,7 @@ function SamplesGroup({
   canDeleteLabels,
   onManageLabel,
   onUpdate,
+  onUpdateStatus,
   onEditItems,
   canManage,
   onToggle,
@@ -427,6 +456,7 @@ function SamplesGroup({
   canDeleteLabels: boolean;
   onManageLabel: (code: string, action: "add" | "rename" | "color" | "delete" | "reorder", payload: Record<string, unknown>) => Promise<void>;
   onUpdate: (id: string, values: Record<string, unknown>) => void;
+  onUpdateStatus: (row: SampleRow, optionId: string) => void;
   onEditItems: (row: SampleRow) => void;
   canManage: boolean;
   onToggle: () => void;
@@ -482,6 +512,7 @@ function SamplesGroup({
               canDeleteLabels={canDeleteLabels}
               onManageLabel={onManageLabel}
               onUpdate={onUpdate}
+              onUpdateStatus={onUpdateStatus}
               onEditItems={onEditItems}
             />
           ))}
@@ -540,6 +571,7 @@ function SampleRecordLine({
   canDeleteLabels,
   onManageLabel,
   onUpdate,
+  onUpdateStatus,
   onEditItems,
 }: {
   row: SampleRow;
@@ -550,6 +582,7 @@ function SampleRecordLine({
   canDeleteLabels: boolean;
   onManageLabel: (code: string, action: "add" | "rename" | "color" | "delete" | "reorder", payload: Record<string, unknown>) => Promise<void>;
   onUpdate: (id: string, values: Record<string, unknown>) => void;
+  onUpdateStatus: (row: SampleRow, optionId: string) => void;
   onEditItems: (row: SampleRow) => void;
 }) {
   const creator = row.createdByProfile;
@@ -610,7 +643,7 @@ function SampleRecordLine({
         value={row.status}
         options={labelOptions.samples_sent_status ?? []}
         canDelete={canDeleteLabels}
-        onChange={(optionId) => onUpdate(row.id, { status: optionId })}
+        onChange={(optionId) => onUpdateStatus(row, optionId)}
         onManage={onManageLabel}
       />)}
       {cell("reason", <SampleLabelBadge
@@ -668,12 +701,11 @@ function SampleRecordLine({
         </button>,
       )}
       {cell("extend", <ExtendButton row={row} onUpdate={onUpdate} />, "justify-center")}
-      {cell("returned", <button
-        type="button"
-        disabled
-        title="Returned workflow will be available after Status-to-group mapping is configured."
-        className="rounded border border-slate-200 px-2 py-1 text-slate-500 opacity-50"
-      >Returned</button>, "justify-center")}
+      {cell("returned", <ReturnedButton
+        row={row}
+        options={labelOptions.samples_sent_status ?? []}
+        onUpdateStatus={onUpdateStatus}
+      />, "justify-center")}
       {cell("dateReturned", <InlineDatePicker value={row.date_returned ?? ""} onChange={(dateReturned) => onUpdate(row.id, { dateReturned })} label="Date Returned" />)}
       {cell("reference", <span className="w-full text-center">{row.referenceId}</span>, "justify-center")}
       {cell(
@@ -742,6 +774,70 @@ function ExtendButton({
     >
       +7 Days
     </button>
+  );
+}
+
+function ReturnedButton({
+  row,
+  options,
+  onUpdateStatus,
+}: {
+  row: SampleRow;
+  options: BadgeOption[];
+  onUpdateStatus: (row: SampleRow, optionId: string) => void;
+}) {
+  const returnedOption = options.find(
+    (option) => option.systemKey === "samples_sent_status_returned",
+  );
+  return (
+    <button
+      type="button"
+      disabled={!returnedOption}
+      title={returnedOption ? "Mark this sample as Returned" : "Returned label is not configured"}
+      onClick={() => returnedOption?.id && onUpdateStatus(row, returnedOption.id)}
+      className="rounded border border-emerald-200 px-2 py-1 text-emerald-700 disabled:cursor-not-allowed disabled:opacity-40"
+    >
+      Returned
+    </button>
+  );
+}
+
+function FailedReturnDialog({
+  pending,
+  remarks,
+  onRemarksChange,
+  onOpenChange,
+  onConfirm,
+}: {
+  pending: { row: SampleRow; optionId: string } | null;
+  remarks: string;
+  onRemarksChange: (value: string) => void;
+  onOpenChange: (open: boolean) => void;
+  onConfirm: () => void | Promise<void>;
+}) {
+  return (
+    <AlertDialog open={Boolean(pending)} onOpenChange={onOpenChange}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Confirm failed return</AlertDialogTitle>
+          <AlertDialogDescription>
+            Add the reason for the failed return. This will move the Samples Sent record to Failed to return.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <textarea
+          value={remarks}
+          onChange={(event) => onRemarksChange(event.target.value)}
+          placeholder="Reason for failed return"
+          className="min-h-28 w-full resize-y rounded border border-slate-300 bg-white p-2 text-sm outline-none focus:border-sky-500"
+        />
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction disabled={!remarks.trim()} onClick={onConfirm}>
+            Confirm failed return
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
 
