@@ -67,7 +67,11 @@ async function assertClientEditor(
 
 // Existing Samples Sent records remain editable even when CRM subitems are
 // locked. Samples are not a subitem-cost workflow.
-async function assertRecordEditor(clientId: string, userId: string, role: string) {
+async function assertRecordEditor(clientId: string | null, userId: string, role: string) {
+  // A migrated record can be deliberately unlinked until a team member finds
+  // its CRM client. There is no assignment to evaluate yet; the caller has
+  // already passed the internal-user check in authorize().
+  if (!clientId) return;
   const { data: client, error } = await supabaseAdmin
     .from("clients")
     .select("id")
@@ -198,7 +202,9 @@ async function hydrateRows(rows: Array<Record<string, unknown>>) {
   }
   return rows.map((row) => ({
     ...row,
-    referenceId: `SS${row.reference_number}`,
+    referenceId: String(row.external_reference_id ?? "").trim() || `SS${row.reference_number}`,
+    legacyClientName: String(row.legacy_client_name ?? ""),
+    legacyMobile: String(row.legacy_mobile ?? ""),
     linkedClient: (() => {
       const client = clientsById.get(String(row.client_id));
       return client ? { ...client, subitems: subitemsByClient.get(client.id) ?? [] } : null;
@@ -360,15 +366,21 @@ export async function PATCH(request: NextRequest) {
       .maybeSingle();
     if (existingError || !existing) throw new Error("Samples Sent record not found.");
     if (existing.deactivated_at) throw new Error("A deactivated Samples Sent record cannot be edited.");
-    await assertRecordEditor(existing.client_id, user.id, role);
+    await assertRecordEditor(existing.client_id ?? null, user.id, role);
 
     const allowed = new Set([
       "peopleIds", "address", "dateSent", "returnBy", "dateReturned", "cost",
-      "remarks", "photoFiles", "status", "reason", "courier", "items", "confirmFailure",
+      "remarks", "photoFiles", "status", "reason", "courier", "items", "confirmFailure", "clientId",
     ]);
     const supplied = Object.fromEntries(Object.entries(values).filter(([key]) => allowed.has(key)));
     if (!Object.keys(supplied).length) throw new Error("No editable changes were supplied.");
     const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    if (supplied.clientId !== undefined) {
+      const clientId = String(supplied.clientId ?? "").trim();
+      if (!clientId) throw new Error("Choose a CRM client to link this Samples Sent record.");
+      await assertRecordEditor(clientId, user.id, role);
+      updates.client_id = clientId;
+    }
     if (supplied.peopleIds !== undefined) {
       if (!Array.isArray(supplied.peopleIds) || supplied.peopleIds.some((value) => typeof value !== "string"))
         throw new Error("People must be internal staff.");
@@ -434,7 +446,7 @@ export async function PATCH(request: NextRequest) {
         const { data: linkedSubitems, error: linkedSubitemsError } = await supabaseAdmin
           .from("subitems")
           .select("id")
-          .eq("client_id", existing.client_id)
+          .eq("client_id", String(updates.client_id ?? existing.client_id))
           .is("deleted_at", null)
           .in("id", linkedIds);
         if (linkedSubitemsError) throw linkedSubitemsError;

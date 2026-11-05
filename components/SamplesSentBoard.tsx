@@ -4,6 +4,7 @@ import {
   ChevronDown,
   ChevronRight,
   FileImage,
+  Link2,
   LockKeyhole,
   LoaderCircle,
   Plus,
@@ -62,6 +63,8 @@ type SampleRow = {
   id: string;
   group_id: string | null;
   referenceId: string;
+  legacyClientName: string;
+  legacyMobile: string;
   address: string;
   date_sent: string;
   return_by: string | null;
@@ -151,6 +154,7 @@ export function SamplesSentBoard() {
   const [labelOptions, setLabelOptions] = useState<Record<string, BadgeOption[]>>({});
   const [canDeleteLabels, setCanDeleteLabels] = useState(false);
   const [itemsEditorRow, setItemsEditorRow] = useState<SampleRow | null>(null);
+  const [linkingClientRow, setLinkingClientRow] = useState<SampleRow | null>(null);
   const [failedReturn, setFailedReturn] = useState<{ row: SampleRow; optionId: string } | null>(null);
   const [failedReturnRemarks, setFailedReturnRemarks] = useState("");
 
@@ -329,6 +333,7 @@ export function SamplesSentBoard() {
               canDeleteLabels={canDeleteLabels}
               onManageLabel={manageLabel}
               onUpdate={updateRecord}
+              onLinkClient={setLinkingClientRow}
               onUpdateStatus={updateStatus}
               onEditItems={setItemsEditorRow}
               canManage={canManageGroups}
@@ -386,6 +391,14 @@ export function SamplesSentBoard() {
           if (saved) setFailedReturn(null);
         }}
       />
+      <LinkSampleClientDialog
+        row={linkingClientRow}
+        onOpenChange={(open) => !open && setLinkingClientRow(null)}
+        onLink={(clientId) => {
+          if (linkingClientRow) void updateRecord(linkingClientRow.id, { clientId });
+          setLinkingClientRow(null);
+        }}
+      />
     </section>
   );
 }
@@ -440,6 +453,7 @@ function SamplesGroup({
   canDeleteLabels,
   onManageLabel,
   onUpdate,
+  onLinkClient,
   onUpdateStatus,
   onEditItems,
   canManage,
@@ -456,6 +470,7 @@ function SamplesGroup({
   canDeleteLabels: boolean;
   onManageLabel: (code: string, action: "add" | "rename" | "color" | "delete" | "reorder", payload: Record<string, unknown>) => Promise<void>;
   onUpdate: (id: string, values: Record<string, unknown>) => void;
+  onLinkClient: (row: SampleRow) => void;
   onUpdateStatus: (row: SampleRow, optionId: string) => void;
   onEditItems: (row: SampleRow) => void;
   canManage: boolean;
@@ -512,6 +527,7 @@ function SamplesGroup({
               canDeleteLabels={canDeleteLabels}
               onManageLabel={onManageLabel}
               onUpdate={onUpdate}
+              onLinkClient={onLinkClient}
               onUpdateStatus={onUpdateStatus}
               onEditItems={onEditItems}
             />
@@ -571,6 +587,7 @@ function SampleRecordLine({
   canDeleteLabels,
   onManageLabel,
   onUpdate,
+  onLinkClient,
   onUpdateStatus,
   onEditItems,
 }: {
@@ -582,6 +599,7 @@ function SampleRecordLine({
   canDeleteLabels: boolean;
   onManageLabel: (code: string, action: "add" | "rename" | "color" | "delete" | "reorder", payload: Record<string, unknown>) => Promise<void>;
   onUpdate: (id: string, values: Record<string, unknown>) => void;
+  onLinkClient: (row: SampleRow) => void;
   onUpdateStatus: (row: SampleRow, optionId: string) => void;
   onEditItems: (row: SampleRow) => void;
 }) {
@@ -605,20 +623,33 @@ function SampleRecordLine({
     >
       {cell(
         "client",
-        <span className="truncate">
-          {row.linkedClient?.name}{" "}
-          <small className="text-slate-400">
-            {row.linkedClient?.display_id}
-          </small>
-        </span>,
+        row.linkedClient ? (
+          <span className="truncate">
+            {row.linkedClient.name}{" "}
+            <small className="text-slate-400">{row.linkedClient.display_id}</small>
+          </span>
+        ) : (
+          <div className="flex w-full min-w-0 items-center justify-between gap-2">
+            <span className="truncate" title={row.legacyClientName}>
+              {row.legacyClientName || "Unlinked migration record"}
+            </span>
+            <button
+              type="button"
+              onClick={() => onLinkClient(row)}
+              className="inline-flex shrink-0 items-center gap-1 text-sky-700 hover:text-sky-900"
+            >
+              <Link2 size={13} /> Link
+            </button>
+          </div>
+        ),
       )}
       {cell("people", <AssigneeMultiSelect
         profiles={profiles}
         selectedIds={row.people.map((person) => person.id)}
         onChange={(peopleIds) => onUpdate(row.id, { peopleIds })}
       />, "justify-center")}
-      {cell("mobile", <span className="w-full truncate text-center" title={row.linkedClient?.phone ?? ""}>
-        {row.linkedClient?.phone}
+      {cell("mobile", <span className="w-full truncate text-center" title={row.linkedClient?.phone ?? row.legacyMobile}>
+        {row.linkedClient?.phone || row.legacyMobile}
       </span>, "justify-center")}
       {cell("address", <EditableCell
         value={row.address}
@@ -835,6 +866,91 @@ function FailedReturnDialog({
           <AlertDialogAction disabled={!remarks.trim()} onClick={onConfirm}>
             Confirm failed return
           </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
+function LinkSampleClientDialog({
+  row,
+  onOpenChange,
+  onLink,
+}: {
+  row: SampleRow | null;
+  onOpenChange: (open: boolean) => void;
+  onLink: (clientId: string) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [clients, setClients] = useState<Client[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!row) return;
+    setQuery(row.legacyClientName || row.legacyMobile || "");
+  }, [row]);
+
+  useEffect(() => {
+    if (!row) return;
+    const timer = window.setTimeout(() => {
+      setLoading(true);
+      void fetchHydratedClientGroupPage(null, 0, 30, {
+        search: query.trim() || undefined,
+        sortCategory: "client",
+        sortColumn: "dateCreated",
+        sortValueType: "date",
+        sortDirection: "desc",
+      })
+        .then((page) => setClients(page.clients))
+        .catch(() => setClients([]))
+        .finally(() => setLoading(false));
+    }, 180);
+    return () => window.clearTimeout(timer);
+  }, [query, row]);
+
+  if (!row) return null;
+  return (
+    <AlertDialog open onOpenChange={onOpenChange}>
+      <AlertDialogContent className="max-w-3xl">
+        <AlertDialogHeader>
+          <AlertDialogTitle>Link Samples Sent record to a client</AlertDialogTitle>
+          <AlertDialogDescription>
+            The migrated name and Mobile remain available here to help identify the CRM client. Once linked, the CRM Mobile value becomes the managed value.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <div className="grid gap-1 rounded border border-slate-200 bg-slate-50 p-3 text-sm">
+          <span><b>Migrated name:</b> {row.legacyClientName || "—"}</span>
+          <span><b>Migrated Mobile:</b> {row.legacyMobile || "—"}</span>
+        </div>
+        <label className="relative block">
+          <Search className="absolute left-2 top-2.5 text-slate-400" size={16} />
+          <input
+            autoFocus
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search CRM clients"
+            className="h-10 w-full rounded border border-slate-300 pl-8 pr-2 text-sm"
+          />
+        </label>
+        <div className="max-h-[46vh] overflow-y-auto rounded border border-slate-200">
+          {loading ? (
+            <div className="p-4 text-center text-sm text-slate-500">Searching clients…</div>
+          ) : clients.length ? clients.map((client) => (
+            <button
+              key={client.id}
+              type="button"
+              onClick={() => onLink(client.id)}
+              className="flex w-full items-center justify-between border-b border-slate-100 px-3 py-2 text-left text-sm last:border-b-0 hover:bg-sky-50"
+            >
+              <span className="min-w-0 truncate">{client.name || "Unnamed client"}</span>
+              <span className="ml-3 shrink-0 text-slate-500">{client.displayId} · {client.phone || "No phone"}</span>
+            </button>
+          )) : (
+            <div className="p-4 text-center text-sm text-slate-500">No CRM clients found.</div>
+          )}
+        </div>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
