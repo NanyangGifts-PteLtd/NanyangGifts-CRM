@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
 const KEY = "payment_voucher_columns";
-const INTERNAL_ROLES = new Set(["sales", "pm", "admin", "director", "dev"]);
+const INTERNAL_ROLES = new Set(["pm", "admin", "director", "dev"]);
 
 export async function GET() {
   const supabase = await createClient();

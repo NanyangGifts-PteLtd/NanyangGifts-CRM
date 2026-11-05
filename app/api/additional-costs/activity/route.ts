@@ -6,6 +6,8 @@ export async function GET(request: NextRequest) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const { data: roleProfile } = await supabaseAdmin.from("profiles").select("role").eq("id", user.id).maybeSingle();
+  if (String(roleProfile?.role ?? "").toLowerCase() === "sales") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const voucherId = request.nextUrl.searchParams.get("voucherId");
   if (!voucherId) return NextResponse.json({ error: "voucherId is required" }, { status: 400 });
   const { data, error } = await supabaseAdmin
@@ -21,6 +23,8 @@ export async function POST(request: NextRequest) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const { data: roleProfile } = await supabaseAdmin.from("profiles").select("role").eq("id", user.id).maybeSingle();
+  if (String(roleProfile?.role ?? "").toLowerCase() === "sales") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const body = await request.json() as { voucherId?: string; action?: string; title?: string; meta?: Record<string, unknown> };
   if (!body.voucherId || !body.action || !body.title)
     return NextResponse.json({ error: "Voucher activity details are required" }, { status: 400 });

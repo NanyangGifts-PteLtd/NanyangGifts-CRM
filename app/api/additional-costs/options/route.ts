@@ -51,6 +51,14 @@ export async function GET() {
       data: { user },
     } = await caller.auth.getUser();
     if (!user) throw new Error("Unauthorized");
+    const { data: viewerProfile } = await supabaseAdmin
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .maybeSingle();
+    if (String(viewerProfile?.role ?? "").toLowerCase() === "sales") {
+      throw new Error("Forbidden");
+    }
     const { data: groups, error } = await supabaseAdmin
       .from("option_groups")
       .select("id, code")

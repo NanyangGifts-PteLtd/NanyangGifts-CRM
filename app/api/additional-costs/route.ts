@@ -37,7 +37,11 @@ async function authorize() {
     .select("role")
     .eq("id", user.id)
     .maybeSingle();
-  if (error || !INTERNAL_ROLES.has(String(profile?.role ?? "").toLowerCase())) {
+  if (
+    error ||
+    !INTERNAL_ROLES.has(String(profile?.role ?? "").toLowerCase()) ||
+    String(profile?.role ?? "").toLowerCase() === "sales"
+  ) {
     throw new Error("Forbidden");
   }
   return { user, role: String(profile?.role ?? "").toLowerCase() };

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
-const INTERNAL_ROLES = new Set(["sales", "pm", "admin", "director", "dev"]);
+const INTERNAL_ROLES = new Set(["pm", "admin", "director", "dev"]);
 const BIN_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 
 export async function POST(request: NextRequest) {

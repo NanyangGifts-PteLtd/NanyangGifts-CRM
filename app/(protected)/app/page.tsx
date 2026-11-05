@@ -637,6 +637,9 @@ function canViewPanel(panel: SidePanel, role: string | null) {
   if (panel === "calendar") {
     return ["admin", "director", "dev"].includes(normalizedRole);
   }
+  if (panel === "additionalcosts") {
+    return normalizedRole !== "sales";
+  }
   if (panel === "useradmin") {
     return ["director", "dev"].includes(normalizedRole);
   }
@@ -3929,7 +3932,7 @@ export default function Page() {
         ) : null;
 
       case "additionalcosts":
-        return (
+        return canViewPanel("additionalcosts", currentUserRole) ? (
           <AdditionalCostsBoard
             clients={clients}
             profiles={profiles}
@@ -3940,7 +3943,7 @@ export default function Page() {
             clientPmAssignees={clientPmAssignees}
             onOpenProject={openPaymentVoucherProject}
           />
-        );
+        ) : null;
 
       case "samplessent":
         return <SamplesSentBoard />;

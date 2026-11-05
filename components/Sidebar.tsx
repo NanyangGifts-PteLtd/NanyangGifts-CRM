@@ -149,6 +149,7 @@ export default function Sidebar({
           .filter(
             (item) => {
               const role = String(currentUserRole ?? "").toLowerCase();
+              if (item.id === "additionalcosts" && role === "sales") return false;
               if (item.id === "calendar") return ["admin", "director", "dev"].includes(role);
               if (item.id === "emailreview") return ["admin", "director", "dev"].includes(role);
               if (item.id === "useradmin") return role === "director" || role === "dev";
