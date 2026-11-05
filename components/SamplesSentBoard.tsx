@@ -65,6 +65,7 @@ type SampleRow = {
   referenceId: string;
   legacyClientName: string;
   legacyMobile: string;
+  mondayItemsSent: string;
   address: string;
   date_sent: string;
   return_by: string | null;
@@ -105,6 +106,7 @@ const COLUMNS = [
   "Photo",
   "Courier",
   "Items Sent",
+  "Monday Items Sent",
   "Extend 7 Days",
   "Returned",
   "Date Returned",
@@ -112,8 +114,8 @@ const COLUMNS = [
   "Creation Log",
 ];
 const DEFAULT_COLUMN_WIDTHS = [
-  245, 84, 130, 230, 115, 115, 125, 160, 230, 110, 120, 135, 260, 130, 115, 125,
-  125, 155,
+  245, 84, 130, 230, 115, 115, 125, 160, 230, 110, 120, 135, 260, 260, 130, 115,
+  125, 125, 155,
 ];
 const gridForWidths = (widths: number[]) => widths.map((width) => `${width}px`).join(" ");
 const dateToday = () => new Date().toISOString().slice(0, 10);
@@ -731,6 +733,13 @@ function SampleRecordLine({
         <span className="shrink-0 text-sky-700">Edit</span>
         </button>,
       )}
+      {cell("mondayItemsSent", <EditableCell
+        value={row.mondayItemsSent}
+        onChange={(mondayItemsSent) => onUpdate(row.id, { mondayItemsSent })}
+        multiline
+        resizableMultiline
+        className="!justify-start"
+      />)}
       {cell("extend", <ExtendButton row={row} onUpdate={onUpdate} />, "justify-center")}
       {cell("returned", <ReturnedButton
         row={row}

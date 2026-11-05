@@ -205,6 +205,7 @@ async function hydrateRows(rows: Array<Record<string, unknown>>) {
     referenceId: String(row.external_reference_id ?? "").trim() || `SS${row.reference_number}`,
     legacyClientName: String(row.legacy_client_name ?? ""),
     legacyMobile: String(row.legacy_mobile ?? ""),
+    mondayItemsSent: String(row.monday_items_sent ?? ""),
     linkedClient: (() => {
       const client = clientsById.get(String(row.client_id));
       return client ? { ...client, subitems: subitemsByClient.get(client.id) ?? [] } : null;
@@ -370,7 +371,7 @@ export async function PATCH(request: NextRequest) {
 
     const allowed = new Set([
       "peopleIds", "address", "dateSent", "returnBy", "dateReturned", "cost",
-      "remarks", "photoFiles", "status", "reason", "courier", "items", "confirmFailure", "clientId",
+      "remarks", "mondayItemsSent", "photoFiles", "status", "reason", "courier", "items", "confirmFailure", "clientId",
     ]);
     const supplied = Object.fromEntries(Object.entries(values).filter(([key]) => allowed.has(key)));
     if (!Object.keys(supplied).length) throw new Error("No editable changes were supplied.");
@@ -405,6 +406,9 @@ export async function PATCH(request: NextRequest) {
       updates.cost = cost;
     }
     if (supplied.remarks !== undefined) updates.remarks = String(supplied.remarks ?? "");
+    if (supplied.mondayItemsSent !== undefined) {
+      updates.monday_items_sent = String(supplied.mondayItemsSent ?? "");
+    }
     if (supplied.photoFiles !== undefined) updates.photo_files = Array.isArray(supplied.photoFiles) ? supplied.photoFiles : [];
     let selectedStatusSystemKey: string | null = null;
     for (const [input, code, valueColumn, idColumn] of [
