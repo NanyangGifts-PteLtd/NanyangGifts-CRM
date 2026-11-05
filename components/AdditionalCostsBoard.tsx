@@ -5199,6 +5199,9 @@ export function AdditionalCostsBoard({
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Save Payment Voucher as a draft?</AlertDialogTitle>
+            <AlertDialogDescription className="sr-only">
+              Save this Payment Voucher as a draft for later completion.
+            </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={Boolean(creatingFor)}>
