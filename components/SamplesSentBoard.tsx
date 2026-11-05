@@ -131,6 +131,7 @@ export function SamplesSentBoard() {
   const [showCreator, setShowCreator] = useState(false);
   const [showAddGroup, setShowAddGroup] = useState(false);
   const [groupToDelete, setGroupToDelete] = useState<Group | null>(null);
+  const [focusedRecordId, setFocusedRecordId] = useState<string | null>(null);
 
   const loadBoard = useCallback(async () => {
     setLoading(true);
@@ -167,6 +168,38 @@ export function SamplesSentBoard() {
   useEffect(() => {
     void loadBoard();
   }, [loadBoard]);
+  useEffect(() => {
+    const recordId = new URLSearchParams(window.location.search).get("sample");
+    const record = rows.find((row) => row.id === recordId);
+    if (!record) return;
+    if (record.group_id) {
+      setGroups((current) =>
+        current.map((group) =>
+          group.id === record.group_id ? { ...group, collapsed: false } : group,
+        ),
+      );
+    }
+    setFocusedRecordId(recordId);
+    const scrollTimer = window.setTimeout(() => {
+      document
+        .querySelector<HTMLElement>(
+          `[data-samples-sent-record-id="${recordId}"]`,
+        )
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 0);
+    const clearTimer = window.setTimeout(() => setFocusedRecordId(null), 2600);
+    const params = new URLSearchParams(window.location.search);
+    params.delete("sample");
+    window.history.replaceState(
+      null,
+      "",
+      params.toString() ? `/app?${params.toString()}` : "/app",
+    );
+    return () => {
+      window.clearTimeout(scrollTimer);
+      window.clearTimeout(clearTimer);
+    };
+  }, [rows]);
 
   return (
     <section className="crm-board min-h-full min-w-max bg-[#f8fafc] py-2 pl-8 pr-3 text-slate-700">
@@ -184,6 +217,7 @@ export function SamplesSentBoard() {
               key={group.id}
               group={group}
               rows={rows.filter((row) => row.group_id === group.id)}
+              focusedRecordId={focusedRecordId}
               canManage={canManageGroups}
               onToggle={() =>
                 setGroups((all) =>
@@ -265,12 +299,14 @@ function LoadingState() {
 function SamplesGroup({
   group,
   rows,
+  focusedRecordId,
   canManage,
   onToggle,
   onDelete,
 }: {
   group: Group;
   rows: SampleRow[];
+  focusedRecordId: string | null;
   canManage: boolean;
   onToggle: () => void;
   onDelete: () => void;
@@ -315,7 +351,11 @@ function SamplesGroup({
         <div className="overflow-x-auto">
           <BoardHeader />
           {rows.map((row) => (
-            <SampleRecordLine key={row.id} row={row} />
+            <SampleRecordLine
+              key={row.id}
+              row={row}
+              focused={row.id === focusedRecordId}
+            />
           ))}
           {!rows.length && <EmptyRecordLine />}
         </div>
@@ -327,7 +367,7 @@ function SamplesGroup({
 function BoardHeader() {
   return (
     <div
-      className="grid border-t border-l border-[#d0d4e4] bg-[#fbfcff] text-center text-[12px] text-[#667085]"
+      className="grid border-t border-l border-[#d0d4e4] text-center text-[12px] text-[#667085]"
       style={{ gridTemplateColumns: GRID }}
     >
       {COLUMNS.map((label) => (
@@ -354,7 +394,13 @@ function EmptyRecordLine() {
   );
 }
 
-function SampleRecordLine({ row }: { row: SampleRow }) {
+function SampleRecordLine({
+  row,
+  focused = false,
+}: {
+  row: SampleRow;
+  focused?: boolean;
+}) {
   const creator = row.createdByProfile;
   const creationTitle = `Created by ${creator ? profileName(creator) : "System"} on ${new Date(row.created_at).toLocaleDateString("en-GB")} at ${new Date(row.created_at).toLocaleTimeString("en-GB")}`;
   const cell = (key: string, value: ReactNode) => (
@@ -367,7 +413,10 @@ function SampleRecordLine({ row }: { row: SampleRow }) {
   );
   return (
     <div
-      className="grid min-h-[36px] border-t border-l border-[#d0d4e4] bg-white text-[12px]"
+      data-samples-sent-record-id={row.id}
+      className={`grid min-h-[36px] border-t border-l border-[#d0d4e4] text-[12px] transition-colors ${
+        focused ? "bg-sky-100 ring-2 ring-inset ring-sky-400" : "bg-white"
+      }`}
       style={{ gridTemplateColumns: GRID }}
     >
       {cell(
@@ -637,7 +686,13 @@ function CreateSampleDialog({
       aria-modal="true"
       aria-labelledby="samples-sent-create-title"
     >
-      <div className="flex h-[calc(100vh-2rem)] max-h-[calc(100vh-2rem)] w-full max-w-6xl flex-col overflow-hidden rounded-xl bg-white text-slate-800 shadow-2xl">
+      <div
+        className={`flex w-full max-w-6xl flex-col overflow-hidden rounded-xl bg-white text-slate-800 shadow-2xl ${
+          client
+            ? "max-h-[calc(100vh-2rem)]"
+            : "h-[calc(100vh-2rem)] max-h-[calc(100vh-2rem)]"
+        }`}
+      >
         <header className="flex shrink-0 items-start justify-between border-b border-slate-100 px-5 py-4">
           <div>
             <h2
@@ -660,7 +715,11 @@ function CreateSampleDialog({
             <X size={20} />
           </button>
         </header>
-        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+        <div
+          className={`flex min-h-0 flex-col overflow-y-auto ${
+            client ? "" : "flex-1"
+          }`}
+        >
         {!client ? (
           <ClientPicker
             clients={clients}
@@ -676,14 +735,14 @@ function CreateSampleDialog({
             onLoadMore={() => void loadClientPage(clientOffset, true, search)}
             onSelect={(next) => {
               setClient(next);
-              setAddress(next.billingAddress || "");
+              setAddress("");
             }}
           />
         ) : (
           <>
             <div className="flex items-center justify-between rounded-md border border-sky-200 bg-sky-50 px-3 py-2">
               <span className="text-sm text-slate-700">
-                Creating Samples Sent record for <strong>{client.name}</strong>{" "}
+                {client.name}{" "}
                 <span className="text-slate-500">{client.displayId}</span>
               </span>
               <button
@@ -695,32 +754,46 @@ function CreateSampleDialog({
                 Change client
               </button>
             </div>
-            <div className="grid gap-5 p-5 lg:grid-cols-2">
+            <div className="space-y-5 p-5">
               <SampleDetails
-            client={client}
-            profiles={profiles}
-            peopleIds={peopleIds}
-            groupId={groupId}
-            groups={groups}
-            address={address}
-            dateSent={dateSent}
-            returnBy={returnBy}
-            cost={cost}
-            remarks={remarks}
-            onPeopleChange={setPeopleIds}
-            onGroupChange={setGroupId}
-            onAddressChange={setAddress}
-            onDateSentChange={setDateSent}
-            onReturnByChange={setReturnBy}
-            onCostChange={setCost}
-            onRemarksChange={setRemarks}
+                profiles={profiles}
+                peopleIds={peopleIds}
+                address={address}
+                dateSent={dateSent}
+                returnBy={returnBy}
+                onPeopleChange={setPeopleIds}
+                onAddressChange={setAddress}
+                onDateSentChange={setDateSent}
+                onReturnByChange={setReturnBy}
               />
               <ItemsEditor
-          client={client}
-          items={items}
-          onChange={setItems}
-          updateItem={updateItem}
+                client={client}
+                items={items}
+                onChange={setItems}
+                updateItem={updateItem}
               />
+              <div className="grid gap-3 lg:grid-cols-[minmax(180px,1fr)_minmax(0,3fr)]">
+                <label className="grid gap-1 text-sm font-medium">
+                  Cost
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={cost}
+                    onChange={(event) => setCost(event.target.value)}
+                    className="h-9 rounded border border-slate-300 px-2"
+                  />
+                </label>
+                <label className="grid gap-1 text-sm font-medium">
+                  Remarks
+                  <textarea
+                    rows={2}
+                    value={remarks}
+                    onChange={(event) => setRemarks(event.target.value)}
+                    className="rounded border border-slate-300 px-2 py-1"
+                  />
+                </label>
+              </div>
             </div>
           </>
         )}
@@ -914,68 +987,38 @@ function ClientPicker({
 }
 
 type DetailsProps = {
-  client: Client | null;
   profiles: Profile[];
   peopleIds: string[];
-  groupId: string;
-  groups: Group[];
   address: string;
   dateSent: string;
   returnBy: string;
-  cost: string;
-  remarks: string;
   onPeopleChange: (value: string[]) => void;
-  onGroupChange: (value: string) => void;
   onAddressChange: (value: string) => void;
   onDateSentChange: (value: string) => void;
   onReturnByChange: (value: string) => void;
-  onCostChange: (value: string) => void;
-  onRemarksChange: (value: string) => void;
 };
 function SampleDetails(props: DetailsProps) {
   return (
     <section className="space-y-3">
-      <p className="rounded border bg-slate-50 p-2 text-sm">
-        {props.client ? (
-          <>
-            <b>{props.client.name}</b>{" "}
-            <span className="text-slate-500">{props.client.displayId}</span>
-          </>
-        ) : (
-          "Choose a client"
-        )}
-      </p>
-      <label className="grid gap-1 text-sm font-medium">
-        Group
-        <select
-          value={props.groupId}
-          onChange={(event) => props.onGroupChange(event.target.value)}
-          className="h-9 rounded border border-slate-300 px-2 text-sm"
-        >
-          {props.groups.map((group) => (
-            <option key={group.id} value={group.id}>
-              {group.name}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="grid gap-1 text-sm font-medium">
-        People
-        <AssigneeMultiSelect
-          profiles={props.profiles}
-          selectedIds={props.peopleIds}
-          onChange={props.onPeopleChange}
-        />
-      </label>
-      <label className="grid gap-1 text-sm font-medium">
-        Address
-        <textarea
-          rows={2}
-          value={props.address}
-          onChange={(event) => props.onAddressChange(event.target.value)}
-          className="rounded border border-slate-300 px-2 py-1"
-        />
-      </label>
+      <div className="grid gap-3 lg:grid-cols-[minmax(180px,1fr)_minmax(0,3fr)]">
+        <label className="grid gap-1 text-sm font-medium">
+          People
+          <AssigneeMultiSelect
+            profiles={props.profiles}
+            selectedIds={props.peopleIds}
+            onChange={props.onPeopleChange}
+          />
+        </label>
+        <label className="grid gap-1 text-sm font-medium">
+          Address
+          <textarea
+            rows={2}
+            value={props.address}
+            onChange={(event) => props.onAddressChange(event.target.value)}
+            className="rounded border border-slate-300 px-2 py-1"
+          />
+        </label>
+      </div>
       <div className="grid grid-cols-2 gap-3">
         <label className="grid gap-1 text-sm font-medium">
           Date Sent
@@ -996,26 +1039,6 @@ function SampleDetails(props: DetailsProps) {
           />
         </label>
       </div>
-      <label className="grid gap-1 text-sm font-medium">
-        Cost
-        <input
-          type="number"
-          min="0"
-          step="0.01"
-          value={props.cost}
-          onChange={(event) => props.onCostChange(event.target.value)}
-          className="h-9 rounded border border-slate-300 px-2"
-        />
-      </label>
-      <label className="grid gap-1 text-sm font-medium">
-        Remarks
-        <textarea
-          rows={2}
-          value={props.remarks}
-          onChange={(event) => props.onRemarksChange(event.target.value)}
-          className="rounded border border-slate-300 px-2 py-1"
-        />
-      </label>
     </section>
   );
 }
