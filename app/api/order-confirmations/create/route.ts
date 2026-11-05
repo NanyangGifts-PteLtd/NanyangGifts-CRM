@@ -233,9 +233,12 @@ export async function POST(req: NextRequest) {
 
     const itemRows = awardedSubitems
       .filter((item) => uploadMap.has(item.id))
-      .map((item) => ({
+      .map((item, sortOrder) => ({
         order_confirmation_id: ocf.id,
         subitem_id: item.id,
+        // awardedSubitems is retrieved in CRM subitem position order.
+        // Persist that snapshot order instead of relying on database row order.
+        sort_order: sortOrder,
         qty: item.qty,
         item_name: item.name,
         remarks: item.description,

@@ -6,6 +6,15 @@ import { updateCrmSpreadsheetDeliveryInfo } from "@/lib/shipper/spreadsheet";
 import { withOcfNeedByTimeline } from "@/lib/ocf-need-by";
 
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+type InternalOcfItem = {
+  id?: unknown;
+  need_by_date?: unknown;
+  remarks?: unknown;
+  delivery_name?: unknown;
+  delivery_address?: unknown;
+  delivery_contact_number?: unknown;
+  delivery_remarks?: unknown;
+};
 
 async function isPmUser(supabase: Awaited<ReturnType<typeof createClient>>, userId: string) {
   const { data: profile } = await supabase
@@ -26,7 +35,9 @@ export async function POST(req: Request) {
     const companySnapshot = body?.companySnapshot;
     const sameAddressForAllItems = body?.sameAddressForAllItems;
     const syncNeedByToTimeline = body?.syncNeedByToTimeline === true;
-    const items = Array.isArray(body?.items) ? body.items : [];
+    const items: InternalOcfItem[] = Array.isArray(body?.items)
+      ? body.items
+      : [];
 
     if (!ocfId) {
       return NextResponse.json({ error: "Missing ocfId" }, { status: 400 });
@@ -98,59 +109,78 @@ export async function POST(req: Request) {
       }
     }
 
-    const { error: ocfError } = await supabaseAdmin
-      .from("order_confirmations")
-      .update({
-        estimated_delivery_notes: estimatedDeliveryNotes,
-        ...(typeof clientNameSnapshot === "string"
-          ? { client_name_snapshot: clientNameSnapshot }
-          : {}),
-        ...(typeof companySnapshot === "string"
-          ? { company_snapshot: companySnapshot }
-          : {}),
-        ...(typeof sameAddressForAllItems === "boolean"
-          ? { same_address_for_all_items: sameAddressForAllItems }
-          : {}),
-      })
-      .eq("id", ocfId);
-
-    if (ocfError) {
-      return NextResponse.json({ error: ocfError.message }, { status: 500 });
-    }
-
-    const needByUpdates = new Map<string, string>();
-
+    const needByDateByItemId = new Map<string, string>();
     for (const item of items) {
       const hasNeedByDate = Object.prototype.hasOwnProperty.call(
         item,
         "need_by_date",
       );
       const needByDate = hasNeedByDate ? String(item.need_by_date) : null;
-      const { data: updatedItem, error: itemError } = await supabaseAdmin
-        .from("order_confirmation_items")
-        .update({
-          remarks: item.remarks ?? "",
-          delivery_name: item.delivery_name ?? null,
-          delivery_address: item.delivery_address ?? null,
-          delivery_contact_number: item.delivery_contact_number ?? null,
-          delivery_remarks: item.delivery_remarks ?? null,
-          ...(hasNeedByDate ? { need_by_date: needByDate } : {}),
-        })
-        .eq("id", item.id)
-        .eq("order_confirmation_id", ocfId)
-        .select(
-          "subitem_id, delivery_name, delivery_address, delivery_contact_number, delivery_remarks",
-        )
-        .maybeSingle();
-
-      if (itemError) {
-        return NextResponse.json({ error: itemError.message }, { status: 500 });
+      if (hasNeedByDate && needByDate) {
+        needByDateByItemId.set(String(item.id), needByDate);
       }
-      if (!updatedItem) {
-        return NextResponse.json(
-          { error: "Order confirmation item not found" },
-          { status: 404 },
-        );
+    }
+
+    const { data: savedItems, error: saveError } = await supabaseAdmin.rpc(
+      "save_order_confirmation_internal_v1",
+      {
+        p_ocf_id: ocfId,
+        p_estimated_delivery_notes: estimatedDeliveryNotes,
+        p_client_name_snapshot:
+          typeof clientNameSnapshot === "string" ? clientNameSnapshot : null,
+        p_company_snapshot:
+          typeof companySnapshot === "string" ? companySnapshot : null,
+        p_same_address_for_all_items:
+          typeof sameAddressForAllItems === "boolean"
+            ? sameAddressForAllItems
+            : null,
+        p_items: items.map((item) => ({
+          id: String(item.id ?? ""),
+          need_by_date:
+            item.need_by_date === null || item.need_by_date === undefined
+              ? null
+              : String(item.need_by_date),
+          remarks: String(item.remarks ?? ""),
+          delivery_name:
+            item.delivery_name === null || item.delivery_name === undefined
+              ? null
+              : String(item.delivery_name),
+          delivery_address:
+            item.delivery_address === null || item.delivery_address === undefined
+              ? null
+              : String(item.delivery_address),
+          delivery_contact_number:
+            item.delivery_contact_number === null ||
+            item.delivery_contact_number === undefined
+              ? null
+              : String(item.delivery_contact_number),
+          delivery_remarks:
+            item.delivery_remarks === null || item.delivery_remarks === undefined
+              ? null
+              : String(item.delivery_remarks),
+        })),
+      },
+    );
+
+    if (saveError) {
+      return NextResponse.json({ error: saveError.message }, { status: 409 });
+    }
+    if ((savedItems ?? []).length !== items.length) {
+      return NextResponse.json(
+        { error: "The OCF item list changed. Reopen the editor and try again." },
+        { status: 409 },
+      );
+    }
+
+    const needByUpdates = new Map<string, string>();
+    for (const updatedItem of savedItems ?? []) {
+      const needByDate = needByDateByItemId.get(updatedItem.item_id);
+      if (
+        syncNeedByToTimeline &&
+        updatedItem.subitem_id &&
+        needByDate
+      ) {
+        needByUpdates.set(updatedItem.subitem_id, needByDate);
       }
 
       await updateCrmSpreadsheetDeliveryInfo([
@@ -175,14 +205,6 @@ export async function POST(req: Request) {
               .join("\n") || null,
         },
       ]);
-
-      if (
-        hasNeedByDate &&
-        updatedItem.subitem_id &&
-        syncNeedByToTimeline
-      ) {
-        needByUpdates.set(updatedItem.subitem_id, needByDate!);
-      }
     }
 
     let timelineWarning: string | null = null;

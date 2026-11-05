@@ -51,6 +51,7 @@ export default async function OrderConfirmationPage({ params }: PageProps) {
         locked_at,
         order_confirmation_items (
         id,
+        sort_order,
         qty,
         item_name,
         need_by_date,
@@ -76,7 +77,13 @@ export default async function OrderConfirmationPage({ params }: PageProps) {
     }
 
     const items = await Promise.all(
-        (ocf.order_confirmation_items ?? []).map(async (item: any) => {
+        [...(ocf.order_confirmation_items ?? [])]
+            .sort(
+                (first: any, second: any) =>
+                    Number(first.sort_order ?? 0) - Number(second.sort_order ?? 0) ||
+                    String(first.id).localeCompare(String(second.id)),
+            )
+            .map(async (item: any) => {
             let imageUrl: string | null = null;
 
             if (item.image_path) {

@@ -70,48 +70,38 @@ export async function POST(request: NextRequest) {
     if (qtyBySubitemId.size !== subitemIds.length) return NextResponse.json({ error: "One or more linked CRM subitems no longer exist." }, { status: 409 });
     const sourceByOcfItemId = new Map((storedItems ?? []).map((item) => [item.id, item]));
 
-    const { error: ocfUpdateError } = await supabaseAdmin.from("order_confirmations").update({
-      company_snapshot: String(body?.companyName ?? "").trim(),
-      client_email_snapshot: String(body?.clientEmail ?? "").trim() || null,
-      estimated_delivery_notes: String(body?.estimatedDeliveryNotes ?? ""),
-      // A material revision invalidates the previous client acknowledgement.
-      status: "draft",
-      terms_read: false,
-      terms_agreed: false,
-      artwork_confirmed_item_ids: [],
-      strict_need_by_date: false,
-      client_signature_path: null,
-      client_signed_at: null,
-      client_submitted_at: null,
-      client_ip: null,
-      locked_at: null,
-    }).eq("id", ocfId);
-    if (ocfUpdateError) throw ocfUpdateError;
-
-    for (const item of items) {
-      const source = sourceByOcfItemId.get(item.id);
-      if (!source?.subitem_id) return NextResponse.json({ error: "Invalid OCF item" }, { status: 400 });
-      const { data: updatedItem, error } = await supabaseAdmin
-        .from("order_confirmation_items")
-        .update({
+    const revisionItems = items.map((item) => {
+      const itemId = String(item.id ?? "");
+      const source = sourceByOcfItemId.get(itemId);
+      if (!source?.subitem_id) {
+        throw new Error("Invalid OCF item");
+      }
+      return {
+        id: itemId,
         qty: qtyBySubitemId.get(source.subitem_id),
         // The OCF's internal `remarks` column is the snapshot displayed to
         // users as Description. Refresh it alongside quantity and artwork.
         remarks: descriptionBySubitemId.get(source.subitem_id) ?? "",
         image_path: item.imagePath,
         need_by_date: item.needBy,
-      })
-        .eq("id", item.id)
-        .eq("order_confirmation_id", ocfId)
-        .select("id")
-        .maybeSingle();
-      if (error) throw error;
-      if (!updatedItem) {
-        return NextResponse.json(
-          { error: "Order confirmation item not found" },
-          { status: 404 },
-        );
-      }
+      };
+    });
+
+    const { error: revisionError } = await supabaseAdmin.rpc(
+      "revise_order_confirmation_v1",
+      {
+        p_ocf_id: ocfId,
+        p_company_snapshot: String(body?.companyName ?? "").trim(),
+        p_client_email_snapshot: String(body?.clientEmail ?? "").trim(),
+        p_estimated_delivery_notes: String(body?.estimatedDeliveryNotes ?? ""),
+        p_items: revisionItems,
+      },
+    );
+    if (revisionError) {
+      return NextResponse.json(
+        { error: revisionError.message },
+        { status: 409 },
+      );
     }
 
     await supabaseAdmin.from("activity_log").insert({

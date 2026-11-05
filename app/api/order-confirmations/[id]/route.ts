@@ -72,6 +72,7 @@ export async function GET(_request: NextRequest, { params }: RouteContext) {
       .select(
         `
         id,
+        sort_order,
         order_confirmation_id,
         subitem_id,
         qty,
@@ -85,7 +86,9 @@ export async function GET(_request: NextRequest, { params }: RouteContext) {
         image_path
         `,
       )
-      .eq("order_confirmation_id", id);
+      .eq("order_confirmation_id", id)
+      .order("sort_order", { ascending: true })
+      .order("id", { ascending: true });
 
     if (itemsError) {
       return NextResponse.json(
