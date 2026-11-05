@@ -2,6 +2,9 @@
 
 import { AlertCircle, ChevronRight, LoaderCircle, PackagePlus } from "lucide-react";
 import { useEffect, useState } from "react";
+import { FilePreview } from "@/components/ui/file-preview";
+import type { StoredCrmFile } from "@/lib/crm-files";
+import type { BadgeOption } from "@/components/ui/statusbadge";
 import {
   Dialog,
   DialogContent,
@@ -19,9 +22,11 @@ type RecordRow = {
   id: string;
   referenceId: string;
   status: string;
+  statusOption: BadgeOption | null;
   returnBy: string | null;
   createdAt: string;
   deactivatedAt: string | null;
+  photoFiles: StoredCrmFile[];
   items: Array<{ item_name: string; qty: number }>;
 };
 
@@ -123,25 +128,49 @@ export function SamplesSentClientSummaryCell({
             <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>
           ) : records.length ? (
             <div className="overflow-x-auto rounded-md border border-[#d0d4e4]">
-              <div className="grid min-w-[780px] grid-cols-[115px_130px_135px_minmax(400px,1fr)] border-b border-[#d0d4e4] bg-[#f8fafc] text-[11px] text-slate-500">
+              <div className="grid min-w-[940px] grid-cols-[115px_130px_135px_minmax(400px,1fr)_160px] border-b border-[#d0d4e4] bg-[#f8fafc] text-[11px] text-slate-500">
                 <div className="px-3 py-2">Reference ID</div>
                 <div className="border-l border-[#d0d4e4] px-3 py-2">Status</div>
                 <div className="border-l border-[#d0d4e4] px-3 py-2">Return By</div>
                 <div className="border-l border-[#d0d4e4] px-3 py-2">Items Sent</div>
+                <div className="border-l border-[#d0d4e4] px-3 py-2">Photo</div>
               </div>
               {records.map((record) => (
-                <button
+                <div
                   key={record.id}
-                  type="button"
+                  role="button"
+                  tabIndex={0}
                   onClick={() => openSamplesSentRecord(record.id)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      openSamplesSentRecord(record.id);
+                    }
+                  }}
                   title={`Open ${record.referenceId} on the Samples Sent board`}
-                  className={`grid min-w-[780px] grid-cols-[115px_130px_135px_minmax(400px,1fr)] border-b border-[#e1e5ef] text-left text-[12px] last:border-b-0 hover:bg-sky-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-sky-500 ${record.deactivatedAt ? "bg-slate-50 text-slate-400 line-through" : "bg-white text-slate-700"}`}
+                  className={`grid min-w-[940px] grid-cols-[115px_130px_135px_minmax(400px,1fr)_160px] border-b border-[#e1e5ef] text-left text-[12px] last:border-b-0 hover:bg-sky-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-sky-500 ${record.deactivatedAt ? "bg-slate-50 text-slate-400 line-through" : "bg-white text-slate-700"}`}
                 >
                   <div className="px-3 py-2">{record.referenceId}</div>
-                  <div className="border-l border-[#e1e5ef] px-3 py-2">{record.status || "—"}</div>
-                  <div className="border-l border-[#e1e5ef] px-3 py-2">{formatDate(record.returnBy)}</div>
-                  <div className="border-l border-[#e1e5ef] px-3 py-2">{record.items.length ? record.items.map((item) => `${item.item_name} x ${item.qty}`).join(", ") : "—"}</div>
-                </button>
+                  <div className="border-l border-[#e1e5ef] px-3 py-2">
+                    {record.statusOption ? (
+                      <span
+                        className="inline-flex min-h-6 items-center rounded px-2 py-1 text-xs font-medium leading-none text-white"
+                        style={{ backgroundColor: record.statusOption.color ?? "#94a3b8" }}
+                      >
+                        {record.statusOption.value}
+                      </span>
+                    ) : record.status || "—"}
+                  </div>
+                   <div className="border-l border-[#e1e5ef] px-3 py-2">{formatDate(record.returnBy)}</div>
+                   <div style={{ order: 5 }} className="min-w-0 flex flex-wrap items-center gap-1 border-l border-[#e1e5ef] px-3 py-2" onClick={(event) => event.stopPropagation()}>
+                     {record.photoFiles.length ? record.photoFiles.map((file) => (
+                       <a key={file.storagePath} href={file.url} target="_blank" rel="noreferrer" title={`Open ${file.name}`}>
+                         <FilePreview url={file.url} name={file.name} mimeType={file.mimeType} />
+                       </a>
+                     )) : "—"}
+                   </div>
+                  <div style={{ order: 4 }} className="min-w-0 border-l border-[#e1e5ef] px-3 py-2">{record.items.length ? record.items.map((item) => `${item.item_name} x ${item.qty}`).join(", ") : "—"}</div>
+                </div>
               ))}
             </div>
           ) : (

@@ -86,7 +86,7 @@ export async function GET(request: NextRequest) {
 
     const { data: records, error } = await supabaseAdmin
       .from("samples_sent")
-      .select("id, reference_number, people_ids, status, return_by, created_by, created_at, deactivated_at")
+      .select("id, reference_number, people_ids, status, status_option_id, return_by, created_by, created_at, deactivated_at, photo_files")
       .eq("client_id", clientId)
       .order("deactivated_at", { ascending: true, nullsFirst: true })
       .order("created_at", { ascending: false });
@@ -109,6 +109,12 @@ export async function GET(request: NextRequest) {
       ? await supabaseAdmin.from("profiles").select("id, full_name, email, avatar_color").in("id", peopleIds)
       : { data: [], error: null };
     if (profilesError) throw profilesError;
+    const statusOptionIds = [...new Set((records ?? []).map((record) => record.status_option_id).filter(Boolean))] as string[];
+    const { data: statusOptions, error: statusOptionsError } = statusOptionIds.length
+      ? await supabaseAdmin.from("option_values").select("id, value, color").in("id", statusOptionIds)
+      : { data: [], error: null };
+    if (statusOptionsError) throw statusOptionsError;
+    const statusById = Object.fromEntries((statusOptions ?? []).map((option) => [option.id, option]));
     const profilesById = Object.fromEntries((profiles ?? []).map((profile) => [profile.id, profile]));
     const itemsByRecordId = new Map<string, Array<{ item_name: string; qty: number }>>();
     for (const item of items ?? []) {
@@ -122,9 +128,11 @@ export async function GET(request: NextRequest) {
         id: record.id,
         referenceId: `SS${record.reference_number}`,
         status: record.status,
+        statusOption: record.status_option_id ? statusById[record.status_option_id] ?? null : null,
         returnBy: record.return_by,
         createdAt: record.created_at,
         deactivatedAt: record.deactivated_at,
+        photoFiles: Array.isArray(record.photo_files) ? record.photo_files : [],
         createdBy: record.created_by ? profilesById[record.created_by] ?? null : null,
         people: (record.people_ids ?? []).map((id: string) => profilesById[id]).filter(Boolean),
         items: itemsByRecordId.get(record.id) ?? [],
