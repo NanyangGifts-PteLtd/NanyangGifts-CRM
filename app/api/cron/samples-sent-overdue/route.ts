@@ -31,70 +31,61 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   try {
-    const [overdue, requestNoReturn, failedReturn, returned, noNeedToReturn, groups] = await Promise.all([
+    const [overdue, groupsResult] = await Promise.all([
       getSystemLabel("samples_sent_status", "samples_sent_status_overdue"),
-      getSystemLabel("samples_sent_status", "samples_sent_status_request_to_not_return"),
-      getSystemLabel("samples_sent_status", "samples_sent_status_fail_to_return_remarks"),
-      getSystemLabel("samples_sent_status", "samples_sent_status_returned"),
-      getSystemLabel("samples_sent_status", "samples_sent_status_no_need_to_return"),
       supabaseAdmin
         .from("samples_sent_groups")
-        .select("id")
-        .eq("name", "Outstanding")
-        .maybeSingle(),
+        .select("id, name"),
     ]);
-    if (groups.error || !groups.data) throw groups.error ?? new Error("The Samples Sent Outstanding group is not configured.");
+    if (groupsResult.error) throw groupsResult.error;
+    const groupsByName = new Map(
+      (groupsResult.data ?? []).map((group) => [group.name, group.id]),
+    );
+    const outstandingGroupId = groupsByName.get("Outstanding");
+    if (!outstandingGroupId) throw new Error("The Samples Sent Outstanding group is not configured.");
+    const excludedGroupIds = new Set(
+      ["Returned", "No need to return", "Failed to return", "Request not to return"]
+        .map((name) => groupsByName.get(name))
+        .filter((id): id is string => Boolean(id)),
+    );
     const today = singaporeToday();
     const { data: candidates, error: candidatesError } = await supabaseAdmin
       .from("samples_sent")
-      .select("id, return_by, status_option_id")
+      .select("id, return_by, status_option_id, group_id")
       .is("deactivated_at", null)
       .not("return_by", "is", null)
-      .lt("return_by", today)
-      .not(
-        "status_option_id",
-        "in",
-        `(${[
-          overdue.id,
-          requestNoReturn.id,
-          failedReturn.id,
-          returned.id,
-          noNeedToReturn.id,
-        ].join(",")})`,
-      );
+      .lt("return_by", today);
     if (candidatesError) throw candidatesError;
 
     let markedOverdue = 0;
+    let skipped = 0;
     const failures: Array<{ id: string; error: string }> = [];
     for (const record of candidates ?? []) {
+      if (excludedGroupIds.has(record.group_id ?? "")) {
+        skipped += 1;
+        continue;
+      }
+      if (record.status_option_id === overdue.id && record.group_id === outstandingGroupId) {
+        skipped += 1;
+        continue;
+      }
       const { error } = await supabaseAdmin
         .from("samples_sent")
         .update({
           status: overdue.value,
           status_option_id: overdue.id,
-          group_id: groups.data.id,
+          group_id: outstandingGroupId,
           updated_at: new Date().toISOString(),
         })
         .eq("id", record.id)
-        .eq("return_by", record.return_by)
-        .not(
-          "status_option_id",
-          "in",
-          `(${[
-            overdue.id,
-            requestNoReturn.id,
-            failedReturn.id,
-            returned.id,
-            noNeedToReturn.id,
-          ].join(",")})`,
-        );
+        .eq("return_by", record.return_by);
       if (error) {
         failures.push({ id: record.id, error: error.message });
       } else {
         markedOverdue += 1;
       }
     }
-    return NextResponse.json({ ok: failures.length === 0, today, markedOverdue, failures });
+    return NextResponse.json({ ok: failures.length === 0, today, markedOverdue, skipped, failures });
   } catch (error) {
     return NextResponse.json({
       error: error instanceof Error ? error.message : "Could not mark Samples Sent records overdue.",

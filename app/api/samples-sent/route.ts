@@ -111,6 +111,10 @@ const STATUS_GROUP_BY_SYSTEM_KEY: Record<string, string> = {
 async function groupIdForStatusSystemKey(systemKey: string | null) {
   const groupName = systemKey ? STATUS_GROUP_BY_SYSTEM_KEY[systemKey] : null;
   if (!groupName) return null;
+  return groupIdForName(groupName);
+}
+
+async function groupIdForName(groupName: string) {
   const { data, error } = await supabaseAdmin
     .from("samples_sent_groups")
     .select("id")
@@ -409,7 +413,9 @@ export async function PATCH(request: NextRequest) {
       }
       updates.remarks = remarks;
     }
-    const mappedGroupId = await groupIdForStatusSystemKey(selectedStatusSystemKey);
+    const mappedGroupId = supplied.status !== undefined && !String(supplied.status ?? "").trim()
+      ? await groupIdForName("New Group")
+      : await groupIdForStatusSystemKey(selectedStatusSystemKey);
     if (mappedGroupId) updates.group_id = mappedGroupId;
     if (selectedStatusSystemKey === "samples_sent_status_returned" && !existing.date_returned) {
       updates.date_returned = new Date().toISOString().slice(0, 10);

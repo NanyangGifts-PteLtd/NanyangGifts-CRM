@@ -65,7 +65,7 @@ const automations: ReferenceItem[] = [
     behaviour:
       "Status labels are evaluated by stable option ID. Overdue moves to Outstanding; Request to not return, Failed to return (Remarks), Returned, and No Need to Return move to their matching groups. Failed return requires remarks confirmation. Returned preserves an existing Date Returned or fills today when blank. The daily job marks eligible past-Return-By records Overdue and moves them to Outstanding.",
     scope:
-      "Returned, No Need to Return, Request to not return, Failed to return, and deactivated records are not overwritten by the overdue job.",
+      "Deactivated records and records currently in Returned, No need to return, Request not to return, or Failed to return groups are not overwritten by the overdue job. Clearing Status moves a record back to New Group.",
     source:
       "app/api/samples-sent/route.ts; app/api/cron/samples-sent-overdue/route.ts",
   },
