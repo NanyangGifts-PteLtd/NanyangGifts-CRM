@@ -4572,7 +4572,7 @@ export function AdditionalCostsBoard({
                                 }))
                               }
                             >
-                              <label className="block text-sm font-medium text-slate-700">
+                              <label className="block rounded-lg border border-dashed border-sky-300 bg-sky-50 p-3 text-sm font-medium text-slate-700">
                                 Attachments
                               <span className="mt-1 block text-xs font-normal text-slate-500">
                                 Click any attachment to preview it in the left
