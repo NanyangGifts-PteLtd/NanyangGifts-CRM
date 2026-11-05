@@ -341,9 +341,9 @@ export function AdditionalCostsBoard({
   const [collapsedVoucherGroups, setCollapsedVoucherGroups] = useState<
     Record<VoucherGroupId, boolean>
   >({
-    courier: false,
-    other: false,
-    quickbooks_bills_only: false,
+    courier: true,
+    other: true,
+    quickbooks_bills_only: true,
   });
   const [labelOptions, setLabelOptions] = useState<
     Record<string, LabelOption[]>

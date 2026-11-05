@@ -171,7 +171,7 @@ export function SamplesSentBoard() {
       setGroups(
         (groupData.groups ?? []).map((group: Omit<Group, "collapsed">) => ({
           ...group,
-          collapsed: false,
+          collapsed: true,
         })),
       );
       setRows(recordData.rows ?? []);
@@ -1650,7 +1650,7 @@ function AddGroupDialog({
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error);
-      onCreated({ ...data.group, collapsed: false });
+      onCreated({ ...data.group, collapsed: true });
       setName("");
       onOpenChange(false);
     } catch (error) {
