@@ -1931,6 +1931,7 @@ export function CRMBoard({
   const [samplesSentSummaries, setSamplesSentSummaries] = useState<
     Record<string, SamplesSentClientSummary>
   >({});
+  const [samplesSentSummaryVersion, setSamplesSentSummaryVersion] = useState(0);
   const [clientMergedOrderKeys, setClientMergedOrderKeys] = useState<string[]>(
     [],
   );
@@ -2026,6 +2027,11 @@ export function CRMBoard({
     [clients],
   );
   useEffect(() => {
+    const refresh = () => setSamplesSentSummaryVersion((version) => version + 1);
+    window.addEventListener("samples-sent:changed", refresh);
+    return () => window.removeEventListener("samples-sent:changed", refresh);
+  }, []);
+  useEffect(() => {
     if (trackingView || !samplesSentSummaryClientIdsKey) return;
     const controller = new AbortController();
     const clientIds = samplesSentSummaryClientIdsKey.split(",");
@@ -2046,7 +2052,7 @@ export function CRMBoard({
         }
       });
     return () => controller.abort();
-  }, [samplesSentSummaryClientIdsKey, trackingView]);
+  }, [samplesSentSummaryClientIdsKey, samplesSentSummaryVersion, trackingView]);
   const handleTrackingStatusSummaryChanged = useCallback(
     (clientId: string, summary: Record<string, number>) => {
       setClients((current) =>

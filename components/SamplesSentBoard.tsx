@@ -3,6 +3,7 @@
 import {
   ChevronDown,
   ChevronRight,
+  FileImage,
   LockKeyhole,
   LoaderCircle,
   Plus,
@@ -23,6 +24,12 @@ import type { Client, CRMGroup, Profile } from "@/app/types";
 import { fetchProfiles } from "@/lib/assignments";
 import { fetchHydratedClientGroupPage } from "@/lib/crm";
 import { createClient as createSupabaseClient } from "@/lib/supabase/client";
+import { uploadCrmFiles, type StoredCrmFile } from "@/lib/crm-files";
+import { FilePreview } from "@/components/ui/file-preview";
+import { FileDropTarget } from "@/components/ui/file-drop-target";
+import { StatusBadge, type BadgeOption, type BadgeOptionLayout } from "@/components/ui/statusbadge";
+import { InlineDatePicker } from "@/components/ui/inline-date-picker";
+import { EditableCell } from "@/components/ui/editablecell";
 import {
   AssigneeMultiSelect,
   gradientForId,
@@ -60,16 +67,25 @@ type SampleRow = {
   return_by: string | null;
   cost: number;
   remarks: string;
+  status: string;
+  status_option_id: string | null;
+  reason: string;
+  reason_option_id: string | null;
+  courier: string;
+  courier_option_id: string | null;
+  date_returned: string | null;
+  photo_files: StoredCrmFile[];
   created_at: string;
   linkedClient: {
     id: string;
     name: string;
     display_id: string;
     phone: string;
+    subitems: { id: string; name: string }[];
   } | null;
   people: Profile[];
   createdByProfile: Profile | null;
-  items: { item_name: string; qty: number }[];
+  items: { linked_subitem_id?: string | null; item_name: string; qty: number }[];
 };
 
 const COLUMNS = [
@@ -92,12 +108,11 @@ const COLUMNS = [
   "Reference ID",
   "Creation Log",
 ];
-const GRID = [
+const DEFAULT_COLUMN_WIDTHS = [
   245, 84, 130, 230, 115, 115, 125, 160, 230, 110, 120, 135, 260, 130, 115, 125,
   125, 155,
-]
-  .map((width) => `${width}px`)
-  .join(" ");
+];
+const gridForWidths = (widths: number[]) => widths.map((width) => `${width}px`).join(" ");
 const dateToday = () => new Date().toISOString().slice(0, 10);
 const newItem = (): Item => ({
   id: crypto.randomUUID(),
@@ -132,6 +147,10 @@ export function SamplesSentBoard() {
   const [showAddGroup, setShowAddGroup] = useState(false);
   const [groupToDelete, setGroupToDelete] = useState<Group | null>(null);
   const [focusedRecordId, setFocusedRecordId] = useState<string | null>(null);
+  const [columnWidths, setColumnWidths] = useState(DEFAULT_COLUMN_WIDTHS);
+  const [labelOptions, setLabelOptions] = useState<Record<string, BadgeOption[]>>({});
+  const [canDeleteLabels, setCanDeleteLabels] = useState(false);
+  const [itemsEditorRow, setItemsEditorRow] = useState<SampleRow | null>(null);
 
   const loadBoard = useCallback(async () => {
     setLoading(true);
@@ -168,6 +187,79 @@ export function SamplesSentBoard() {
   useEffect(() => {
     void loadBoard();
   }, [loadBoard]);
+  useEffect(() => {
+    void fetch("/api/user-settings?key=samples_sent_column_widths")
+      .then((response) => response.json())
+      .then((data) => {
+        if (!Array.isArray(data.value) || data.value.length !== COLUMNS.length) return;
+        setColumnWidths(data.value.map((width: unknown, index: number) =>
+          Number.isFinite(Number(width)) ? Math.max(72, Number(width)) : DEFAULT_COLUMN_WIDTHS[index],
+        ));
+      })
+      .catch(() => undefined);
+  }, []);
+  const resizeColumn = useCallback((index: number, startX: number) => {
+    const startWidth = columnWidths[index];
+    const onMove = (event: PointerEvent) => setColumnWidths((current) =>
+      current.map((width, widthIndex) => widthIndex === index ? Math.max(72, startWidth + event.clientX - startX) : width),
+    );
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      setColumnWidths((current) => {
+        void fetch("/api/user-settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key: "samples_sent_column_widths", value: current }) });
+        return current;
+      });
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  }, [columnWidths]);
+  const loadLabelOptions = useCallback(async () => {
+    const response = await fetch("/api/samples-sent/options", { cache: "no-store" });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Could not load Samples Sent labels.");
+    const codes = new Map<string, string>(
+      (data.groups ?? []).map((group: { id: string; code: string }) => [group.id, group.code]),
+    );
+    const next: Record<string, BadgeOption[]> = {};
+    for (const value of data.values ?? []) {
+      const code = codes.get(value.group_id);
+      if (!code) continue;
+      (next[code] ??= []).push({ id: value.id, value: value.value, color: value.color, section: value.section_index, systemKey: value.system_key });
+    }
+    setLabelOptions(next);
+    setCanDeleteLabels(Boolean(data.canDelete));
+  }, []);
+  useEffect(() => {
+    void loadLabelOptions()
+      .catch(() => undefined);
+  }, [loadLabelOptions]);
+  const manageLabel = useCallback(async (code: string, action: "add" | "rename" | "color" | "delete" | "reorder", payload: Record<string, unknown>) => {
+    const response = await fetch("/api/samples-sent/options", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code, action, ...payload }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Could not update Samples Sent labels.");
+    await loadLabelOptions();
+  }, [loadLabelOptions]);
+  const updateRecord = useCallback(async (id: string, values: Record<string, unknown>) => {
+    const previous = rows.find((row) => row.id === id);
+    if (!previous) return;
+    const response = await fetch("/api/samples-sent", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, values }),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      toast.error("Samples Sent record could not be updated", { description: data.error });
+      return;
+    }
+    setRows((current) => current.map((row) => row.id === id ? data.row : row));
+    window.dispatchEvent(new Event("samples-sent:changed"));
+  }, [rows]);
   useEffect(() => {
     const recordId = new URLSearchParams(window.location.search).get("sample");
     const record = rows.find((row) => row.id === recordId);
@@ -218,6 +310,14 @@ export function SamplesSentBoard() {
               group={group}
               rows={rows.filter((row) => row.group_id === group.id)}
               focusedRecordId={focusedRecordId}
+              grid={gridForWidths(columnWidths)}
+              onResizeColumn={resizeColumn}
+              profiles={profiles}
+              labelOptions={labelOptions}
+              canDeleteLabels={canDeleteLabels}
+              onManageLabel={manageLabel}
+              onUpdate={updateRecord}
+              onEditItems={setItemsEditorRow}
               canManage={canManageGroups}
               onToggle={() =>
                 setGroups((all) =>
@@ -252,6 +352,11 @@ export function SamplesSentBoard() {
         onDeleted={(id) =>
           setGroups((current) => current.filter((group) => group.id !== id))
         }
+      />
+      <EditSampleItemsDialog
+        row={itemsEditorRow}
+        onOpenChange={(open) => !open && setItemsEditorRow(null)}
+        onSave={(items) => itemsEditorRow && updateRecord(itemsEditorRow.id, { items })}
       />
     </section>
   );
@@ -300,6 +405,14 @@ function SamplesGroup({
   group,
   rows,
   focusedRecordId,
+  grid,
+  onResizeColumn,
+  profiles,
+  labelOptions,
+  canDeleteLabels,
+  onManageLabel,
+  onUpdate,
+  onEditItems,
   canManage,
   onToggle,
   onDelete,
@@ -307,12 +420,20 @@ function SamplesGroup({
   group: Group;
   rows: SampleRow[];
   focusedRecordId: string | null;
+  grid: string;
+  onResizeColumn: (index: number, startX: number) => void;
+  profiles: Profile[];
+  labelOptions: Record<string, BadgeOption[]>;
+  canDeleteLabels: boolean;
+  onManageLabel: (code: string, action: "add" | "rename" | "color" | "delete" | "reorder", payload: Record<string, unknown>) => Promise<void>;
+  onUpdate: (id: string, values: Record<string, unknown>) => void;
+  onEditItems: (row: SampleRow) => void;
   canManage: boolean;
   onToggle: () => void;
   onDelete: () => void;
 }) {
   return (
-    <section className="min-w-max overflow-hidden border-y border-[#d0d4e4] bg-white">
+    <section className="relative min-w-max overflow-visible border-y border-[#d0d4e4] bg-white">
       <div
         className="flex h-10 border-l-4"
         style={{ borderLeftColor: group.color }}
@@ -348,44 +469,60 @@ function SamplesGroup({
         )}
       </div>
       {!group.collapsed && (
-        <div className="overflow-x-auto">
-          <BoardHeader />
+        <div className="overflow-visible">
+          <BoardHeader grid={grid} onResizeColumn={onResizeColumn} />
           {rows.map((row) => (
             <SampleRecordLine
               key={row.id}
               row={row}
               focused={row.id === focusedRecordId}
+              grid={grid}
+              profiles={profiles}
+              labelOptions={labelOptions}
+              canDeleteLabels={canDeleteLabels}
+              onManageLabel={onManageLabel}
+              onUpdate={onUpdate}
+              onEditItems={onEditItems}
             />
           ))}
-          {!rows.length && <EmptyRecordLine />}
+          {!rows.length && <EmptyRecordLine grid={grid} />}
         </div>
       )}
     </section>
   );
 }
 
-function BoardHeader() {
+function BoardHeader({ grid, onResizeColumn }: { grid: string; onResizeColumn: (index: number, startX: number) => void }) {
   return (
     <div
       className="grid border-t border-l border-[#d0d4e4] text-center text-[12px] text-[#667085]"
-      style={{ gridTemplateColumns: GRID }}
+      style={{ gridTemplateColumns: grid }}
     >
-      {COLUMNS.map((label) => (
+      {COLUMNS.map((label, index) => (
         <div
           key={label}
-          className="flex h-[34px] items-center justify-center border-r border-[#d0d4e4] px-2"
+          className="relative flex h-[34px] items-center justify-center border-r border-[#d0d4e4] px-2"
         >
           {label}
+          <button
+            type="button"
+            aria-label={`Resize ${label} column`}
+            onPointerDown={(event) => {
+              event.preventDefault();
+              onResizeColumn(index, event.clientX);
+            }}
+            className="absolute -right-1 top-0 z-10 h-full w-2 cursor-col-resize"
+          />
         </div>
       ))}
     </div>
   );
 }
-function EmptyRecordLine() {
+function EmptyRecordLine({ grid }: { grid: string }) {
   return (
     <div
       className="grid h-[36px] border-t border-l border-[#d0d4e4]"
-      style={{ gridTemplateColumns: GRID }}
+      style={{ gridTemplateColumns: grid }}
     >
       {COLUMNS.map((label) => (
         <div key={label} className="border-r border-[#e1e5ef]" />
@@ -397,16 +534,30 @@ function EmptyRecordLine() {
 function SampleRecordLine({
   row,
   focused = false,
+  grid,
+  profiles,
+  labelOptions,
+  canDeleteLabels,
+  onManageLabel,
+  onUpdate,
+  onEditItems,
 }: {
   row: SampleRow;
   focused?: boolean;
+  grid: string;
+  profiles: Profile[];
+  labelOptions: Record<string, BadgeOption[]>;
+  canDeleteLabels: boolean;
+  onManageLabel: (code: string, action: "add" | "rename" | "color" | "delete" | "reorder", payload: Record<string, unknown>) => Promise<void>;
+  onUpdate: (id: string, values: Record<string, unknown>) => void;
+  onEditItems: (row: SampleRow) => void;
 }) {
   const creator = row.createdByProfile;
   const creationTitle = `Created by ${creator ? profileName(creator) : "System"} on ${new Date(row.created_at).toLocaleDateString("en-GB")} at ${new Date(row.created_at).toLocaleTimeString("en-GB")}`;
-  const cell = (key: string, value: ReactNode) => (
+  const cell = (key: string, value: ReactNode, className = "") => (
     <div
       key={key}
-      className="flex min-w-0 items-center border-r border-[#e1e5ef] px-2 py-1"
+      className={`flex min-w-0 items-center border-r border-[#e1e5ef] px-2 py-1 ${className}`}
     >
       {value}
     </div>
@@ -417,7 +568,7 @@ function SampleRecordLine({
       className={`grid min-h-[36px] border-t border-l border-[#d0d4e4] text-[12px] transition-colors ${
         focused ? "bg-sky-100 ring-2 ring-inset ring-sky-400" : "bg-white"
       }`}
-      style={{ gridTemplateColumns: GRID }}
+      style={{ gridTemplateColumns: grid }}
     >
       {cell(
         "client",
@@ -428,29 +579,103 @@ function SampleRecordLine({
           </small>
         </span>,
       )}
-      {cell("people", <AvatarStack profiles={row.people} />)}
-      {cell("mobile", row.linkedClient?.phone)}
-      {cell("address", <span className="truncate">{row.address}</span>)}
-      {cell("dateSent", displayDate(row.date_sent))}
-      {cell("returnBy", displayDate(row.return_by))}
-      {cell("status", "")}
-      {cell("reason", "")}
-      {cell("remarks", <span className="truncate">{row.remarks}</span>)}
-      {cell("cost", Number(row.cost).toFixed(2))}
-      {cell("photo", "")}
-      {cell("courier", "")}
+      {cell("people", <AssigneeMultiSelect
+        profiles={profiles}
+        selectedIds={row.people.map((person) => person.id)}
+        onChange={(peopleIds) => onUpdate(row.id, { peopleIds })}
+      />, "justify-center")}
+      {cell("mobile", <span className="w-full truncate text-center" title={row.linkedClient?.phone ?? ""}>
+        {row.linkedClient?.phone}
+      </span>, "justify-center")}
+      {cell("address", <EditableCell
+        value={row.address}
+        onChange={(address) => onUpdate(row.id, { address })}
+        multiline
+        resizableMultiline
+        className="!justify-start"
+      />)}
+      {cell("dateSent", <InlineDatePicker
+        value={row.date_sent}
+        onChange={(dateSent) => onUpdate(row.id, { dateSent })}
+        label="Date Sent"
+      />)}
+      {cell("returnBy", <InlineDatePicker
+        value={row.return_by ?? ""}
+        onChange={(returnBy) => onUpdate(row.id, { returnBy })}
+        label="Return By"
+      />)}
+      {cell("status", <SampleLabelBadge
+        code="samples_sent_status"
+        label="Status"
+        value={row.status}
+        options={labelOptions.samples_sent_status ?? []}
+        canDelete={canDeleteLabels}
+        onChange={(optionId) => onUpdate(row.id, { status: optionId })}
+        onManage={onManageLabel}
+      />)}
+      {cell("reason", <SampleLabelBadge
+        code="samples_sent_reason"
+        label="Reason"
+        value={row.reason}
+        options={labelOptions.samples_sent_reason ?? []}
+        canDelete={canDeleteLabels}
+        onChange={(optionId) => onUpdate(row.id, { reason: optionId })}
+        onManage={onManageLabel}
+      />)}
+      {cell("remarks", <EditableCell
+        value={row.remarks}
+        onChange={(remarks) => onUpdate(row.id, { remarks })}
+        multiline
+        resizableMultiline
+        className="!justify-start"
+      />)}
+      {cell("cost", <input
+        type="number"
+        min="0"
+        step="0.01"
+        defaultValue={row.cost}
+        onBlur={(event) => {
+          if (event.target.value !== String(row.cost)) {
+            onUpdate(row.id, { cost: event.target.value });
+          }
+        }}
+        className="w-full bg-transparent text-right outline-none"
+      />)}
+      {cell("photo", <PhotoCell row={row} onUpdate={onUpdate} />)}
+      {cell("courier", <SampleLabelBadge
+        code="samples_sent_courier"
+        label="Courier"
+        value={row.courier}
+        options={labelOptions.samples_sent_courier ?? []}
+        canDelete={canDeleteLabels}
+        onChange={(optionId) => onUpdate(row.id, { courier: optionId })}
+        onManage={onManageLabel}
+      />)}
       {cell(
         "items",
-        <span className="whitespace-pre-line">
+        <button
+          type="button"
+          onClick={() => onEditItems(row)}
+          title={row.items.map((item) => `${item.item_name} x ${item.qty}`).join("\n")}
+          className="flex w-full items-center justify-between gap-2 text-left hover:text-sky-700"
+        >
+        <span className="truncate">
           {row.items
             .map((item) => `${item.item_name} x ${item.qty}`)
-            .join("\n")}
-        </span>,
+            .join(", ")}
+        </span>
+        <span className="shrink-0 text-sky-700">Edit</span>
+        </button>,
       )}
-      {cell("extend", "")}
-      {cell("returned", "")}
-      {cell("dateReturned", "")}
-      {cell("reference", row.referenceId)}
+      {cell("extend", <ExtendButton row={row} onUpdate={onUpdate} />, "justify-center")}
+      {cell("returned", <button
+        type="button"
+        disabled
+        title="Returned workflow will be available after Status-to-group mapping is configured."
+        className="rounded border border-slate-200 px-2 py-1 text-slate-500 opacity-50"
+      >Returned</button>, "justify-center")}
+      {cell("dateReturned", <InlineDatePicker value={row.date_returned ?? ""} onChange={(dateReturned) => onUpdate(row.id, { dateReturned })} label="Date Returned" />)}
+      {cell("reference", <span className="w-full text-center">{row.referenceId}</span>, "justify-center")}
       {cell(
         "creation",
         <span title={creationTitle} className="flex items-center gap-1">
@@ -459,6 +684,180 @@ function SampleRecordLine({
         </span>,
       )}
     </div>
+  );
+}
+
+function SampleLabelBadge({
+  code, label, value, options, canDelete, onChange, onManage,
+}: {
+  code: string;
+  label: string;
+  value: string;
+  options: BadgeOption[];
+  canDelete: boolean;
+  onChange: (optionId: string) => void;
+  onManage: (code: string, action: "add" | "rename" | "color" | "delete" | "reorder", payload: Record<string, unknown>) => Promise<void>;
+}) {
+  const attempt = async (operation: () => Promise<void>) => {
+    try {
+      await operation();
+    } catch (error) {
+      toast.error(`Could not update ${label} labels`, { description: error instanceof Error ? error.message : undefined });
+    }
+  };
+  return <StatusBadge
+    value={value}
+    onChange={(_, option) => onChange(option?.id ?? "")}
+    options={options}
+    manageLabel={label}
+    onAddOption={(name) => attempt(() => onManage(code, "add", { value: name }))}
+    onDeleteOption={(_, optionId) => attempt(() => onManage(code, "delete", { optionId }))}
+    canDeleteOption={() => canDelete}
+    onUpdateOptionColor={(_, color, optionId) => attempt(() => onManage(code, "color", { optionId, color }))}
+    onRenameOption={(_, nextValue, optionId) => attempt(() => onManage(code, "rename", { optionId, value: nextValue }))}
+    onReorderOptions={(layout: BadgeOptionLayout[]) => attempt(() => onManage(code, "reorder", { layout }))}
+  />;
+}
+
+function ExtendButton({
+  row,
+  onUpdate,
+}: {
+  row: SampleRow;
+  onUpdate: (id: string, values: Record<string, unknown>) => void;
+}) {
+  const extend = () => {
+    if (!row.return_by) return;
+    const date = new Date(`${row.return_by}T12:00:00`);
+    date.setDate(date.getDate() + 7);
+    onUpdate(row.id, { returnBy: date.toISOString().slice(0, 10) });
+  };
+  return (
+    <button
+      type="button"
+      disabled={!row.return_by}
+      onClick={extend}
+      title={row.return_by ? "Extend Return By by 7 days" : "Set Return By before extending"}
+      className="rounded border border-sky-200 px-2 py-1 text-sky-700 disabled:cursor-not-allowed disabled:opacity-40"
+    >
+      +7 Days
+    </button>
+  );
+}
+
+function PhotoCell({
+  row,
+  onUpdate,
+}: {
+  row: SampleRow;
+  onUpdate: (id: string, values: Record<string, unknown>) => void;
+}) {
+  const upload = async (files: File[]) => {
+    if (!files.length) return;
+    try {
+      const uploaded = await uploadCrmFiles(files, `samples-sent/${row.id}/photos`, { clientId: row.linkedClient?.id ?? "" });
+      onUpdate(row.id, { photoFiles: [...(row.photo_files ?? []), ...uploaded] });
+    } catch (error) {
+      toast.error("Photo could not be uploaded", { description: error instanceof Error ? error.message : undefined });
+    }
+  };
+  const remove = (storagePath: string) =>
+    onUpdate(row.id, {
+      photoFiles: (row.photo_files ?? []).filter((file) => file.storagePath !== storagePath),
+    });
+  return (
+    <FileDropTarget onFiles={upload} className="min-h-9 w-full">
+      <label className="flex min-h-9 w-full cursor-pointer items-center justify-center gap-1">
+        <input
+          type="file"
+          accept="image/*"
+          multiple
+          className="sr-only"
+          onChange={(event) => {
+            void upload(Array.from(event.target.files ?? []));
+            event.currentTarget.value = "";
+          }}
+        />
+        {row.photo_files?.length ? row.photo_files.map((file) => (
+          <span key={file.storagePath} className="group relative">
+            <a
+              href={file.url}
+              target="_blank"
+              rel="noreferrer"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <FilePreview url={file.url} name={file.name} mimeType={file.mimeType} />
+            </a>
+            <button
+              type="button"
+              aria-label={`Remove ${file.name}`}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                remove(file.storagePath);
+              }}
+              className="absolute -right-1 -top-1 hidden h-4 w-4 items-center justify-center rounded-full bg-red-500 p-0 text-[10px] leading-none text-white group-hover:flex"
+            >
+              &times;
+            </button>
+          </span>
+        )) : <FileImage size={16} className="text-slate-400" />}
+      </label>
+    </FileDropTarget>
+  );
+}
+
+function EditSampleItemsDialog({
+  row,
+  onOpenChange,
+  onSave,
+}: {
+  row: SampleRow | null;
+  onOpenChange: (open: boolean) => void;
+  onSave: (items: Item[]) => void;
+}) {
+  const [items, setItems] = useState<Item[]>([]);
+  useEffect(() => {
+    setItems(row ? row.items.map((item) => ({
+      id: crypto.randomUUID(),
+      linkedSubitemId: item.linked_subitem_id ?? "",
+      itemName: item.item_name,
+      qty: String(item.qty),
+    })) : []);
+  }, [row]);
+  if (!row) return null;
+  const valid = items.length > 0 && items.every((item) => item.itemName.trim() && Number(item.qty) > 0);
+  return (
+    <AlertDialog open onOpenChange={onOpenChange}>
+      <AlertDialogContent className="max-w-4xl">
+        <AlertDialogHeader>
+          <AlertDialogTitle>Edit Items Sent</AlertDialogTitle>
+          <AlertDialogDescription>
+            Update the items and quantities sent in this sample record.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <ItemsEditor
+          client={row.linkedClient as unknown as Client}
+          items={items}
+          onChange={setItems}
+          updateItem={(id, update) => setItems((all) => all.map((item) =>
+            item.id === id ? { ...item, ...update } : item,
+          ))}
+        />
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            disabled={!valid}
+            onClick={() => {
+              onSave(items);
+              onOpenChange(false);
+            }}
+          >
+            Save Items Sent
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
 
@@ -1054,6 +1453,7 @@ function ItemsEditor({
   onChange: (items: Item[]) => void;
   updateItem: (id: string, update: Partial<Item>) => void;
 }) {
+  const clientSubitems = client?.subitems ?? [];
   return (
     <section>
       <div className="mb-2 flex justify-between">
@@ -1081,7 +1481,7 @@ function ItemsEditor({
             <select
               value={item.linkedSubitemId}
               onChange={(event) => {
-                const subitem = client?.subitems.find(
+                const subitem = clientSubitems.find(
                   (entry) => entry.id === event.target.value,
                 );
                 updateItem(item.id, {
@@ -1092,7 +1492,7 @@ function ItemsEditor({
               className="h-9 min-w-0 px-2 text-sm"
             >
               <option value="">Other</option>
-              {client?.subitems.map((subitem) => (
+              {clientSubitems.map((subitem) => (
                 <option key={subitem.id} value={subitem.id}>
                   {subitem.name || "Unnamed subitem"}
                 </option>

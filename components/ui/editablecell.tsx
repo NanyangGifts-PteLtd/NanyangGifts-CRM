@@ -206,9 +206,12 @@ export function EditableCell({
             setEditing(false);
           }
         }}
-        className={`w-full px-2 py-1.5 text-xs border border-blue-400 rounded outline-none bg-white ${resizableMultiline ? "absolute left-0 top-0 z-menu h-[260px] min-h-[80px] resize overflow-auto shadow-lg" : "resize-none overflow-hidden"} ${className}`}
+        className={`w-full px-2 py-1.5 text-xs border border-blue-400 rounded outline-none bg-white ${resizableMultiline ? "absolute left-0 top-0 z-menu h-[260px] min-h-[80px] resize-both overflow-auto shadow-lg" : "resize-none overflow-hidden"} ${className}`}
         style={{
           minWidth: 40,
+          maxWidth: "none",
+          maxHeight: "none",
+          resize: resizableMultiline ? "both" : undefined,
           width: resizableMultiline
             ? "min(620px, calc(100vw - 48px))"
             : undefined,
@@ -328,7 +331,7 @@ export function EditableCell({
         setEditing(true);
       }}
       title={readOnly ? (readOnlyReason ?? value) : value}
-      className={`flex ${fitContent ? "w-fit max-w-full" : "w-15"} justify-center py-0.5 text-xs ${readOnly ? "cursor-default" : "cursor-text hover:bg-blue-50"} rounded min-h-[22px] items-center ${
+      className={`flex ${fitContent ? "w-fit max-w-full" : "w-full"} justify-center py-0.5 text-xs ${readOnly ? "cursor-default" : "cursor-text hover:bg-blue-50"} rounded min-h-[22px] items-center ${
         multiline
           ? "whitespace-nowrap overflow-hidden text-ellipsis"
           : "truncate"

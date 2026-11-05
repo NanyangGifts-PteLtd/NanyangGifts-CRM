@@ -89,17 +89,17 @@ export function SamplesSentClientSummaryCell({
           event.stopPropagation();
           setOpen(true);
         }}
-        className="flex h-full w-full items-center justify-center gap-1 px-1 text-[12px] text-sky-700 transition hover:bg-sky-50 hover:text-sky-800"
+        className={`flex h-full w-full items-center justify-center gap-1 px-1 text-[12px] transition hover:brightness-95 ${
+          notice === "overdue"
+            ? "bg-red-200 text-red-900"
+            : notice === "dueSoon"
+              ? "bg-amber-200 text-amber-950"
+              : "text-sky-700 hover:bg-sky-50 hover:text-sky-800"
+        }`}
         title={count ? `View ${count} active Samples Sent record${count === 1 ? "" : "s"}${noticeLabel ? ` — ${noticeLabel}` : ""}` : "View Samples Sent summary"}
       >
         <span className="relative inline-flex shrink-0">
           <PackagePlus size={14} aria-hidden="true" />
-          {notice && (
-            <span
-              className={`absolute -right-1 -top-1 h-2 w-2 rounded-full ring-1 ring-white ${notice === "overdue" ? "bg-red-500" : "bg-amber-400"}`}
-              aria-label={noticeLabel}
-            />
-          )}
         </span>
         <span className="truncate underline underline-offset-2">
           {count ? `${count} sample${count === 1 ? "" : "s"}` : "Samples"}
