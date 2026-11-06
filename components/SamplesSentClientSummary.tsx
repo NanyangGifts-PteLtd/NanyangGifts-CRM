@@ -2,20 +2,15 @@
 
 import { AlertCircle, ChevronRight, LoaderCircle, PackagePlus } from "lucide-react";
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import { FilePreview } from "@/components/ui/file-preview";
 import type { StoredCrmFile } from "@/lib/crm-files";
 import type { BadgeOption } from "@/components/ui/statusbadge";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 export type SamplesSentClientSummary = {
   activeCount: number;
-  notice: "overdue" | "dueSoon" | null;
+  notice: "overdue" | "dueSoon" | "allReturned" | null;
 };
 
 type RecordRow = {
@@ -23,6 +18,7 @@ type RecordRow = {
   referenceId: string;
   status: string;
   statusOption: BadgeOption | null;
+  groupName: string | null;
   returnBy: string | null;
   createdAt: string;
   deactivatedAt: string | null;
@@ -31,8 +27,7 @@ type RecordRow = {
 };
 
 function formatDate(value: string | null) {
-  if (!value) return "—";
-  return new Date(`${value}T00:00:00`).toLocaleDateString("en-GB");
+  return value ? new Date(`${value}T00:00:00`).toLocaleDateString("en-GB") : "—";
 }
 
 export function SamplesSentClientSummaryCell({
@@ -50,19 +45,20 @@ export function SamplesSentClientSummaryCell({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [records, setRecords] = useState<RecordRow[]>([]);
+  const [returnedStatusOption, setReturnedStatusOption] = useState<BadgeOption | null>(null);
 
   useEffect(() => {
     if (!open) return;
     let active = true;
     setLoading(true);
     setError(null);
-    void fetch(`/api/samples-sent/summary?clientId=${encodeURIComponent(clientId)}`, {
-      cache: "no-store",
-    })
+    void fetch(`/api/samples-sent/summary?clientId=${encodeURIComponent(clientId)}`, { cache: "no-store" })
       .then(async (response) => {
         const data = await response.json();
         if (!response.ok) throw new Error(data?.error ?? "Could not load Samples Sent records.");
-        if (active) setRecords(data.records ?? []);
+        if (!active) return;
+        setRecords(data.records ?? []);
+        setReturnedStatusOption(data.returnedStatusOption ?? null);
       })
       .catch((cause) => {
         if (active) setError(cause instanceof Error ? cause.message : "Could not load Samples Sent records.");
@@ -77,7 +73,13 @@ export function SamplesSentClientSummaryCell({
 
   const count = summary?.activeCount ?? 0;
   const notice = summary?.notice ?? null;
-  const noticeLabel = notice === "overdue" ? "A sample return is overdue" : notice === "dueSoon" ? "A sample return is due within 3 days" : "";
+  const noticeLabel = notice === "overdue"
+    ? "A sample return is overdue"
+    : notice === "dueSoon"
+      ? "A sample return is due within 3 days"
+      : notice === "allReturned"
+        ? "All samples have been returned"
+        : "";
   const openSamplesSentRecord = (recordId: string) => {
     const params = new URLSearchParams(window.location.search);
     params.set("panel", "samplessent");
@@ -85,6 +87,32 @@ export function SamplesSentClientSummaryCell({
     window.history.pushState(null, "", `/app?${params.toString()}`);
     setOpen(false);
   };
+  const markReturned = async (record: RecordRow) => {
+    if (!returnedStatusOption?.id || record.deactivatedAt) return;
+    const response = await fetch("/api/samples-sent", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: record.id, values: { status: returnedStatusOption.id } }),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      toast.error("Samples Sent record could not be updated", { description: data.error });
+      return;
+    }
+    setRecords((current) => current.map((entry) => entry.id === record.id
+      ? { ...entry, status: data.row?.status ?? returnedStatusOption.value, statusOption: returnedStatusOption }
+      : entry));
+    window.dispatchEvent(new Event("samples-sent:changed"));
+    toast.success("Sample marked as Returned");
+  };
+
+  const cellClass = notice === "overdue"
+    ? "bg-red-200 text-red-900"
+    : notice === "dueSoon"
+      ? "bg-yellow-200 text-yellow-950"
+      : notice === "allReturned"
+        ? "bg-emerald-200 text-emerald-950"
+        : "text-sky-700 hover:bg-sky-50 hover:text-sky-800";
 
   return (
     <>
@@ -94,21 +122,11 @@ export function SamplesSentClientSummaryCell({
           event.stopPropagation();
           setOpen(true);
         }}
-        className={`flex h-full w-full items-center justify-center gap-1 px-1 text-[12px] transition hover:brightness-95 ${
-          notice === "overdue"
-            ? "bg-red-200 text-red-900"
-            : notice === "dueSoon"
-              ? "bg-amber-200 text-amber-950"
-              : "text-sky-700 hover:bg-sky-50 hover:text-sky-800"
-        }`}
+        className={`flex h-full w-full items-center justify-center gap-1 px-1 text-[12px] transition hover:brightness-95 ${cellClass}`}
         title={count ? `View ${count} active Samples Sent record${count === 1 ? "" : "s"}${noticeLabel ? ` — ${noticeLabel}` : ""}` : "View Samples Sent summary"}
       >
-        <span className="relative inline-flex shrink-0">
-          <PackagePlus size={14} aria-hidden="true" />
-        </span>
-        <span className="truncate underline underline-offset-2">
-          {count ? `${count} sample${count === 1 ? "" : "s"}` : "Samples"}
-        </span>
+        <PackagePlus size={14} aria-hidden="true" />
+        <span className="truncate underline underline-offset-2">{count ? `${count} sample${count === 1 ? "" : "s"}` : "Samples"}</span>
         <ChevronRight size={13} className="shrink-0" aria-hidden="true" />
       </button>
 
@@ -116,9 +134,7 @@ export function SamplesSentClientSummaryCell({
         <DialogContent className="max-h-[80vh] w-[92vw] max-w-[1180px] overflow-y-auto bg-white text-slate-800 sm:max-w-[1180px]">
           <DialogHeader>
             <DialogTitle>Samples Sent — {clientName || "Unnamed client"}{displayId ? ` (${displayId})` : ""}</DialogTitle>
-            <DialogDescription className="sr-only">
-              Active and deactivated Samples Sent records linked to this client.
-            </DialogDescription>
+            <DialogDescription className="sr-only">Active and deactivated Samples Sent records linked to this client.</DialogDescription>
           </DialogHeader>
           {loading ? (
             <div className="flex min-h-28 items-center justify-center text-sm text-slate-500">
@@ -128,12 +144,13 @@ export function SamplesSentClientSummaryCell({
             <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>
           ) : records.length ? (
             <div className="overflow-x-auto rounded-md border border-[#d0d4e4]">
-              <div className="grid min-w-[940px] grid-cols-[115px_130px_135px_minmax(400px,1fr)_160px] border-b border-[#d0d4e4] bg-[#f8fafc] text-[11px] text-slate-500">
+              <div className="grid min-w-[1060px] grid-cols-[115px_130px_135px_minmax(400px,1fr)_160px_120px] border-b border-[#d0d4e4] bg-[#f8fafc] text-[11px] text-slate-500">
                 <div className="px-3 py-2">Reference ID</div>
                 <div className="border-l border-[#d0d4e4] px-3 py-2">Status</div>
                 <div className="border-l border-[#d0d4e4] px-3 py-2">Return By</div>
                 <div className="border-l border-[#d0d4e4] px-3 py-2">Items Sent</div>
                 <div className="border-l border-[#d0d4e4] px-3 py-2">Photo</div>
+                <div className="border-l border-[#d0d4e4] px-3 py-2 text-center">Returned</div>
               </div>
               {records.map((record) => (
                 <div
@@ -148,28 +165,42 @@ export function SamplesSentClientSummaryCell({
                     }
                   }}
                   title={`Open ${record.referenceId} on the Samples Sent board`}
-                  className={`grid min-w-[940px] grid-cols-[115px_130px_135px_minmax(400px,1fr)_160px] border-b border-[#e1e5ef] text-left text-[12px] last:border-b-0 hover:bg-sky-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-sky-500 ${record.deactivatedAt ? "bg-slate-50 text-slate-400 line-through" : "bg-white text-slate-700"}`}
+                  className={`grid min-w-[1060px] grid-cols-[115px_130px_135px_minmax(400px,1fr)_160px_120px] border-b border-[#e1e5ef] text-left text-[12px] last:border-b-0 hover:bg-sky-50 has-[button:hover]:bg-white has-[a:hover]:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-sky-500 ${record.deactivatedAt ? "bg-slate-50 text-slate-400 line-through" : "bg-white text-slate-700"}`}
                 >
                   <div className="px-3 py-2">{record.referenceId}</div>
                   <div className="border-l border-[#e1e5ef] px-3 py-2">
                     {record.statusOption ? (
-                      <span
-                        className="inline-flex min-h-6 items-center rounded px-2 py-1 text-xs font-medium leading-none text-white"
-                        style={{ backgroundColor: record.statusOption.color ?? "#94a3b8" }}
-                      >
+                      <span className="inline-flex min-h-6 items-center rounded px-2 py-1 text-xs font-medium leading-none text-white" style={{ backgroundColor: record.statusOption.color ?? "#94a3b8" }}>
                         {record.statusOption.value}
                       </span>
                     ) : record.status || "—"}
                   </div>
-                   <div className="border-l border-[#e1e5ef] px-3 py-2">{formatDate(record.returnBy)}</div>
-                   <div style={{ order: 5 }} className="min-w-0 flex flex-wrap items-center gap-1 border-l border-[#e1e5ef] px-3 py-2" onClick={(event) => event.stopPropagation()}>
-                     {record.photoFiles.length ? record.photoFiles.map((file) => (
-                       <a key={file.storagePath} href={file.url} target="_blank" rel="noreferrer" title={`Open ${file.name}`}>
-                         <FilePreview url={file.url} name={file.name} mimeType={file.mimeType} />
-                       </a>
-                     )) : "—"}
-                   </div>
-                  <div style={{ order: 4 }} className="min-w-0 border-l border-[#e1e5ef] px-3 py-2">{record.items.length ? record.items.map((item) => `${item.item_name} x ${item.qty}`).join(", ") : "—"}</div>
+                  <div className="border-l border-[#e1e5ef] px-3 py-2">{formatDate(record.returnBy)}</div>
+                  <div className="min-w-0 border-l border-[#e1e5ef] px-3 py-2">
+                    {record.items.length ? record.items.map((item) => `${item.item_name} x ${item.qty}`).join(", ") : "—"}
+                  </div>
+                  <div className="min-w-0 flex flex-wrap items-center gap-1 border-l border-[#e1e5ef] px-3 py-2" onClick={(event) => event.stopPropagation()}>
+                    {record.photoFiles.length ? record.photoFiles.map((file) => (
+                      <a key={file.storagePath} href={file.url} target="_blank" rel="noreferrer" title={`Open ${file.name}`}>
+                        <FilePreview url={file.url} name={file.name} mimeType={file.mimeType} />
+                      </a>
+                    )) : "—"}
+                  </div>
+                  <div className="flex items-center justify-center border-l border-[#e1e5ef] px-3 py-2" onClick={(event) => event.stopPropagation()}>
+                    <button
+                      type="button"
+                      disabled={!returnedStatusOption?.id || Boolean(record.deactivatedAt) || (record.statusOption?.systemKey === "samples_sent_status_returned" && record.groupName === "Returned")}
+                      title={record.statusOption?.systemKey === "samples_sent_status_returned" && record.groupName === "Returned" ? "This sample is already Returned" : returnedStatusOption?.id ? "Mark this sample as Returned" : "Returned label is not configured"}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void markReturned(record);
+                      }}
+                      onKeyDown={(event) => event.stopPropagation()}
+                      className="rounded border border-emerald-200 px-2 py-1 text-emerald-700 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      Returned
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -180,7 +211,7 @@ export function SamplesSentClientSummaryCell({
             </div>
           )}
           {notice && (
-            <div className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm ${notice === "overdue" ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-800"}`}>
+            <div className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm ${notice === "overdue" ? "bg-red-50 text-red-700" : notice === "dueSoon" ? "bg-yellow-50 text-yellow-800" : "bg-emerald-50 text-emerald-800"}`}>
               <AlertCircle size={16} /> {noticeLabel}.
             </div>
           )}

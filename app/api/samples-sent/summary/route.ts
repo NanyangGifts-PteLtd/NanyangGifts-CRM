@@ -54,23 +54,49 @@ export async function POST(request: NextRequest) {
 
     const { data, error } = await supabaseAdmin
       .from("samples_sent")
-      .select("client_id, return_by")
+      .select("client_id, return_by, status_option_id")
       .in("client_id", clientIds)
       .is("deactivated_at", null);
     if (error) throw error;
 
+    const statusOptionIds = [...new Set(
+      (data ?? []).map((record) => record.status_option_id).filter(Boolean),
+    )] as string[];
+    const { data: statusOptions, error: statusOptionsError } = statusOptionIds.length
+      ? await supabaseAdmin
+          .from("option_values")
+          .select("id, system_key")
+          .in("id", statusOptionIds)
+      : { data: [], error: null };
+    if (statusOptionsError) throw statusOptionsError;
+    const statusSystemKeyById = new Map(
+      (statusOptions ?? []).map((option) => [option.id, option.system_key]),
+    );
+
     const today = todayPlus(0);
     const dueSoonEnd = todayPlus(3);
-    const summaries: Record<string, { activeCount: number; notice: "overdue" | "dueSoon" | null }> = {};
+    const summaries: Record<string, { activeCount: number; notice: "overdue" | "dueSoon" | "allReturned" | null }> = {};
+    const allReturnedByClient = new Map(clientIds.map((clientId) => [clientId, true]));
     for (const clientId of clientIds) summaries[clientId] = { activeCount: 0, notice: null };
-    for (const record of (data ?? []) as Array<{ client_id: string; return_by: string | null }>) {
+    for (const record of (data ?? []) as Array<{ client_id: string; return_by: string | null; status_option_id: string | null }>) {
       const summary = summaries[record.client_id] ?? { activeCount: 0, notice: null };
       summary.activeCount += 1;
+      const isReturned = statusSystemKeyById.get(record.status_option_id ?? "") === "samples_sent_status_returned";
+      if (isReturned) {
+        summaries[record.client_id] = summary;
+        continue;
+      }
+      allReturnedByClient.set(record.client_id, false);
       if (record.return_by && record.return_by < today) summary.notice = "overdue";
       else if (record.return_by && record.return_by <= dueSoonEnd && summary.notice !== "overdue") {
         summary.notice = "dueSoon";
       }
       summaries[record.client_id] = summary;
+    }
+    for (const clientId of clientIds) {
+      if (summaries[clientId].activeCount > 0 && allReturnedByClient.get(clientId)) {
+        summaries[clientId].notice = "allReturned";
+      }
     }
     return NextResponse.json({ summaries });
   } catch (error) {
@@ -86,7 +112,7 @@ export async function GET(request: NextRequest) {
 
     const { data: records, error } = await supabaseAdmin
       .from("samples_sent")
-      .select("id, reference_number, people_ids, status, status_option_id, return_by, created_by, created_at, deactivated_at, photo_files")
+      .select("id, group_id, reference_number, people_ids, status, status_option_id, return_by, created_by, created_at, deactivated_at, photo_files")
       .eq("client_id", clientId)
       .order("deactivated_at", { ascending: true, nullsFirst: true })
       .order("created_at", { ascending: false });
@@ -111,10 +137,26 @@ export async function GET(request: NextRequest) {
     if (profilesError) throw profilesError;
     const statusOptionIds = [...new Set((records ?? []).map((record) => record.status_option_id).filter(Boolean))] as string[];
     const { data: statusOptions, error: statusOptionsError } = statusOptionIds.length
-      ? await supabaseAdmin.from("option_values").select("id, value, color").in("id", statusOptionIds)
+      ? await supabaseAdmin.from("option_values").select("id, value, color, system_key").in("id", statusOptionIds)
       : { data: [], error: null };
     if (statusOptionsError) throw statusOptionsError;
-    const statusById = Object.fromEntries((statusOptions ?? []).map((option) => [option.id, option]));
+    const [
+      { data: returnedStatusOption, error: returnedStatusOptionError },
+      { data: groups, error: groupsError },
+    ] = await Promise.all([
+      supabaseAdmin
+        .from("option_values")
+        .select("id, value, color, system_key")
+        .eq("system_key", "samples_sent_status_returned")
+        .maybeSingle(),
+      supabaseAdmin.from("samples_sent_groups").select("id, name"),
+    ]);
+    if (returnedStatusOptionError || groupsError) throw returnedStatusOptionError ?? groupsError;
+    const statusById = Object.fromEntries((statusOptions ?? []).map((option) => [
+      option.id,
+      { id: option.id, value: option.value, color: option.color, systemKey: option.system_key },
+    ]));
+    const groupsById = Object.fromEntries((groups ?? []).map((group) => [group.id, group.name]));
     const profilesById = Object.fromEntries((profiles ?? []).map((profile) => [profile.id, profile]));
     const itemsByRecordId = new Map<string, Array<{ item_name: string; qty: number }>>();
     for (const item of items ?? []) {
@@ -124,8 +166,12 @@ export async function GET(request: NextRequest) {
     }
 
     return NextResponse.json({
+      returnedStatusOption: returnedStatusOption
+        ? { id: returnedStatusOption.id, value: returnedStatusOption.value, color: returnedStatusOption.color, systemKey: returnedStatusOption.system_key }
+        : null,
       records: (records ?? []).map((record) => ({
         id: record.id,
+        groupName: record.group_id ? groupsById[record.group_id] ?? null : null,
         referenceId: `SS${record.reference_number}`,
         status: record.status,
         statusOption: record.status_option_id ? statusById[record.status_option_id] ?? null : null,

@@ -300,6 +300,7 @@ export function SamplesSentBoard() {
   const [showAddGroup, setShowAddGroup] = useState(false);
   const [groupToDelete, setGroupToDelete] = useState<Group | null>(null);
   const [focusedRecordId, setFocusedRecordId] = useState<string | null>(null);
+  const [pendingFocusedRecordId, setPendingFocusedRecordId] = useState<string | null>(null);
   const [columnWidths, setColumnWidths] = useState(DEFAULT_COLUMN_WIDTHS);
   const [labelOptions, setLabelOptions] = useState<Record<string, BadgeOption[]>>({});
   const [canDeleteLabels, setCanDeleteLabels] = useState(false);
@@ -337,10 +338,12 @@ export function SamplesSentBoard() {
       const recordData = await recordsResponse.json();
       if (!groupsResponse.ok || !recordsResponse.ok)
         throw new Error(groupData.error || recordData.error);
-      setGroups(
+      setGroups((current) =>
         (groupData.groups ?? []).map((group: Omit<Group, "collapsed">) => ({
           ...group,
-          collapsed: true,
+          // A second in-flight board load must not re-collapse a group which
+          // was opened to focus a record from the CRM summary.
+          collapsed: current.find((existing) => existing.id === group.id)?.collapsed ?? true,
         })),
       );
       setRows(recordData.rows ?? []);
@@ -487,13 +490,22 @@ export function SamplesSentBoard() {
       );
     }
     setFocusedRecordId(recordId);
+    setPendingFocusedRecordId(recordId);
+  }, [rows]);
+
+  useEffect(() => {
+    if (!pendingFocusedRecordId) return;
+    const record = rows.find((row) => row.id === pendingFocusedRecordId);
+    if (!record) return;
+    const group = groups.find((entry) => entry.id === record.group_id);
+    if (group?.collapsed) return;
     const scrollTimer = window.setTimeout(() => {
       document
         .querySelector<HTMLElement>(
-          `[data-samples-sent-record-id="${recordId}"]`,
+          `[data-samples-sent-record-id="${pendingFocusedRecordId}"]`,
         )
         ?.scrollIntoView({ behavior: "smooth", block: "center" });
-    }, 0);
+    }, 50);
     const clearTimer = window.setTimeout(() => setFocusedRecordId(null), 2600);
     const params = new URLSearchParams(window.location.search);
     params.delete("sample");
@@ -506,7 +518,7 @@ export function SamplesSentBoard() {
       window.clearTimeout(scrollTimer);
       window.clearTimeout(clearTimer);
     };
-  }, [rows]);
+  }, [groups, pendingFocusedRecordId, rows]);
 
   const searchColumnsConfig = useMemo<AdvancedFilterColumn[]>(() => {
     const columns: AdvancedFilterColumn[] = [
@@ -999,6 +1011,7 @@ function SamplesGroup({
             <SampleRecordLine
               key={row.id}
               row={row}
+              groupName={group.name}
               focused={row.id === focusedRecordId}
               grid={grid}
               profiles={profiles}
@@ -1059,6 +1072,7 @@ function EmptyRecordLine({ grid }: { grid: string }) {
 
 function SampleRecordLine({
   row,
+  groupName,
   focused = false,
   grid,
   profiles,
@@ -1071,6 +1085,7 @@ function SampleRecordLine({
   onEditItems,
 }: {
   row: SampleRow;
+  groupName: string;
   focused?: boolean;
   grid: string;
   profiles: Profile[];
@@ -1221,6 +1236,7 @@ function SampleRecordLine({
       {cell("extend", <ExtendButton row={row} onUpdate={onUpdate} />, "justify-center")}
       {cell("returned", <ReturnedButton
         row={row}
+        groupName={groupName}
         options={labelOptions.samples_sent_status ?? []}
         onUpdateStatus={onUpdateStatus}
       />, "justify-center")}
@@ -1296,21 +1312,25 @@ function ExtendButton({
 
 function ReturnedButton({
   row,
+  groupName,
   options,
   onUpdateStatus,
 }: {
   row: SampleRow;
+  groupName: string;
   options: BadgeOption[];
   onUpdateStatus: (row: SampleRow, optionId: string) => void;
 }) {
   const returnedOption = options.find(
     (option) => option.systemKey === "samples_sent_status_returned",
   );
+  const isAlreadyReturned = row.status_option_id === returnedOption?.id
+    && groupName === "Returned";
   return (
     <button
       type="button"
-      disabled={!returnedOption}
-      title={returnedOption ? "Mark this sample as Returned" : "Returned label is not configured"}
+      disabled={!returnedOption || isAlreadyReturned}
+      title={isAlreadyReturned ? "This sample is already Returned" : returnedOption ? "Mark this sample as Returned" : "Returned label is not configured"}
       onClick={() => returnedOption?.id && onUpdateStatus(row, returnedOption.id)}
       className="rounded border border-emerald-200 px-2 py-1 text-emerald-700 disabled:cursor-not-allowed disabled:opacity-40"
     >
