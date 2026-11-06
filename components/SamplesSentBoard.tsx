@@ -7,8 +7,10 @@ import {
   Link2,
   LockKeyhole,
   LoaderCircle,
+  Filter,
   Plus,
   Search,
+  SlidersHorizontal,
   Trash2,
   X,
 } from "lucide-react";
@@ -18,6 +20,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type RefObject,
   type ReactNode,
 } from "react";
 import { toast } from "sonner";
@@ -31,6 +34,12 @@ import { FileDropTarget } from "@/components/ui/file-drop-target";
 import { StatusBadge, type BadgeOption, type BadgeOptionLayout } from "@/components/ui/statusbadge";
 import { InlineDatePicker } from "@/components/ui/inline-date-picker";
 import { EditableCell } from "@/components/ui/editablecell";
+import {
+  AdvancedFilters,
+  advancedFilterConditionRequiresValue,
+  type AdvancedFilterColumn,
+  type AdvancedFilterRule,
+} from "@/components/AdvancedFilters";
 import {
   AssigneeMultiSelect,
   gradientForId,
@@ -141,6 +150,136 @@ const compareByDefaultClientBoardOrder = (first: Client, second: Client) =>
   new Date(second.createdAt || 0).getTime() -
   new Date(first.createdAt || 0).getTime();
 
+const DEFAULT_SEARCH_COLUMNS = new Set([
+  "client",
+  "mobile",
+  "status",
+  "items",
+]);
+
+function sampleColumnValues(row: SampleRow, key: string): unknown[] {
+  switch (key) {
+    case "client":
+      return [row.linkedClient?.name || row.legacyClientName];
+    case "clientId":
+      return [row.linkedClient?.display_id ?? ""];
+    case "people":
+      return row.people.map(profileName);
+    case "mobile":
+      return [row.linkedClient?.phone || row.legacyMobile];
+    case "address":
+      return [row.address];
+    case "dateSent":
+      return [row.date_sent];
+    case "returnBy":
+      return [row.return_by];
+    case "status":
+      return [row.status];
+    case "reason":
+      return [row.reason];
+    case "remarks":
+      return [row.remarks];
+    case "cost":
+      return [row.cost];
+    case "courier":
+      return [row.courier];
+    case "items":
+      return row.items.map((item) => `${item.item_name} x ${item.qty}`);
+    case "mondayItems":
+      return [row.mondayItemsSent];
+    case "dateReturned":
+      return [row.date_returned];
+    case "reference":
+      return [row.referenceId];
+    case "dateCreated":
+      return [row.created_at.slice(0, 10)];
+    default:
+      return [];
+  }
+}
+
+function uniqueSampleColumnValues(rows: SampleRow[], key: string) {
+  return [...new Set(rows.flatMap((row) => sampleColumnValues(row, key))
+    .map((value) => String(value ?? "").trim())
+    .filter(Boolean))]
+    .sort((first, second) => first.localeCompare(second));
+}
+
+function advancedLabelOptions(options: BadgeOption[] | undefined) {
+  return options?.map((option) => ({
+    id: option.id,
+    value: option.value,
+    color: option.color ?? "#64748b",
+    section: option.section,
+  }));
+}
+
+function includesSampleSearch(value: unknown, query: string) {
+  return String(value ?? "").toLowerCase().includes(query.trim().toLowerCase());
+}
+
+function sampleLabelOptionId(row: SampleRow, key: string) {
+  if (key === "status") return row.status_option_id;
+  if (key === "reason") return row.reason_option_id;
+  if (key === "courier") return row.courier_option_id;
+  return null;
+}
+
+function matchesSampleRule(
+  row: SampleRow,
+  rule: AdvancedFilterRule,
+  columns: AdvancedFilterColumn[],
+) {
+  const column = columns.find((entry) => entry.key === rule.column);
+  if (!column || !rule.condition) return true;
+  const values = sampleColumnValues(row, rule.column);
+  const valuesAreEmpty = values.length === 0 || values.every((value) => !String(value ?? "").trim());
+  if (rule.condition === "is empty") return valuesAreEmpty;
+  if (rule.condition === "is not empty") return !valuesAreEmpty;
+  if (rule.valueOptionId) {
+    const optionId = sampleLabelOptionId(row, rule.column);
+    return rule.condition === "is not"
+      ? optionId !== rule.valueOptionId
+      : optionId === rule.valueOptionId;
+  }
+  const target = rule.value.trim();
+  const targetLower = target.toLowerCase();
+  const compare = (value: unknown) => {
+    const source = String(value ?? "").trim();
+    const sourceLower = source.toLowerCase();
+    if (column.valueType === "number") {
+      const left = Number(source);
+      const right = Number(target);
+      if (!Number.isFinite(left) || !Number.isFinite(right)) return false;
+      if (rule.condition === "is") return left === right;
+      if (rule.condition === "is not") return left !== right;
+      if (rule.condition === "is greater than") return left > right;
+      if (rule.condition === "is greater than or equal to") return left >= right;
+      if (rule.condition === "is less than") return left < right;
+      if (rule.condition === "is less than or equal to") return left <= right;
+      return false;
+    }
+    if (column.valueType === "date") {
+      if (rule.condition === "is") return source === target;
+      if (rule.condition === "is not") return source !== target;
+      if (rule.condition === "is before") return source < target;
+      if (rule.condition === "is on or before") return source <= target;
+      if (rule.condition === "is after") return source > target;
+      if (rule.condition === "is on or after") return source >= target;
+      return false;
+    }
+    if (rule.condition === "is" || rule.condition === "text is") return sourceLower === targetLower;
+    if (rule.condition === "is not" || rule.condition === "text is not") return sourceLower !== targetLower;
+    if (rule.condition === "contains") return sourceLower.includes(targetLower);
+    if (rule.condition === "does not contain") return !sourceLower.includes(targetLower);
+    if (rule.condition === "starts with") return sourceLower.startsWith(targetLower);
+    if (rule.condition === "ends with") return sourceLower.endsWith(targetLower);
+    return false;
+  };
+  const negative = rule.condition === "is not" || rule.condition === "text is not" || rule.condition === "does not contain";
+  return negative ? values.every(compare) : values.some(compare);
+}
+
 export function SamplesSentBoard() {
   const [groups, setGroups] = useState<Group[]>([]);
   const [rows, setRows] = useState<SampleRow[]>([]);
@@ -159,6 +298,21 @@ export function SamplesSentBoard() {
   const [linkingClientRow, setLinkingClientRow] = useState<SampleRow | null>(null);
   const [failedReturn, setFailedReturn] = useState<{ row: SampleRow; optionId: string } | null>(null);
   const [failedReturnRemarks, setFailedReturnRemarks] = useState("");
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [showSearchColumns, setShowSearchColumns] = useState(false);
+  const [searchAllColumns, setSearchAllColumns] = useState(false);
+  const [searchColumns, setSearchColumns] = useState<Set<string>>(
+    () => new Set(DEFAULT_SEARCH_COLUMNS),
+  );
+  const [searchColumnQuery, setSearchColumnQuery] = useState("");
+  const [showFilter, setShowFilter] = useState(false);
+  const [advancedRules, setAdvancedRules] = useState<AdvancedFilterRule[]>([
+    { id: "initial", column: "", condition: "", value: "" },
+  ]);
+  const [advancedJoin, setAdvancedJoin] = useState<"and" | "or">("and");
+  const searchCollapseSnapshotRef = useRef<Map<string, boolean> | null>(null);
+  const toolbarFiltersRef = useRef<HTMLDivElement>(null!);
 
   const loadBoard = useCallback(async () => {
     setLoading(true);
@@ -242,6 +396,19 @@ export function SamplesSentBoard() {
     void loadLabelOptions()
       .catch(() => undefined);
   }, [loadLabelOptions]);
+  useEffect(() => {
+    if (!showSearch && !showSearchColumns && !showFilter) return;
+    const closeOnClickAway = (event: MouseEvent) => {
+      if (toolbarFiltersRef.current?.contains(event.target as Node)) return;
+      // Match the CRM Board: an active search remains visible so its term is
+      // clear, while an unused search control collapses back to "Search".
+      if (!searchTerm.trim()) setShowSearch(false);
+      setShowSearchColumns(false);
+      setShowFilter(false);
+    };
+    document.addEventListener("mousedown", closeOnClickAway);
+    return () => document.removeEventListener("mousedown", closeOnClickAway);
+  }, [searchTerm, showFilter, showSearch, showSearchColumns]);
   const manageLabel = useCallback(async (code: string, action: "add" | "rename" | "color" | "delete" | "reorder", payload: Record<string, unknown>) => {
     const response = await fetch("/api/samples-sent/options", {
       method: "POST",
@@ -311,22 +478,133 @@ export function SamplesSentBoard() {
     };
   }, [rows]);
 
+  const searchColumnsConfig = useMemo<AdvancedFilterColumn[]>(() => {
+    const columns: AdvancedFilterColumn[] = [
+    { key: "client", label: "Client", category: "Sample", values: [], valueType: "text" },
+    { key: "clientId", label: "Client ID", category: "Sample", values: [], valueType: "text" },
+    { key: "people", label: "People", category: "Sample", values: [], valueType: "text" },
+    { key: "mobile", label: "Mobile", category: "Sample", values: [], valueType: "text" },
+    { key: "address", label: "Address", category: "Sample", values: [], valueType: "text" },
+    { key: "dateSent", label: "Date Sent", category: "Sample", values: [], valueType: "date" },
+    { key: "returnBy", label: "Return By", category: "Sample", values: [], valueType: "date" },
+    { key: "status", label: "Status", category: "Sample", values: [], labelOptions: advancedLabelOptions(labelOptions.samples_sent_status), valueType: "text" },
+    { key: "reason", label: "Reason", category: "Sample", values: [], labelOptions: advancedLabelOptions(labelOptions.samples_sent_reason), valueType: "text" },
+    { key: "remarks", label: "Remarks", category: "Sample", values: [], valueType: "text" },
+    { key: "cost", label: "Cost", category: "Sample", values: [], valueType: "number" },
+    { key: "courier", label: "Courier", category: "Sample", values: [], labelOptions: advancedLabelOptions(labelOptions.samples_sent_courier), valueType: "text" },
+    { key: "items", label: "Items Sent", category: "Sample", values: [], valueType: "text" },
+    { key: "mondayItems", label: "Monday Items Sent", category: "Sample", values: [], valueType: "text" },
+    { key: "dateReturned", label: "Date Returned", category: "Sample", values: [], valueType: "date" },
+    { key: "reference", label: "Reference ID", category: "Sample", values: [], valueType: "text" },
+    { key: "dateCreated", label: "Date Created", category: "Sample", values: [], valueType: "date" },
+    ];
+    return columns.map((column) => ({
+      ...column,
+      values: uniqueSampleColumnValues(rows, column.key),
+    }));
+  }, [labelOptions, rows]);
+  const activeAdvancedRules = useMemo(
+    () => advancedRules.filter((rule) =>
+      rule.column && rule.condition &&
+      (!advancedFilterConditionRequiresValue(rule.condition) || rule.value || rule.valueOptionId),
+    ),
+    [advancedRules],
+  );
+  const activeSearchColumns = useMemo(
+    () => searchAllColumns
+      ? new Set(searchColumnsConfig.map((column) => column.key))
+      : searchColumns,
+    [searchAllColumns, searchColumns, searchColumnsConfig],
+  );
+  const visibleRows = useMemo(() => rows.filter((row) => {
+    const searchMatches = !searchTerm.trim() || (
+      activeSearchColumns.size > 0 && [...activeSearchColumns].some((key) =>
+        sampleColumnValues(row, key).some((value) => includesSampleSearch(value, searchTerm)),
+      )
+    );
+    if (!searchMatches) return false;
+    if (!activeAdvancedRules.length) return true;
+    const outcomes = activeAdvancedRules.map((rule) =>
+      matchesSampleRule(row, rule, searchColumnsConfig),
+    );
+    return advancedJoin === "and" ? outcomes.every(Boolean) : outcomes.some(Boolean);
+  }), [activeAdvancedRules, activeSearchColumns, advancedJoin, rows, searchColumnsConfig, searchTerm]);
+  const queryActive = Boolean(searchTerm.trim()) || activeAdvancedRules.length > 0;
+  const selectedSearchColumnCount = searchAllColumns
+    ? searchColumnsConfig.length
+    : searchColumns.size;
+  const visibleGroups = useMemo(
+    () => queryActive
+      ? groups.filter((group) => visibleRows.some((row) => row.group_id === group.id))
+      : groups,
+    [groups, queryActive, visibleRows],
+  );
+  useEffect(() => {
+    if (queryActive) {
+      if (!searchCollapseSnapshotRef.current) {
+        searchCollapseSnapshotRef.current = new Map(
+          groups.map((group) => [group.id, group.collapsed]),
+        );
+      }
+      setGroups((current) => {
+        let changed = false;
+        const next = current.map((group) => {
+          if (!group.collapsed || !visibleRows.some((row) => row.group_id === group.id)) {
+            return group;
+          }
+          changed = true;
+          return { ...group, collapsed: false };
+        });
+        return changed ? next : current;
+      });
+      return;
+    }
+    if (!queryActive && searchCollapseSnapshotRef.current) {
+      const saved = searchCollapseSnapshotRef.current;
+      searchCollapseSnapshotRef.current = null;
+      setGroups((current) => current.map((group) => ({
+        ...group,
+        collapsed: saved.get(group.id) ?? group.collapsed,
+      })));
+    }
+  }, [groups, queryActive, visibleRows]);
+
   return (
     <section className="crm-board min-h-full min-w-max bg-[#f8fafc] py-2 pl-8 pr-3 text-slate-700">
       <SamplesToolbar
-        canManageGroups={canManageGroups}
+        toolbarFiltersRef={toolbarFiltersRef}
         onNewRecord={() => setShowCreator(true)}
-        onAddGroup={() => setShowAddGroup(true)}
+        searchTerm={searchTerm}
+        showSearch={showSearch}
+        showSearchColumns={showSearchColumns}
+        searchAllColumns={searchAllColumns}
+        searchColumns={searchColumns}
+        searchColumnQuery={searchColumnQuery}
+        searchColumnsConfig={searchColumnsConfig}
+        selectedSearchColumnCount={selectedSearchColumnCount}
+        onShowSearchChange={setShowSearch}
+        onSearchTermChange={setSearchTerm}
+        onShowSearchColumnsChange={setShowSearchColumns}
+        onSearchAllColumnsChange={setSearchAllColumns}
+        onSearchColumnsChange={setSearchColumns}
+        onSearchColumnQueryChange={setSearchColumnQuery}
+        showFilter={showFilter}
+        activeFilterCount={activeAdvancedRules.length}
+        onShowFilterChange={setShowFilter}
+        advancedRules={advancedRules}
+        advancedJoin={advancedJoin}
+        onAdvancedRulesChange={setAdvancedRules}
+        onAdvancedJoinChange={setAdvancedJoin}
       />
       {loading ? (
         <LoadingState />
       ) : (
         <div className="space-y-3">
-          {groups.map((group) => (
+          {visibleGroups.map((group) => (
             <SamplesGroup
               key={group.id}
               group={group}
-              rows={rows.filter((row) => row.group_id === group.id)}
+              rows={visibleRows.filter((row) => row.group_id === group.id)}
               focusedRecordId={focusedRecordId}
               grid={gridForWidths(columnWidths)}
               onResizeColumn={resizeColumn}
@@ -351,6 +629,20 @@ export function SamplesSentBoard() {
               onDelete={() => setGroupToDelete(group)}
             />
           ))}
+          {queryActive && visibleGroups.length === 0 && (
+            <div className="rounded border border-dashed border-slate-300 bg-white px-5 py-10 text-center text-sm text-slate-500">
+              No Samples Sent records match the current search or filter.
+            </div>
+          )}
+          {canManageGroups && (
+            <button
+              type="button"
+              onClick={() => setShowAddGroup(true)}
+              className="inline-flex h-8 items-center gap-1 rounded border border-[#83cbd8] bg-white px-2.5 text-[12px] text-[#237c8b]"
+            >
+              <Plus size={14} /> Add group
+            </button>
+          )}
         </div>
       )}
       <CreateSampleDialog
@@ -406,16 +698,59 @@ export function SamplesSentBoard() {
 }
 
 function SamplesToolbar({
-  canManageGroups,
+  toolbarFiltersRef,
   onNewRecord,
-  onAddGroup,
+  searchTerm,
+  showSearch,
+  showSearchColumns,
+  searchAllColumns,
+  searchColumns,
+  searchColumnQuery,
+  searchColumnsConfig,
+  selectedSearchColumnCount,
+  onShowSearchChange,
+  onSearchTermChange,
+  onShowSearchColumnsChange,
+  onSearchAllColumnsChange,
+  onSearchColumnsChange,
+  onSearchColumnQueryChange,
+  showFilter,
+  activeFilterCount,
+  onShowFilterChange,
+  advancedRules,
+  advancedJoin,
+  onAdvancedRulesChange,
+  onAdvancedJoinChange,
 }: {
-  canManageGroups: boolean;
+  toolbarFiltersRef: RefObject<HTMLDivElement>;
   onNewRecord: () => void;
-  onAddGroup: () => void;
+  searchTerm: string;
+  showSearch: boolean;
+  showSearchColumns: boolean;
+  searchAllColumns: boolean;
+  searchColumns: Set<string>;
+  searchColumnQuery: string;
+  searchColumnsConfig: AdvancedFilterColumn[];
+  selectedSearchColumnCount: number;
+  onShowSearchChange: (show: boolean) => void;
+  onSearchTermChange: (value: string) => void;
+  onShowSearchColumnsChange: (show: boolean) => void;
+  onSearchAllColumnsChange: (selected: boolean) => void;
+  onSearchColumnsChange: (columns: Set<string>) => void;
+  onSearchColumnQueryChange: (value: string) => void;
+  showFilter: boolean;
+  activeFilterCount: number;
+  onShowFilterChange: (show: boolean) => void;
+  advancedRules: AdvancedFilterRule[];
+  advancedJoin: "and" | "or";
+  onAdvancedRulesChange: (rules: AdvancedFilterRule[]) => void;
+  onAdvancedJoinChange: (join: "and" | "or") => void;
 }) {
+  const displayedColumns = searchColumnsConfig.filter((column) =>
+    `${column.label} ${column.category}`.toLowerCase().includes(searchColumnQuery.toLowerCase()),
+  );
   return (
-    <div className="mb-2 flex gap-2">
+    <div ref={toolbarFiltersRef} className="relative z-30 mb-2 flex items-center gap-2">
       <h1 className="text-xl text-slate-800">Samples Sent</h1>
       <button
         type="button"
@@ -424,14 +759,126 @@ function SamplesToolbar({
       >
         <Plus size={14} /> New Samples Sent record
       </button>
-      <button
-        type="button"
-        disabled={!canManageGroups}
-        onClick={onAddGroup}
-        className="inline-flex h-8 items-center gap-1 rounded border border-[#83cbd8] bg-white px-2.5 text-[12px] text-[#237c8b] disabled:opacity-40"
-      >
-        <Plus size={14} /> Add group
-      </button>
+      <div className="relative">
+        {showSearch || searchTerm ? (
+          <div className="flex h-8 w-72 items-center rounded border border-sky-500 bg-white">
+            <Search size={16} className="ml-2 shrink-0 text-slate-500" />
+            <input
+              autoFocus
+              value={searchTerm}
+              onChange={(event) => onSearchTermChange(event.target.value)}
+              placeholder="Search this board"
+              className="min-w-0 flex-1 px-2 text-sm outline-none"
+            />
+            {searchTerm && (
+              <button
+                type="button"
+                onClick={() => onSearchTermChange("")}
+                className="px-1 text-slate-400 hover:text-slate-700"
+                aria-label="Clear Samples Sent search"
+              >
+                <X size={15} />
+              </button>
+            )}
+            <span
+              className="ml-0.5 inline-flex min-w-5 shrink-0 items-center justify-center rounded-full bg-slate-100 px-1.5 text-[11px] font-semibold text-slate-600"
+              title={`${selectedSearchColumnCount} search ${selectedSearchColumnCount === 1 ? "column" : "columns"} selected`}
+            >
+              {selectedSearchColumnCount}
+            </span>
+            <button
+              type="button"
+              onClick={() => onShowSearchColumnsChange(!showSearchColumns)}
+              className="mr-1 rounded p-1 text-slate-500 hover:bg-slate-100"
+              title="Search options"
+            >
+              <SlidersHorizontal size={15} />
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => onShowSearchChange(true)}
+            className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100"
+          >
+            <Search size={16} /> Search
+          </button>
+        )}
+        {showSearchColumns && (
+          <div className="absolute left-0 top-full z-[100] mt-1 w-[min(720px,calc(100vw-2rem))] rounded-lg border border-slate-200 bg-white p-4 shadow-xl">
+            <div className="mb-2 text-sm font-medium text-slate-700">Choose columns to search</div>
+            <div className="relative mb-2">
+              <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                value={searchColumnQuery}
+                onChange={(event) => onSearchColumnQueryChange(event.target.value)}
+                placeholder="Find a column"
+                className="h-8 w-full rounded border border-slate-300 pl-7 pr-2 text-sm outline-none focus:border-sky-400"
+              />
+            </div>
+            <label className="flex cursor-pointer items-center gap-2 border-b border-slate-100 py-2 text-sm font-medium text-slate-700">
+              <input
+                type="checkbox"
+                checked={searchAllColumns}
+                onChange={(event) => {
+                  onSearchAllColumnsChange(event.target.checked);
+                  if (event.target.checked) onSearchColumnsChange(new Set());
+                }}
+                className="h-4 w-4 accent-[#0f8da8]"
+              />
+              All columns
+            </label>
+            <div className="grid max-h-[min(68vh,680px)] grid-cols-1 gap-x-3 overflow-y-auto pt-2 sm:grid-cols-2">
+              {displayedColumns.map((column) => (
+                <label
+                  key={column.key}
+                  className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+                >
+                  <input
+                    type="checkbox"
+                    checked={searchAllColumns || searchColumns.has(column.key)}
+                    onChange={(event) => {
+                      const next = searchAllColumns
+                        ? new Set(searchColumnsConfig.map((entry) => entry.key))
+                        : new Set(searchColumns);
+                      if (event.target.checked) next.add(column.key);
+                      else next.delete(column.key);
+                      onSearchAllColumnsChange(false);
+                      onSearchColumnsChange(next);
+                    }}
+                    className="h-4 w-4 accent-[#0f8da8]"
+                  />
+                  <span className="truncate">{column.label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+      <div className="relative">
+        <button
+          type="button"
+          onClick={() => onShowFilterChange(!showFilter)}
+          className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors ${showFilter || activeFilterCount ? "bg-[#dff5f7] text-slate-700" : "text-slate-700 hover:bg-slate-100"}`}
+        >
+          <Filter size={16} /> Filter
+          {activeFilterCount > 0 && (
+            <span className="rounded-full bg-sky-100 px-1.5 text-[11px] text-sky-700">{activeFilterCount}</span>
+          )}
+        </button>
+        {showFilter && (
+          <div className="absolute left-0 top-full z-[100] mt-1">
+            <AdvancedFilters
+              columns={searchColumnsConfig}
+              rules={advancedRules}
+              join={advancedJoin}
+              onRulesChange={onAdvancedRulesChange}
+              onJoinChange={onAdvancedJoinChange}
+              onClear={() => onAdvancedRulesChange([{ id: crypto.randomUUID(), column: "", condition: "", value: "" }])}
+            />
+          </div>
+        )}
+      </div>
     </div>
   );
 }

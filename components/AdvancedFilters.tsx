@@ -119,6 +119,10 @@ function Combo({
   const selectedLabelColor =
     labelOptions?.find((option) => option.value === value)?.color ??
     labelColors?.[value];
+  const labelColorFor = (option: { value: string }) =>
+    labelColors?.[option.value] ??
+    labelOptions?.find((labelOption) => labelOption.value === option.value)
+      ?.color;
   const groupedOptions = Array.from(
     filtered.reduce((groupMap, option) => {
       const group = option.value.split(":")[0];
@@ -128,6 +132,19 @@ function Combo({
       return groupMap;
     }, new Map<string, typeof filtered>()),
   );
+  const labelSectionCount = labelOptions?.length
+    ? Math.max(...labelOptions.map((option) => (option.section ?? 0) + 1))
+    : 1;
+  const labelOptionsBySection = labelOptions
+    ? Array.from({ length: labelSectionCount }, (_, section) =>
+        filtered.filter((option) => {
+          const labelOption = labelOptions.find(
+            (entry) => entry.id === option.id || entry.value === option.value,
+          );
+          return (labelOption?.section ?? 0) === section;
+        }),
+      )
+    : [];
   const optionButton = (
     option: (typeof filtered)[number],
     optionIndex: number,
@@ -147,14 +164,14 @@ function Combo({
           : "block w-full rounded px-2 py-2 text-left text-sm text-slate-700 hover:bg-sky-50"
       }
     >
-      {labelColors?.[option.value] ? (
+      {labelColorFor(option) ? (
         <span
           className={
             labelOptions
               ? "flex h-8 w-full items-center justify-center rounded-sm px-2 text-xs font-semibold text-white transition hover:brightness-95"
               : "inline-flex min-h-6 items-center rounded px-2 text-xs font-semibold text-white"
           }
-          style={{ backgroundColor: labelColors[option.value] }}
+          style={{ backgroundColor: labelColorFor(option) }}
         >
           {option.label}
         </span>
@@ -219,33 +236,31 @@ function Combo({
         >
           {labelOptions ? (
             <div
-              className="grid min-w-max"
+              className={
+                labelSectionCount > 1
+                  ? "grid min-w-max gap-0"
+                  : "grid min-w-max grid-cols-1 gap-2 sm:grid-cols-3"
+              }
               style={{
-                gridTemplateColumns: `repeat(${Math.max(1, ...labelOptions.map((option) => (option.section ?? 0) + 1))}, minmax(180px, 1fr))`,
+                ...(labelSectionCount > 1
+                  ? {
+                      gridTemplateColumns: `repeat(${labelSectionCount}, minmax(180px, 1fr))`,
+                    }
+                  : {}),
               }}
             >
-              {Array.from({
-                length: Math.max(
-                  1,
-                  ...labelOptions.map((option) => (option.section ?? 0) + 1),
-                ),
-              }).map((_, section) => (
+              {labelOptionsBySection.map((sectionOptions, section) => (
                 <div
                   key={section}
-                  className={`min-h-12 space-y-2 px-3 ${section > 0 ? "border-l border-slate-200" : ""}`}
+                  className={
+                    labelSectionCount > 1
+                      ? `min-h-14 space-y-2 px-3 ${section > 0 ? "border-l border-slate-200" : ""}`
+                      : "contents"
+                  }
                 >
-                  {filtered
-                    .filter(
-                      (option) =>
-                        (labelOptions.find(
-                          (labelOption) =>
-                            labelOption.id === option.id ||
-                            labelOption.value === option.value,
-                        )?.section ?? 0) === section,
-                    )
-                    .map((option, optionIndex) =>
-                      optionButton(option, optionIndex),
-                    )}
+                  {sectionOptions.map((option, optionIndex) =>
+                    optionButton(option, optionIndex),
+                  )}
                 </div>
               ))}
             </div>
