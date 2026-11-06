@@ -104,6 +104,7 @@ type SampleRow = {
 const COLUMNS = [
   "Client",
   "People",
+  "Reference ID",
   "Mobile",
   "Address",
   "Date Sent",
@@ -119,15 +120,23 @@ const COLUMNS = [
   "Extend 7 Days",
   "Returned",
   "Date Returned",
-  "Reference ID",
   "Creation Log",
 ];
 const DEFAULT_COLUMN_WIDTHS = [
-  245, 84, 130, 230, 115, 115, 125, 160, 230, 110, 120, 135, 260, 260, 130, 115,
-  125, 125, 155,
+  245, 84, 125, 130, 230, 115, 115, 125, 160, 230, 110, 120, 135, 260, 260, 130,
+  115, 125, 155,
+];
+const COLUMN_WIDTHS_SETTING_KEY = "samples_sent_column_widths_v2";
+const LEGACY_COLUMN_WIDTHS_ORDER = [
+  0, 1, 17, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 18,
 ];
 const gridForWidths = (widths: number[]) => widths.map((width) => `${width}px`).join(" ");
 const dateToday = () => new Date().toISOString().slice(0, 10);
+const dateAfterDays = (days: number) => {
+  const date = new Date();
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+};
 const newItem = (): Item => ({
   id: crypto.randomUUID(),
   linkedSubitemId: "",
@@ -350,13 +359,34 @@ export function SamplesSentBoard() {
     void loadBoard();
   }, [loadBoard]);
   useEffect(() => {
-    void fetch("/api/user-settings?key=samples_sent_column_widths")
+    const normalizeWidths = (value: unknown, order = COLUMNS.map((_, index) => index)) => {
+      if (!Array.isArray(value) || value.length !== COLUMNS.length) return null;
+      return order.map((sourceIndex, index) =>
+        Number.isFinite(Number(value[sourceIndex]))
+          ? Math.max(72, Number(value[sourceIndex]))
+          : DEFAULT_COLUMN_WIDTHS[index],
+      );
+    };
+    void fetch(`/api/user-settings?key=${COLUMN_WIDTHS_SETTING_KEY}`)
       .then((response) => response.json())
       .then((data) => {
-        if (!Array.isArray(data.value) || data.value.length !== COLUMNS.length) return;
-        setColumnWidths(data.value.map((width: unknown, index: number) =>
-          Number.isFinite(Number(width)) ? Math.max(72, Number(width)) : DEFAULT_COLUMN_WIDTHS[index],
-        ));
+        const currentWidths = normalizeWidths(data.value);
+        if (currentWidths) {
+          setColumnWidths(currentWidths);
+          return;
+        }
+        return fetch("/api/user-settings?key=samples_sent_column_widths")
+          .then((response) => response.json())
+          .then((legacy) => {
+            const migratedWidths = normalizeWidths(legacy.value, LEGACY_COLUMN_WIDTHS_ORDER);
+            if (!migratedWidths) return;
+            setColumnWidths(migratedWidths);
+            void fetch("/api/user-settings", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ key: COLUMN_WIDTHS_SETTING_KEY, value: migratedWidths }),
+            });
+          });
       })
       .catch(() => undefined);
   }, []);
@@ -369,7 +399,7 @@ export function SamplesSentBoard() {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
       setColumnWidths((current) => {
-        void fetch("/api/user-settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key: "samples_sent_column_widths", value: current }) });
+        void fetch("/api/user-settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key: COLUMN_WIDTHS_SETTING_KEY, value: current }) });
         return current;
       });
     };
@@ -1087,7 +1117,7 @@ function SampleRecordLine({
               onClick={() => onLinkClient(row)}
               className="inline-flex shrink-0 items-center gap-1 text-sky-700 hover:text-sky-900"
             >
-              <Link2 size={13} /> Link
+              <Link2 size={13} /> Link to client
             </button>
           </div>
         ),
@@ -1097,6 +1127,7 @@ function SampleRecordLine({
         selectedIds={row.people.map((person) => person.id)}
         onChange={(peopleIds) => onUpdate(row.id, { peopleIds })}
       />, "justify-center")}
+      {cell("reference", <span className="w-full text-center">{row.referenceId}</span>, "justify-center")}
       {cell("mobile", <span className="w-full truncate text-center" title={row.linkedClient?.phone ?? row.legacyMobile}>
         {row.linkedClient?.phone || row.legacyMobile}
       </span>, "justify-center")}
@@ -1194,7 +1225,6 @@ function SampleRecordLine({
         onUpdateStatus={onUpdateStatus}
       />, "justify-center")}
       {cell("dateReturned", <InlineDatePicker value={row.date_returned ?? ""} onChange={(dateReturned) => onUpdate(row.id, { dateReturned })} label="Date Returned" />)}
-      {cell("reference", <span className="w-full text-center">{row.referenceId}</span>, "justify-center")}
       {cell(
         "creation",
         <span title={creationTitle} className="flex items-center gap-1">
@@ -1587,7 +1617,7 @@ function CreateSampleDialog({
   const [peopleIds, setPeopleIds] = useState<string[]>([]);
   const [address, setAddress] = useState("");
   const [dateSent, setDateSent] = useState(dateToday);
-  const [returnBy, setReturnBy] = useState("");
+  const [returnBy, setReturnBy] = useState(() => dateAfterDays(10));
   const [cost, setCost] = useState("");
   const [remarks, setRemarks] = useState("");
   const [items, setItems] = useState<Item[]>([newItem()]);
@@ -1601,7 +1631,7 @@ function CreateSampleDialog({
     setPeopleIds(currentUserId ? [currentUserId] : []);
     setAddress("");
     setDateSent(dateToday());
-    setReturnBy("");
+    setReturnBy(dateAfterDays(10));
     setCost("");
     setRemarks("");
     setItems([newItem()]);
@@ -2077,7 +2107,7 @@ function SampleDetails(props: DetailsProps) {
           />
         </label>
         <label className="grid gap-1 text-sm font-medium">
-          Address
+          Address*
           <textarea
             rows={2}
             value={props.address}
