@@ -334,6 +334,7 @@ export async function POST(request: NextRequest) {
         return_by: String(body?.returnBy ?? "").trim() || null,
         cost,
         remarks: String(body?.remarks ?? "").trim(),
+        photo_files: Array.isArray(body?.photoFiles) ? body.photoFiles : [],
         created_by: user.id,
       })
       .select("*")

@@ -1463,6 +1463,75 @@ function LinkSampleClientDialog({
   );
 }
 
+function PhotoUploadBlock({
+  files,
+  clientId,
+  uploadPath,
+  onChange,
+}: {
+  files: StoredCrmFile[];
+  clientId: string;
+  uploadPath: string;
+  onChange: (files: StoredCrmFile[]) => void;
+}) {
+  const upload = async (incoming: File[]) => {
+    if (!incoming.length) return;
+    try {
+      const uploaded = await uploadCrmFiles(incoming, uploadPath, { clientId });
+      onChange([...files, ...uploaded]);
+    } catch (error) {
+      toast.error("Photo could not be uploaded", {
+        description: error instanceof Error ? error.message : undefined,
+      });
+    }
+  };
+  return (
+    <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+      <div className="mb-2 text-sm font-medium text-slate-700">Photo</div>
+      <FileDropTarget onFiles={upload} className="min-h-24 w-full">
+        <label className="flex min-h-24 w-full cursor-pointer items-center justify-center gap-2 rounded border border-dashed border-slate-300 bg-white px-3 py-3 text-sm text-slate-500">
+          <input
+            type="file"
+            accept="image/*"
+            multiple
+            className="sr-only"
+            onChange={(event) => {
+              void upload(Array.from(event.target.files ?? []));
+              event.currentTarget.value = "";
+            }}
+          />
+          {files.length ? (
+            <span className="flex flex-wrap items-center justify-center gap-2">
+              {files.map((file) => (
+                <span key={file.storagePath} className="group relative">
+                  <FilePreview url={file.url} name={file.name} mimeType={file.mimeType} />
+                  <button
+                    type="button"
+                    aria-label={`Remove ${file.name}`}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      onChange(files.filter((entry) => entry.storagePath !== file.storagePath));
+                    }}
+                    className="absolute -right-1 -top-1 hidden h-4 w-4 items-center justify-center rounded-full bg-red-500 p-0 text-[10px] leading-none text-white group-hover:flex"
+                  >
+                    &times;
+                  </button>
+                </span>
+              ))}
+            </span>
+          ) : (
+            <>
+              <FileImage size={18} className="text-slate-400" />
+              <span>Drop photos here or click to upload</span>
+            </>
+          )}
+        </label>
+      </FileDropTarget>
+    </div>
+  );
+}
+
 function PhotoCell({
   row,
   onUpdate,
@@ -1641,6 +1710,8 @@ function CreateSampleDialog({
   const [cost, setCost] = useState("");
   const [remarks, setRemarks] = useState("");
   const [items, setItems] = useState<Item[]>([newItem()]);
+  const [photoFiles, setPhotoFiles] = useState<StoredCrmFile[]>([]);
+  const photoUploadIdRef = useRef("");
   const reset = useCallback(() => {
     const defaultGroup =
       groups.find((group) => group.name.toLowerCase() === "new group") ??
@@ -1655,6 +1726,8 @@ function CreateSampleDialog({
     setCost("");
     setRemarks("");
     setItems([newItem()]);
+    setPhotoFiles([]);
+    photoUploadIdRef.current = crypto.randomUUID();
   }, [currentUserId, groups]);
   useEffect(() => {
     if (open) reset();
@@ -1777,6 +1850,7 @@ function CreateSampleDialog({
           cost,
           remarks,
           items,
+          photoFiles,
         }),
       });
       const data = await response.json();
@@ -1911,6 +1985,12 @@ function CreateSampleDialog({
                   />
                 </label>
               </div>
+              <PhotoUploadBlock
+                files={photoFiles}
+                clientId={client.id}
+                uploadPath={`samples-sent/drafts/${photoUploadIdRef.current}/photos`}
+                onChange={setPhotoFiles}
+              />
             </div>
           </>
         )}
