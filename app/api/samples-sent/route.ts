@@ -153,31 +153,24 @@ async function hydrateRows(rows: Array<Record<string, unknown>>) {
     { data: profiles, error: profilesError },
   ] = await Promise.all([
     clientIds.length
-      ? supabaseAdmin
-          .from("clients")
-          .select("id, name, display_id, phone")
-          .in("id", clientIds)
+      ? selectSamplesRows("clients", "id, name, display_id, phone", "id", clientIds)
       : Promise.resolve({ data: [], error: null }),
     clientIds.length
-      ? supabaseAdmin
-          .from("subitems")
-          .select("id, client_id, name")
-          .in("client_id", clientIds)
-          .is("deleted_at", null)
-          .order("position")
+      ? selectSamplesRows("subitems", "id, client_id, name", "client_id", clientIds, (query) =>
+          query.is("deleted_at", null).order("position"),
+        )
       : Promise.resolve({ data: [], error: null }),
     recordIds.length
-      ? supabaseAdmin
-          .from("samples_sent_items")
-          .select("sample_sent_id, linked_subitem_id, item_name, qty, sort_order")
-          .in("sample_sent_id", recordIds)
-          .order("sort_order")
+      ? selectSamplesRows(
+          "samples_sent_items",
+          "sample_sent_id, linked_subitem_id, item_name, qty, sort_order",
+          "sample_sent_id",
+          recordIds,
+          (query) => query.order("sort_order"),
+        )
       : Promise.resolve({ data: [], error: null }),
     personIds.length
-      ? supabaseAdmin
-          .from("profiles")
-          .select("id, full_name, email, avatar_color")
-          .in("id", personIds)
+      ? selectSamplesRows("profiles", "id, full_name, email, avatar_color", "id", personIds)
       : Promise.resolve({ data: [], error: null }),
   ]);
   if (clientsError || clientSubitemsError || itemsError || profilesError)
@@ -218,6 +211,30 @@ async function hydrateRows(rows: Array<Record<string, unknown>>) {
       : null,
     items: itemsByRecord.get(String(row.id)) ?? [],
   }));
+}
+
+// PostgREST encodes an IN list into the request URL. The migrated Samples
+// Sent board can contain hundreds of records, so keep each hydration request
+// comfortably below proxy/header limits instead of sending one giant list.
+async function selectSamplesRows(
+  table: string,
+  columns: string,
+  idColumn: string,
+  ids: string[],
+  refine?: (query: any) => any,
+) {
+  const rows: Array<Record<string, any>> = [];
+  for (let start = 0; start < ids.length; start += 100) {
+    let query = supabaseAdmin
+      .from(table)
+      .select(columns)
+      .in(idColumn, ids.slice(start, start + 100));
+    if (refine) query = refine(query);
+    const { data, error } = await query;
+    if (error) throw error;
+    rows.push(...((data ?? []) as Array<Record<string, any>>));
+  }
+  return { data: rows, error: null };
 }
 
 export async function GET() {
