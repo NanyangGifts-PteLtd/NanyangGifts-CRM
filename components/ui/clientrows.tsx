@@ -53,7 +53,7 @@ import { ClientActionsMenu } from "@/components/ClientActionsMenu";
 import { TrackingQuoteList } from "@/components/TrackingQuoteList";
 import { ManualTrackingLinkDialog } from "@/components/ManualTrackingLinkDialog";
 import { FileDropTarget } from "./file-drop-target";
-import { uploadCrmFiles } from "@/lib/crm-files";
+import { uploadCrmFiles, type StoredCrmFile } from "@/lib/crm-files";
 import { FilePreview } from "./file-preview";
 import { toast } from "sonner";
 import { useEscapeClose } from "@/components/hooks/use-escape-close";
@@ -428,20 +428,6 @@ function imageFileToArtwork(file: File): Promise<SampleArtworkUpload> {
       });
     reader.onerror = () => reject(reader.error);
     reader.readAsDataURL(file);
-  });
-}
-
-function artworkUrlToDataUrl(url: string): Promise<string> {
-  if (url.startsWith("data:image/")) return Promise.resolve(url);
-  return fetch(url).then(async (response) => {
-    if (!response.ok) throw new Error("Could not load saved artwork");
-    const blob = await response.blob();
-    return new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result));
-      reader.onerror = () => reject(reader.error);
-      reader.readAsDataURL(blob);
-    });
   });
 }
 
@@ -1830,15 +1816,30 @@ export function ClientRow({
     setIsGeneratingSample(true);
     setSampleEstimateError(null);
     try {
+      const savedArtworkUploads: Record<string, StoredCrmFile> = {};
       const preparedArtwork = await Promise.all(
         sampleEstimateArtwork
           .filter(({ subitem }) =>
             selectedDraftQuoteSubitemIds.includes(subitem.id),
           )
-          .map(async ({ subitem, artwork }) => ({
-            subitemId: subitem.id,
-            dataUrl: artwork ? await artworkUrlToDataUrl(artwork.url) : "",
-          })),
+          .map(async ({ subitem, artwork }) => {
+            const pendingUpload = sampleArtworkUploads[subitem.id];
+            if (pendingUpload) {
+              const [stored] = await uploadCrmFiles(
+                [pendingUpload.file],
+                `subitems/${subitem.id}/artworkFile`,
+                { clientId: client.id, subitemId: subitem.id },
+              );
+              savedArtworkUploads[subitem.id] = stored;
+              return { subitemId: subitem.id, storagePath: stored.storagePath };
+            }
+            return {
+              subitemId: subitem.id,
+              storagePath: artwork && "storagePath" in artwork
+                ? artwork.storagePath ?? ""
+                : "",
+            };
+          }),
       );
       const response = await fetch("/api/estimates/sample", {
         method: "POST",
@@ -1849,9 +1850,29 @@ export function ClientRow({
           artworks: preparedArtwork,
         }),
       });
-      const result = await response.json();
+      const responseText = await response.text();
+      let result: {
+        error?: string;
+        filename?: string;
+        url?: string;
+        storagePath?: string;
+        createdBy?: string;
+        createdAt?: string;
+      };
+      try {
+        result = JSON.parse(responseText) as typeof result;
+      } catch {
+        throw new Error(
+          response.status === 413
+            ? "The quote request was too large. Reduce the artwork size and try again."
+            : `The draft quote service returned an unexpected response (HTTP ${response.status}).`,
+        );
+      }
       if (!response.ok)
         throw new Error(result?.error || "Could not generate draft quote");
+      if (!result.filename || !result.url || !result.storagePath) {
+        throw new Error("The draft quote service returned an incomplete result.");
+      }
       const attachment: AttachmentItem = {
         id: crypto.randomUUID(),
         kind: "file",
@@ -1881,13 +1902,8 @@ export function ClientRow({
           selectedDraftQuoteSubitemIds.includes(subitem.id),
         )
         .map(async ({ subitem, artwork }) => {
-          const uploaded = sampleArtworkUploads[subitem.id];
-          if (!uploaded || !artwork) return;
-          const [storedArtwork] = await uploadCrmFiles(
-            [uploaded.file],
-            `subitems/${subitem.id}/artworkFile`,
-            { clientId: client.id, subitemId: subitem.id },
-          );
+          const storedArtwork = savedArtworkUploads[subitem.id];
+          if (!storedArtwork || !artwork) return;
           onUpdateSubitem(subitem.id, {
             customFields: {
               ...subitem.customFields,

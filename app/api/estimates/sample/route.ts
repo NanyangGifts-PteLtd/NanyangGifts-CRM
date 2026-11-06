@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { supabaseAdmin } from "@/lib/supabase/admin";
 import { canEditClient } from "@/lib/client-access";
 import { getSystemLabel } from "@/lib/system-labels";
 import {
@@ -20,7 +21,11 @@ const ELIGIBLE_STATUS_KEYS = [
 ] as const;
 const W = 595.28;
 const H = 841.89;
-type ArtworkInput = { subitemId: string; dataUrl: string };
+type ArtworkInput = {
+  subitemId: string;
+  dataUrl?: string;
+  storagePath?: string;
+};
 type EstimateLine = {
   name: string;
   description: string;
@@ -64,6 +69,20 @@ function dataUrlBytes(dataUrl: string) {
   return match
     ? { mime: match[1].toLowerCase(), bytes: Buffer.from(match[2], "base64") }
     : null;
+}
+async function artworkInputToDataUrl(input?: ArtworkInput) {
+  if (!input) return "";
+  if (typeof input.dataUrl === "string" && input.dataUrl.startsWith("data:image/")) {
+    return input.dataUrl;
+  }
+  if (!input.storagePath) return "";
+  const { data, error } = await supabaseAdmin.storage
+    .from("crm-files")
+    .download(input.storagePath);
+  if (error || !data) return "";
+  const bytes = Buffer.from(await data.arrayBuffer());
+  const mime = data.type === "image/png" ? "image/png" : "image/jpeg";
+  return `data:${mime};base64,${bytes.toString("base64")}`;
 }
 async function embedImage(
   pdf: PDFDocument,
@@ -521,16 +540,16 @@ export async function POST(req: NextRequest) {
       .filter(
         (item): item is ArtworkInput =>
           typeof item?.subitemId === "string" &&
-          typeof item?.dataUrl === "string",
+          (typeof item?.dataUrl === "string" || typeof item?.storagePath === "string"),
       )
-      .map((item) => [item.subitemId, item.dataUrl]),
+      .map((item) => [item.subitemId, item]),
   );
   const { data: profile } = await supabase
     .from("profiles")
     .select("full_name, email")
     .eq("id", user.id)
     .maybeSingle();
-  const rows = subitems.map((item: any) => {
+  const rows = await Promise.all(subitems.map(async (item: any) => {
     const qty = numberValue(item.qty) || 1;
     const unitPrice = unitPriceValue(
       numberValue(item.up) || (qty > 0 ? numberValue(item.price) / qty : 0),
@@ -541,9 +560,9 @@ export async function POST(req: NextRequest) {
       qty,
       unitPrice,
       amount: qty * unitPrice,
-      artwork: artworkById.get(item.id),
+      artwork: await artworkInputToDataUrl(artworkById.get(item.id)),
     };
-  });
+  }));
   const { data: quotationNumber, error: sequenceError } = await supabase.rpc(
     "next_sample_estimate_number",
   );
