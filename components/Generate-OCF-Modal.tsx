@@ -64,17 +64,25 @@ type GenerateOcfModalProps = {
   onUpdated?: () => void;
 };
 
-function showOcfGenerationLoading(target: Window) {
+function showOcfGenerationLoading(
+  target: Window,
+  mode: "create" | "update" = "create",
+) {
   // The tab must be opened synchronously with the user's click to satisfy
   // popup blockers. Replace its otherwise blank about:blank document with a
-  // clear progress state while uploads and OCF creation complete.
+  // clear progress state while uploads and OCF processing complete.
+  const isUpdate = mode === "update";
+  const action = isUpdate ? "Updating" : "Generating";
+  const message = isUpdate
+    ? "Uploading artwork and saving your OCF changes. This page will open automatically when it is ready."
+    : "Uploading artwork and preparing your OCF. This page will open automatically when it is ready.";
   target.document.open();
   target.document.write(`<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Generating Order Confirmation Form</title>
+    <title>${action} Order Confirmation Form</title>
     <style>
       * { box-sizing: border-box; }
       body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #f8fafc; color: #172554; font-family: Arial, sans-serif; }
@@ -89,8 +97,8 @@ function showOcfGenerationLoading(target: Window) {
   <body>
     <main aria-live="polite">
       <div class="mark" aria-hidden="true">N</div>
-      <h1>Generating Order Confirmation Form</h1>
-      <p>Uploading artwork and preparing your OCF. This page will open automatically when it is ready.</p>
+      <h1>${action} Order Confirmation Form</h1>
+      <p>${message}</p>
       <div class="spinner" aria-label="Loading"></div>
     </main>
   </body>
@@ -588,6 +596,11 @@ export function GenerateOcfModal({
     }
 
     if (isEditing && editOcfId) {
+      // Reserve the tab while this click still counts as a direct user gesture.
+      // Artwork uploads can otherwise make the browser treat the later tab
+      // opening as a popup.
+      const ocfWindow = window.open("about:blank", "_blank");
+      if (ocfWindow) showOcfGenerationLoading(ocfWindow, "update");
       setCreating(true);
       try {
         const resolvedRows = await Promise.all(selectedRows.map(async (row) => ({ row, imagePath: row.uploadedPath || (await uploadRowFile(row)) })));
@@ -610,9 +623,23 @@ export function GenerateOcfModal({
         });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "Failed to revise OCF");
+        const internalHref = new URL(
+          `/app/order-confirmations/${editOcfId}`,
+          window.location.origin,
+        ).href;
+        if (ocfWindow && !ocfWindow.closed) {
+          try {
+            ocfWindow.location.replace(internalHref);
+          } catch {
+            window.location.assign(internalHref);
+          }
+        } else {
+          window.location.assign(internalHref);
+        }
         onUpdated?.();
         onClose();
       } catch (error: unknown) {
+        ocfWindow?.close();
         setFormError(error instanceof Error ? error.message : "Failed to revise OCF");
       } finally {
         setCreating(false);
