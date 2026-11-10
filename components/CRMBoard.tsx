@@ -876,6 +876,11 @@ export function CRMBoard({
   const [filterMode, setFilterMode] = useState<"quick" | "advanced">(
     "advanced",
   );
+  const [closedFilterActive, setClosedFilterActive] = useState(false);
+  const closedFilterPreviousAdvancedRef = useRef<{
+    rules: AdvancedFilterRule[];
+    join: "and" | "or";
+  } | null>(null);
   const [advancedRules, setAdvancedRules] = useState<AdvancedFilterRule[]>([
     { id: "initial", column: "", condition: "", value: "" },
   ]);
@@ -1724,6 +1729,17 @@ export function CRMBoard({
       ),
     [subitemStatusEntries],
   );
+  const closedFilterStatusOptions = useMemo(
+    () =>
+      AWARDED_OR_LATER_SUBITEM_STATUS_SYSTEM_KEYS.map((systemKey) =>
+        subitemStatusEntries.find(
+          (option) => option.systemKey === systemKey,
+        ),
+      ).filter((option): option is OptionEntry & { id: string } =>
+        Boolean(option?.id),
+      ),
+    [subitemStatusEntries],
+  );
   const contributesToAwardedOrLaterTotals = useCallback(
     (subitem: Pick<Subitem, "statusOptionId">) =>
       Boolean(
@@ -1732,6 +1748,41 @@ export function CRMBoard({
       ),
     [awardedOrLaterSubitemStatusIds],
   );
+  const toggleClosedFilter = useCallback(() => {
+    if (closedFilterActive) {
+      const previous = closedFilterPreviousAdvancedRef.current;
+      setAdvancedRules(
+        previous?.rules ?? [
+          { id: crypto.randomUUID(), column: "", condition: "", value: "" },
+        ],
+      );
+      setAdvancedJoin(previous?.join ?? "and");
+      closedFilterPreviousAdvancedRef.current = null;
+      setClosedFilterActive(false);
+      return;
+    }
+    if (!closedFilterStatusOptions.length) return;
+    closedFilterPreviousAdvancedRef.current = {
+      rules: advancedRules,
+      join: advancedJoin,
+    };
+    setAdvancedRules(
+      closedFilterStatusOptions.map((option) => ({
+        id: crypto.randomUUID(),
+        column: "subitem:status",
+        condition: "is",
+        value: option.value,
+        valueOptionId: option.id,
+      })),
+    );
+    setAdvancedJoin("or");
+    setClosedFilterActive(true);
+  }, [
+    advancedJoin,
+    advancedRules,
+    closedFilterActive,
+    closedFilterStatusOptions,
+  ]);
   const channelOptions = channelEntries.map((e) => e.value);
   const importanceOptions = importanceEntries.map((e) => e.value);
   const progressOptions = progressEntries.map((e) => e.value);
@@ -12258,6 +12309,17 @@ export function CRMBoard({
                     setFilterImportance("All");
                     setFilterReplyStatus("All");
                     setFilterChannel("All");
+                    if (closedFilterActive)
+                      setAdvancedRules([
+                        {
+                          id: crypto.randomUUID(),
+                          column: "",
+                          condition: "",
+                          value: "",
+                        },
+                      ]);
+                    setClosedFilterActive(false);
+                    closedFilterPreviousAdvancedRef.current = null;
                   }}
                   className="text-[10px] font-medium text-gray-400 hover:text-gray-700 disabled:opacity-40"
                   disabled={activeFilterCount === 0}
@@ -12472,6 +12534,20 @@ export function CRMBoard({
             </div>
           )}
         </div>
+
+        <button
+          type="button"
+          onClick={toggleClosedFilter}
+          disabled={!closedFilterStatusOptions.length}
+          title="Show clients with Awarded, To Verify At A Later Date, Verified, or Variation subitems"
+          className={`rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+            closedFilterActive
+              ? "bg-[#3b82f6] text-white hover:bg-[#2563eb]"
+              : "text-slate-700 hover:bg-slate-100"
+          }`}
+        >
+          Closed Filter
+        </button>
 
         <div className="relative" data-crm-menu-trigger>
           <button

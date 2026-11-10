@@ -1016,6 +1016,26 @@ export function ClientRow({
       ),
     [subitemStatusOptions],
   );
+  const closedAwardedOrLaterStatusIds = useMemo(
+    () =>
+      new Set(
+        [
+          "subitem_status_verified",
+          "subitem_status_variation_cost_difference",
+        ]
+          .map(
+            (key) =>
+              subitemStatusOptions.find((option) => option.systemKey === key)
+                ?.id,
+          )
+          .filter((id): id is string => Boolean(id)),
+      ),
+    [subitemStatusOptions],
+  );
+  const verifiedStatusColor =
+    subitemStatusOptions.find(
+      (option) => option.systemKey === "subitem_status_verified",
+    )?.color ?? "#3b82f6";
   const contributesToAwardedTotals = (subitem: Subitem) =>
     Boolean(
       subitem.statusOptionId &&
@@ -1040,6 +1060,13 @@ export function ClientRow({
     [subitemStatusOptions],
   );
   const awardedSubitems = client.subitems.filter(contributesToAwardedTotals);
+  const clientAwardedSubitemsClosed =
+    awardedSubitems.length > 0 &&
+    awardedSubitems.every(
+      (subitem) =>
+        Boolean(subitem.statusOptionId) &&
+        closedAwardedOrLaterStatusIds.has(subitem.statusOptionId ?? ""),
+    );
   const paidAwardedSubitems = awardedSubitems.filter(
     (subitem) => {
       const hasPaidOrResolvedStatus = [
@@ -4119,7 +4146,16 @@ export function ClientRow({
             order: columnOrderMap.client ?? 1,
           }}
         >
-          <div className="min-w-0 max-w-full overflow-hidden">
+          <div
+            className={`min-w-0 max-w-full overflow-hidden rounded ${
+              !isBlacklisted && clientAwardedSubitemsClosed
+                ? "-mx-[2px] flex h-full items-center px-[2px]"
+                : ""
+            }`}
+            {...(!isBlacklisted && clientAwardedSubitemsClosed
+              ? { style: { backgroundColor: verifiedStatusColor } }
+              : {})}
+          >
             <EditableCell
               value={client.name}
               onChange={(v) => onUpdate({ name: v })}
@@ -4128,7 +4164,7 @@ export function ClientRow({
               fitContent
               onAutoEditStarted={onAutoEditNameStarted}
               onEditingChange={setIsNameEditing}
-              className={`!justify-start select-text text-left font-semibold ${isBlacklisted ? "!bg-transparent !text-white !hover:bg-red-800" : "text-gray-800"}`}
+              className={`!justify-start select-text text-left font-semibold ${isBlacklisted ? "!bg-transparent !text-white !hover:bg-red-800" : clientAwardedSubitemsClosed ? "!text-white hover:!text-gray-800 focus:!text-gray-800" : "text-gray-800"}`}
             />
           </div>
           {isBlacklisted && (
