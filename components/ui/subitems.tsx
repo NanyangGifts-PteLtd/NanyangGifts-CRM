@@ -96,7 +96,6 @@ const LOCKED_COST_INPUTS = new Set([
   "manpower",
   "ls",
   "os",
-  "up",
   "idealMarkup",
   "paymentAmount",
 ]);
@@ -693,6 +692,9 @@ export function SubitemsTable({
   onPaymentRowsChanged,
 }: SubitemProps) {
   const confirm = useAppConfirmation();
+  const normalizedCurrentUserRole = String(currentUserRole ?? "")
+    .trim()
+    .toLowerCase();
   const [blacklistedSupplierNames, setBlacklistedSupplierNames] = useState<
     Set<string>
   >(new Set());
@@ -806,6 +808,10 @@ export function SubitemsTable({
       paymentRowId: string,
       updates: Partial<Omit<PaymentRow, "id" | "position">>,
     ) => {
+      if (normalizedCurrentUserRole === "sales") {
+        toast.error("Sales users cannot edit subpayments.");
+        return;
+      }
       let previousRow: PaymentRow | undefined;
       const optimisticRow = { ...updates };
 
@@ -873,7 +879,7 @@ export function SubitemsTable({
         });
       });
     },
-    [onPaymentRowsChanged, syncAutomaticPaymentStatus],
+    [normalizedCurrentUserRole, onPaymentRowsChanged, syncAutomaticPaymentStatus],
   );
   useEffect(() => {
     const load = async () => {
@@ -1256,8 +1262,11 @@ export function SubitemsTable({
       (subitemAssigneeMap[subitemId] ?? []).includes(currentUserId));
   const canEditSubitem = (subitemId: string) =>
     hasSubitemEditPermission(subitemId) && !subitemsLocked;
+  const canEditSubpaymentRows = (subitemId: string) =>
+    canEditSubitem(subitemId) && normalizedCurrentUserRole !== "sales";
   const canClearSubitemCell = (subitem: Subitem, cellKey: string | undefined) => {
     if (!canEditSubitem(subitem.id) || !cellKey) return false;
+    if (cellKey === "up" && normalizedCurrentUserRole === "pm") return false;
     if (cellKey.startsWith("custom:")) {
       return subitemCustomCols.some((column) => column.id === cellKey.slice(7));
     }
@@ -1288,6 +1297,12 @@ export function SubitemsTable({
     !hasSubitemEditPermission(subitemId)
       ? "You can only edit items that are assigned to you"
       : "This client's subitems are locked. Check with the director if there are any changes";
+  const subpaymentEditBlockMessage = (subitemId: string) => {
+    if (canEditSubpaymentRows(subitemId)) return undefined;
+    return normalizedCurrentUserRole === "sales"
+      ? "Sales users cannot edit subpayments."
+      : subitemEditBlockMessage(subitemId);
+  };
 
   const setDragPreview = (event: React.DragEvent, source: HTMLElement) => {
     if (!event.dataTransfer) return;
@@ -1419,9 +1434,6 @@ export function SubitemsTable({
     });
   };
 
-  const normalizedCurrentUserRole = String(currentUserRole ?? "")
-    .trim()
-    .toLowerCase();
   const canAccessPush =
     normalizedCurrentUserRole !== "sales" &&
     (normalizedCurrentUserRole === "pm" ||
@@ -2664,6 +2676,10 @@ export function SubitemsTable({
     // rest of the cost inputs remain locked once a subitem is Paid.
     const costLocked = paidCostLocked && !(key === "os" && isAssignedPm);
     const paidLockReason = costLocked ? PAID_COST_LOCK_MESSAGE : undefined;
+    const unitPricePmLocked = normalizedCurrentUserRole === "pm" && key === "up";
+    const unitPricePmLockReason = unitPricePmLocked
+      ? "PM users cannot edit U.P."
+      : undefined;
     const {
       quantity: qty,
       cSgd,
@@ -3047,8 +3063,8 @@ export function SubitemsTable({
                 onUpdateSubitem(sub.id, { up: normalizeUnitPriceInput(v) })
               }
               type="number"
-              readOnly={costLocked}
-              readOnlyReason={paidLockReason}
+              readOnly={costLocked || unitPricePmLocked}
+              readOnlyReason={unitPricePmLockReason ?? paidLockReason}
             />
           </div>
         );
@@ -4505,6 +4521,8 @@ export function SubitemsTable({
                               ? "Select a cell to clear."
                               : !canEditSubitem(sub.id)
                                 ? subitemEditBlockMessage(sub.id)
+                                : cellKey === "up" && normalizedCurrentUserRole === "pm"
+                                  ? "PM users cannot edit U.P."
                                 : isCostLocked(sub) && LOCKED_COST_INPUTS.has(cellKey)
                                   ? PAID_COST_LOCK_MESSAGE
                                   : "Labels, calculated fields, and managed fields cannot be cleared.",
@@ -4735,7 +4753,8 @@ export function SubitemsTable({
                                 </div>
                                 <div className="border-l border-[#e2e8f0]">
                                   <EditableCell
-                                    readOnly={!canEditSubitem(sub.id)}
+                                    readOnly={!canEditSubpaymentRows(sub.id)}
+                                    readOnlyReason={subpaymentEditBlockMessage(sub.id)}
                                     value={paymentRow.amount}
                                     type="number"
                                     onChange={(value) =>
@@ -4748,7 +4767,8 @@ export function SubitemsTable({
                                 </div>
                                 <div className="border-l border-[#e2e8f0]">
                                   <EditableCell
-                                    readOnly={!canEditSubitem(sub.id)}
+                                    readOnly={!canEditSubpaymentRows(sub.id)}
+                                    readOnlyReason={subpaymentEditBlockMessage(sub.id)}
                                     value={paymentRow.orderNumber}
                                     onChange={(value) =>
                                       savePaymentRow(sub.id, paymentRow.id, {
@@ -4811,7 +4831,8 @@ export function SubitemsTable({
                                     manageLabel="payment received"
                                     sectionCount={2}
                                     small
-                                    readOnly={!canEditSubitem(sub.id)}
+                                    readOnly={!canEditSubpaymentRows(sub.id)}
+                                    readOnlyReason={subpaymentEditBlockMessage(sub.id)}
                                   />
                                 </div>
                                 <div className="border-l border-[#e2e8f0] overflow-hidden">
@@ -4848,12 +4869,14 @@ export function SubitemsTable({
                                     manageLabel="mode of payment"
                                     sectionCount={3}
                                     small
-                                    readOnly={!canEditSubitem(sub.id)}
+                                    readOnly={!canEditSubpaymentRows(sub.id)}
+                                    readOnlyReason={subpaymentEditBlockMessage(sub.id)}
                                   />
                                 </div>
                                 <div className="relative border-l border-[#e2e8f0]">
                                   <EditableCell
-                                    readOnly={!canEditSubitem(sub.id)}
+                                    readOnly={!canEditSubpaymentRows(sub.id)}
+                                    readOnlyReason={subpaymentEditBlockMessage(sub.id)}
                                     value={paymentRow.remarks ?? ""}
                                     onChange={(value) =>
                                       savePaymentRow(sub.id, paymentRow.id, {
@@ -4865,66 +4888,84 @@ export function SubitemsTable({
                                     className="!justify-start px-3 py-2"
                                   />
                                 </div>
-                                <button
-                                  type="button"
-                                  disabled={!canEditSubitem(sub.id)}
-                                  onClick={async () => {
-                                    if (
-                                      !(await confirm({
-                                        title: "Remove payment row?",
-                                        description:
-                                          "This subpayment row will be removed.",
-                                        confirmLabel: "Remove",
-                                        destructive: true,
-                                      }))
-                                    )
-                                      return;
-                                    void deleteSubitemPaymentRow(
-                                      sub.id,
-                                      paymentRow.id,
-                                    ).then(() => {
-                                      const nextRows = sub.paymentRows.filter(
-                                        (row) => row.id !== paymentRow.id,
-                                      );
-                                      paymentRowsBySubitemRef.current.set(
-                                        sub.id,
-                                        nextRows,
-                                      );
-                                      onPaymentRowsChanged?.(sub.id, nextRows);
-                                      syncAutomaticPaymentStatus(sub.id);
-                                    });
-                                  }}
-                                  className="border-l border-[#e2e8f0] text-slate-300 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-40"
-                                  title="Remove payment row"
+                                <span
+                                  title={subpaymentEditBlockMessage(sub.id)}
                                 >
-                                  <Trash2 size={15} className="mx-auto" />
-                                </button>
+                                  <button
+                                    type="button"
+                                    disabled={!canEditSubpaymentRows(sub.id)}
+                                    onClick={async () => {
+                                      if (!canEditSubpaymentRows(sub.id)) return;
+                                      if (
+                                        !(await confirm({
+                                          title: "Remove payment row?",
+                                          description:
+                                            "This subpayment row will be removed.",
+                                          confirmLabel: "Remove",
+                                          destructive: true,
+                                        }))
+                                      )
+                                        return;
+                                      void deleteSubitemPaymentRow(
+                                        sub.id,
+                                        paymentRow.id,
+                                      ).then(() => {
+                                        const nextRows = sub.paymentRows.filter(
+                                          (row) => row.id !== paymentRow.id,
+                                        );
+                                        paymentRowsBySubitemRef.current.set(
+                                          sub.id,
+                                          nextRows,
+                                        );
+                                        onPaymentRowsChanged?.(
+                                          sub.id,
+                                          nextRows,
+                                        );
+                                        syncAutomaticPaymentStatus(sub.id);
+                                      });
+                                    }}
+                                    className="border-l border-[#e2e8f0] text-slate-300 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-40"
+                                    title={
+                                      canEditSubpaymentRows(sub.id)
+                                        ? "Remove payment row"
+                                        : undefined
+                                    }
+                                  >
+                                    <Trash2 size={15} className="mx-auto" />
+                                  </button>
+                                </span>
                               </div>
                             ),
                           )}
-                          <button
-                            type="button"
-                            disabled={!canEditSubitem(sub.id)}
-                            onClick={() =>
-                              void createSubitemPaymentRow(sub.id).then(
-                                (created) => {
-                                  const nextRows = [
-                                    ...sub.paymentRows,
-                                    created,
-                                  ];
-                                  paymentRowsBySubitemRef.current.set(
-                                    sub.id,
-                                    nextRows,
-                                  );
-                                  onPaymentRowsChanged?.(sub.id, nextRows);
-                                  syncAutomaticPaymentStatus(sub.id);
-                                },
-                              )
-                            }
-                            className="flex w-full items-center gap-1.5 px-3 py-2 text-left text-xs font-medium text-[#318d98] hover:bg-[#eefbfc] disabled:cursor-not-allowed disabled:opacity-50"
+                          <span
+                            className="block"
+                            title={subpaymentEditBlockMessage(sub.id)}
                           >
-                            <Plus size={15} /> Add payment
-                          </button>
+                            <button
+                              type="button"
+                              disabled={!canEditSubpaymentRows(sub.id)}
+                              onClick={() => {
+                                if (!canEditSubpaymentRows(sub.id)) return;
+                                void createSubitemPaymentRow(sub.id).then(
+                                  (created) => {
+                                    const nextRows = [
+                                      ...sub.paymentRows,
+                                      created,
+                                    ];
+                                    paymentRowsBySubitemRef.current.set(
+                                      sub.id,
+                                      nextRows,
+                                    );
+                                    onPaymentRowsChanged?.(sub.id, nextRows);
+                                    syncAutomaticPaymentStatus(sub.id);
+                                  },
+                                );
+                              }}
+                              className="flex w-full items-center gap-1.5 px-3 py-2 text-left text-xs font-medium text-[#318d98] hover:bg-[#eefbfc] disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              <Plus size={15} /> Add payment
+                            </button>
+                          </span>
                         </div>
                       </td>
                     </tr>
@@ -5346,7 +5387,8 @@ export function SubitemsTable({
           currencyOptions={currencyOptions}
           readOnly={
             !canEditSubitem(priceCalculatorSubitem.id) ||
-            isCostLocked(priceCalculatorSubitem)
+            isCostLocked(priceCalculatorSubitem) ||
+            normalizedCurrentUserRole === "pm"
           }
           onAddCurrency={onAddCurrency}
           onDeleteCurrency={onDeleteCurrency}

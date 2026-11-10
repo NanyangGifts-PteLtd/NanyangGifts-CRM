@@ -192,13 +192,16 @@ export function SubitemDetailView({
   const paidPaymentOptionId = options.payment.find(
     (option) => option.systemKey === "subitem_payment_paid",
   )?.id;
+  const normalizedCurrentUserRole = String(currentUserRole ?? "")
+    .trim()
+    .toLowerCase();
   const isAssignedPm =
-    String(currentUserRole ?? "").trim().toLowerCase() === "pm" &&
+    normalizedCurrentUserRole === "pm" &&
     Boolean(currentUserId) &&
     (clientAssigneeIds.includes(currentUserId!) ||
       clientPmAssigneeIds.includes(currentUserId!));
   const paidLockedFields = new Set([
-    "qty", "cost", "currency", "manpower", "ls", "os", "up",
+    "qty", "cost", "currency", "manpower", "ls", "os",
     "idealMarkup", "paymentAmount",
   ]);
   const formulaFields = new Set([
@@ -240,8 +243,13 @@ export function SubitemDetailView({
     Boolean(paidPaymentOptionId && subitem.paymentOptionId === paidPaymentOptionId) &&
     paidLockedFields.has(String(key)) &&
     !(key === "os" && isAssignedPm);
+  const isPmUnitPriceLocked = (key: keyof Subitem) =>
+    normalizedCurrentUserRole === "pm" && key === "up";
   const isFieldEditable = (key: keyof Subitem) =>
-    canEdit && !formulaFields.has(String(key)) && !isPaidLocked(key);
+    canEdit &&
+    !formulaFields.has(String(key)) &&
+    !isPaidLocked(key) &&
+    !isPmUnitPriceLocked(key);
   const logs = activityLog
     .filter((entry) => entry.subitemId === subitem.id)
     .sort(
@@ -276,6 +284,8 @@ export function SubitemDetailView({
               ? "This value is calculated from other fields."
               : isPaidLocked(key)
                 ? "This field is locked because the subitem has been Paid."
+                : isPmUnitPriceLocked(key)
+                  ? "PM users cannot edit U.P."
                 : readOnlyMessage,
           );
         }}
@@ -284,6 +294,8 @@ export function SubitemDetailView({
             ? "Calculated from other fields"
             : isPaidLocked(key)
               ? "Locked because the subitem has been Paid"
+              : isPmUnitPriceLocked(key)
+                ? "PM users cannot edit U.P."
               : undefined
         }
         className={`mt-2 min-h-10 rounded border border-slate-200 ${formulaFields.has(String(key)) ? "bg-violet-50/70 text-violet-900" : "bg-white"}`}

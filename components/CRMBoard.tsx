@@ -9087,6 +9087,13 @@ export function CRMBoard({
         return;
       }
       if (
+        String(currentUserRole ?? "").trim().toLowerCase() === "pm" &&
+        updates.up !== undefined
+      ) {
+        toast.error("PM users cannot edit U.P.");
+        return;
+      }
+      if (
         clients.find((client) => client.id === clientId)?.customFields
           ?.subitemsLocked === "true"
       ) {
@@ -9182,6 +9189,7 @@ export function CRMBoard({
     [
       canEditSubitemRecord,
       clients,
+      currentUserRole,
       showAssignmentPermissionError,
     ],
   );
