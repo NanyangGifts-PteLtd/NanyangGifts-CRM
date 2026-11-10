@@ -85,6 +85,8 @@ const SUBITEM_COLUMN_DESCRIPTIONS: Record<string, string> = {
   pl: "Production Lead Time",
   sl: "Shipping Lead Time",
   leadTime: "Production Lead Time + Shipping Lead Time",
+  cnTracking: "Displays multiple Tracking Numbers if there are multiple Timelines",
+  sgTracking: "Displays multiple Tracking Numbers if there are multiple Timelines",
 };
 
 const PAID_COST_LOCK_MESSAGE =
@@ -4255,7 +4257,8 @@ export function SubitemsTable({
                   >
                     <div className="flex items-center justify-center gap-1 overflow-hidden px-2">
                       <span className="truncate">{col.label}</span>
-                      {tablePrefix === "subitem" &&
+                      {(tablePrefix === "subitem" ||
+                        ["cnTracking", "sgTracking"].includes(col.key)) &&
                         SUBITEM_COLUMN_DESCRIPTIONS[col.key] && (
                           <button
                             type="button"
@@ -4275,7 +4278,8 @@ export function SubitemsTable({
                           </button>
                         )}
                     </div>
-                    {tablePrefix === "subitem" &&
+                    {(tablePrefix === "subitem" ||
+                      ["cnTracking", "sgTracking"].includes(col.key)) &&
                       openColumnInfo === col.key &&
                       SUBITEM_COLUMN_DESCRIPTIONS[col.key] && (
                         <div

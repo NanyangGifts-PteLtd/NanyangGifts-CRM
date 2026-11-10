@@ -12676,15 +12676,17 @@ export function CRMBoard({
           )}
         </div>
 
-        <div className="flex-1" />
-
         <button
           type="button"
           onClick={() => setTrackingView((enabled) => !enabled)}
-          className={`flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors ${trackingView ? "bg-[#0f8da8] text-white" : "text-slate-700 hover:bg-slate-100"}`}
+          aria-pressed={trackingView}
+          title={trackingView ? "Exit Tracking View" : "Open Tracking View"}
+          className={`flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium text-white shadow-sm transition-colors ${trackingView ? "bg-[#0b7188] ring-2 ring-[#7BCBD5]/50" : "bg-[#0f8da8] hover:bg-[#0b7188]"}`}
         >
           Tracking View
         </button>
+
+        <div className="flex-1" />
       </div>
 
       <AlertDialog
