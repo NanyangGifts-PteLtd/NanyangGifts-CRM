@@ -512,10 +512,6 @@ export async function POST(request: NextRequest) {
     const otherReason = await getSystemLabel("additional_cost_reason", "additional_cost_reason_other");
     if (reason.id === otherReason.id && !String(body.values?.remarks ?? "").trim())
       throw new Error("Remarks is required when Reason is Other.");
-    const shippingUpsReason = await getSystemLabel(
-      "additional_cost_reason",
-      "additional_cost_reason_shipping_ups",
-    );
     const { data: client, error: clientError } = await supabaseAdmin
       .from("clients")
       .select("id, custom_fields")
@@ -527,17 +523,12 @@ export async function POST(request: NextRequest) {
     const { data: relatedSubitems, error: relatedSubitemsError } =
       await supabaseAdmin
         .from("subitems")
-        .select("id, name, custom_fields, status_option_id")
+        .select("id, name, status_option_id")
         .eq("client_id", client.id)
         .is("deleted_at", null)
         .in("id", relatedSubitemIds);
     if (relatedSubitemsError) throw relatedSubitemsError;
-    if (
-      (relatedSubitems ?? []).length !== relatedSubitemIds.length ||
-      (relatedSubitems ?? []).some(
-        (subitem) => subitem.custom_fields?.additionalCostId,
-      )
-    )
+    if ((relatedSubitems ?? []).length !== relatedSubitemIds.length)
       throw new Error("One or more selected Related Subitems are unavailable.");
     await assertAwardedOrLaterRelatedSubitems(relatedSubitems ?? []);
     const relatedNameById = new Map(
@@ -572,9 +563,7 @@ export async function POST(request: NextRequest) {
     const createdAt = new Date().toISOString();
     // The financial formula columns resolve exchange rates from the stable
     // currency label ID, so persist both the chosen label text and ID.
-    const status = isOtherVoucher && reason.id === shippingUpsReason.id
-      ? await getSystemLabel("subitem_status", "subitem_status_awarded")
-      : await ensureAdditionalCostStatus();
+    const status = await ensureAdditionalCostStatus();
     const { data: latest, error: latestError } = await supabaseAdmin
       .from("additional_costs")
       .select("position")
@@ -830,17 +819,12 @@ export async function PATCH(request: NextRequest) {
       const { data: relatedSubitems, error: relatedSubitemsError } =
         await supabaseAdmin
           .from("subitems")
-          .select("id, name, custom_fields, status_option_id")
+          .select("id, name, status_option_id")
           .eq("client_id", existing.client_id)
           .is("deleted_at", null)
           .in("id", ids);
       if (relatedSubitemsError) throw relatedSubitemsError;
-      if (
-        (relatedSubitems ?? []).length !== ids.length ||
-        (relatedSubitems ?? []).some(
-          (subitem) => subitem.custom_fields?.additionalCostId,
-        )
-      )
+      if ((relatedSubitems ?? []).length !== ids.length)
         throw new Error("One or more selected Related Subitems are unavailable.");
       await assertAwardedOrLaterRelatedSubitems(relatedSubitems ?? []);
       const names = new Map((relatedSubitems ?? []).map((subitem) => [subitem.id, subitem.name]));

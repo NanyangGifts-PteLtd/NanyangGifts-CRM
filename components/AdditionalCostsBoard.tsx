@@ -1259,10 +1259,8 @@ export function AdditionalCostsBoard({
         next.set(client.id, client);
         return Array.from(next.values());
       });
-      const eligibleSubitems = client.subitems.filter(
-        (subitem) =>
-          !subitem.customFields?.additionalCostId &&
-          awardedOrLaterSubitemStatusIds.has(subitem.statusOptionId ?? ""),
+      const eligibleSubitems = client.subitems.filter((subitem) =>
+        awardedOrLaterSubitemStatusIds.has(subitem.statusOptionId ?? ""),
       );
       // IDs are unambiguous. Older vouchers only retained a comma-separated
       // display name, so keep that as a one-time compatibility fallback while
@@ -2391,10 +2389,8 @@ export function AdditionalCostsBoard({
     return () => window.clearTimeout(timer);
   }, [loadPickerClientPage, pickerOpen, pickerQuery, selectedVoucherClientId]);
   const renderRelatedSubitemSelector = (clientId: string) => {
-    const subitems = (clientsById.get(clientId)?.subitems ?? []).filter(
-      (subitem) =>
-        !subitem.customFields?.additionalCostId &&
-        awardedOrLaterSubitemStatusIds.has(subitem.statusOptionId ?? ""),
+    const subitems = (clientsById.get(clientId)?.subitems ?? []).filter((subitem) =>
+      awardedOrLaterSubitemStatusIds.has(subitem.statusOptionId ?? ""),
     );
     const selected = subitems.filter((subitem) =>
       voucherDraft.relatedSubitemIds.includes(subitem.id),
@@ -2483,10 +2479,8 @@ export function AdditionalCostsBoard({
     row: AdditionalCost,
     client: Client | undefined,
   ) => {
-    const subitems = (client?.subitems ?? []).filter(
-      (subitem) =>
-        !subitem.customFields?.additionalCostId &&
-        awardedOrLaterSubitemStatusIds.has(subitem.statusOptionId ?? ""),
+    const subitems = (client?.subitems ?? []).filter((subitem) =>
+      awardedOrLaterSubitemStatusIds.has(subitem.statusOptionId ?? ""),
     );
     const selectedNames = new Set(
       row.items_sent
