@@ -2777,7 +2777,7 @@ export function AdditionalCostsBoard({
         style={{ minWidth: columnGridWidth }}
       >
       <div
-        className="flex w-full cursor-pointer items-center border-l-4 hover:bg-slate-50"
+        className={`flex w-full cursor-pointer border-l-4 hover:bg-slate-50 ${collapsedVoucherGroups[group.id] ? "min-h-[60px] items-start py-1" : "h-[34px] items-center"}`}
         style={{ borderLeftColor: group.accent }}
         onClick={() =>
           setCollapsedVoucherGroups((current) => ({
@@ -2786,14 +2786,16 @@ export function AdditionalCostsBoard({
           }))
         }
       >
-        <div className="flex min-w-0 items-center gap-2 px-4 py-3 text-left">
+        <div className={`flex min-w-0 gap-2 px-4 text-left ${collapsedVoucherGroups[group.id] ? "items-start" : "items-center"}`}>
           {collapsedVoucherGroups[group.id] ? (
             <ChevronRight size={18} style={{ color: group.accent }} />
           ) : (
             <ChevronDown size={18} style={{ color: group.accent }} />
           )}
-          <span className="text-lg font-semibold text-slate-800">{group.name}</span>
-          <span className="text-sm text-slate-500">{group.rows.length} vouchers</span>
+          <span className={collapsedVoucherGroups[group.id] ? "flex flex-col" : "flex items-center gap-2"}>
+            <span className="text-lg font-semibold text-slate-800">{group.name}</span>
+            <span className="text-[13px] text-slate-500">{group.rows.length} vouchers</span>
+          </span>
         </div>
 
         <button

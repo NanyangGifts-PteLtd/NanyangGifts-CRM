@@ -626,7 +626,7 @@ export function SamplesSentBoard() {
   }, [groups, queryActive, visibleRows]);
 
   return (
-    <section className="crm-board min-h-full min-w-max bg-[#f8fafc] py-2 pl-8 pr-3 text-slate-700">
+    <section className="crm-board min-h-full min-w-max bg-[#f8fafc] p-4 text-slate-700 sm:p-6">
       <SamplesToolbar
         toolbarFiltersRef={toolbarFiltersRef}
         onNewRecord={() => setShowCreator(true)}
@@ -808,7 +808,7 @@ function SamplesToolbar({
     `${column.label} ${column.category}`.toLowerCase().includes(searchColumnQuery.toLowerCase()),
   );
   return (
-    <div ref={toolbarFiltersRef} className="relative z-30 mb-2 flex items-center gap-2">
+    <div ref={toolbarFiltersRef} className="relative z-30 mb-4 flex items-center gap-2">
       <h1 className="text-xl text-slate-800">Samples Sent</h1>
       <button
         type="button"
@@ -989,27 +989,22 @@ function SamplesGroup({
   return (
     <section className="relative min-w-max overflow-visible border-y border-[#d0d4e4] bg-white">
       <div
-        className="flex h-10 border-l-4"
+        className={`flex border-l-4 ${group.collapsed ? "min-h-[60px] items-start py-1" : "h-[34px] items-center"}`}
         style={{ borderLeftColor: group.color }}
       >
         <button
           type="button"
           onClick={onToggle}
-          className="flex flex-1 items-center gap-1.5 px-3 text-left"
+          className={`flex flex-1 gap-1.5 px-3 text-left ${group.collapsed ? "items-start" : "items-center"}`}
         >
           {group.collapsed ? (
             <ChevronRight size={15} style={{ color: group.color }} />
           ) : (
             <ChevronDown size={15} style={{ color: group.color }} />
           )}
-          <span
-            className="crm-group-name"
-            style={{ color: group.color }}
-          >
-            {group.name}
-          </span>
-          <span className="text-[11px] text-slate-400">
-            {rows.length} sample record{rows.length === 1 ? "" : "s"}
+          <span className={group.collapsed ? "flex flex-col" : "flex items-center gap-2"}>
+            <span className="crm-group-name" style={{ color: group.color }}>{group.name}</span>
+            <span className="text-[13px] text-slate-400">{rows.length} sample record{rows.length === 1 ? "" : "s"}</span>
           </span>
         </button>
         {canManage && (
