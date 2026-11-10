@@ -1136,6 +1136,14 @@ export function ClientRow({
     },
     [client.id, onTrackingStatusSummaryChanged],
   );
+  const hasTrackingInvoices =
+    Object.values(trackingStatusSummary).some((count) => Number(count) > 0) ||
+    Boolean(client.trackingInvoiceNumbers?.trim());
+  const trackingQuoteInvoiceButtonClassName = !hasTrackingInvoices
+    ? "border-slate-200 bg-white text-slate-600 hover:border-sky-300 hover:bg-sky-50 hover:text-sky-700"
+    : trackingStatusSummaryIsPaid
+      ? "border-emerald-500 bg-emerald-500 text-white hover:bg-emerald-600"
+      : "border-red-500 bg-red-500 text-white hover:bg-red-600";
   const [isLoadingTrackingInvoices, setIsLoadingTrackingInvoices] =
     useState(false);
   const [trackingInvoiceRows, setTrackingInvoiceRows] = useState<
@@ -4147,10 +4155,10 @@ export function ClientRow({
                     ? "Hide this client's quotes and linked invoices"
                     : "Show this client's quotes and linked invoices"
                 }
-                className={`whitespace-nowrap rounded border px-2 py-1 text-[10px] font-semibold transition-colors ${
+                className={`whitespace-nowrap rounded border px-2 py-1 text-[10px] font-semibold transition-colors ${trackingQuoteInvoiceButtonClassName} ${
                   isTrackingInvoicesExpanded
-                    ? "border-sky-300 bg-sky-100 text-sky-700 hover:bg-sky-200"
-                    : "border-slate-200 bg-white text-slate-600 hover:border-sky-300 hover:bg-sky-50 hover:text-sky-700"
+                    ? "ring-2 ring-sky-300/60"
+                    : ""
                 }`}
               >
                 Quote & Invoice
