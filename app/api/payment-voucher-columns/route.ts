@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
   const { value } = await request.json();
   if (
     !value ||
-    !["courier", "other", "quickbooks_bills_only"].every(
+    !["courier", "other", "payment_requests", "quickbooks_bills_only"].every(
       (group) =>
         Array.isArray(value[group]?.order) &&
         typeof value[group]?.widths === "object",

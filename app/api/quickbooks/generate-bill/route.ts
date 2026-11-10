@@ -110,6 +110,7 @@ export async function POST(request: NextRequest) {
     const body = JSON.parse(payload) as {
       clientId?: string;
       voucherId?: string;
+      paymentVoucherGroup?: "other" | "payment_requests";
       voucher?: {
         cost?: unknown;
         reason?: unknown;
@@ -160,6 +161,8 @@ export async function POST(request: NextRequest) {
     const bill = body.bill;
     const voucher = body.voucher;
     const existingVoucherId = String(body.voucherId ?? "").trim();
+    const requestedPaymentRequest =
+      body.paymentVoucherGroup === "payment_requests";
     if (!bill || (!voucher && !existingVoucherId))
       throw new Error("Bill and payment voucher details are required.");
     let supplierId = String(bill.supplierId ?? "").trim();
@@ -212,6 +215,8 @@ export async function POST(request: NextRequest) {
         ]
       : [];
     const mergeSubitemId = String(voucher?.mergeSubitemId ?? "").trim();
+    if (requestedPaymentRequest && mergeSubitemId)
+      throw new Error("Payment Requests cannot merge into a CRM subitem.");
     if (mergeSubitemId && relatedSubitemIds.includes(mergeSubitemId))
       throw new Error("The merge subitem cannot also be a Related Subitem.");
     if ((!existingVoucherId || voucher) && !relatedSubitemIds.length)
@@ -244,8 +249,6 @@ export async function POST(request: NextRequest) {
       .maybeSingle();
     if (clientError || !client)
       throw new Error("The selected client is no longer available.");
-    if (client.custom_fields?.subitemsLocked === "true")
-      throw new Error("This client is locked.");
     if (!["admin", "director"].includes(role)) {
       const { data: assignment, error } = await supabaseAdmin
         .from("client_assignees")
@@ -268,11 +271,12 @@ export async function POST(request: NextRequest) {
       has_quickbooks_bill: boolean | null;
       deactivated_at: string | null;
       is_draft?: boolean | null;
+      voucher_group?: string | null;
     } | null = null;
     if (existingVoucherId) {
       const { data, error } = await supabaseAdmin
         .from("additional_costs")
-        .select("id, client_id, courier_option_id, reason, has_quickbooks_bill, deactivated_at, is_draft")
+        .select("id, client_id, courier_option_id, reason, has_quickbooks_bill, deactivated_at, is_draft, voucher_group")
         .eq("id", existingVoucherId)
         .is("deleted_at", null)
         .maybeSingle();
@@ -280,6 +284,12 @@ export async function POST(request: NextRequest) {
         throw new Error("The payment voucher is no longer available.");
       if (data.deactivated_at)
         throw new Error("A deactivated Payment Voucher cannot be updated.");
+      if (
+        data.voucher_group !== "other" &&
+        data.voucher_group !== "payment_requests" &&
+        !(data.is_draft && !data.voucher_group)
+      )
+        throw new Error("This payment voucher is not in a Bill group.");
       const [lalamoveCourier, easyparcelCourier] = await Promise.all([
         getSystemLabel(
           "additional_cost_courier",
@@ -302,6 +312,13 @@ export async function POST(request: NextRequest) {
         );
       existingVoucher = data;
     }
+    const isPaymentRequest = existingVoucher
+      ? existingVoucher.voucher_group === "payment_requests"
+      : requestedPaymentRequest;
+    if (!isPaymentRequest && client.custom_fields?.subitemsLocked === "true")
+      throw new Error("This client is locked.");
+    if (isPaymentRequest && mergeSubitemId)
+      throw new Error("Payment Requests cannot merge into a CRM subitem.");
     const { data: relatedSubitems, error: relatedError } = await supabaseAdmin
       .from("subitems")
       .select("id, name, custom_fields")
@@ -611,6 +628,7 @@ export async function POST(request: NextRequest) {
       trip_id: existingVoucher?.is_draft
         ? null
         : await nextPaymentVoucherReference(),
+      voucher_group: isPaymentRequest ? "payment_requests" : "other",
       ...draftFinalValues,
     };
     const voucherResult = existingVoucher?.is_draft
@@ -636,6 +654,16 @@ export async function POST(request: NextRequest) {
         `Could not save the payment voucher for this QuickBooks Bill: ${voucherError.message}`,
       );
     try {
+      if (isPaymentRequest)
+        return NextResponse.json(
+          {
+            row: voucherRow,
+            billId: quickBooksBill.Id,
+            docNumber: quickBooksBill.DocNumber ?? invoiceNumber,
+            attachmentErrors,
+          },
+          { status: 201 },
+        );
       if (mergeSubitemId) {
         const paymentDone = await getSystemLabel("payment_received", "payment_received_yes");
         const paidStatus = await getSystemLabel("payment_status", "payment_status_paid");

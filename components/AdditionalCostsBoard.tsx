@@ -100,7 +100,11 @@ type AdditionalCost = {
     url?: string;
     storagePath?: string;
   }>;
-  voucher_group?: "courier" | "other" | "quickbooks_bills_only";
+  voucher_group?:
+    | "courier"
+    | "other"
+    | "payment_requests"
+    | "quickbooks_bills_only";
   is_draft?: boolean;
   draft_bill?: {
     supplierId?: string;
@@ -251,7 +255,11 @@ const allVoucherColumns = Array.from(
     ].map((column) => [column.key, column]),
   ).values(),
 );
-type VoucherGroupId = "courier" | "other" | "quickbooks_bills_only";
+type VoucherGroupId =
+  | "courier"
+  | "other"
+  | "payment_requests"
+  | "quickbooks_bills_only";
 type VoucherColumnLayout = { order: string[]; widths: Record<string, number> };
 const defaultVoucherColumnLayout = (
   baseColumns: Column[],
@@ -407,6 +415,7 @@ export function AdditionalCostsBoard({
   >({
     courier: true,
     other: true,
+    payment_requests: true,
     quickbooks_bills_only: true,
   });
   const [labelOptions, setLabelOptions] = useState<
@@ -418,6 +427,7 @@ export function AdditionalCostsBoard({
   >({
     courier: defaultVoucherColumnLayout(initialColumns),
     other: defaultVoucherColumnLayout(otherVoucherColumns),
+    payment_requests: defaultVoucherColumnLayout(otherVoucherColumns),
     quickbooks_bills_only: defaultVoucherColumnLayout(
       quickBooksBillsOnlyColumns,
     ),
@@ -658,7 +668,7 @@ export function AdditionalCostsBoard({
   // user can continue completing their saved bill details.
   const isOtherVoucherInformationOnlyEdit =
     Boolean(editingVoucher) &&
-    voucherCreationGroup === "other" &&
+    ["other", "payment_requests"].includes(voucherCreationGroup) &&
     !editingVoucher?.is_draft;
   useEffect(() => {
     return () => {
@@ -1216,6 +1226,7 @@ export function AdditionalCostsBoard({
         setVoucherColumnLayouts({
           courier: normalise("courier", initialColumns),
           other: normalise("other", otherVoucherColumns),
+          payment_requests: normalise("payment_requests", otherVoucherColumns),
           quickbooks_bills_only: normalise(
             "quickbooks_bills_only",
             quickBooksBillsOnlyColumns,
@@ -1377,7 +1388,11 @@ export function AdditionalCostsBoard({
       );
       setEditingVoucher(row);
       setVoucherCreationGroup(
-        row.voucher_group === "other" ? "other" : "courier",
+        row.voucher_group === "payment_requests"
+          ? "payment_requests"
+          : row.voucher_group === "other"
+            ? "other"
+            : "courier",
       );
       setOtherBillChoice(row.is_draft ? "add" : null);
       setSelectedVoucherClientId(row.client_id);
@@ -1552,6 +1567,7 @@ export function AdditionalCostsBoard({
           action: "save-draft",
           ...(editingVoucher?.is_draft ? { id: editingVoucher.id } : {}),
           clientId: selectedVoucherClientId,
+          paymentVoucherGroup: voucherCreationGroup,
           values: voucherDraft,
           bill: {
             ...billDraft,
@@ -1582,7 +1598,7 @@ export function AdditionalCostsBoard({
       setSavedDraftAttachments(attachmentFiles);
       setBillDraft((draft) => ({ ...draft, attachments: [] }));
       toast.success("Payment Voucher draft saved", {
-        description: `${result.row.trip_id} can be continued from Group 2.`,
+        description: `${result.row.trip_id} can be continued from ${voucherCreationGroup === "payment_requests" ? "Payment Requests" : "Group 2"}.`,
       });
       if (closeAfterSave) {
         closePaymentVoucherPreview();
@@ -1611,7 +1627,7 @@ export function AdditionalCostsBoard({
   };
   const requestClosePaymentVoucherPreview = () => {
     const canSaveDraft =
-      voucherCreationGroup === "other" &&
+      ["other", "payment_requests"].includes(voucherCreationGroup) &&
       Boolean(selectedVoucherClientId) &&
       !quickBooksBillOnlyMode &&
       (!editingVoucher || Boolean(editingVoucher.is_draft));
@@ -1627,7 +1643,7 @@ export function AdditionalCostsBoard({
       if (event.key !== "Escape") return;
       event.preventDefault();
       const canSaveDraft =
-        voucherCreationGroup === "other" &&
+        ["other", "payment_requests"].includes(voucherCreationGroup) &&
         Boolean(selectedVoucherClientId) &&
         !quickBooksBillOnlyMode &&
         (!editingVoucher || Boolean(editingVoucher.is_draft));
@@ -1728,7 +1744,7 @@ export function AdditionalCostsBoard({
     const pendingRow = pendingQuickBooksBillRow({
       id: pendingId,
       clientId,
-      voucherGroup: existingVoucher?.voucher_group ?? "other",
+      voucherGroup: existingVoucher?.voucher_group ?? voucherCreationGroup,
       bill: draft,
       voucher: existingVoucher?.is_draft
         ? voucherDraft
@@ -1768,10 +1784,16 @@ export function AdditionalCostsBoard({
             ? {
                 clientId,
                 voucherId: existingVoucher.id,
+                paymentVoucherGroup: existingVoucher.voucher_group,
                 ...(existingVoucher.is_draft ? { voucher: voucherDraft } : {}),
                 bill,
               }
-            : { clientId, voucher: voucherDraft, bill },
+            : {
+                clientId,
+                paymentVoucherGroup: voucherCreationGroup,
+                voucher: voucherDraft,
+                bill,
+              },
         ),
       );
       attachments.forEach((attachment) =>
@@ -1961,7 +1983,13 @@ export function AdditionalCostsBoard({
   const openAddBill = (row: AdditionalCost, prefillFromBrokenLink = false) => {
     const client = clientsById.get(row.client_id);
     const billOnly = row.voucher_group === "quickbooks_bills_only";
-    setVoucherCreationGroup(billOnly ? "quickbooks_bills_only" : "other");
+    setVoucherCreationGroup(
+      billOnly
+        ? "quickbooks_bills_only"
+        : row.voucher_group === "payment_requests"
+          ? "payment_requests"
+          : "other",
+    );
     setQuickBooksBillOnlyMode(billOnly);
     setSelectedVoucherClientId(billOnly ? null : row.client_id);
     setBillTargetVoucher(row);
@@ -2138,7 +2166,9 @@ export function AdditionalCostsBoard({
       setVoucherCreationGroup(
         row.voucher_group === "quickbooks_bills_only"
           ? "quickbooks_bills_only"
-          : "other",
+          : row.voucher_group === "payment_requests"
+            ? "payment_requests"
+            : "other",
       );
       setQuickBooksBillOnlyMode(row.voucher_group === "quickbooks_bills_only");
       setSelectedVoucherClientId(row.client_id);
@@ -3050,11 +3080,20 @@ export function AdditionalCostsBoard({
         (row) =>
           row.voucher_group !== "quickbooks_bills_only" &&
           row.voucher_group !== "courier" &&
+          row.voucher_group !== "payment_requests" &&
           (Boolean(row.voucher_group) ||
             !row.courier_option_id ||
             !courierVoucherOptionIds.has(row.courier_option_id)),
       ),
       accent: "#8b5cf6",
+    },
+    {
+      id: "payment_requests" as const,
+      name: "Payment Requests",
+      rows: filteredRows.filter(
+        (row) => row.voucher_group === "payment_requests",
+      ),
+      accent: "#0ea5e9",
     },
     ...(["admin", "director", "dev"].includes(
       String(currentUserRole ?? "").toLowerCase(),
@@ -3076,6 +3115,7 @@ export function AdditionalCostsBoard({
     setCollapsedVoucherGroups({
       courier: false,
       other: false,
+      payment_requests: false,
       quickbooks_bills_only: false,
     });
   }, [activeVoucherRules.length, voucherSearch]);
@@ -3139,7 +3179,7 @@ export function AdditionalCostsBoard({
     const baseColumns =
       group.id === "courier"
         ? initialColumns
-        : group.id === "other"
+        : group.id === "other" || group.id === "payment_requests"
           ? otherVoucherColumns
           : quickBooksBillsOnlyColumns;
     const layout = voucherColumnLayouts[group.id];
@@ -4409,7 +4449,9 @@ export function AdditionalCostsBoard({
                     ? "Create QuickBooks Bill"
                     : selectedVoucherClientId
                       ? billTargetVoucher ||
-                        (voucherCreationGroup === "other" &&
+                        (["other", "payment_requests"].includes(
+                          voucherCreationGroup,
+                        ) &&
                           otherBillChoice === "add")
                         ? "Prepare QuickBooks Bill"
                         : editingVoucher
@@ -4469,7 +4511,8 @@ export function AdditionalCostsBoard({
                       </p>
                     </section>
                   ) : null}
-                  {selectedVoucherClientId &&
+                  {voucherCreationGroup === "other" &&
+                  selectedVoucherClientId &&
                   !quickBooksBillOnlyMode &&
                   otherBillChoice !== null ? (
                     <section className="border-t border-slate-200 pt-4">
@@ -4611,7 +4654,9 @@ export function AdditionalCostsBoard({
                                 ) : null}
                               </label>
                             </FileDropTarget>
-                            {voucherCreationGroup === "other" &&
+                            {["other", "payment_requests"].includes(
+                              voucherCreationGroup,
+                            ) &&
                             !quickBooksBillOnlyMode &&
                             (!billTargetVoucher ||
                               Boolean(editingVoucher?.is_draft)) ? (
@@ -5576,6 +5621,7 @@ export function AdditionalCostsBoard({
                       {clientLabel(clientsById.get(selectedVoucherClientId!)!)}
                     </p>
                   </section>
+                  {voucherCreationGroup === "courier" ? (
                   <section className="border-t border-slate-200 pt-4">
                     <h3 className="font-semibold text-slate-800">
                       (Optional) Merge Subitem
@@ -5606,6 +5652,7 @@ export function AdditionalCostsBoard({
                       {renderMergeSubitemSelector(selectedVoucherClientId!)}
                     </label>
                   </section>
+                  ) : null}
                   <p className="text-sm font-medium text-slate-700">
                     Project:{" "}
                     {editingVoucher

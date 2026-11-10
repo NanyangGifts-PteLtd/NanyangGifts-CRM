@@ -50,7 +50,11 @@ async function authorize() {
 
 function failure(error: unknown) {
   const message =
-    error instanceof Error ? error.message : "Additional Costs request failed";
+    error instanceof Error
+      ? error.message
+      : typeof error === "object" && error !== null && "message" in error
+        ? String(error.message)
+        : "Additional Costs request failed";
   return NextResponse.json(
     { error: message },
     {
@@ -345,7 +349,7 @@ export async function POST(request: NextRequest) {
       action?: "save-draft";
       id?: string;
       clientId?: string;
-      paymentVoucherGroup?: "courier" | "other";
+      paymentVoucherGroup?: "courier" | "other" | "payment_requests";
       values?: {
         cost?: unknown;
         reason?: unknown;
@@ -421,7 +425,10 @@ export async function POST(request: NextRequest) {
         currency_option_id: currency.id,
         related_subitem_ids: relatedSubitemIds,
         items_sent: itemsSent,
-        voucher_group: "other",
+        voucher_group:
+          body.paymentVoucherGroup === "payment_requests"
+            ? "payment_requests"
+            : "other",
         is_draft: true,
         draft_bill: { ...(body.bill ?? {}), mergeSubitemId: body.values?.mergeSubitemId ?? "" },
         draft_ocr: body.ocr ?? {},
@@ -487,14 +494,16 @@ export async function POST(request: NextRequest) {
       const [prepared] = await prepareRowsForUser([row], user.id, role);
       return NextResponse.json({ row: prepared }, { status: draftId ? 200 : 201 });
     }
+    const isPaymentRequest = body.paymentVoucherGroup === "payment_requests";
     const isOtherVoucher = body.paymentVoucherGroup === "other";
+    const isBillVoucher = isOtherVoucher || isPaymentRequest;
     const cost = Number(body.values?.cost);
     const reason = await resolveLabel(
       "additional_cost_reason",
       body.values?.reason,
     );
     const courierOptionId = String(body.values?.courierOptionId ?? "").trim();
-    const courier = isOtherVoucher
+    const courier = isBillVoucher
       ? { value: "", id: null }
       : courierOptionId
         ? await resolveLabelById("additional_cost_courier", courierOptionId)
@@ -511,6 +520,8 @@ export async function POST(request: NextRequest) {
       ? [...new Set(body.values.relatedSubitemIds.filter((id): id is string => typeof id === "string" && id.trim().length > 0))]
       : [];
     const mergeSubitemId = String(body.values?.mergeSubitemId ?? "").trim();
+    if (isPaymentRequest && mergeSubitemId)
+      throw new Error("Payment Requests cannot merge into a CRM subitem.");
     if (mergeSubitemId && relatedSubitemIds.includes(mergeSubitemId))
       throw new Error("The merge subitem cannot also be a Related Subitem.");
     if (!Number.isFinite(cost) || cost <= 0)
@@ -550,13 +561,12 @@ export async function POST(request: NextRequest) {
       .map((id) => relatedNameById.get(id) ?? "")
       .filter(Boolean)
       .join(", ");
-    if (client.custom_fields?.subitemsLocked === "true") {
+    if (!isPaymentRequest && client.custom_fields?.subitemsLocked === "true") {
       throw new Error(
         "This client is locked. Unlock its subitems on the CRM Board before adding an additional cost.",
       );
     }
-    // Creating an additional cost effectively adds a subitem to the client,
-    // so it follows the CRM Board's client edit-assignment rule.
+    // Voucher creation is scoped to the same client assignment rule as CRM edits.
     if (!["admin", "director"].includes(role)) {
       const { data: assignment, error: assignmentError } = await supabaseAdmin
         .from("client_assignees")
@@ -575,7 +585,7 @@ export async function POST(request: NextRequest) {
     const createdAt = new Date().toISOString();
     // The financial formula columns resolve exchange rates from the stable
     // currency label ID, so persist both the chosen label text and ID.
-    const status = await ensureAdditionalCostStatus();
+    const status = isPaymentRequest ? null : await ensureAdditionalCostStatus();
     const { data: latest, error: latestError } = await supabaseAdmin
       .from("additional_costs")
       .select("position")
@@ -599,7 +609,11 @@ export async function POST(request: NextRequest) {
         related_subitem_ids: relatedSubitemIds,
         courier: courier.value,
         courier_option_id: courier.id,
-        voucher_group: isOtherVoucher ? "other" : "courier",
+        voucher_group: isPaymentRequest
+          ? "payment_requests"
+          : isOtherVoucher
+            ? "other"
+            : "courier",
         remarks: String(body.values?.remarks ?? "").trim(),
         trip_id: nextReference,
         order_number: orderNumber,
@@ -611,14 +625,16 @@ export async function POST(request: NextRequest) {
       .select("*")
       .single();
     if (error) throw error;
-    if (mergeSubitemId) {
+    if (isPaymentRequest) {
+      // Payment Requests deliberately have no corresponding CRM subitem.
+    } else if (mergeSubitemId) {
       try {
         const paymentDone = await getSystemLabel("payment_received", "payment_received_yes");
         const paidStatus = await getSystemLabel("payment_status", "payment_status_paid");
         const merged = await mergePaymentVoucherSubitem({
           clientId: client.id, subitemId: mergeSubitemId, voucherId: data.id,
           name: paymentVoucherSubitemName(reason.value, courier.value), cost, currency,
-          status, orderNumber, modeOfPayment, paymentDone, paidStatus,
+          status: status!, orderNumber, modeOfPayment, paymentDone, paidStatus,
         });
         await addActivityLog({ clientId: client.id, subitemId: merged.subitemId,
           subitemName: paymentVoucherSubitemName(reason.value, courier.value), actorId: user.id,
@@ -644,8 +660,8 @@ export async function POST(request: NextRequest) {
           position: Number(lastSubitem?.position ?? -1) + 1,
           created_at: createdAt,
           name: paymentVoucherSubitemName(reason.value, courier.value),
-          status: status.value,
-          status_option_id: status.id,
+          status: status!.value,
+          status_option_id: status!.id,
           qty: "1",
           currency: currency.value,
           currency_option_id: currency.id,
@@ -768,7 +784,10 @@ export async function PATCH(request: NextRequest) {
       .eq("id", existing.client_id)
       .maybeSingle();
     if (clientError || !client) throw new Error("Linked client not found.");
-    if (client.custom_fields?.subitemsLocked === "true") {
+    if (
+      existing.voucher_group !== "payment_requests" &&
+      client.custom_fields?.subitemsLocked === "true"
+    ) {
       throw new Error(
         "This client's subitems are locked. Check with the director if there are any changes.",
       );
@@ -798,6 +817,7 @@ export async function PATCH(request: NextRequest) {
     // historical rows without a Courier in the Other group.
     const isOtherVoucher =
       existing.voucher_group === "other" ||
+      existing.voucher_group === "payment_requests" ||
       (!existing.voucher_group && !existing.courier_option_id);
     if (
       (values.has_quickbooks_bill !== undefined ||
@@ -806,7 +826,7 @@ export async function PATCH(request: NextRequest) {
         values.quickbooks_supplier_name !== undefined) &&
       !isOtherVoucher
     )
-      throw new Error("QuickBooks Bill fields are only available for the Manpower/UPS Charges/Other payments group.");
+      throw new Error("QuickBooks Bill fields are only available for payment vouchers in a Bill group.");
     if (values.has_quickbooks_bill !== undefined) {
       const hasBill = values.has_quickbooks_bill === true || values.has_quickbooks_bill === "true";
       values.has_quickbooks_bill = hasBill;
@@ -899,7 +919,16 @@ export async function PATCH(request: NextRequest) {
       !String(values.remarks ?? existing.remarks ?? "").trim()
     )
       throw new Error("Remarks is required when Reason is Other.");
-    const { data: linkedSubitem, error: linkedSubitemError } =
+    let linkedSubitem: {
+      id: string;
+      name: string | null;
+      cost: string | number | null;
+      currency: string | null;
+      currency_option_id: string | null;
+    } | null = null;
+    let linkedChanges: Record<string, unknown> = {};
+    if (existing.voucher_group !== "payment_requests") {
+    const { data: foundLinkedSubitem, error: linkedSubitemError } =
       await supabaseAdmin
         .from("subitems")
         .select("id, name, cost, currency, currency_option_id")
@@ -907,10 +936,11 @@ export async function PATCH(request: NextRequest) {
         .contains("custom_fields", { additionalCostId: existing.id })
         .is("deleted_at", null)
         .maybeSingle();
-    if (linkedSubitemError || !linkedSubitem)
+    if (linkedSubitemError || !foundLinkedSubitem)
       throw new Error("Linked Payment Voucher subitem not found.");
+    linkedSubitem = foundLinkedSubitem;
 
-    const linkedChanges = {
+    linkedChanges = {
       ...(values.cost !== undefined ? { cost: String(values.cost) } : {}),
       ...(values.currency !== undefined
         ? {
@@ -1004,6 +1034,7 @@ export async function PATCH(request: NextRequest) {
         if (paymentTotalError) throw paymentTotalError;
       }
     }
+    }
     const { data, error } = await supabaseAdmin
       .from("additional_costs")
       .update({ ...values, updated_at: new Date().toISOString() })
@@ -1011,7 +1042,7 @@ export async function PATCH(request: NextRequest) {
       .select("*")
       .single();
     if (error) {
-      if (Object.keys(linkedChanges).length) {
+      if (linkedSubitem && Object.keys(linkedChanges).length) {
         await supabaseAdmin
           .from("subitems")
           .update({
