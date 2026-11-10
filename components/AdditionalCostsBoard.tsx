@@ -44,7 +44,12 @@ import {
   fetchHydratedClientBundle,
   fetchHydratedClientGroupPage,
 } from "@/lib/crm";
-import { AdvancedFilters, advancedFilterConditionRequiresValue, type AdvancedFilterColumn, type AdvancedFilterRule } from "@/components/AdvancedFilters";
+import {
+  AdvancedFilters,
+  advancedFilterConditionRequiresValue,
+  type AdvancedFilterColumn,
+  type AdvancedFilterRule,
+} from "@/components/AdvancedFilters";
 
 type AdditionalCost = {
   id: string;
@@ -107,6 +112,7 @@ type AdditionalCost = {
     billNumber?: string;
     memo?: string;
     overallGstAmount?: string;
+    mergeSubitemId?: string;
     lines?: Array<{
       categoryId?: string;
       categoryName?: string;
@@ -260,7 +266,9 @@ const cellClass =
 const hiddenBillGstCodeNames = new Set(["sr9%", "txrc-ess"]);
 const clientLabel = (client: Client) =>
   `${client.name || "Unnamed client"}${client.displayId ? ` · ${client.displayId}` : ""}`;
-const linkedClientLabel = (client: NonNullable<AdditionalCost["linkedClient"]>) =>
+const linkedClientLabel = (
+  client: NonNullable<AdditionalCost["linkedClient"]>,
+) =>
   `${client.name || "Unnamed client"}${client.displayId ? ` · ${client.displayId}` : ""}`;
 // Keep chooser order consistent with the CRM Board's default client sort:
 // newest created clients first within each group.
@@ -292,11 +300,16 @@ function CreatorDate({
   const tooltip = `${timestamp.toLocaleString("en-SG")}${createdBy ? ` · Created by ${label}` : ""}`;
 
   return (
-    <div title={tooltip} className="flex h-10 items-center gap-1.5 whitespace-nowrap text-xs text-slate-500">
+    <div
+      title={tooltip}
+      className="flex h-10 items-center gap-1.5 whitespace-nowrap text-xs text-slate-500"
+    >
       {createdBy ? (
         <span
           className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[8px] font-bold text-white"
-          style={{ background: gradientForId(createdBy, profile?.avatar_color) }}
+          style={{
+            background: gradientForId(createdBy, profile?.avatar_color),
+          }}
           aria-label={`Created by ${label}`}
         >
           {initials || "U"}
@@ -360,23 +373,35 @@ export function AdditionalCostsBoard({
   const [voucherSearch, setVoucherSearch] = useState("");
   const [showVoucherSearch, setShowVoucherSearch] = useState(false);
   const [showVoucherFilter, setShowVoucherFilter] = useState(false);
-  const [showVoucherSearchColumns, setShowVoucherSearchColumns] = useState(false);
+  const [showVoucherSearchColumns, setShowVoucherSearchColumns] =
+    useState(false);
   const [voucherSearchAllColumns, setVoucherSearchAllColumns] = useState(false);
   const [voucherSearchColumnQuery, setVoucherSearchColumnQuery] = useState("");
-  const [voucherSearchColumns, setVoucherSearchColumns] = useState(new Set(["project", "reference", "reason", "courier", "remarks"]));
+  const [voucherSearchColumns, setVoucherSearchColumns] = useState(
+    new Set(["project", "reference", "reason", "courier", "remarks"]),
+  );
   const voucherToolbarRef = useRef<HTMLDivElement>(null);
-  const [voucherRules, setVoucherRules] = useState<AdvancedFilterRule[]>([{ id: "initial", column: "", condition: "", value: "" }]);
+  const [voucherRules, setVoucherRules] = useState<AdvancedFilterRule[]>([
+    { id: "initial", column: "", condition: "", value: "" },
+  ]);
   const [voucherJoin, setVoucherJoin] = useState<"and" | "or">("and");
   useEffect(() => {
-    if (!showVoucherSearch && !showVoucherFilter && !showVoucherSearchColumns) return;
+    if (!showVoucherSearch && !showVoucherFilter && !showVoucherSearchColumns)
+      return;
     const close = (event: MouseEvent) => {
       if (voucherToolbarRef.current?.contains(event.target as Node)) return;
       if (!voucherSearch.trim()) setShowVoucherSearch(false);
-      setShowVoucherFilter(false); setShowVoucherSearchColumns(false);
+      setShowVoucherFilter(false);
+      setShowVoucherSearchColumns(false);
     };
     document.addEventListener("mousedown", close);
     return () => document.removeEventListener("mousedown", close);
-  }, [showVoucherFilter, showVoucherSearch, showVoucherSearchColumns, voucherSearch]);
+  }, [
+    showVoucherFilter,
+    showVoucherSearch,
+    showVoucherSearchColumns,
+    voucherSearch,
+  ]);
   const [collapsedVoucherGroups, setCollapsedVoucherGroups] = useState<
     Record<VoucherGroupId, boolean>
   >({
@@ -453,8 +478,9 @@ export function AdditionalCostsBoard({
   );
   const [billTargetVoucher, setBillTargetVoucher] =
     useState<AdditionalCost | null>(null);
-  const [editingVoucher, setEditingVoucher] =
-    useState<AdditionalCost | null>(null);
+  const [editingVoucher, setEditingVoucher] = useState<AdditionalCost | null>(
+    null,
+  );
   const [editingQuickBooksBill, setEditingQuickBooksBill] = useState(false);
   const [quickBooksBillOnlyMode, setQuickBooksBillOnlyMode] = useState(false);
   const [supplierOptionsOpen, setSupplierOptionsOpen] = useState(false);
@@ -545,6 +571,8 @@ export function AdditionalCostsBoard({
     reason: "",
     reasonOptionId: "",
     relatedSubitemIds: [] as string[],
+    mergeSubitemEnabled: false,
+    mergeSubitemId: "",
     courier: "",
     courierOptionId: "",
     remarks: "",
@@ -555,6 +583,7 @@ export function AdditionalCostsBoard({
     currencyOptionId: "",
   });
   const relatedSubitemsRef = useRef<HTMLDetailsElement>(null);
+  const mergeSubitemRef = useRef<HTMLDetailsElement>(null);
   const boardRelatedSubitemsMenuRef = useRef<HTMLDivElement>(null);
   const pickerScrollRef = useRef<HTMLDivElement>(null);
   const billExpenseTotal = useMemo(
@@ -650,7 +679,9 @@ export function AdditionalCostsBoard({
     null,
   );
   const [deactivationReason, setDeactivationReason] = useState("");
-  const [activityVoucher, setActivityVoucher] = useState<AdditionalCost | null>(null);
+  const [activityVoucher, setActivityVoucher] = useState<AdditionalCost | null>(
+    null,
+  );
   const [activityRows, setActivityRows] = useState<
     Array<{
       id: string;
@@ -668,10 +699,15 @@ export function AdditionalCostsBoard({
     setActivityVoucher(row);
     setActivityRows([]);
     setActivityLoading(true);
-    const response = await fetch(`/api/additional-costs/activity?voucherId=${encodeURIComponent(row.id)}`);
+    const response = await fetch(
+      `/api/additional-costs/activity?voucherId=${encodeURIComponent(row.id)}`,
+    );
     const result = await response.json();
     if (response.ok) setActivityRows(result.rows ?? []);
-    else toast.error("Activity history could not be loaded", { description: result.error });
+    else
+      toast.error("Activity history could not be loaded", {
+        description: result.error,
+      });
     setActivityLoading(false);
   };
   const logBillAction = (voucherId: string, action: string, title: string) =>
@@ -719,7 +755,11 @@ export function AdditionalCostsBoard({
     (row: AdditionalCost) => {
       const boardClient = clientsById.get(row.client_id);
       if (boardClient) {
-        return { id: boardClient.id, label: clientLabel(boardClient), deleted: false };
+        return {
+          id: boardClient.id,
+          label: clientLabel(boardClient),
+          deleted: false,
+        };
       }
       if (row.linkedClient) {
         return {
@@ -918,6 +958,16 @@ export function AdditionalCostsBoard({
     return () => document.removeEventListener("mousedown", closeOnClickAway);
   }, [relatedSubitemsOpen]);
   useEffect(() => {
+    if (!pickerOpen) return;
+    const closeMergeOnClickAway = (event: MouseEvent) => {
+      const details = mergeSubitemRef.current;
+      if (details?.open && !details.contains(event.target as Node))
+        details.open = false;
+    };
+    document.addEventListener("mousedown", closeMergeOnClickAway);
+    return () => document.removeEventListener("mousedown", closeMergeOnClickAway);
+  }, [pickerOpen]);
+  useEffect(() => {
     if (!pickerOpen) setRelatedSubitemsOpen(false);
   }, [pickerOpen]);
   useEffect(() => {
@@ -1073,10 +1123,10 @@ export function AdditionalCostsBoard({
         code === "additional_cost_status" && row.status_option_id === optionId
           ? { ...row, status: "", status_option_id: null }
           : code === "additional_cost_reason" &&
-            row.reason_option_id === optionId
+              row.reason_option_id === optionId
             ? { ...row, reason: "", reason_option_id: null }
             : code === "additional_cost_courier" &&
-              row.courier_option_id === optionId
+                row.courier_option_id === optionId
               ? { ...row, courier: "", courier_option_id: null }
               : row,
       ),
@@ -1268,6 +1318,8 @@ export function AdditionalCostsBoard({
         reason: "",
         reasonOptionId: "",
         relatedSubitemIds: [],
+        mergeSubitemEnabled: false,
+        mergeSubitemId: "",
         courier: "",
         courierOptionId: "",
         remarks: "",
@@ -1300,7 +1352,9 @@ export function AdditionalCostsBoard({
       const client = hydration.clients[0];
       if (!client) throw new Error("The linked client is no longer available.");
       setPickerClients((current) => {
-        const next = new Map(current.map((candidate) => [candidate.id, candidate]));
+        const next = new Map(
+          current.map((candidate) => [candidate.id, candidate]),
+        );
         next.set(client.id, client);
         return Array.from(next.values());
       });
@@ -1311,13 +1365,20 @@ export function AdditionalCostsBoard({
       // display name, so keep that as a one-time compatibility fallback while
       // excluding ineligible and payment-voucher subitems.
       const storedRelatedIds = Array.isArray(row.related_subitem_ids)
-        ? row.related_subitem_ids.filter((id): id is string => typeof id === "string")
+        ? row.related_subitem_ids.filter(
+            (id): id is string => typeof id === "string",
+          )
         : [];
       const selectedNames = new Set(
-        row.items_sent.split(",").map((name) => name.trim()).filter(Boolean),
+        row.items_sent
+          .split(",")
+          .map((name) => name.trim())
+          .filter(Boolean),
       );
       setEditingVoucher(row);
-      setVoucherCreationGroup(row.voucher_group === "other" ? "other" : "courier");
+      setVoucherCreationGroup(
+        row.voucher_group === "other" ? "other" : "courier",
+      );
       setOtherBillChoice(row.is_draft ? "add" : null);
       setSelectedVoucherClientId(row.client_id);
       setVoucherDraft({
@@ -1331,6 +1392,8 @@ export function AdditionalCostsBoard({
           : eligibleSubitems
               .filter((subitem) => selectedNames.has(subitem.name))
               .map((subitem) => subitem.id),
+        mergeSubitemEnabled: Boolean(row.draft_bill?.mergeSubitemId),
+        mergeSubitemId: String(row.draft_bill?.mergeSubitemId ?? ""),
         courier: row.courier,
         courierOptionId: row.courier_option_id ?? "",
         remarks: row.remarks,
@@ -1340,11 +1403,15 @@ export function AdditionalCostsBoard({
         currency:
           client.subitems.find(
             (subitem) => subitem.customFields?.additionalCostId === row.id,
-          )?.currency ?? row.currency ?? "SGD",
+          )?.currency ??
+          row.currency ??
+          "SGD",
         currencyOptionId:
           client.subitems.find(
             (subitem) => subitem.customFields?.additionalCostId === row.id,
-          )?.currencyOptionId ?? row.currency_option_id ?? "",
+          )?.currencyOptionId ??
+          row.currency_option_id ??
+          "",
       });
       if (row.is_draft) {
         const draftBill = row.draft_bill ?? {};
@@ -1368,7 +1435,15 @@ export function AdditionalCostsBoard({
                 amount: line.amount ?? "",
                 taxCodeId: line.taxCodeId ?? "",
               }))
-            : [{ categoryId: "", categoryName: "", description: "", amount: "", taxCodeId: "" }],
+            : [
+                {
+                  categoryId: "",
+                  categoryName: "",
+                  description: "",
+                  amount: "",
+                  taxCodeId: "",
+                },
+              ],
         });
         const attachments = draftBill.attachmentFiles ?? [];
         setSavedDraftAttachments(attachments);
@@ -1432,14 +1507,18 @@ export function AdditionalCostsBoard({
         }),
       });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.error ?? "Could not save the payment voucher.");
-      setRows((current) => current.map((row) => row.id === editingVoucher.id ? result.row : row));
+      if (!response.ok)
+        throw new Error(result.error ?? "Could not save the payment voucher.");
+      setRows((current) =>
+        current.map((row) => (row.id === editingVoucher.id ? result.row : row)),
+      );
       setPickerOpen(false);
       setEditingVoucher(null);
       toast.success("Payment voucher updated");
     } catch (error) {
       toast.error("Payment voucher could not be saved", {
-        description: error instanceof Error ? error.message : "Please try again.",
+        description:
+          error instanceof Error ? error.message : "Please try again.",
       });
     } finally {
       setCreatingFor(null);
@@ -1461,8 +1540,9 @@ export function AdditionalCostsBoard({
         ...uploadedAttachments,
       ].filter(
         (file, index, all) =>
-          all.findIndex((candidate) => candidate.storagePath === file.storagePath) ===
-          index,
+          all.findIndex(
+            (candidate) => candidate.storagePath === file.storagePath,
+          ) === index,
       );
       const confidence = billDocumentPreview?.confidence ?? {};
       const response = await fetch("/api/additional-costs", {
@@ -1489,7 +1569,9 @@ export function AdditionalCostsBoard({
       });
       const result = await response.json();
       if (!response.ok)
-        throw new Error(result.error ?? "Could not save the Payment Voucher draft.");
+        throw new Error(
+          result.error ?? "Could not save the Payment Voucher draft.",
+        );
       setRows((current) => {
         const index = current.findIndex((row) => row.id === result.row.id);
         return index < 0
@@ -1508,7 +1590,8 @@ export function AdditionalCostsBoard({
       return result.row as AdditionalCost;
     } catch (error) {
       toast.error("Payment Voucher draft could not be saved", {
-        description: error instanceof Error ? error.message : "Please try again.",
+        description:
+          error instanceof Error ? error.message : "Please try again.",
       });
       return null;
     } finally {
@@ -1621,7 +1704,9 @@ export function AdditionalCostsBoard({
         savedDraftAttachments.map(async (file) => {
           const response = await fetch(file.url);
           if (!response.ok)
-            throw new Error(`Could not retrieve saved attachment ${file.name}.`);
+            throw new Error(
+              `Could not retrieve saved attachment ${file.name}.`,
+            );
           const blob = await response.blob();
           return new File([blob], file.name, {
             type: file.mimeType || blob.type || "application/octet-stream",
@@ -1645,16 +1730,20 @@ export function AdditionalCostsBoard({
       clientId,
       voucherGroup: existingVoucher?.voucher_group ?? "other",
       bill: draft,
-      voucher: existingVoucher?.is_draft ? voucherDraft : existingVoucher ? undefined : voucherDraft,
+      voucher: existingVoucher?.is_draft
+        ? voucherDraft
+        : existingVoucher
+          ? undefined
+          : voucherDraft,
     });
     setCreatingFor(clientId);
     setRows((current) =>
       existingVoucher
         ? current.map((row) =>
-          row.id === existingVoucher.id
-            ? { ...row, isGeneratingQuickBooksBill: true }
-            : row,
-        )
+            row.id === existingVoucher.id
+              ? { ...row, isGeneratingQuickBooksBill: true }
+              : row,
+          )
         : [pendingRow, ...current],
     );
     closeBillPreview();
@@ -1665,10 +1754,10 @@ export function AdditionalCostsBoard({
         ...billDraftValues,
         attachmentFiles: attachments.length
           ? await uploadCrmFiles(
-            attachments,
-            `payment-vouchers/${existingVoucher?.id ?? "new"}/quickbooks-bills`,
-            { clientId },
-          )
+              attachments,
+              `payment-vouchers/${existingVoucher?.id ?? "new"}/quickbooks-bills`,
+              { clientId },
+            )
           : [],
       };
       const payload = new FormData();
@@ -1700,8 +1789,8 @@ export function AdditionalCostsBoard({
       setRows((current) =>
         existingVoucher
           ? current.map((row) =>
-            row.id === existingVoucher.id ? result.row : row,
-          )
+              row.id === existingVoucher.id ? result.row : row,
+            )
           : current.map((row) => (row.id === pendingId ? result.row : row)),
       );
       toast.dismiss(generatingToast);
@@ -1714,7 +1803,9 @@ export function AdditionalCostsBoard({
         void logBillAction(
           result.row.id,
           existingVoucher ? "bill_created" : "bill_created_with_voucher",
-          existingVoucher ? "created a QuickBooks Bill" : "created a Payment Voucher and QuickBooks Bill",
+          existingVoucher
+            ? "created a QuickBooks Bill"
+            : "created a Payment Voucher and QuickBooks Bill",
         );
       if (result.attachmentErrors?.length)
         toast.warning(
@@ -1729,10 +1820,10 @@ export function AdditionalCostsBoard({
       setRows((current) =>
         existingVoucher
           ? current.map((row) =>
-            row.id === existingVoucher.id
-              ? { ...row, isGeneratingQuickBooksBill: false }
-              : row,
-          )
+              row.id === existingVoucher.id
+                ? { ...row, isGeneratingQuickBooksBill: false }
+                : row,
+            )
           : current.filter((row) => row.id !== pendingId),
       );
       toast.dismiss(generatingToast);
@@ -1766,10 +1857,10 @@ export function AdditionalCostsBoard({
     setRows((current) =>
       existingVoucher
         ? current.map((row) =>
-          row.id === existingVoucher.id
-            ? { ...row, isGeneratingQuickBooksBill: true }
-            : row,
-        )
+            row.id === existingVoucher.id
+              ? { ...row, isGeneratingQuickBooksBill: true }
+              : row,
+          )
         : [pendingRow, ...current],
     );
     closeBillPreview();
@@ -1780,19 +1871,19 @@ export function AdditionalCostsBoard({
         ...billDraftValues,
         attachmentFiles: attachments.length
           ? await uploadCrmFiles(
-            attachments,
-            existingVoucher?.voucher_group === "quickbooks_bills_only" ||
-              !existingVoucher
-              ? "quickbooks-bills-only"
-              : `payment-vouchers/${existingVoucher.id}/quickbooks-bills`,
-            {
-              clientId:
-                existingVoucher?.voucher_group === "quickbooks_bills_only" ||
+              attachments,
+              existingVoucher?.voucher_group === "quickbooks_bills_only" ||
+                !existingVoucher
+                ? "quickbooks-bills-only"
+                : `payment-vouchers/${existingVoucher.id}/quickbooks-bills`,
+              {
+                clientId:
+                  existingVoucher?.voucher_group === "quickbooks_bills_only" ||
                   !existingVoucher
-                  ? "quickbooks-bills-only"
-                  : existingVoucher.client_id,
-            },
-          )
+                    ? "quickbooks-bills-only"
+                    : existingVoucher.client_id,
+              },
+            )
           : [],
       };
       const payload = new FormData();
@@ -1818,8 +1909,8 @@ export function AdditionalCostsBoard({
       setRows((current) =>
         existingVoucher
           ? current.map((row) =>
-            row.id === existingVoucher.id ? result.row : row,
-          )
+              row.id === existingVoucher.id ? result.row : row,
+            )
           : current.map((row) => (row.id === pendingId ? result.row : row)),
       );
       toast.dismiss(generatingToast);
@@ -1832,7 +1923,9 @@ export function AdditionalCostsBoard({
         void logBillAction(
           result.row.id,
           "bill_created",
-          existingVoucher ? "recreated a QuickBooks Bill" : "created a QuickBooks Bill",
+          existingVoucher
+            ? "recreated a QuickBooks Bill"
+            : "created a QuickBooks Bill",
         );
       if (result.attachmentErrors?.length) {
         toast.warning(
@@ -1848,10 +1941,10 @@ export function AdditionalCostsBoard({
       setRows((current) =>
         existingVoucher
           ? current.map((row) =>
-            row.id === existingVoucher.id
-              ? { ...row, isGeneratingQuickBooksBill: false }
-              : row,
-          )
+              row.id === existingVoucher.id
+                ? { ...row, isGeneratingQuickBooksBill: false }
+                : row,
+            )
           : current.filter((row) => row.id !== pendingId),
       );
       toast.dismiss(generatingToast);
@@ -1962,7 +2055,11 @@ export function AdditionalCostsBoard({
       setBillLinkResults([]);
       setBillLinkNumber("");
       toast.success("QuickBooks Bill linked to payment voucher.");
-      void logBillAction(billLinkVoucher.id, "bill_linked", "linked a QuickBooks Bill");
+      void logBillAction(
+        billLinkVoucher.id,
+        "bill_linked",
+        "linked a QuickBooks Bill",
+      );
     } catch (error) {
       toast.error("QuickBooks Bill could not be linked", {
         description:
@@ -1989,7 +2086,11 @@ export function AdditionalCostsBoard({
       toast.success(
         "QuickBooks Bill information removed from this payment voucher.",
       );
-      void logBillAction(voucher.id, "bill_unlinked", "removed the QuickBooks Bill link");
+      void logBillAction(
+        voucher.id,
+        "bill_unlinked",
+        "removed the QuickBooks Bill link",
+      );
     } catch (removeError) {
       toast.error("Bill link could not be removed", {
         description:
@@ -2012,9 +2113,9 @@ export function AdditionalCostsBoard({
             current.map((currentRow) =>
               currentRow.id === row.id
                 ? {
-                  ...currentRow,
-                  quickbooks_bill_sync_error: result.billSyncError,
-                }
+                    ...currentRow,
+                    quickbooks_bill_sync_error: result.billSyncError,
+                  }
                 : currentRow,
             ),
           );
@@ -2029,7 +2130,11 @@ export function AdditionalCostsBoard({
           ),
         );
       }
-      void logBillAction(row.id, "bill_loaded", "loaded the latest QuickBooks Bill information");
+      void logBillAction(
+        row.id,
+        "bill_loaded",
+        "loaded the latest QuickBooks Bill information",
+      );
       setVoucherCreationGroup(
         row.voucher_group === "quickbooks_bills_only"
           ? "quickbooks_bills_only"
@@ -2061,17 +2166,17 @@ export function AdditionalCostsBoard({
       const payload = new FormData();
       const attachmentFiles = attachments.length
         ? await uploadCrmFiles(
-          attachments,
-          voucher.voucher_group === "quickbooks_bills_only"
-            ? "quickbooks-bills-only"
-            : `payment-vouchers/${voucher.id}/quickbooks-bills`,
-          {
-            clientId:
-              voucher.voucher_group === "quickbooks_bills_only"
-                ? "quickbooks-bills-only"
-                : voucher.client_id,
-          },
-        )
+            attachments,
+            voucher.voucher_group === "quickbooks_bills_only"
+              ? "quickbooks-bills-only"
+              : `payment-vouchers/${voucher.id}/quickbooks-bills`,
+            {
+              clientId:
+                voucher.voucher_group === "quickbooks_bills_only"
+                  ? "quickbooks-bills-only"
+                  : voucher.client_id,
+            },
+          )
         : [];
       payload.append(
         "payload",
@@ -2104,7 +2209,11 @@ export function AdditionalCostsBoard({
       setBillDocumentPreview(null);
       setPrefillFileSignature(null);
       toast.success("QuickBooks Bill and Payment Voucher cost updated.");
-      void logBillAction(voucher.id, "bill_updated", "updated the QuickBooks Bill");
+      void logBillAction(
+        voucher.id,
+        "bill_updated",
+        "updated the QuickBooks Bill",
+      );
     } catch (updateError) {
       toast.error("QuickBooks Bill could not be updated", {
         description:
@@ -2175,14 +2284,14 @@ export function AdditionalCostsBoard({
           ...option,
           score: extractedSupplier
             ? levenshteinDistance(
-              supplierSearchKey(option.name),
-              extractedSupplier,
-            ) /
-            Math.max(
-              supplierSearchKey(option.name).length,
-              extractedSupplier.length,
-              1,
-            )
+                supplierSearchKey(option.name),
+                extractedSupplier,
+              ) /
+              Math.max(
+                supplierSearchKey(option.name).length,
+                extractedSupplier.length,
+                1,
+              )
             : Number.POSITIVE_INFINITY,
         }))
         .sort((first, second) => first.score - second.score);
@@ -2209,24 +2318,24 @@ export function AdditionalCostsBoard({
         billNumber: extraction.invoiceNumber || draft.billNumber,
         lines: extraction.lines?.length
           ? extraction.lines.map((line) => ({
-            categoryId: "",
-            categoryName: "",
-            description: line.description ?? "",
-            amount: line.amount ? String(line.amount) : "",
-            taxCodeId: findTaxCode(line.tax ?? ""),
-          }))
+              categoryId: "",
+              categoryName: "",
+              description: line.description ?? "",
+              amount: line.amount ? String(line.amount) : "",
+              taxCodeId: findTaxCode(line.tax ?? ""),
+            }))
           : draft.lines,
       }));
       setBillDocumentPreview((current) =>
         current
           ? {
-            ...current,
-            confidence: extraction.confidence ?? {},
-            supplierSuggestion:
-              supplier && extractedSupplier
-                ? { id: supplier.id, name: supplier.name }
-                : undefined,
-          }
+              ...current,
+              confidence: extraction.confidence ?? {},
+              supplierSuggestion:
+                supplier && extractedSupplier
+                  ? { id: supplier.id, name: supplier.name }
+                  : undefined,
+            }
           : current,
       );
       setSupplierExtraction({
@@ -2240,7 +2349,10 @@ export function AdditionalCostsBoard({
         "Document fields were prefilled. Please review every value before creating the Bill.",
       );
     } catch (extractionError) {
-      console.warn("Could not prefill QuickBooks Bill fields from the document", extractionError);
+      console.warn(
+        "Could not prefill QuickBooks Bill fields from the document",
+        extractionError,
+      );
       setPrefillFileSignature(null);
       setSupplierExtraction(null);
       setBillDocumentPreview((current) =>
@@ -2301,12 +2413,16 @@ export function AdditionalCostsBoard({
     const role = String(currentUserRole ?? "").toLowerCase();
     const isAssigned =
       !!currentUserId &&
-      ((pickerClientAssignees[client.id] ??
+      ((
+        pickerClientAssignees[client.id] ??
         clientAssignees[client.id] ??
-        []).includes(currentUserId) ||
-        (pickerClientPmAssignees[client.id] ??
+        []
+      ).includes(currentUserId) ||
+        (
+          pickerClientPmAssignees[client.id] ??
           clientPmAssignees[client.id] ??
-          []).includes(currentUserId));
+          []
+        ).includes(currentUserId));
     if (!["admin", "director"].includes(role) && !isAssigned) {
       return "You can only link an additional cost to a client assigned to you as People or PM.";
     }
@@ -2324,9 +2440,17 @@ export function AdditionalCostsBoard({
         throw new Error(
           result.error ?? "Could not delete the additional cost.",
         );
-      setRows((current) => current.map((candidate) => candidate.id === row.id
-        ? { ...candidate, deactivated_at: new Date().toISOString(), deactivation_reason: deactivationReason.trim() }
-        : candidate));
+      setRows((current) =>
+        current.map((candidate) =>
+          candidate.id === row.id
+            ? {
+                ...candidate,
+                deactivated_at: new Date().toISOString(),
+                deactivation_reason: deactivationReason.trim(),
+              }
+            : candidate,
+        ),
+      );
       setPendingDelete(null);
       setDeactivationReason("");
       toast.success("Payment Voucher deactivated");
@@ -2435,8 +2559,11 @@ export function AdditionalCostsBoard({
     return () => window.clearTimeout(timer);
   }, [loadPickerClientPage, pickerOpen, pickerQuery, selectedVoucherClientId]);
   const renderRelatedSubitemSelector = (clientId: string) => {
-    const subitems = (clientsById.get(clientId)?.subitems ?? []).filter((subitem) =>
-      awardedOrLaterSubitemStatusIds.has(subitem.statusOptionId ?? ""),
+    const subitems = (clientsById.get(clientId)?.subitems ?? []).filter(
+      (subitem) =>
+        subitem.id !== voucherDraft.mergeSubitemId &&
+        !subitem.customFields?.additionalCostId &&
+        awardedOrLaterSubitemStatusIds.has(subitem.statusOptionId ?? ""),
     );
     const selected = subitems.filter((subitem) =>
       voucherDraft.relatedSubitemIds.includes(subitem.id),
@@ -2488,7 +2615,12 @@ export function AdditionalCostsBoard({
                         draftRelatedSubitemShiftClickRef.current && anchor
                           ? [...new Set([...anchor.baseSelection, ...range])]
                           : event.target.checked
-                            ? [...new Set([...draft.relatedSubitemIds, ...range])]
+                            ? [
+                                ...new Set([
+                                  ...draft.relatedSubitemIds,
+                                  ...range,
+                                ]),
+                              ]
                             : draft.relatedSubitemIds.filter(
                                 (id) => !range.includes(id),
                               );
@@ -2521,11 +2653,63 @@ export function AdditionalCostsBoard({
       </details>
     );
   };
+  const renderMergeSubitemSelector = (clientId: string) => {
+    const subitems = (clientsById.get(clientId)?.subitems ?? []).filter(
+      (subitem) => !subitem.customFields?.additionalCostId,
+    );
+    const selected = subitems.find(
+      (subitem) => subitem.id === voucherDraft.mergeSubitemId,
+    );
+    if (voucherDraft.mergeSubitemEnabled)
+      return (
+        <details ref={mergeSubitemRef} className="relative mt-1 rounded border border-slate-300 bg-white">
+          <summary className="cursor-pointer list-none px-3 py-2 text-sm text-slate-700 marker:content-none">
+            {selected?.name || "Select a subitem to merge into"}
+          </summary>
+          <div className="absolute left-0 right-0 z-20 max-h-52 overflow-y-auto border-t border-slate-200 bg-white p-2 shadow-lg">
+            {subitems.map((subitem) => (
+              <label key={subitem.id} className="flex cursor-pointer items-center gap-2 rounded px-2 py-2 text-sm hover:bg-slate-50">
+                <input type="radio" name="merge-subitem" checked={subitem.id === voucherDraft.mergeSubitemId} onChange={() => setVoucherDraft((draft) => ({ ...draft, mergeSubitemId: subitem.id, relatedSubitemIds: draft.relatedSubitemIds.filter((id) => id !== subitem.id) }))} />
+                {subitem.name || "Unnamed subitem"}
+              </label>
+            ))}
+          </div>
+        </details>
+      );
+    return (
+      <select
+        disabled={!voucherDraft.mergeSubitemEnabled}
+        value={voucherDraft.mergeSubitemId}
+        onChange={(event) =>
+          setVoucherDraft((draft) => ({
+            ...draft,
+            mergeSubitemId: event.target.value,
+            relatedSubitemIds: draft.relatedSubitemIds.filter(
+              (id) => id !== event.target.value,
+            ),
+          }))
+        }
+        className="mt-1 h-10 w-full rounded border border-slate-300 bg-white px-3 text-sm disabled:cursor-not-allowed disabled:bg-slate-100"
+      >
+        <option value="">Select a subitem to merge into</option>
+        {selected && !subitems.some((subitem) => subitem.id === selected.id)
+          ? null
+          : null}
+        {subitems.map((subitem) => (
+          <option key={subitem.id} value={subitem.id}>
+            {subitem.name || "Unnamed subitem"}
+            {subitem.displayId ? ` · ${subitem.displayId}` : ""}
+          </option>
+        ))}
+      </select>
+    );
+  };
   const renderBoardRelatedSubitemSelector = (
     row: AdditionalCost,
     client: Client | undefined,
   ) => {
     const subitems = (client?.subitems ?? []).filter((subitem) =>
+      !subitem.customFields?.additionalCostId &&
       awardedOrLaterSubitemStatusIds.has(subitem.statusOptionId ?? ""),
     );
     const selectedNames = new Set(
@@ -2556,11 +2740,11 @@ export function AdditionalCostsBoard({
               menuOpen
                 ? null
                 : {
-                  rowId: row.id,
-                  top: rect.bottom + 4,
-                  left: rect.left,
-                  width: rect.width,
-                },
+                    rowId: row.id,
+                    top: rect.bottom + 4,
+                    left: rect.left,
+                    width: rect.width,
+                  },
             );
           }}
           className="h-10 w-full truncate px-3 text-left hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-60"
@@ -2590,9 +2774,10 @@ export function AdditionalCostsBoard({
                     disabled={!canDelete(row) || lockedForPreviewEditing}
                     checked={selectedIds.includes(subitem.id)}
                     onChange={(event) => {
-                      const anchor = boardRelatedSubitemSelectionAnchorsRef.current.get(
-                        row.id,
-                      );
+                      const anchor =
+                        boardRelatedSubitemSelectionAnchorsRef.current.get(
+                          row.id,
+                        );
                       const anchorIndex = anchor
                         ? subitems.findIndex((item) => item.id === anchor.id)
                         : -1;
@@ -2657,31 +2842,121 @@ export function AdditionalCostsBoard({
       {content}
     </div>
   );
-  const voucherFilterColumns = useMemo<AdvancedFilterColumn[]>(() => [
-    { key: "project", label: "Project Name", category: "Payment", values: [], valueType: "text" },
-    { key: "reference", label: "Reference ID", category: "Payment", values: [], valueType: "text" },
-    { key: "reason", label: "Reason", category: "Payment", values: [], valueType: "text", labelOptions: labelOptions.additional_cost_reason },
-    { key: "courier", label: "Courier", category: "Payment", values: [], valueType: "text", labelOptions: labelOptions.additional_cost_courier },
-    { key: "remarks", label: "Remarks", category: "Payment", values: [], valueType: "text" },
-    { key: "cost", label: "Cost", category: "Payment", values: [], valueType: "number" },
-    { key: "items", label: "Related Subitems", category: "Payment", values: [], valueType: "text" },
-    { key: "mode", label: "Mode of Payment", category: "Payment", values: [], valueType: "text" },
-    { key: "currency", label: "Currency", category: "Payment", values: [], valueType: "text" },
-    { key: "invoice", label: "QuickBooks Bill / Invoice", category: "Payment", values: [], valueType: "text" },
-    { key: "created", label: "Date Created", category: "Payment", values: [], valueType: "date" },
-  ], [labelOptions]);
-  const activeVoucherRules = voucherRules.filter((rule) => rule.column && rule.condition && (!advancedFilterConditionRequiresValue(rule.condition) || rule.value));
+  const voucherFilterColumns = useMemo<AdvancedFilterColumn[]>(
+    () => [
+      {
+        key: "project",
+        label: "Project Name",
+        category: "Payment",
+        values: [],
+        valueType: "text",
+      },
+      {
+        key: "reference",
+        label: "Reference ID",
+        category: "Payment",
+        values: [],
+        valueType: "text",
+      },
+      {
+        key: "reason",
+        label: "Reason",
+        category: "Payment",
+        values: [],
+        valueType: "text",
+        labelOptions: labelOptions.additional_cost_reason,
+      },
+      {
+        key: "courier",
+        label: "Courier",
+        category: "Payment",
+        values: [],
+        valueType: "text",
+        labelOptions: labelOptions.additional_cost_courier,
+      },
+      {
+        key: "remarks",
+        label: "Remarks",
+        category: "Payment",
+        values: [],
+        valueType: "text",
+      },
+      {
+        key: "cost",
+        label: "Cost",
+        category: "Payment",
+        values: [],
+        valueType: "number",
+      },
+      {
+        key: "items",
+        label: "Related Subitems",
+        category: "Payment",
+        values: [],
+        valueType: "text",
+      },
+      {
+        key: "mode",
+        label: "Mode of Payment",
+        category: "Payment",
+        values: [],
+        valueType: "text",
+      },
+      {
+        key: "currency",
+        label: "Currency",
+        category: "Payment",
+        values: [],
+        valueType: "text",
+      },
+      {
+        key: "invoice",
+        label: "QuickBooks Bill / Invoice",
+        category: "Payment",
+        values: [],
+        valueType: "text",
+      },
+      {
+        key: "created",
+        label: "Date Created",
+        category: "Payment",
+        values: [],
+        valueType: "date",
+      },
+    ],
+    [labelOptions],
+  );
+  const activeVoucherRules = voucherRules.filter(
+    (rule) =>
+      rule.column &&
+      rule.condition &&
+      (!advancedFilterConditionRequiresValue(rule.condition) || rule.value),
+  );
   const filteredRows = rows.filter((row) => {
-    const values = (key: string) => ({ project: projectForVoucher(row)?.label ?? "", reference: row.trip_id, reason: row.reason, courier: row.courier, remarks: row.remarks, items: row.items_sent, mode: row.mode_of_payment ?? "", currency: row.currency ?? "", invoice: row.quickbooks_invoice_number ?? "", cost: String(row.cost ?? ""), created: row.created_at.slice(0, 10) }[key] ?? "");
+    const values = (key: string) =>
+      ({
+        project: projectForVoucher(row)?.label ?? "",
+        reference: row.trip_id,
+        reason: row.reason,
+        courier: row.courier,
+        remarks: row.remarks,
+        items: row.items_sent,
+        mode: row.mode_of_payment ?? "",
+        currency: row.currency ?? "",
+        invoice: row.quickbooks_invoice_number ?? "",
+        cost: String(row.cost ?? ""),
+        created: row.created_at.slice(0, 10),
+      })[key] ?? "";
     const matches = (rule: AdvancedFilterRule) => {
       const source = values(rule.column);
       const target = rule.value.trim();
       if (rule.valueOptionId) {
-        const optionId = rule.column === "reason"
-          ? row.reason_option_id
-          : rule.column === "courier"
-            ? row.courier_option_id
-            : null;
+        const optionId =
+          rule.column === "reason"
+            ? row.reason_option_id
+            : rule.column === "courier"
+              ? row.courier_option_id
+              : null;
         return rule.condition === "is not"
           ? optionId !== rule.valueOptionId
           : optionId === rule.valueOptionId;
@@ -2689,27 +2964,82 @@ export function AdditionalCostsBoard({
       if (rule.condition === "is empty") return !source;
       if (rule.condition === "is not empty") return !!source;
       if (rule.column === "cost") {
-        const a = Number(source), b = Number(target);
-        return rule.condition === "is" ? a === b : rule.condition === "is not" ? a !== b : rule.condition === "is greater than" ? a > b : rule.condition === "is greater than or equal to" ? a >= b : rule.condition === "is less than" ? a < b : rule.condition === "is less than or equal to" ? a <= b : false;
+        const a = Number(source),
+          b = Number(target);
+        return rule.condition === "is"
+          ? a === b
+          : rule.condition === "is not"
+            ? a !== b
+            : rule.condition === "is greater than"
+              ? a > b
+              : rule.condition === "is greater than or equal to"
+                ? a >= b
+                : rule.condition === "is less than"
+                  ? a < b
+                  : rule.condition === "is less than or equal to"
+                    ? a <= b
+                    : false;
       }
-      if (rule.column === "created") return rule.condition === "is" ? source === target : rule.condition === "is not" ? source !== target : rule.condition === "is before" ? source < target : rule.condition === "is on or before" ? source <= target : rule.condition === "is after" ? source > target : rule.condition === "is on or after" ? source >= target : false;
-      const a = source.toLowerCase(), b = target.toLowerCase();
-      return rule.condition === "is" || rule.condition === "text is" ? a === b : rule.condition === "is not" || rule.condition === "text is not" ? a !== b : rule.condition === "contains" ? a.includes(b) : rule.condition === "does not contain" ? !a.includes(b) : rule.condition === "starts with" ? a.startsWith(b) : rule.condition === "ends with" ? a.endsWith(b) : false;
+      if (rule.column === "created")
+        return rule.condition === "is"
+          ? source === target
+          : rule.condition === "is not"
+            ? source !== target
+            : rule.condition === "is before"
+              ? source < target
+              : rule.condition === "is on or before"
+                ? source <= target
+                : rule.condition === "is after"
+                  ? source > target
+                  : rule.condition === "is on or after"
+                    ? source >= target
+                    : false;
+      const a = source.toLowerCase(),
+        b = target.toLowerCase();
+      return rule.condition === "is" || rule.condition === "text is"
+        ? a === b
+        : rule.condition === "is not" || rule.condition === "text is not"
+          ? a !== b
+          : rule.condition === "contains"
+            ? a.includes(b)
+            : rule.condition === "does not contain"
+              ? !a.includes(b)
+              : rule.condition === "starts with"
+                ? a.startsWith(b)
+                : rule.condition === "ends with"
+                  ? a.endsWith(b)
+                  : false;
     };
-    const search = voucherSearch.trim().toLowerCase(); const selectedSearchColumns = voucherSearchAllColumns ? voucherFilterColumns.map((column) => column.key) : [...voucherSearchColumns]; const searchMatch = !search || selectedSearchColumns.some((key) => values(key).toLowerCase().includes(search));
-    const outcomes = activeVoucherRules.map(matches); return searchMatch && (!outcomes.length || (voucherJoin === "and" ? outcomes.every(Boolean) : outcomes.some(Boolean)));
+    const search = voucherSearch.trim().toLowerCase();
+    const selectedSearchColumns = voucherSearchAllColumns
+      ? voucherFilterColumns.map((column) => column.key)
+      : [...voucherSearchColumns];
+    const searchMatch =
+      !search ||
+      selectedSearchColumns.some((key) =>
+        values(key).toLowerCase().includes(search),
+      );
+    const outcomes = activeVoucherRules.map(matches);
+    return (
+      searchMatch &&
+      (!outcomes.length ||
+        (voucherJoin === "and"
+          ? outcomes.every(Boolean)
+          : outcomes.some(Boolean)))
+    );
   });
   const voucherGroups = [
     {
       id: "courier" as const,
       name: "Lalamove/Easyparcel/Replacements/Additional Costs",
-      rows: filteredRows.filter((row) =>
-        row.voucher_group === "courier" ||
-        (!row.voucher_group &&
-          Boolean(
-            row.courier_option_id &&
-              courierVoucherOptionIds.has(row.courier_option_id),
-          )),
+      rows: filteredRows.filter(
+        (row) =>
+          row.voucher_group === "courier" ||
+          (!row.voucher_group &&
+            Boolean(
+              row.courier_option_id &&
+                courierVoucherOptionIds.has(row.courier_option_id),
+            )),
       ),
       accent: "#16a5c4",
     },
@@ -2730,22 +3060,28 @@ export function AdditionalCostsBoard({
       String(currentUserRole ?? "").toLowerCase(),
     )
       ? [
-        {
-          id: "quickbooks_bills_only" as const,
-          name: "QuickBooks Bills only",
-          rows: filteredRows.filter(
-            (row) => row.voucher_group === "quickbooks_bills_only",
-          ),
-          accent: "#f59e0b",
-        },
-      ]
+          {
+            id: "quickbooks_bills_only" as const,
+            name: "QuickBooks Bills only",
+            rows: filteredRows.filter(
+              (row) => row.voucher_group === "quickbooks_bills_only",
+            ),
+            accent: "#f59e0b",
+          },
+        ]
       : []),
   ];
   useEffect(() => {
     if (!voucherSearch.trim() && !activeVoucherRules.length) return;
-    setCollapsedVoucherGroups({ courier: false, other: false, quickbooks_bills_only: false });
+    setCollapsedVoucherGroups({
+      courier: false,
+      other: false,
+      quickbooks_bills_only: false,
+    });
   }, [activeVoucherRules.length, voucherSearch]);
-  const openVoucherCreator = (groupId: (typeof voucherGroups)[number]["id"]) => {
+  const openVoucherCreator = (
+    groupId: (typeof voucherGroups)[number]["id"],
+  ) => {
     setPickerQuery("");
     setExpandedPickerGroups(
       new Set([...groups.map((group) => group.id), "ungrouped"]),
@@ -2764,6 +3100,8 @@ export function AdditionalCostsBoard({
       reason: "",
       reasonOptionId: "",
       relatedSubitemIds: [],
+      mergeSubitemEnabled: false,
+      mergeSubitemId: "",
       courier: "",
       courierOptionId: "",
       remarks: "",
@@ -2785,7 +3123,15 @@ export function AdditionalCostsBoard({
       memo: "",
       overallGstAmount: "",
       attachments: [],
-      lines: [{ categoryId: "", categoryName: "", description: "", amount: "", taxCodeId: "" }],
+      lines: [
+        {
+          categoryId: "",
+          categoryName: "",
+          description: "",
+          amount: "",
+          taxCodeId: "",
+        },
+      ],
     });
     setPickerOpen(true);
   };
@@ -2817,41 +3163,53 @@ export function AdditionalCostsBoard({
         className="relative rounded-lg border border-slate-200 bg-white shadow-sm"
         style={{ minWidth: columnGridWidth }}
       >
-      <div
-        className={`flex w-full cursor-pointer border-l-4 hover:bg-slate-50 ${collapsedVoucherGroups[group.id] ? "min-h-[60px] items-start py-1" : "h-[34px] items-center"}`}
-        style={{ borderLeftColor: group.accent }}
-        onClick={() =>
-          setCollapsedVoucherGroups((current) => ({
-            ...current,
-            [group.id]: !current[group.id],
-          }))
-        }
-      >
-        <div className={`flex min-w-0 gap-2 px-4 text-left ${collapsedVoucherGroups[group.id] ? "items-start" : "items-center"}`}>
-          {collapsedVoucherGroups[group.id] ? (
-            <ChevronRight size={18} style={{ color: group.accent }} />
-          ) : (
-            <ChevronDown size={18} style={{ color: group.accent }} />
-          )}
-          <span className={collapsedVoucherGroups[group.id] ? "flex flex-col" : "flex items-center gap-2"}>
-            <span className="text-lg font-semibold text-slate-800">{group.name}</span>
-            <span className="text-[13px] text-slate-500">{group.rows.length} vouchers</span>
-          </span>
-        </div>
-
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            openVoucherCreator(group.id);
-          }}
-          className="ml-2 rounded border border-sky-300 bg-sky-50 px-3 py-1.5 text-sm font-medium text-sky-700 hover:bg-sky-100"
+        <div
+          className={`flex w-full cursor-pointer border-l-4 hover:bg-slate-50 ${collapsedVoucherGroups[group.id] ? "min-h-[60px] items-start py-1" : "h-[34px] items-center"}`}
+          style={{ borderLeftColor: group.accent }}
+          onClick={() =>
+            setCollapsedVoucherGroups((current) => ({
+              ...current,
+              [group.id]: !current[group.id],
+            }))
+          }
         >
-          {group.id === "quickbooks_bills_only"
-            ? "+ Add QuickBooks Bill"
-            : "+ Add payment voucher"}
-        </button>
-      </div>
+          <div
+            className={`flex min-w-0 gap-2 px-4 text-left ${collapsedVoucherGroups[group.id] ? "items-start" : "items-center"}`}
+          >
+            {collapsedVoucherGroups[group.id] ? (
+              <ChevronRight size={18} style={{ color: group.accent }} />
+            ) : (
+              <ChevronDown size={18} style={{ color: group.accent }} />
+            )}
+            <span
+              className={
+                collapsedVoucherGroups[group.id]
+                  ? "flex flex-col"
+                  : "flex items-center gap-2"
+              }
+            >
+              <span className="text-lg font-semibold text-slate-800">
+                {group.name}
+              </span>
+              <span className="text-[13px] text-slate-500">
+                {group.rows.length} vouchers
+              </span>
+            </span>
+          </div>
+
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              openVoucherCreator(group.id);
+            }}
+            className="ml-2 rounded border border-sky-300 bg-sky-50 px-3 py-1.5 text-sm font-medium text-sky-700 hover:bg-sky-100"
+          >
+            {group.id === "quickbooks_bills_only"
+              ? "+ Add QuickBooks Bill"
+              : "+ Add payment voucher"}
+          </button>
+        </div>
         {!collapsedVoucherGroups[group.id] && (
           <div className="overflow-visible">
             <table
@@ -2886,9 +3244,9 @@ export function AdditionalCostsBoard({
                         event.preventDefault();
                         const edge =
                           event.clientX <
-                            event.currentTarget.getBoundingClientRect().left +
+                          event.currentTarget.getBoundingClientRect().left +
                             event.currentTarget.getBoundingClientRect().width /
-                            2
+                              2
                             ? "left"
                             : "right";
                         setVoucherDropTarget({
@@ -2978,10 +3336,11 @@ export function AdditionalCostsBoard({
                     return (
                       <tr
                         key={row.id}
-                        className={`payment-voucher-row grid hover:bg-slate-50 ${row.deactivated_at
-                          ? "deactivated-voucher-row bg-slate-50 opacity-60"
-                          : ""
-                          }`}
+                        className={`payment-voucher-row grid hover:bg-slate-50 ${
+                          row.deactivated_at
+                            ? "deactivated-voucher-row bg-slate-50 opacity-60"
+                            : ""
+                        }`}
                         style={{ gridTemplateColumns: columnGrid }}
                       >
                         <td
@@ -3037,8 +3396,8 @@ export function AdditionalCostsBoard({
                               voucherInfoLockedToPreview
                                 ? "Edit this Payment Voucher in the preview."
                                 : String(group.id) === "quickbooks_bills_only"
-                                ? "Calculated from the QuickBooks Bill expense-line total."
-                                : undefined
+                                  ? "Calculated from the QuickBooks Bill expense-line total."
+                                  : undefined
                             }
                             className="h-10 w-full bg-transparent px-3 text-right outline-none focus:bg-sky-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 disabled:opacity-100"
                           />
@@ -3098,7 +3457,9 @@ export function AdditionalCostsBoard({
                               reorderLabels("additional_cost_reason", layout)
                             }
                             manageLabel="reason"
-                            readOnly={!canDelete(row) || voucherInfoLockedToPreview}
+                            readOnly={
+                              !canDelete(row) || voucherInfoLockedToPreview
+                            }
                             readOnlyReason={
                               voucherInfoLockedToPreview
                                 ? "Edit this Payment Voucher in the preview."
@@ -3113,7 +3474,9 @@ export function AdditionalCostsBoard({
                           <input
                             key={`${row.id}-remarks-${row.remarks}`}
                             defaultValue={row.remarks}
-                            disabled={!canDelete(row) || voucherInfoLockedToPreview}
+                            disabled={
+                              !canDelete(row) || voucherInfoLockedToPreview
+                            }
                             title={
                               voucherInfoLockedToPreview
                                 ? "Edit this Payment Voucher in the preview."
@@ -3166,8 +3529,13 @@ export function AdditionalCostsBoard({
                               onChange={(courier) =>
                                 void update(row.id, { courier })
                               }
-                              options={labelOptions.additional_cost_courier ?? []}
-                              readOnly={!canDelete(row) || String(group.id) === "courier"}
+                              options={
+                                labelOptions.additional_cost_courier ?? []
+                              }
+                              readOnly={
+                                !canDelete(row) ||
+                                String(group.id) === "courier"
+                              }
                               onAddOption={(value) =>
                                 manageLabel(
                                   "additional_cost_courier",
@@ -3201,10 +3569,7 @@ export function AdditionalCostsBoard({
                                 )
                               }
                               onReorderOptions={(layout) =>
-                                reorderLabels(
-                                  "additional_cost_courier",
-                                  layout,
-                                )
+                                reorderLabels("additional_cost_courier", layout)
                               }
                               manageLabel="courier"
                               sectionCount={1}
@@ -3342,7 +3707,10 @@ export function AdditionalCostsBoard({
                                 </button>
                               ) : row.isGeneratingQuickBooksBill ? (
                                 <div className="flex h-8 items-center justify-center gap-1 rounded bg-amber-50 px-2 text-xs font-semibold text-amber-700">
-                                  <LoaderCircle size={14} className="animate-spin" />
+                                  <LoaderCircle
+                                    size={14}
+                                    className="animate-spin"
+                                  />
                                   Generating…
                                 </div>
                               ) : row.has_quickbooks_bill ? (
@@ -3417,27 +3785,29 @@ export function AdditionalCostsBoard({
                             data-voucher-col="actions"
                             className="border-b border-slate-200 p-0 text-center"
                           >
-                          {String(group.id) !== "quickbooks_bills_only" ? (
-                            <button
-                              type="button"
-                              disabled={!canDelete(row) || creatingFor === row.id}
-                              onClick={() => void openVoucherEditor(row)}
-                              title={
-                                row.deactivated_at
-                                  ? "Deactivated payment vouchers cannot be edited."
-                                  : canDelete(row)
-                                    ? "Edit this payment voucher in the preview."
-                                    : "Only admins, directors, or users currently assigned to this client as People or PM can edit this payment voucher."
-                              }
-                              className="inline-flex h-10 min-w-[150px] flex-1 items-center justify-center whitespace-nowrap bg-sky-50 px-3 text-xs font-semibold text-sky-700 hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-30"
-                            >
-                              {creatingFor === row.id
-                                ? "Loading..."
-                                : row.is_draft
-                                  ? "Continue draft"
-                                  : "Edit Payment Voucher"}
-                            </button>
-                          ) : null}
+                            {String(group.id) !== "quickbooks_bills_only" ? (
+                              <button
+                                type="button"
+                                disabled={
+                                  !canDelete(row) || creatingFor === row.id
+                                }
+                                onClick={() => void openVoucherEditor(row)}
+                                title={
+                                  row.deactivated_at
+                                    ? "Deactivated payment vouchers cannot be edited."
+                                    : canDelete(row)
+                                      ? "Edit this payment voucher in the preview."
+                                      : "Only admins, directors, or users currently assigned to this client as People or PM can edit this payment voucher."
+                                }
+                                className="inline-flex h-10 min-w-[150px] flex-1 items-center justify-center whitespace-nowrap bg-sky-50 px-3 text-xs font-semibold text-sky-700 hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-30"
+                              >
+                                {creatingFor === row.id
+                                  ? "Loading..."
+                                  : row.is_draft
+                                    ? "Continue draft"
+                                    : "Edit Payment Voucher"}
+                              </button>
+                            ) : null}
                           </td>
                         ) : null}
                         <td
@@ -3480,18 +3850,18 @@ export function AdditionalCostsBoard({
         )}
         {!collapsedVoucherGroups[group.id] &&
           String(group.id) !== "quickbooks_bills_only" && (
-          <div className="border-t border-slate-200 px-3 py-2">
-            <button
-              type="button"
-            onClick={() => openVoucherCreator(group.id)}
-              className="text-sm font-medium text-sky-700 hover:text-sky-800"
-            >
-              {group.id === "quickbooks_bills_only"
-                ? "+ Add QuickBooks Bill"
-                : "+ Add payment voucher"}
-            </button>
-          </div>
-        )}
+            <div className="border-t border-slate-200 px-3 py-2">
+              <button
+                type="button"
+                onClick={() => openVoucherCreator(group.id)}
+                className="text-sm font-medium text-sky-700 hover:text-sky-800"
+              >
+                {group.id === "quickbooks_bills_only"
+                  ? "+ Add QuickBooks Bill"
+                  : "+ Add payment voucher"}
+              </button>
+            </div>
+          )}
       </section>
     );
   };
@@ -3499,17 +3869,157 @@ export function AdditionalCostsBoard({
     <section className="crm-board min-h-full bg-slate-50 p-4 sm:p-6">
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2">
-        <div>
-          <h1 className="text-xl font-semibold text-slate-800">
-            Payment Voucher
-          </h1>
-        </div>
-        <div ref={voucherToolbarRef} className="relative flex items-center gap-1">
-          {showVoucherSearch || voucherSearch ? <div className="flex h-8 w-72 items-center rounded border border-sky-500 bg-white"><Search size={15} className="ml-2 text-slate-500" /><input autoFocus value={voucherSearch} onChange={(event) => setVoucherSearch(event.target.value)} placeholder="Search payment vouchers" className="min-w-0 flex-1 px-2 text-sm outline-none" />{voucherSearch && <button type="button" onClick={() => setVoucherSearch("")} className="px-2 text-slate-400"><X size={14} /></button>}<button type="button" onClick={() => setShowVoucherSearchColumns((open) => !open)} className="mr-1 p-1 text-slate-500"><SlidersHorizontal size={15} /></button></div> : <button type="button" onClick={() => setShowVoucherSearch(true)} className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100"><Search size={16} /> Search</button>}
-          {showVoucherSearchColumns && <div className="absolute left-0 top-full z-[100] mt-1 w-[min(720px,calc(100vw-2rem))] rounded-lg border border-slate-200 bg-white p-4 shadow-xl"><p className="mb-2 text-sm font-medium text-slate-700">Choose columns to search</p><div className="relative mb-2"><Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400" /><input value={voucherSearchColumnQuery} onChange={(event) => setVoucherSearchColumnQuery(event.target.value)} placeholder="Find a column" className="h-8 w-full rounded border border-slate-300 pl-7 pr-2 text-sm outline-none focus:border-sky-400" /></div><label className="flex cursor-pointer items-center gap-2 border-b border-slate-100 py-2 text-sm font-medium text-slate-700"><input type="checkbox" checked={voucherSearchAllColumns} onChange={(event) => setVoucherSearchAllColumns(event.target.checked)} className="h-4 w-4 accent-[#0f8da8]" />All columns</label><div className="grid max-h-[min(68vh,680px)] grid-cols-1 gap-x-3 overflow-y-auto pt-2 sm:grid-cols-2">{voucherFilterColumns.filter((column) => `${column.label} ${column.category}`.toLowerCase().includes(voucherSearchColumnQuery.toLowerCase())).map((column) => <label key={column.key} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm text-slate-700 hover:bg-slate-50"><input type="checkbox" checked={voucherSearchAllColumns || voucherSearchColumns.has(column.key)} onChange={(event) => setVoucherSearchColumns((current) => { const next = voucherSearchAllColumns ? new Set(voucherFilterColumns.map((entry) => entry.key)) : new Set(current); event.target.checked ? next.add(column.key) : next.delete(column.key); setVoucherSearchAllColumns(false); return next; })} className="h-4 w-4 accent-[#0f8da8]" />{column.label}</label>)}</div></div>}
-          <button type="button" onClick={() => setShowVoucherFilter((open) => !open)} className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium ${showVoucherFilter || activeVoucherRules.length ? "bg-[#dff5f7] text-slate-700" : "text-slate-700 hover:bg-slate-100"}`}><Filter size={16} /> Filter{activeVoucherRules.length ? <span className="rounded-full bg-sky-100 px-1.5 text-[11px] text-sky-700">{activeVoucherRules.length}</span> : null}</button>
-          {showVoucherFilter && <div className="absolute left-0 top-full z-[100] mt-1"><AdvancedFilters columns={voucherFilterColumns} rules={voucherRules} join={voucherJoin} onRulesChange={setVoucherRules} onJoinChange={setVoucherJoin} onClear={() => setVoucherRules([{ id: crypto.randomUUID(), column: "", condition: "", value: "" }])} /></div>}
-        </div>
+          <div>
+            <h1 className="text-xl font-semibold text-slate-800">
+              Payment Voucher
+            </h1>
+          </div>
+          <div
+            ref={voucherToolbarRef}
+            className="relative flex items-center gap-1"
+          >
+            {showVoucherSearch || voucherSearch ? (
+              <div className="flex h-8 w-72 items-center rounded border border-sky-500 bg-white">
+                <Search size={15} className="ml-2 text-slate-500" />
+                <input
+                  autoFocus
+                  value={voucherSearch}
+                  onChange={(event) => setVoucherSearch(event.target.value)}
+                  placeholder="Search payment vouchers"
+                  className="min-w-0 flex-1 px-2 text-sm outline-none"
+                />
+                {voucherSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setVoucherSearch("")}
+                    className="px-2 text-slate-400"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setShowVoucherSearchColumns((open) => !open)}
+                  className="mr-1 p-1 text-slate-500"
+                >
+                  <SlidersHorizontal size={15} />
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setShowVoucherSearch(true)}
+                className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100"
+              >
+                <Search size={16} /> Search
+              </button>
+            )}
+            {showVoucherSearchColumns && (
+              <div className="absolute left-0 top-full z-[100] mt-1 w-[min(720px,calc(100vw-2rem))] rounded-lg border border-slate-200 bg-white p-4 shadow-xl">
+                <p className="mb-2 text-sm font-medium text-slate-700">
+                  Choose columns to search
+                </p>
+                <div className="relative mb-2">
+                  <Search
+                    size={14}
+                    className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400"
+                  />
+                  <input
+                    value={voucherSearchColumnQuery}
+                    onChange={(event) =>
+                      setVoucherSearchColumnQuery(event.target.value)
+                    }
+                    placeholder="Find a column"
+                    className="h-8 w-full rounded border border-slate-300 pl-7 pr-2 text-sm outline-none focus:border-sky-400"
+                  />
+                </div>
+                <label className="flex cursor-pointer items-center gap-2 border-b border-slate-100 py-2 text-sm font-medium text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={voucherSearchAllColumns}
+                    onChange={(event) =>
+                      setVoucherSearchAllColumns(event.target.checked)
+                    }
+                    className="h-4 w-4 accent-[#0f8da8]"
+                  />
+                  All columns
+                </label>
+                <div className="grid max-h-[min(68vh,680px)] grid-cols-1 gap-x-3 overflow-y-auto pt-2 sm:grid-cols-2">
+                  {voucherFilterColumns
+                    .filter((column) =>
+                      `${column.label} ${column.category}`
+                        .toLowerCase()
+                        .includes(voucherSearchColumnQuery.toLowerCase()),
+                    )
+                    .map((column) => (
+                      <label
+                        key={column.key}
+                        className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={
+                            voucherSearchAllColumns ||
+                            voucherSearchColumns.has(column.key)
+                          }
+                          onChange={(event) =>
+                            setVoucherSearchColumns((current) => {
+                              const next = voucherSearchAllColumns
+                                ? new Set(
+                                    voucherFilterColumns.map(
+                                      (entry) => entry.key,
+                                    ),
+                                  )
+                                : new Set(current);
+                              event.target.checked
+                                ? next.add(column.key)
+                                : next.delete(column.key);
+                              setVoucherSearchAllColumns(false);
+                              return next;
+                            })
+                          }
+                          className="h-4 w-4 accent-[#0f8da8]"
+                        />
+                        {column.label}
+                      </label>
+                    ))}
+                </div>
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={() => setShowVoucherFilter((open) => !open)}
+              className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium ${showVoucherFilter || activeVoucherRules.length ? "bg-[#dff5f7] text-slate-700" : "text-slate-700 hover:bg-slate-100"}`}
+            >
+              <Filter size={16} /> Filter
+              {activeVoucherRules.length ? (
+                <span className="rounded-full bg-sky-100 px-1.5 text-[11px] text-sky-700">
+                  {activeVoucherRules.length}
+                </span>
+              ) : null}
+            </button>
+            {showVoucherFilter && (
+              <div className="absolute left-0 top-full z-[100] mt-1">
+                <AdvancedFilters
+                  columns={voucherFilterColumns}
+                  rules={voucherRules}
+                  join={voucherJoin}
+                  onRulesChange={setVoucherRules}
+                  onJoinChange={setVoucherJoin}
+                  onClear={() =>
+                    setVoucherRules([
+                      {
+                        id: crypto.randomUUID(),
+                        column: "",
+                        condition: "",
+                        value: "",
+                      },
+                    ])
+                  }
+                />
+              </div>
+            )}
+          </div>
         </div>
       </div>
       <div className="space-y-4">
@@ -3564,7 +4074,9 @@ export function AdditionalCostsBoard({
               >
                 {cell(
                   <div className="flex h-10 items-center truncate px-2 text-sm font-medium text-slate-700">
-                    {project && !project.deleted ? project.label : "Deleted client"}
+                    {project && !project.deleted
+                      ? project.label
+                      : "Deleted client"}
                   </div>,
                   "project",
                 )}
@@ -3605,7 +4117,7 @@ export function AdditionalCostsBoard({
                       void update(row.id, {
                         cost:
                           event.target.value !== "" &&
-                            Number.isFinite(Number(event.target.value))
+                          Number.isFinite(Number(event.target.value))
                             ? event.target.value
                             : null,
                       })
@@ -3615,13 +4127,13 @@ export function AdditionalCostsBoard({
                         current.map((candidate) =>
                           candidate.id === row.id
                             ? {
-                              ...candidate,
-                              cost: Number.isFinite(
-                                Number(event.target.value),
-                              )
-                                ? Number(event.target.value)
-                                : null,
-                            }
+                                ...candidate,
+                                cost: Number.isFinite(
+                                  Number(event.target.value),
+                                )
+                                  ? Number(event.target.value)
+                                  : null,
+                              }
                             : candidate,
                         ),
                       )
@@ -3873,14 +4385,14 @@ export function AdditionalCostsBoard({
                   {Object.values(billDocumentPreview.confidence).filter(Boolean)
                     .length
                     ? `${Math.round(
-                      (Object.values(billDocumentPreview.confidence)
-                        .filter(Boolean)
-                        .reduce((total, value) => total + value, 0) /
-                        Object.values(billDocumentPreview.confidence).filter(
-                          Boolean,
-                        ).length) *
-                      100,
-                    )}%`
+                        (Object.values(billDocumentPreview.confidence)
+                          .filter(Boolean)
+                          .reduce((total, value) => total + value, 0) /
+                          Object.values(billDocumentPreview.confidence).filter(
+                            Boolean,
+                          ).length) *
+                          100,
+                      )}%`
                     : "not available"}
                   . Verify all prefilled fields.
                 </div>
@@ -3957,9 +4469,45 @@ export function AdditionalCostsBoard({
                       </p>
                     </section>
                   ) : null}
+                  {selectedVoucherClientId &&
+                  !quickBooksBillOnlyMode &&
+                  otherBillChoice !== null ? (
+                    <section className="border-t border-slate-200 pt-4">
+                      <h3 className="font-semibold text-slate-800">
+                        (Optional) Merge Subitem
+                      </h3>
+                      <p className="mt-1 text-sm text-slate-500">
+                        Pick one normal subitem to become this Payment Voucher
+                        subitem. This merge is irreversible: fields normally
+                        created for the Payment Voucher replace the selected
+                        subitem’s values, and its existing subpayment rows are
+                        replaced.
+                      </p>
+                      <label className="mt-3 flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-700">
+                        <input
+                          type="checkbox"
+                          checked={voucherDraft.mergeSubitemEnabled}
+                          onChange={(event) =>
+                            setVoucherDraft((draft) => ({
+                              ...draft,
+                              mergeSubitemEnabled: event.target.checked,
+                              mergeSubitemId: event.target.checked
+                                ? draft.mergeSubitemId
+                                : "",
+                            }))
+                          }
+                        />
+                        Merge an existing subitem
+                      </label>
+                      <label className="mt-3 block text-sm font-medium text-slate-700">
+                        Subitem to merge
+                        {renderMergeSubitemSelector(selectedVoucherClientId)}
+                      </label>
+                    </section>
+                  ) : null}
                   {!billTargetVoucher &&
-                    !quickBooksBillOnlyMode &&
-                    otherBillChoice === null ? (
+                  !quickBooksBillOnlyMode &&
+                  otherBillChoice === null ? (
                     <section className="border-t border-slate-200 pt-4">
                       <h3 className="font-semibold text-slate-800">Bill</h3>
                       <p className="mt-1 text-sm text-slate-500">
@@ -4026,56 +4574,62 @@ export function AdditionalCostsBoard({
                                 else void extractBillDocument(file);
                               }}
                             >
-                            <label className="block rounded-lg border border-dashed border-sky-300 bg-sky-50 p-3 text-sm font-medium text-slate-700">
-                              Upload Receipt/Invoice for Pre-filling
-                              <span className="mt-1 block text-xs font-normal text-slate-500">
-                                Maximum 1 upload here for pre-filling, upload
-                                other files below.
-                              </span>
-                              <span className="mt-1 block text-xs font-normal text-slate-500">
-                                PDF, JPEG, PNG, TIFF, BMP, or HEIF up to 4 MB.
-                                You can also paste a copied image here.
-                                The original file is also added to the Bill
-                                attachments.
-                              </span>
-                              <input
-                                type="file"
-                                accept="application/pdf,image/jpeg,image/png,image/tiff,image/bmp,image/heif"
-                                disabled={extractingBillDocument}
-                                onChange={(event) => {
-                                  const file = event.target.files?.[0];
-                                  event.currentTarget.value = "";
-                                  if (!file) return;
-                                  if (prefillFileSignature)
-                                    setPendingExtractionFile(file);
-                                  else void extractBillDocument(file);
-                                }}
-                                className="mt-2 block w-full text-sm font-normal text-slate-600"
-                              />
-                              {extractingBillDocument ? (
-                                <span className="mt-3 flex items-center gap-2 rounded-md bg-sky-700 px-3 py-2 text-sm font-semibold text-white">
-                                  <LoaderCircle
-                                    size={18}
-                                    className="animate-spin"
-                                  />{" "}
-                                  Reading file and extracting Bill details…
+                              <label className="block rounded-lg border border-dashed border-sky-300 bg-sky-50 p-3 text-sm font-medium text-slate-700">
+                                Upload Receipt/Invoice for Pre-filling
+                                <span className="mt-1 block text-xs font-normal text-slate-500">
+                                  Maximum 1 upload here for pre-filling, upload
+                                  other files below.
                                 </span>
-                              ) : null}
-                            </label>
+                                <span className="mt-1 block text-xs font-normal text-slate-500">
+                                  PDF, JPEG, PNG, TIFF, BMP, or HEIF up to 4 MB.
+                                  You can also paste a copied image here. The
+                                  original file is also added to the Bill
+                                  attachments.
+                                </span>
+                                <input
+                                  type="file"
+                                  accept="application/pdf,image/jpeg,image/png,image/tiff,image/bmp,image/heif"
+                                  disabled={extractingBillDocument}
+                                  onChange={(event) => {
+                                    const file = event.target.files?.[0];
+                                    event.currentTarget.value = "";
+                                    if (!file) return;
+                                    if (prefillFileSignature)
+                                      setPendingExtractionFile(file);
+                                    else void extractBillDocument(file);
+                                  }}
+                                  className="mt-2 block w-full text-sm font-normal text-slate-600"
+                                />
+                                {extractingBillDocument ? (
+                                  <span className="mt-3 flex items-center gap-2 rounded-md bg-sky-700 px-3 py-2 text-sm font-semibold text-white">
+                                    <LoaderCircle
+                                      size={18}
+                                      className="animate-spin"
+                                    />{" "}
+                                    Reading file and extracting Bill details…
+                                  </span>
+                                ) : null}
+                              </label>
                             </FileDropTarget>
                             {voucherCreationGroup === "other" &&
                             !quickBooksBillOnlyMode &&
-                            (!billTargetVoucher || Boolean(editingVoucher?.is_draft)) ? (
+                            (!billTargetVoucher ||
+                              Boolean(editingVoucher?.is_draft)) ? (
                               <>
                                 <button
                                   type="button"
                                   disabled={creatingFor !== null}
-                                  onClick={() => void savePaymentVoucherDraft(true)}
+                                  onClick={() =>
+                                    void savePaymentVoucherDraft(true)
+                                  }
                                   className="self-start rounded border border-violet-300 bg-violet-50 px-4 py-2 text-sm font-semibold text-violet-800 hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-50"
                                 >
                                   {creatingFor ? "Saving…" : "Save as draft"}
                                 </button>
-                                <div aria-hidden="true" className="h-8 border-b border-slate-100" />
+                                <div
+                                  aria-hidden="true"
+                                  className="h-8 border-b border-slate-100"
+                                />
                               </>
                             ) : null}
                             {billOptionsLoading ? (
@@ -4157,7 +4711,7 @@ export function AdditionalCostsBoard({
                                   ) : null}
                                 </div>
                                 {supplierExtraction?.suggestion &&
-                                  billDraft.supplierId !==
+                                billDraft.supplierId !==
                                   supplierExtraction.suggestion.id ? (
                                   <button
                                     type="button"
@@ -4177,11 +4731,11 @@ export function AdditionalCostsBoard({
                                   </button>
                                 ) : null}
                                 {!supplierExtraction?.suggestion &&
-                                  !billDraft.supplierId &&
-                                  closestQuickBooksOption(
-                                    billDraft.supplierName,
-                                    billOptions.vendors,
-                                  ) ? (
+                                !billDraft.supplierId &&
+                                closestQuickBooksOption(
+                                  billDraft.supplierName,
+                                  billOptions.vendors,
+                                ) ? (
                                   <button
                                     type="button"
                                     onClick={() => {
@@ -4354,11 +4908,11 @@ export function AdditionalCostsBoard({
                                                   (current, currentIndex) =>
                                                     currentIndex === index
                                                       ? {
-                                                        ...current,
-                                                        categoryName,
-                                                        categoryId:
-                                                          match?.id ?? "",
-                                                      }
+                                                          ...current,
+                                                          categoryName,
+                                                          categoryId:
+                                                            match?.id ?? "",
+                                                        }
                                                       : current,
                                                 ),
                                               }));
@@ -4372,87 +4926,87 @@ export function AdditionalCostsBoard({
                                           />
                                           {categoryOptionsOpen?.index ===
                                             index &&
-                                            typeof document !== "undefined"
+                                          typeof document !== "undefined"
                                             ? createPortal(
-                                              <div
-                                                style={{
-                                                  position: "fixed",
-                                                  top: categoryOptionsOpen.top,
-                                                  left: categoryOptionsOpen.left,
-                                                  width:
-                                                    categoryOptionsOpen.width,
-                                                  zIndex: 500,
-                                                }}
-                                                className="max-h-52 overflow-y-auto rounded border border-slate-200 bg-white shadow-xl"
-                                              >
-                                                {billOptions.accounts
-                                                  .filter(
-                                                    (option) =>
-                                                      !line.categoryName ||
-                                                      option.name
-                                                        .toLocaleLowerCase()
-                                                        .includes(
-                                                          (
-                                                            line.categoryName ??
-                                                            ""
-                                                          ).toLocaleLowerCase(),
-                                                        ),
-                                                  )
-                                                  .map((option) => (
-                                                    <button
-                                                      key={option.id}
-                                                      type="button"
-                                                      onMouseDown={(event) =>
-                                                        event.preventDefault()
-                                                      }
-                                                      onClick={() => {
-                                                        setBillDraft(
-                                                          (draft) => ({
-                                                            ...draft,
-                                                            lines:
-                                                              draft.lines.map(
-                                                                (
-                                                                  current,
-                                                                  currentIndex,
-                                                                ) =>
-                                                                  currentIndex ===
+                                                <div
+                                                  style={{
+                                                    position: "fixed",
+                                                    top: categoryOptionsOpen.top,
+                                                    left: categoryOptionsOpen.left,
+                                                    width:
+                                                      categoryOptionsOpen.width,
+                                                    zIndex: 500,
+                                                  }}
+                                                  className="max-h-52 overflow-y-auto rounded border border-slate-200 bg-white shadow-xl"
+                                                >
+                                                  {billOptions.accounts
+                                                    .filter(
+                                                      (option) =>
+                                                        !line.categoryName ||
+                                                        option.name
+                                                          .toLocaleLowerCase()
+                                                          .includes(
+                                                            (
+                                                              line.categoryName ??
+                                                              ""
+                                                            ).toLocaleLowerCase(),
+                                                          ),
+                                                    )
+                                                    .map((option) => (
+                                                      <button
+                                                        key={option.id}
+                                                        type="button"
+                                                        onMouseDown={(event) =>
+                                                          event.preventDefault()
+                                                        }
+                                                        onClick={() => {
+                                                          setBillDraft(
+                                                            (draft) => ({
+                                                              ...draft,
+                                                              lines:
+                                                                draft.lines.map(
+                                                                  (
+                                                                    current,
+                                                                    currentIndex,
+                                                                  ) =>
+                                                                    currentIndex ===
                                                                     index
-                                                                    ? {
-                                                                      ...current,
-                                                                      categoryId:
-                                                                        option.id,
-                                                                      categoryName:
-                                                                        option.name,
-                                                                    }
-                                                                    : current,
-                                                              ),
-                                                          }),
-                                                        );
-                                                        setCategoryOptionsOpen(
-                                                          null,
-                                                        );
-                                                      }}
-                                                      className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-sky-50"
-                                                    >
-                                                      <span className="truncate">
-                                                        {option.name}
-                                                      </span>
-                                                      <span className="shrink-0 text-xs italic text-slate-500">
-                                                        {option.accountSubType ||
-                                                          option.accountType ||
-                                                          "Account"}
-                                                      </span>
-                                                    </button>
-                                                  ))}
-                                              </div>,
-                                              document.body,
-                                            )
+                                                                      ? {
+                                                                          ...current,
+                                                                          categoryId:
+                                                                            option.id,
+                                                                          categoryName:
+                                                                            option.name,
+                                                                        }
+                                                                      : current,
+                                                                ),
+                                                            }),
+                                                          );
+                                                          setCategoryOptionsOpen(
+                                                            null,
+                                                          );
+                                                        }}
+                                                        className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-sky-50"
+                                                      >
+                                                        <span className="truncate">
+                                                          {option.name}
+                                                        </span>
+                                                        <span className="shrink-0 text-xs italic text-slate-500">
+                                                          {option.accountSubType ||
+                                                            option.accountType ||
+                                                            "Account"}
+                                                        </span>
+                                                      </button>
+                                                    ))}
+                                                </div>,
+                                                document.body,
+                                              )
                                             : null}
                                           {!line.categoryId &&
-                                            closestQuickBooksOption(
-                                              line.categoryName ?? "",
-                                              billOptions.accounts,
-                                            ) ? (
+                                          closestQuickBooksOption(
+                                            line.categoryName ?? "",
+                                            billOptions.accounts,
+                                          ) ? (
                                             <button
                                               type="button"
                                               onClick={() => {
@@ -4467,12 +5021,12 @@ export function AdditionalCostsBoard({
                                                     (current, currentIndex) =>
                                                       currentIndex === index
                                                         ? {
-                                                          ...current,
-                                                          categoryId:
-                                                            match.id,
-                                                          categoryName:
-                                                            match.name,
-                                                        }
+                                                            ...current,
+                                                            categoryId:
+                                                              match.id,
+                                                            categoryName:
+                                                              match.name,
+                                                          }
                                                         : current,
                                                   ),
                                                 }));
@@ -4499,10 +5053,10 @@ export function AdditionalCostsBoard({
                                                   (current, currentIndex) =>
                                                     currentIndex === index
                                                       ? {
-                                                        ...current,
-                                                        description:
-                                                          event.target.value,
-                                                      }
+                                                          ...current,
+                                                          description:
+                                                            event.target.value,
+                                                        }
                                                       : current,
                                                 ),
                                               }))
@@ -4524,10 +5078,10 @@ export function AdditionalCostsBoard({
                                                   (current, currentIndex) =>
                                                     currentIndex === index
                                                       ? {
-                                                        ...current,
-                                                        amount:
-                                                          event.target.value,
-                                                      }
+                                                          ...current,
+                                                          amount:
+                                                            event.target.value,
+                                                        }
                                                       : current,
                                                 ),
                                               }))
@@ -4546,10 +5100,10 @@ export function AdditionalCostsBoard({
                                                   (current, currentIndex) =>
                                                     currentIndex === index
                                                       ? {
-                                                        ...current,
-                                                        taxCodeId:
-                                                          event.target.value,
-                                                      }
+                                                          ...current,
+                                                          taxCodeId:
+                                                            event.target.value,
+                                                        }
                                                       : current,
                                                 ),
                                               }))
@@ -4635,7 +5189,11 @@ export function AdditionalCostsBoard({
                                   GST Amount
                                 </span>
                                 <span className="font-semibold tabular-nums text-slate-900">
-                                  {(Number.parseFloat(billDraft.overallGstAmount) || 0).toFixed(2)}
+                                  {(
+                                    Number.parseFloat(
+                                      billDraft.overallGstAmount,
+                                    ) || 0
+                                  ).toFixed(2)}
                                 </span>
                               </div>
                               <div className="flex items-center justify-between gap-6 px-3 py-2">
@@ -4651,7 +5209,8 @@ export function AdditionalCostsBoard({
                               Overall GST Amount
                               <span className="mt-1 block text-xs font-normal text-slate-500">
                                 Calculated from the expense-line amounts and
-                                selected GST types. You may override it if needed.
+                                selected GST types. You may override it if
+                                needed.
                               </span>
                               <input
                                 type="number"
@@ -4691,33 +5250,33 @@ export function AdditionalCostsBoard({
                             >
                               <label className="block rounded-lg border border-dashed border-sky-300 bg-sky-50 p-3 text-sm font-medium text-slate-700">
                                 Attachments
-                              <span className="mt-1 block text-xs font-normal text-slate-500">
-                                Click any attachment to preview it in the left
-                                pane. Drag files or paste copied images here.
-                                Files used for prefill are marked.
-                              </span>
-                              {editingQuickBooksBill &&
+                                <span className="mt-1 block text-xs font-normal text-slate-500">
+                                  Click any attachment to preview it in the left
+                                  pane. Drag files or paste copied images here.
+                                  Files used for prefill are marked.
+                                </span>
+                                {editingQuickBooksBill &&
                                 billTargetVoucher?.quickbooks_attachment_files
                                   ?.length ? (
-                                <span className="mt-1 block text-xs font-normal text-slate-500">
-                                  Existing QuickBooks attachments are retained.
-                                  Add files here to attach more.
-                                </span>
-                              ) : null}
-                              <input
-                                type="file"
-                                multiple
-                                onChange={(event) =>
-                                  setBillDraft((draft) => ({
-                                    ...draft,
-                                    attachments: [
-                                      ...draft.attachments,
-                                      ...Array.from(event.target.files ?? []),
-                                    ],
-                                  }))
-                                }
-                                className="mt-1 block w-full text-sm font-normal text-slate-600"
-                              />
+                                  <span className="mt-1 block text-xs font-normal text-slate-500">
+                                    Existing QuickBooks attachments are
+                                    retained. Add files here to attach more.
+                                  </span>
+                                ) : null}
+                                <input
+                                  type="file"
+                                  multiple
+                                  onChange={(event) =>
+                                    setBillDraft((draft) => ({
+                                      ...draft,
+                                      attachments: [
+                                        ...draft.attachments,
+                                        ...Array.from(event.target.files ?? []),
+                                      ],
+                                    }))
+                                  }
+                                  className="mt-1 block w-full text-sm font-normal text-slate-600"
+                                />
                               </label>
                             </FileDropTarget>
                             {billDraft.attachments.length ? (
@@ -4735,7 +5294,7 @@ export function AdditionalCostsBoard({
                                       {file.name}
                                     </button>
                                     {prefillFileSignature ===
-                                      `${file.name}-${file.lastModified}` ? (
+                                    `${file.name}-${file.lastModified}` ? (
                                       <span className="shrink-0 rounded bg-sky-100 px-1.5 py-0.5 text-xs font-medium text-sky-700">
                                         Used for prefill
                                       </span>
@@ -4808,7 +5367,8 @@ export function AdditionalCostsBoard({
                                             modeOfPayment:
                                               upsBrokerageChargesModeOfPayment.value,
                                             modeOfPaymentOptionId:
-                                              upsBrokerageChargesModeOfPayment.id ?? "",
+                                              upsBrokerageChargesModeOfPayment.id ??
+                                              "",
                                           }
                                         : {}),
                                     }))
@@ -4830,7 +5390,11 @@ export function AdditionalCostsBoard({
                                       optionId,
                                     )
                                   }
-                                  onUpdateOptionColor={(value, color, optionId) =>
+                                  onUpdateOptionColor={(
+                                    value,
+                                    color,
+                                    optionId,
+                                  ) =>
                                     manageLabel(
                                       "additional_cost_reason",
                                       "color",
@@ -4839,7 +5403,11 @@ export function AdditionalCostsBoard({
                                       optionId,
                                     )
                                   }
-                                  onRenameOption={(value, nextValue, optionId) =>
+                                  onRenameOption={(
+                                    value,
+                                    nextValue,
+                                    optionId,
+                                  ) =>
                                     manageLabel(
                                       "additional_cost_reason",
                                       "rename",
@@ -4866,7 +5434,16 @@ export function AdditionalCostsBoard({
                             </label>
                             <label className="text-sm font-medium text-slate-700">
                               Order number
-                              <input value={voucherDraft.orderNumber} onChange={(event) => setVoucherDraft((draft) => ({ ...draft, orderNumber: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 px-3 py-2 font-normal" />
+                              <input
+                                value={voucherDraft.orderNumber}
+                                onChange={(event) =>
+                                  setVoucherDraft((draft) => ({
+                                    ...draft,
+                                    orderNumber: event.target.value,
+                                  }))
+                                }
+                                className="mt-1 w-full rounded border border-slate-300 px-3 py-2 font-normal"
+                              />
                             </label>
                             <label className="text-sm font-medium text-slate-700">
                               Currency
@@ -4887,7 +5464,18 @@ export function AdditionalCostsBoard({
                             <label className="text-sm font-medium text-slate-700">
                               Mode of payment
                               <div className="mt-1 h-10 overflow-hidden rounded border border-slate-300">
-                                <StatusBadge value={voucherDraft.modeOfPayment} onChange={(value, option) => setVoucherDraft((draft) => ({ ...draft, modeOfPayment: value, modeOfPaymentOptionId: option?.id ?? "" }))} options={labelOptions.mode_of_payment ?? []} sectionCount={4} />
+                                <StatusBadge
+                                  value={voucherDraft.modeOfPayment}
+                                  onChange={(value, option) =>
+                                    setVoucherDraft((draft) => ({
+                                      ...draft,
+                                      modeOfPayment: value,
+                                      modeOfPaymentOptionId: option?.id ?? "",
+                                    }))
+                                  }
+                                  options={labelOptions.mode_of_payment ?? []}
+                                  sectionCount={4}
+                                />
                               </div>
                             </label>
                           </div>
@@ -4934,16 +5522,16 @@ export function AdditionalCostsBoard({
                             ? void updateQuickBooksBill(billTargetVoucher)
                             : quickBooksBillOnlyMode
                               ? void generateQuickBooksBillOnly(
-                                billTargetVoucher,
-                              )
+                                  billTargetVoucher,
+                                )
                               : otherBillChoice === "add"
                                 ? void generateQuickBooksBill(
-                                  selectedVoucherClientId!,
-                                  billTargetVoucher ??
-                                    (editingVoucher?.is_draft
-                                      ? editingVoucher
-                                      : null),
-                                )
+                                    selectedVoucherClientId!,
+                                    billTargetVoucher ??
+                                      (editingVoucher?.is_draft
+                                        ? editingVoucher
+                                        : null),
+                                  )
                                 : void create(selectedVoucherClientId!)
                         }
                         className="order-3 self-start rounded bg-[#16a5c4] px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-300"
@@ -4967,21 +5555,62 @@ export function AdditionalCostsBoard({
                 </div>
               ) : (
                 <div className="space-y-3 p-4">
-                  {!editingVoucher ? <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedVoucherClientId(null);
-                      setBillDocumentPreview(null);
-                      setPrefillFileSignature(null);
-                    }}
-                    className="text-sm text-sky-700 hover:underline"
-                  >
-                    Change project
-                  </button> : null}
+                  {!editingVoucher ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedVoucherClientId(null);
+                        setBillDocumentPreview(null);
+                        setPrefillFileSignature(null);
+                      }}
+                      className="text-sm text-sky-700 hover:underline"
+                    >
+                      Change project
+                    </button>
+                  ) : null}
+                  <section>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Project Name
+                    </p>
+                    <p className="mt-1 text-sm font-medium text-slate-800">
+                      {clientLabel(clientsById.get(selectedVoucherClientId!)!)}
+                    </p>
+                  </section>
+                  <section className="border-t border-slate-200 pt-4">
+                    <h3 className="font-semibold text-slate-800">
+                      (Optional) Merge Subitem
+                    </h3>
+                    <p className="mt-1 text-sm text-slate-500">
+                      Choose a normal subitem to become this Payment Voucher
+                      subitem. This is irreversible and replaces its existing
+                      subpayment rows.
+                    </p>
+                    <label className="mt-3 flex items-center gap-2 text-sm font-medium text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={voucherDraft.mergeSubitemEnabled}
+                        onChange={(event) =>
+                          setVoucherDraft((draft) => ({
+                            ...draft,
+                            mergeSubitemEnabled: event.target.checked,
+                            mergeSubitemId: event.target.checked
+                              ? draft.mergeSubitemId
+                              : "",
+                          }))
+                        }
+                      />
+                      Merge an existing subitem
+                    </label>
+                    <label className="mt-3 block text-sm font-medium text-slate-700">
+                      Subitem to merge
+                      {renderMergeSubitemSelector(selectedVoucherClientId!)}
+                    </label>
+                  </section>
                   <p className="text-sm font-medium text-slate-700">
                     Project:{" "}
                     {editingVoucher
-                      ? projectForVoucher(editingVoucher)?.label ?? "Linked client"
+                      ? (projectForVoucher(editingVoucher)?.label ??
+                        "Linked client")
                       : clientLabel(clientsById.get(selectedVoucherClientId!)!)}
                   </p>
                   <div className="border-t border-slate-200 pt-3">
@@ -5035,7 +5664,11 @@ export function AdditionalCostsBoard({
                             manageLabel("additional_cost_reason", "add", value)
                           }
                           onDeleteOption={(value, optionId) =>
-                            deleteLabel("additional_cost_reason", value, optionId)
+                            deleteLabel(
+                              "additional_cost_reason",
+                              value,
+                              optionId,
+                            )
                           }
                           onUpdateOptionColor={(value, color, optionId) =>
                             manageLabel(
@@ -5088,17 +5721,26 @@ export function AdditionalCostsBoard({
                                 ...(modeOption
                                   ? {
                                       modeOfPayment: modeOption.value,
-                                      modeOfPaymentOptionId: modeOption.id ?? "",
+                                      modeOfPaymentOptionId:
+                                        modeOption.id ?? "",
                                     }
                                   : {}),
                               }));
                             }}
                             options={labelOptions.additional_cost_courier ?? []}
                             onAddOption={(value) =>
-                              manageLabel("additional_cost_courier", "add", value)
+                              manageLabel(
+                                "additional_cost_courier",
+                                "add",
+                                value,
+                              )
                             }
                             onDeleteOption={(value, optionId) =>
-                              deleteLabel("additional_cost_courier", value, optionId)
+                              deleteLabel(
+                                "additional_cost_courier",
+                                value,
+                                optionId,
+                              )
                             }
                             onUpdateOptionColor={(value, color, optionId) =>
                               manageLabel(
@@ -5129,7 +5771,16 @@ export function AdditionalCostsBoard({
                     ) : null}
                     <label className="text-sm font-medium text-slate-700">
                       Order number
-                      <input value={voucherDraft.orderNumber} onChange={(event) => setVoucherDraft((draft) => ({ ...draft, orderNumber: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 px-3 py-2 font-normal" />
+                      <input
+                        value={voucherDraft.orderNumber}
+                        onChange={(event) =>
+                          setVoucherDraft((draft) => ({
+                            ...draft,
+                            orderNumber: event.target.value,
+                          }))
+                        }
+                        className="mt-1 w-full rounded border border-slate-300 px-3 py-2 font-normal"
+                      />
                     </label>
                     <label className="text-sm font-medium text-slate-700">
                       Currency
@@ -5150,7 +5801,18 @@ export function AdditionalCostsBoard({
                     <label className="text-sm font-medium text-slate-700">
                       Mode of payment
                       <div className="mt-1 h-10 overflow-hidden rounded border border-slate-300">
-                        <StatusBadge value={voucherDraft.modeOfPayment} onChange={(value, option) => setVoucherDraft((draft) => ({ ...draft, modeOfPayment: value, modeOfPaymentOptionId: option?.id ?? "" }))} options={labelOptions.mode_of_payment ?? []} sectionCount={4} />
+                        <StatusBadge
+                          value={voucherDraft.modeOfPayment}
+                          onChange={(value, option) =>
+                            setVoucherDraft((draft) => ({
+                              ...draft,
+                              modeOfPayment: value,
+                              modeOfPaymentOptionId: option?.id ?? "",
+                            }))
+                          }
+                          options={labelOptions.mode_of_payment ?? []}
+                          sectionCount={4}
+                        />
                       </div>
                     </label>
                   </div>
@@ -5174,15 +5836,24 @@ export function AdditionalCostsBoard({
                       (!isOtherVoucherInformationOnlyEdit &&
                         Number(voucherDraft.cost) <= 0) ||
                       !voucherDraft.reason ||
-                      (!editingVoucher && !voucherDraft.relatedSubitemIds.length) ||
+                      (!editingVoucher &&
+                        !voucherDraft.relatedSubitemIds.length) ||
                       (voucherReasonIsOther && !voucherDraft.remarks.trim())
                     }
-                    onClick={() => editingVoucher ? void saveVoucherEdit() : void create(selectedVoucherClientId!)}
+                    onClick={() =>
+                      editingVoucher
+                        ? void saveVoucherEdit()
+                        : void create(selectedVoucherClientId!)
+                    }
                     className="rounded bg-[#16a5c4] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
                   >
                     {creatingFor
-                      ? editingVoucher ? "Saving…" : "Creating…"
-                      : editingVoucher ? "Save payment voucher" : "Create payment voucher"}
+                      ? editingVoucher
+                        ? "Saving…"
+                        : "Creating…"
+                      : editingVoucher
+                        ? "Save payment voucher"
+                        : "Create payment voucher"}
                   </button>
                 </div>
               )
@@ -5239,74 +5910,74 @@ export function AdditionalCostsBoard({
                         </button>
                         {expanded
                           ? section.clients.map((client) => {
-                            const restriction = creationRestriction(client);
-                            const isLocked =
-                              client.customFields?.subitemsLocked === "true";
-                            return (
-                              <div
-                                key={client.id}
-                                title={restriction ?? undefined}
-                              >
-                                <button
-                                  disabled={
-                                    creatingFor !== null ||
-                                    Boolean(restriction)
-                                  }
-                                  onClick={() => {
-                                    setSelectedVoucherClientId(client.id);
-                                    setBillDraft((draft) => ({
-                                      ...draft,
-                                      memo: `${client.name || "Unnamed client"}${client.displayId ? ` · ${client.displayId}` : ""}`,
-                                    }));
-                                  }}
-                                  className="flex w-full items-start rounded-md px-3 py-3 text-left text-sm hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-50"
+                              const restriction = creationRestriction(client);
+                              const isLocked =
+                                client.customFields?.subitemsLocked === "true";
+                              return (
+                                <div
+                                  key={client.id}
+                                  title={restriction ?? undefined}
                                 >
-                                  <span className="min-w-0 flex-1">
-                                    <span className="flex items-center font-medium text-slate-700">
-                                      {isLocked ? (
-                                        <LockKeyhole
-                                          size={17}
-                                          aria-label="Locked client"
-                                          className="mr-2 shrink-0 text-amber-500"
-                                        />
-                                      ) : null}
-                                      <span className="truncate">
-                                        {client.name || "Unnamed client"}
+                                  <button
+                                    disabled={
+                                      creatingFor !== null ||
+                                      Boolean(restriction)
+                                    }
+                                    onClick={() => {
+                                      setSelectedVoucherClientId(client.id);
+                                      setBillDraft((draft) => ({
+                                        ...draft,
+                                        memo: `${client.name || "Unnamed client"}${client.displayId ? ` · ${client.displayId}` : ""}`,
+                                      }));
+                                    }}
+                                    className="flex w-full items-start rounded-md px-3 py-3 text-left text-sm hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                  >
+                                    <span className="min-w-0 flex-1">
+                                      <span className="flex items-center font-medium text-slate-700">
+                                        {isLocked ? (
+                                          <LockKeyhole
+                                            size={17}
+                                            aria-label="Locked client"
+                                            className="mr-2 shrink-0 text-amber-500"
+                                          />
+                                        ) : null}
+                                        <span className="truncate">
+                                          {client.name || "Unnamed client"}
+                                        </span>
+                                        <span className="ml-2 shrink-0 font-mono text-xs text-slate-400">
+                                          {client.displayId}
+                                        </span>
                                       </span>
-                                      <span className="ml-2 shrink-0 font-mono text-xs text-slate-400">
-                                        {client.displayId}
+                                      <span className="mt-1 block truncate text-xs text-slate-500">
+                                        Company: {client.company || "—"} ·
+                                        Email: {client.email || "—"}
+                                      </span>
+                                      <span className="mt-1 block truncate text-xs text-slate-400">
+                                        Subitems ({client.subitems.length}):{" "}
+                                        {client.subitems.length
+                                          ? client.subitems
+                                              .slice(0, 3)
+                                              .map(
+                                                (subitem) =>
+                                                  subitem.name ||
+                                                  "Unnamed subitem",
+                                              )
+                                              .join(", ") +
+                                            (client.subitems.length > 3
+                                              ? "…"
+                                              : "")
+                                          : "None"}
                                       </span>
                                     </span>
-                                    <span className="mt-1 block truncate text-xs text-slate-500">
-                                      Company: {client.company || "—"} ·
-                                      Email: {client.email || "—"}
-                                    </span>
-                                    <span className="mt-1 block truncate text-xs text-slate-400">
-                                      Subitems ({client.subitems.length}):{" "}
-                                      {client.subitems.length
-                                        ? client.subitems
-                                          .slice(0, 3)
-                                          .map(
-                                            (subitem) =>
-                                              subitem.name ||
-                                              "Unnamed subitem",
-                                          )
-                                          .join(", ") +
-                                        (client.subitems.length > 3
-                                          ? "…"
-                                          : "")
-                                        : "None"}
-                                    </span>
-                                  </span>
-                                  {creatingFor === client.id ? (
-                                    <span className="ml-auto text-xs text-slate-400">
-                                      Creating…
-                                    </span>
-                                  ) : null}
-                                </button>
-                              </div>
-                            );
-                          })
+                                    {creatingFor === client.id ? (
+                                      <span className="ml-auto text-xs text-slate-400">
+                                        Creating…
+                                      </span>
+                                    ) : null}
+                                  </button>
+                                </div>
+                              );
+                            })
                           : null}
                       </div>
                     );
@@ -5350,7 +6021,9 @@ export function AdditionalCostsBoard({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Save Payment Voucher as a draft?</AlertDialogTitle>
+            <AlertDialogTitle>
+              Save Payment Voucher as a draft?
+            </AlertDialogTitle>
             <AlertDialogDescription className="sr-only">
               Save this Payment Voucher as a draft for later completion.
             </AlertDialogDescription>
@@ -5452,17 +6125,42 @@ export function AdditionalCostsBoard({
               </button>
             </div>
             <div className="max-h-[65vh] overflow-y-auto p-5">
-              {activityLoading ? <p className="text-sm text-slate-500">Loading activity history…</p> : !activityRows.length ? <p className="text-sm text-slate-500">No activity recorded yet.</p> : (
-                <div className="space-y-3">{activityRows.map((entry) =>
-                  <div key={entry.id} className="rounded-lg border p-3">
-                    <div className="flex justify-between gap-4">
-                      <p className="font-medium text-slate-800">{entry.title}</p>
-                      <time className="whitespace-nowrap text-xs text-slate-400">{new Date(entry.created_at).toLocaleString("en-SG")}</time>
+              {activityLoading ? (
+                <p className="text-sm text-slate-500">
+                  Loading activity history…
+                </p>
+              ) : !activityRows.length ? (
+                <p className="text-sm text-slate-500">
+                  No activity recorded yet.
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {activityRows.map((entry) => (
+                    <div key={entry.id} className="rounded-lg border p-3">
+                      <div className="flex justify-between gap-4">
+                        <p className="font-medium text-slate-800">
+                          {entry.title}
+                        </p>
+                        <time className="whitespace-nowrap text-xs text-slate-400">
+                          {new Date(entry.created_at).toLocaleString("en-SG")}
+                        </time>
+                      </div>
+                      <p className="mt-1 text-xs text-slate-500">
+                        {entry.actor_name}
+                      </p>
+                      {entry.meta?.reason && (
+                        <p className="mt-2 text-sm text-slate-700">
+                          Reason: {entry.meta.reason}
+                        </p>
+                      )}
+                      {entry.field_name && (
+                        <p className="mt-2 break-words text-sm text-slate-600">
+                          {JSON.stringify(entry.old_value)} →{" "}
+                          {JSON.stringify(entry.new_value)}
+                        </p>
+                      )}
                     </div>
-                    <p className="mt-1 text-xs text-slate-500">{entry.actor_name}</p>
-                    {entry.meta?.reason && <p className="mt-2 text-sm text-slate-700">Reason: {entry.meta.reason}</p>}{entry.field_name && <p className="mt-2 break-words text-sm text-slate-600">{JSON.stringify(entry.old_value)} → {JSON.stringify(entry.new_value)}
-                    </p>}
-                  </div>)}
+                  ))}
                 </div>
               )}
             </div>
@@ -5489,7 +6187,7 @@ export function AdditionalCostsBoard({
                   This payment voucher and its linked CRM subitem will both be
                   deleted. This action cannot be undone.
                   {pendingDelete &&
-                    !/lalamove|easyparcel/i.test(pendingDelete.courier)
+                  !/lalamove|easyparcel/i.test(pendingDelete.courier)
                     ? ` The QuickBooks Bill${pendingDelete.quickbooks_invoice_number ? ` (${pendingDelete.quickbooks_invoice_number})` : ""} is not deleted automatically; handle it directly in QuickBooks.`
                     : ""}
                 </>
@@ -5567,7 +6265,7 @@ export function AdditionalCostsBoard({
             <AlertDialogTitle>Resolve missing QuickBooks Bill</AlertDialogTitle>
             <AlertDialogDescription>
               {pendingBillErrorResolution?.voucher_group ===
-                "quickbooks_bills_only"
+              "quickbooks_bills_only"
                 ? "QuickBooks could not find this Bill. Choose whether to remove this Bill-only row or recreate the Bill."
                 : "QuickBooks could not find the Bill linked to this payment voucher. Choose how to resolve the broken link."}
             </AlertDialogDescription>
@@ -5589,12 +6287,12 @@ export function AdditionalCostsBoard({
               className="min-h-32 rounded-md bg-red-600 px-5 py-4 text-left text-base font-semibold text-white hover:bg-red-700"
             >
               {pendingBillErrorResolution?.voucher_group ===
-                "quickbooks_bills_only"
+              "quickbooks_bills_only"
                 ? "Remove Bill and this row"
                 : "Remove Bill and its existing information"}
               <span className="mt-1 block text-xs font-normal text-red-100">
                 {pendingBillErrorResolution?.voucher_group ===
-                  "quickbooks_bills_only"
+                "quickbooks_bills_only"
                   ? "This removes the Bill-only payment-voucher row from the board."
                   : "Keep the payment voucher, but return it to the no-Bill state."}
               </span>
@@ -5615,7 +6313,7 @@ export function AdditionalCostsBoard({
               </span>
             </button>
             {pendingBillErrorResolution?.voucher_group !==
-              "quickbooks_bills_only" ? (
+            "quickbooks_bills_only" ? (
               <button
                 type="button"
                 onClick={() => {

@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getSystemLabel } from "@/lib/system-labels";
 import { AWARDED_OR_LATER_SUBITEM_STATUS_SYSTEM_KEYS } from "@/lib/board-labels";
 import { formatPaymentVoucherReference } from "@/lib/payment-voucher-reference";
+import { mergePaymentVoucherSubitem } from "@/lib/payment-voucher-merge";
 
 const INTERNAL_ROLES = new Set(["sales", "pm", "admin", "director", "dev"]);
 const EDITABLE_FIELDS = new Set([
@@ -349,6 +350,7 @@ export async function POST(request: NextRequest) {
         cost?: unknown;
         reason?: unknown;
         relatedSubitemIds?: unknown;
+        mergeSubitemId?: unknown;
         courier?: unknown;
         courierOptionId?: unknown;
         remarks?: unknown;
@@ -421,7 +423,7 @@ export async function POST(request: NextRequest) {
         items_sent: itemsSent,
         voucher_group: "other",
         is_draft: true,
-        draft_bill: body.bill ?? {},
+        draft_bill: { ...(body.bill ?? {}), mergeSubitemId: body.values?.mergeSubitemId ?? "" },
         draft_ocr: body.ocr ?? {},
         updated_at: new Date().toISOString(),
       };
@@ -508,6 +510,9 @@ export async function POST(request: NextRequest) {
     const relatedSubitemIds = Array.isArray(body.values?.relatedSubitemIds)
       ? [...new Set(body.values.relatedSubitemIds.filter((id): id is string => typeof id === "string" && id.trim().length > 0))]
       : [];
+    const mergeSubitemId = String(body.values?.mergeSubitemId ?? "").trim();
+    if (mergeSubitemId && relatedSubitemIds.includes(mergeSubitemId))
+      throw new Error("The merge subitem cannot also be a Related Subitem.");
     if (!Number.isFinite(cost) || cost <= 0)
       throw new Error("Cost must be greater than zero.");
     if (!reason.value) throw new Error("Choose a Reason label.");
@@ -527,12 +532,15 @@ export async function POST(request: NextRequest) {
     const { data: relatedSubitems, error: relatedSubitemsError } =
       await supabaseAdmin
         .from("subitems")
-        .select("id, name, status_option_id")
+        .select("id, name, custom_fields, status_option_id")
         .eq("client_id", client.id)
         .is("deleted_at", null)
         .in("id", relatedSubitemIds);
     if (relatedSubitemsError) throw relatedSubitemsError;
-    if ((relatedSubitems ?? []).length !== relatedSubitemIds.length)
+    if (
+      (relatedSubitems ?? []).length !== relatedSubitemIds.length ||
+      (relatedSubitems ?? []).some((subitem) => subitem.custom_fields?.additionalCostId)
+    )
       throw new Error("One or more selected Related Subitems are unavailable.");
     await assertAwardedOrLaterRelatedSubitems(relatedSubitems ?? []);
     const relatedNameById = new Map(
@@ -603,7 +611,23 @@ export async function POST(request: NextRequest) {
       .select("*")
       .single();
     if (error) throw error;
-    try {
+    if (mergeSubitemId) {
+      try {
+        const paymentDone = await getSystemLabel("payment_received", "payment_received_yes");
+        const paidStatus = await getSystemLabel("payment_status", "payment_status_paid");
+        const merged = await mergePaymentVoucherSubitem({
+          clientId: client.id, subitemId: mergeSubitemId, voucherId: data.id,
+          name: paymentVoucherSubitemName(reason.value, courier.value), cost, currency,
+          status, orderNumber, modeOfPayment, paymentDone, paidStatus,
+        });
+        await addActivityLog({ clientId: client.id, subitemId: merged.subitemId,
+          subitemName: paymentVoucherSubitemName(reason.value, courier.value), actorId: user.id,
+          action: "subitem_added", title: "merged into an Additional Cost subitem" });
+      } catch (creationError) {
+        await supabaseAdmin.from("additional_costs").delete().eq("id", data.id);
+        throw creationError;
+      }
+    } else try {
       const { data: lastSubitem, error: lastSubitemError } = await supabaseAdmin
         .from("subitems")
         .select("position")
@@ -823,12 +847,15 @@ export async function PATCH(request: NextRequest) {
       const { data: relatedSubitems, error: relatedSubitemsError } =
         await supabaseAdmin
           .from("subitems")
-          .select("id, name, status_option_id")
+          .select("id, name, custom_fields, status_option_id")
           .eq("client_id", existing.client_id)
           .is("deleted_at", null)
           .in("id", ids);
       if (relatedSubitemsError) throw relatedSubitemsError;
-      if ((relatedSubitems ?? []).length !== ids.length)
+      if (
+        (relatedSubitems ?? []).length !== ids.length ||
+        (relatedSubitems ?? []).some((subitem) => subitem.custom_fields?.additionalCostId)
+      )
         throw new Error("One or more selected Related Subitems are unavailable.");
       await assertAwardedOrLaterRelatedSubitems(relatedSubitems ?? []);
       const names = new Map((relatedSubitems ?? []).map((subitem) => [subitem.id, subitem.name]));

@@ -14,6 +14,7 @@ import { quickBooksBillGstTotal } from "@/lib/quickbooks/bill-tax";
 import { ensureQuickBooksBillNumberAvailable } from "@/lib/quickbooks/bill-duplicate-check";
 import { getSystemLabel } from "@/lib/system-labels";
 import { formatPaymentVoucherReference } from "@/lib/payment-voucher-reference";
+import { mergePaymentVoucherSubitem, validatePaymentVoucherMergeTarget } from "@/lib/payment-voucher-merge";
 
 const INTERNAL_ROLES = new Set(["sales", "pm", "admin", "director", "dev"]);
 
@@ -114,6 +115,7 @@ export async function POST(request: NextRequest) {
         reason?: unknown;
         remarks?: unknown;
         relatedSubitemIds?: unknown;
+        mergeSubitemId?: unknown;
         orderNumber?: unknown;
         modeOfPaymentOptionId?: unknown;
         currencyOptionId?: unknown;
@@ -209,6 +211,9 @@ export async function POST(request: NextRequest) {
           ),
         ]
       : [];
+    const mergeSubitemId = String(voucher?.mergeSubitemId ?? "").trim();
+    if (mergeSubitemId && relatedSubitemIds.includes(mergeSubitemId))
+      throw new Error("The merge subitem cannot also be a Related Subitem.");
     if ((!existingVoucherId || voucher) && !relatedSubitemIds.length)
       throw new Error("Select at least one Related Subitem.");
     const reason = voucher
@@ -398,6 +403,8 @@ export async function POST(request: NextRequest) {
         billNumber: invoiceNumber,
       });
     }
+    if (mergeSubitemId)
+      await validatePaymentVoucherMergeTarget(client.id, mergeSubitemId);
     const quickBooksBill = await createQuickBooksBillSafely({
       supplierId,
       billNumber: invoiceNumber,
@@ -629,6 +636,18 @@ export async function POST(request: NextRequest) {
         `Could not save the payment voucher for this QuickBooks Bill: ${voucherError.message}`,
       );
     try {
+      if (mergeSubitemId) {
+        const paymentDone = await getSystemLabel("payment_received", "payment_received_yes");
+        const paidStatus = await getSystemLabel("payment_status", "payment_status_paid");
+        await mergePaymentVoucherSubitem({
+          clientId: client.id, subitemId: mergeSubitemId, voucherId: voucherRow.id,
+          name: reason.value, cost, currency, status: linkedSubitemStatus,
+          orderNumber, modeOfPayment, paymentDone, paidStatus,
+          quickBooksBillId: String(quickBooksBill.Id),
+        });
+        return NextResponse.json({ row: voucherRow, billId: quickBooksBill.Id,
+          docNumber: quickBooksBill.DocNumber ?? invoiceNumber, attachmentErrors }, { status: 201 });
+      }
       const { data: lastSubitem } = await supabaseAdmin
         .from("subitems")
         .select("position")
