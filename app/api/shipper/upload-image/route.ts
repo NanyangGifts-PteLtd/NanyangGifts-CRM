@@ -29,8 +29,8 @@ export async function POST(request: NextRequest) {
     if (!file.type.startsWith("image/")) {
       return NextResponse.json({ error: "Only image files are allowed" }, { status: 400 });
     }
-    if (file.size > 5 * 1024 * 1024) {
-      return NextResponse.json({ error: "Images must be 5 MB or smaller" }, { status: 400 });
+    if (file.size > 10 * 1024 * 1024) {
+      return NextResponse.json({ error: "Images must be 10 MB or smaller" }, { status: 400 });
     }
 
     const { data: target, error: targetError } = await supabaseAdmin

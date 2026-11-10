@@ -151,8 +151,8 @@ export async function POST(request: NextRequest) {
           typeof (entry as File).arrayBuffer === "function" &&
           typeof (entry as File).name === "string",
       );
-    if (attachments.some((file) => file.size > 5 * 1024 * 1024))
-      throw new Error("Each attachment must be 5 MB or smaller.");
+    if (attachments.some((file) => file.size > 10 * 1024 * 1024))
+      throw new Error("Each attachment must be 10 MB or smaller.");
     if (!body.clientId)
       throw new Error("Choose a client before generating a Bill.");
     const bill = body.bill;

@@ -3,7 +3,7 @@ import { randomUUID } from "crypto";
 import { createClient } from "@/lib/supabase/server";
 import { canEditClient } from "@/lib/client-access";
 
-const MAX_FILE_SIZE = 5 * 1024 * 1024;
+const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
 async function isPmUser(
   supabase: Awaited<ReturnType<typeof createClient>>,
@@ -70,7 +70,7 @@ export async function POST(req: NextRequest) {
     }
     if (file.size > MAX_FILE_SIZE) {
       return NextResponse.json(
-        { error: "Images must be 5 MB or smaller" },
+        { error: "Images must be 10 MB or smaller" },
         { status: 400 },
       );
     }

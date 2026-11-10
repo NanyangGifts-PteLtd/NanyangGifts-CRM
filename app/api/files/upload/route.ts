@@ -7,7 +7,7 @@ import {
 } from "@/lib/supabase/admin";
 
 const BUCKET = "crm-files";
-const MAX_FILE_SIZE = 5 * 1024 * 1024;
+const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const INTERNAL_ROLES = new Set(["sales", "pm", "admin", "director", "dev"]);
 const ELEVATED_ROLES = new Set(["admin", "director", "dev"]);
 
@@ -141,7 +141,7 @@ export async function POST(request: NextRequest) {
     );
   if (file.size > MAX_FILE_SIZE)
     return NextResponse.json(
-      { error: "Files must be 5 MB or smaller" },
+      { error: "Files must be 10 MB or smaller" },
       { status: 400 },
     );
 

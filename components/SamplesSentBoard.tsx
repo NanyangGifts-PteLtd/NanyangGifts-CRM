@@ -8,6 +8,7 @@ import {
   LockKeyhole,
   LoaderCircle,
   Filter,
+  History,
   Plus,
   Search,
   SlidersHorizontal,
@@ -308,6 +309,19 @@ export function SamplesSentBoard() {
   const [linkingClientRow, setLinkingClientRow] = useState<SampleRow | null>(null);
   const [failedReturn, setFailedReturn] = useState<{ row: SampleRow; optionId: string } | null>(null);
   const [failedReturnRemarks, setFailedReturnRemarks] = useState("");
+  const [activityRecord, setActivityRecord] = useState<SampleRow | null>(null);
+  const [activityRows, setActivityRows] = useState<Array<{ id: string; actor_name: string; title: string; created_at: string }>>([]);
+  const [activityLoading, setActivityLoading] = useState(false);
+  const openActivity = async (record: SampleRow) => {
+    setActivityRecord(record); setActivityRows([]); setActivityLoading(true);
+    try {
+      const response = await fetch(`/api/samples-sent/activity?recordId=${encodeURIComponent(record.id)}`);
+      const result = await response.json();
+      if (!response.ok) throw new Error(result?.error || "Activity history could not be loaded");
+      setActivityRows(result.rows ?? []);
+    } catch (error) { toast.error("Activity history could not be loaded", { description: error instanceof Error ? error.message : undefined }); }
+    finally { setActivityLoading(false); }
+  };
   const [showSearch, setShowSearch] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [showSearchColumns, setShowSearchColumns] = useState(false);
@@ -658,6 +672,7 @@ export function SamplesSentBoard() {
               onLinkClient={setLinkingClientRow}
               onUpdateStatus={updateStatus}
               onEditItems={setItemsEditorRow}
+              onOpenActivity={openActivity}
               canManage={canManageGroups}
               onToggle={() =>
                 setGroups((all) =>
@@ -735,6 +750,7 @@ export function SamplesSentBoard() {
           setLinkingClientRow(null);
         }}
       />
+      {activityRecord && <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 p-4" onMouseDown={() => setActivityRecord(null)}><div className="max-h-[80vh] w-full max-w-2xl overflow-hidden rounded-xl bg-white shadow-2xl" onMouseDown={(event) => event.stopPropagation()}><div className="flex items-center justify-between border-b px-5 py-4"><div><h2 className="text-lg font-semibold">Samples Sent Activity Log</h2><p className="text-sm text-slate-500">Reference ID: {activityRecord.referenceId}</p></div><button type="button" onClick={() => setActivityRecord(null)}><X size={20} /></button></div><div className="max-h-[65vh] overflow-y-auto p-5">{activityLoading ? <p className="text-sm text-slate-500">Loading activity history…</p> : !activityRows.length ? <p className="text-sm text-slate-500">No activity recorded yet.</p> : <div className="space-y-3">{activityRows.map((entry) => <div key={entry.id} className="rounded-lg border p-3"><div className="flex justify-between gap-4"><p className="font-medium text-slate-800">{entry.title}</p><time className="shrink-0 text-xs text-slate-500">{new Date(entry.created_at).toLocaleString("en-SG")}</time></div><p className="mt-1 text-xs text-slate-500">{entry.actor_name}</p></div>)}</div>}</div></div></div>}
     </section>
   );
 }
@@ -947,6 +963,7 @@ function SamplesGroup({
   onLinkClient,
   onUpdateStatus,
   onEditItems,
+  onOpenActivity,
   canManage,
   onToggle,
   onDelete,
@@ -964,6 +981,7 @@ function SamplesGroup({
   onLinkClient: (row: SampleRow) => void;
   onUpdateStatus: (row: SampleRow, optionId: string) => void;
   onEditItems: (row: SampleRow) => void;
+  onOpenActivity: (row: SampleRow) => void;
   canManage: boolean;
   onToggle: () => void;
   onDelete: () => void;
@@ -1022,6 +1040,7 @@ function SamplesGroup({
               onLinkClient={onLinkClient}
               onUpdateStatus={onUpdateStatus}
               onEditItems={onEditItems}
+              onOpenActivity={onOpenActivity}
             />
           ))}
           {!rows.length && <EmptyRecordLine grid={grid} />}
@@ -1083,6 +1102,7 @@ function SampleRecordLine({
   onLinkClient,
   onUpdateStatus,
   onEditItems,
+  onOpenActivity,
 }: {
   row: SampleRow;
   groupName: string;
@@ -1096,6 +1116,7 @@ function SampleRecordLine({
   onLinkClient: (row: SampleRow) => void;
   onUpdateStatus: (row: SampleRow, optionId: string) => void;
   onEditItems: (row: SampleRow) => void;
+  onOpenActivity: (row: SampleRow) => void;
 }) {
   const creator = row.createdByProfile;
   const creationTitle = `Created by ${creator ? profileName(creator) : "System"} on ${new Date(row.created_at).toLocaleDateString("en-GB")} at ${new Date(row.created_at).toLocaleTimeString("en-GB")}`;
@@ -1244,6 +1265,7 @@ function SampleRecordLine({
       {cell(
         "creation",
         <span title={creationTitle} className="flex items-center gap-1">
+          <button type="button" onClick={() => onOpenActivity(row)} title="View Samples Sent activity log" className="text-slate-500 hover:text-sky-700"><History size={15} /></button>
           {creator && <Avatar profile={creator} />}
           {new Date(row.created_at).toLocaleDateString("en-GB")}
         </span>,
@@ -1542,7 +1564,15 @@ function PhotoCell({
   const upload = async (files: File[]) => {
     if (!files.length) return;
     try {
-      const uploaded = await uploadCrmFiles(files, `samples-sent/${row.id}/photos`, { clientId: row.linkedClient?.id ?? "" });
+      const uploaded = await Promise.all(files.map(async (file) => {
+        const formData = new FormData();
+        formData.set("recordId", row.id);
+        formData.set("file", file);
+        const response = await fetch("/api/samples-sent/upload-photo", { method: "POST", body: formData });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result?.error || `Could not upload ${file.name}`);
+        return result.file as StoredCrmFile;
+      }));
       onUpdate(row.id, { photoFiles: [...(row.photo_files ?? []), ...uploaded] });
     } catch (error) {
       toast.error("Photo could not be uploaded", { description: error instanceof Error ? error.message : undefined });

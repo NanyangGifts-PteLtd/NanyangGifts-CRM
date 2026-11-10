@@ -34,6 +34,19 @@ function failure(error: unknown) {
   );
 }
 
+async function recordActivity(sampleSentId: string, userId: string, title: string) {
+  const { data: profile } = await supabaseAdmin
+    .from("profiles").select("full_name, email").eq("id", userId).maybeSingle();
+  const { error } = await supabaseAdmin.from("samples_sent_activity_log").insert({
+    sample_sent_id: sampleSentId,
+    actor_id: userId,
+    actor_name: profile?.full_name?.trim() || profile?.email || "Unknown user",
+    action: "samples_sent_updated",
+    title,
+  });
+  if (error) console.error("Samples Sent activity log failed", error);
+}
+
 async function assertClientEditor(
   clientId: string,
   userId: string,
@@ -363,6 +376,7 @@ export async function POST(request: NextRequest) {
       await supabaseAdmin.from("samples_sent").delete().eq("id", record.id);
       throw itemsError;
     }
+    await recordActivity(record.id, user.id, "created this Samples Sent record");
     const [hydrated] = await hydrateRows([record as Record<string, unknown>]);
     return NextResponse.json({ row: hydrated });
   } catch (error) {
@@ -483,6 +497,7 @@ export async function PATCH(request: NextRequest) {
     }
     const { data, error } = await supabaseAdmin.from("samples_sent").update(updates).eq("id", id).select("*").single();
     if (error) throw error;
+    await recordActivity(id, user.id, "updated this Samples Sent record");
     const [row] = await hydrateRows([data as Record<string, unknown>]);
     return NextResponse.json({ row });
   } catch (error) {

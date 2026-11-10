@@ -942,7 +942,7 @@ export function GenerateOcfModal({
                               className="block text-sm file:mr-4 file:rounded-md file:border-0 file:bg-[#7BCBD5] file:px-3 file:py-2 file:font-medium file:text-white hover:file:bg-[#6cbac4]"
                             />
                               <p className="text-xs text-slate-500">
-                                PNG, JPEG, or WebP up to 5 MB.
+                                PNG, JPEG, or WebP up to 10 MB.
                               </p>
 
                             {row.uploadedPath && (
