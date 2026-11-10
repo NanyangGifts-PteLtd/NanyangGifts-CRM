@@ -4871,7 +4871,7 @@ export function SubitemsTable({
                                       )
                                     }
                                     manageLabel="mode of payment"
-                                    sectionCount={3}
+                                    sectionCount={4}
                                     small
                                     readOnly={!canEditSubpaymentRows(sub.id)}
                                     readOnlyReason={subpaymentEditBlockMessage(sub.id)}
