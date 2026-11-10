@@ -98,7 +98,7 @@ export async function POST(request: NextRequest) {
         : code === "channel"
           ? 4
           : code === "mode_of_payment"
-            ? 3
+            ? 4
             : code === "payment_received"
               ? 2
               : code === "tracking_payment_status"
