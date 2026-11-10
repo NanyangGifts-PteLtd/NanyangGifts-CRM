@@ -903,6 +903,12 @@ export function CRMBoard({
   const pendingResultGroupExpansionRef = useRef<string | null>(null);
   const autoExpandedResultQueryRef = useRef<string | null>(null);
   const autoExpandedResultGroupIdsRef = useRef<Set<string>>(new Set());
+  // A user can override the initial filtered-result layout while more group
+  // pages are still arriving. Keep that preference separate from individual
+  // group state so the lazy loader does not reopen later groups unexpectedly.
+  const resultGroupExpansionPreferenceRef = useRef<
+    "auto" | "collapsed" | "expanded"
+  >("auto");
   const [resultGroupExpansionRequest, setResultGroupExpansionRequest] =
     useState(0);
   const boardSearchRef = useRef<HTMLDivElement>(null);
@@ -6703,9 +6709,15 @@ export function CRMBoard({
       const hasResultScope = Object.values(resultScope).some(
         (value) => value !== undefined,
       );
-      pendingResultGroupExpansionRef.current = hasResultScope
+      const nextResultGroupExpansionKey = hasResultScope
         ? JSON.stringify(resultScope)
         : null;
+      if (
+        pendingResultGroupExpansionRef.current !== nextResultGroupExpansionKey
+      ) {
+        resultGroupExpansionPreferenceRef.current = "auto";
+      }
+      pendingResultGroupExpansionRef.current = nextResultGroupExpansionKey;
       setResultGroupExpansionRequest((current) => current + 1);
       onServerQueryChange(query);
     }, boardSearchTerm.trim() ? 400 : 0);
@@ -7016,6 +7028,7 @@ export function CRMBoard({
       pendingResultGroupExpansionRef.current = null;
       autoExpandedResultQueryRef.current = null;
       autoExpandedResultGroupIdsRef.current.clear();
+      resultGroupExpansionPreferenceRef.current = "auto";
       return;
     }
 
@@ -7044,6 +7057,7 @@ export function CRMBoard({
     if (!newlyCompletedGroups.length) return;
     for (const groupId of newlyCompletedGroups)
       autoExpandedResultGroupIdsRef.current.add(groupId);
+    if (resultGroupExpansionPreferenceRef.current === "collapsed") return;
     setCollapsedGroups((current) => {
       let changed = false;
       const next = { ...current };
@@ -7723,10 +7737,15 @@ export function CRMBoard({
   const toggleCollapseAllGroups = useCallback(() => {
     const shouldExpand =
       groups.length > 0 && groups.every((group) => collapsedGroups[group.id]);
+    if (shouldExpandGroupsForResults) {
+      resultGroupExpansionPreferenceRef.current = shouldExpand
+        ? "expanded"
+        : "collapsed";
+    }
     setCollapsedGroups(
       Object.fromEntries(groups.map((group) => [group.id, !shouldExpand])),
     );
-  }, [collapsedGroups, groups]);
+  }, [collapsedGroups, groups, shouldExpandGroupsForResults]);
 
   const toggleGroup = useCallback(
     (id: string) => {
