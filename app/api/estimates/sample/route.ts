@@ -264,7 +264,7 @@ async function makePdf({
     client.company || client.name || "Customer",
     client.billing_address || "",
     client.email || "",
-    client.phone || "",
+    client.name ? `Attention: ${client.name}` : "",
   ]
     .filter(Boolean)
     .slice(0, 4)
