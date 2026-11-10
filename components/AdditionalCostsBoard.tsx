@@ -10,6 +10,8 @@ import {
   LoaderCircle,
   History,
   Search,
+  SlidersHorizontal,
+  Filter,
   Trash2,
   X,
 } from "lucide-react";
@@ -42,6 +44,7 @@ import {
   fetchHydratedClientBundle,
   fetchHydratedClientGroupPage,
 } from "@/lib/crm";
+import { AdvancedFilters, advancedFilterConditionRequiresValue, type AdvancedFilterColumn, type AdvancedFilterRule } from "@/components/AdvancedFilters";
 
 type AdditionalCost = {
   id: string;
@@ -338,6 +341,26 @@ export function AdditionalCostsBoard({
   onOpenProject,
 }: Props) {
   const [rows, setRows] = useState<AdditionalCost[]>([]);
+  const [voucherSearch, setVoucherSearch] = useState("");
+  const [showVoucherSearch, setShowVoucherSearch] = useState(false);
+  const [showVoucherFilter, setShowVoucherFilter] = useState(false);
+  const [showVoucherSearchColumns, setShowVoucherSearchColumns] = useState(false);
+  const [voucherSearchAllColumns, setVoucherSearchAllColumns] = useState(false);
+  const [voucherSearchColumnQuery, setVoucherSearchColumnQuery] = useState("");
+  const [voucherSearchColumns, setVoucherSearchColumns] = useState(new Set(["project", "reference", "reason", "courier", "remarks"]));
+  const voucherToolbarRef = useRef<HTMLDivElement>(null);
+  const [voucherRules, setVoucherRules] = useState<AdvancedFilterRule[]>([{ id: "initial", column: "", condition: "", value: "" }]);
+  const [voucherJoin, setVoucherJoin] = useState<"and" | "or">("and");
+  useEffect(() => {
+    if (!showVoucherSearch && !showVoucherFilter && !showVoucherSearchColumns) return;
+    const close = (event: MouseEvent) => {
+      if (voucherToolbarRef.current?.contains(event.target as Node)) return;
+      if (!voucherSearch.trim()) setShowVoucherSearch(false);
+      setShowVoucherFilter(false); setShowVoucherSearchColumns(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [showVoucherFilter, showVoucherSearch, showVoucherSearchColumns, voucherSearch]);
   const [collapsedVoucherGroups, setCollapsedVoucherGroups] = useState<
     Record<VoucherGroupId, boolean>
   >({
@@ -2594,11 +2617,53 @@ export function AdditionalCostsBoard({
       {content}
     </div>
   );
+  const voucherFilterColumns = useMemo<AdvancedFilterColumn[]>(() => [
+    { key: "project", label: "Project Name", category: "Payment", values: [], valueType: "text" },
+    { key: "reference", label: "Reference ID", category: "Payment", values: [], valueType: "text" },
+    { key: "reason", label: "Reason", category: "Payment", values: [], valueType: "text", labelOptions: labelOptions.additional_cost_reason },
+    { key: "courier", label: "Courier", category: "Payment", values: [], valueType: "text", labelOptions: labelOptions.additional_cost_courier },
+    { key: "remarks", label: "Remarks", category: "Payment", values: [], valueType: "text" },
+    { key: "cost", label: "Cost", category: "Payment", values: [], valueType: "number" },
+    { key: "items", label: "Related Subitems", category: "Payment", values: [], valueType: "text" },
+    { key: "mode", label: "Mode of Payment", category: "Payment", values: [], valueType: "text" },
+    { key: "currency", label: "Currency", category: "Payment", values: [], valueType: "text" },
+    { key: "invoice", label: "QuickBooks Bill / Invoice", category: "Payment", values: [], valueType: "text" },
+    { key: "created", label: "Date Created", category: "Payment", values: [], valueType: "date" },
+  ], [labelOptions]);
+  const activeVoucherRules = voucherRules.filter((rule) => rule.column && rule.condition && (!advancedFilterConditionRequiresValue(rule.condition) || rule.value));
+  const filteredRows = rows.filter((row) => {
+    const values = (key: string) => ({ project: projectForVoucher(row)?.label ?? "", reference: row.trip_id, reason: row.reason, courier: row.courier, remarks: row.remarks, items: row.items_sent, mode: row.mode_of_payment ?? "", currency: row.currency ?? "", invoice: row.quickbooks_invoice_number ?? "", cost: String(row.cost ?? ""), created: row.created_at.slice(0, 10) }[key] ?? "");
+    const matches = (rule: AdvancedFilterRule) => {
+      const source = values(rule.column);
+      const target = rule.value.trim();
+      if (rule.valueOptionId) {
+        const optionId = rule.column === "reason"
+          ? row.reason_option_id
+          : rule.column === "courier"
+            ? row.courier_option_id
+            : null;
+        return rule.condition === "is not"
+          ? optionId !== rule.valueOptionId
+          : optionId === rule.valueOptionId;
+      }
+      if (rule.condition === "is empty") return !source;
+      if (rule.condition === "is not empty") return !!source;
+      if (rule.column === "cost") {
+        const a = Number(source), b = Number(target);
+        return rule.condition === "is" ? a === b : rule.condition === "is not" ? a !== b : rule.condition === "is greater than" ? a > b : rule.condition === "is greater than or equal to" ? a >= b : rule.condition === "is less than" ? a < b : rule.condition === "is less than or equal to" ? a <= b : false;
+      }
+      if (rule.column === "created") return rule.condition === "is" ? source === target : rule.condition === "is not" ? source !== target : rule.condition === "is before" ? source < target : rule.condition === "is on or before" ? source <= target : rule.condition === "is after" ? source > target : rule.condition === "is on or after" ? source >= target : false;
+      const a = source.toLowerCase(), b = target.toLowerCase();
+      return rule.condition === "is" || rule.condition === "text is" ? a === b : rule.condition === "is not" || rule.condition === "text is not" ? a !== b : rule.condition === "contains" ? a.includes(b) : rule.condition === "does not contain" ? !a.includes(b) : rule.condition === "starts with" ? a.startsWith(b) : rule.condition === "ends with" ? a.endsWith(b) : false;
+    };
+    const search = voucherSearch.trim().toLowerCase(); const selectedSearchColumns = voucherSearchAllColumns ? voucherFilterColumns.map((column) => column.key) : [...voucherSearchColumns]; const searchMatch = !search || selectedSearchColumns.some((key) => values(key).toLowerCase().includes(search));
+    const outcomes = activeVoucherRules.map(matches); return searchMatch && (!outcomes.length || (voucherJoin === "and" ? outcomes.every(Boolean) : outcomes.some(Boolean)));
+  });
   const voucherGroups = [
     {
       id: "courier" as const,
       name: "Lalamove/Easyparcel/Replacements/Additional Costs",
-      rows: rows.filter((row) =>
+      rows: filteredRows.filter((row) =>
         row.voucher_group === "courier" ||
         (!row.voucher_group &&
           Boolean(
@@ -2611,7 +2676,7 @@ export function AdditionalCostsBoard({
     {
       id: "other" as const,
       name: "Manpower/UPS Charges/Other payments",
-      rows: rows.filter(
+      rows: filteredRows.filter(
         (row) =>
           row.voucher_group !== "quickbooks_bills_only" &&
           row.voucher_group !== "courier" &&
@@ -2628,7 +2693,7 @@ export function AdditionalCostsBoard({
         {
           id: "quickbooks_bills_only" as const,
           name: "QuickBooks Bills only",
-          rows: rows.filter(
+          rows: filteredRows.filter(
             (row) => row.voucher_group === "quickbooks_bills_only",
           ),
           accent: "#f59e0b",
@@ -2636,6 +2701,10 @@ export function AdditionalCostsBoard({
       ]
       : []),
   ];
+  useEffect(() => {
+    if (!voucherSearch.trim() && !activeVoucherRules.length) return;
+    setCollapsedVoucherGroups({ courier: false, other: false, quickbooks_bills_only: false });
+  }, [activeVoucherRules.length, voucherSearch]);
   const openVoucherCreator = (groupId: (typeof voucherGroups)[number]["id"]) => {
     setPickerQuery("");
     setExpandedPickerGroups(
@@ -3385,14 +3454,19 @@ export function AdditionalCostsBoard({
   };
   return (
     <section className="crm-board min-h-full bg-slate-50 p-4 sm:p-6">
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-2">
         <div>
           <h1 className="text-xl font-semibold text-slate-800">
             Payment Voucher
           </h1>
-          <p className="mt-1 text-sm text-slate-500">
-            Review payment vouchers grouped by courier and other payments.
-          </p>
+        </div>
+        <div ref={voucherToolbarRef} className="relative flex items-center gap-1">
+          {showVoucherSearch || voucherSearch ? <div className="flex h-8 w-72 items-center rounded border border-sky-500 bg-white"><Search size={15} className="ml-2 text-slate-500" /><input autoFocus value={voucherSearch} onChange={(event) => setVoucherSearch(event.target.value)} placeholder="Search payment vouchers" className="min-w-0 flex-1 px-2 text-sm outline-none" />{voucherSearch && <button type="button" onClick={() => setVoucherSearch("")} className="px-2 text-slate-400"><X size={14} /></button>}<button type="button" onClick={() => setShowVoucherSearchColumns((open) => !open)} className="mr-1 p-1 text-slate-500"><SlidersHorizontal size={15} /></button></div> : <button type="button" onClick={() => setShowVoucherSearch(true)} className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100"><Search size={16} /> Search</button>}
+          {showVoucherSearchColumns && <div className="absolute left-0 top-full z-[100] mt-1 w-[min(720px,calc(100vw-2rem))] rounded-lg border border-slate-200 bg-white p-4 shadow-xl"><p className="mb-2 text-sm font-medium text-slate-700">Choose columns to search</p><div className="relative mb-2"><Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400" /><input value={voucherSearchColumnQuery} onChange={(event) => setVoucherSearchColumnQuery(event.target.value)} placeholder="Find a column" className="h-8 w-full rounded border border-slate-300 pl-7 pr-2 text-sm outline-none focus:border-sky-400" /></div><label className="flex cursor-pointer items-center gap-2 border-b border-slate-100 py-2 text-sm font-medium text-slate-700"><input type="checkbox" checked={voucherSearchAllColumns} onChange={(event) => setVoucherSearchAllColumns(event.target.checked)} className="h-4 w-4 accent-[#0f8da8]" />All columns</label><div className="grid max-h-[min(68vh,680px)] grid-cols-1 gap-x-3 overflow-y-auto pt-2 sm:grid-cols-2">{voucherFilterColumns.filter((column) => `${column.label} ${column.category}`.toLowerCase().includes(voucherSearchColumnQuery.toLowerCase())).map((column) => <label key={column.key} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm text-slate-700 hover:bg-slate-50"><input type="checkbox" checked={voucherSearchAllColumns || voucherSearchColumns.has(column.key)} onChange={(event) => setVoucherSearchColumns((current) => { const next = voucherSearchAllColumns ? new Set(voucherFilterColumns.map((entry) => entry.key)) : new Set(current); event.target.checked ? next.add(column.key) : next.delete(column.key); setVoucherSearchAllColumns(false); return next; })} className="h-4 w-4 accent-[#0f8da8]" />{column.label}</label>)}</div></div>}
+          <button type="button" onClick={() => setShowVoucherFilter((open) => !open)} className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium ${showVoucherFilter || activeVoucherRules.length ? "bg-[#dff5f7] text-slate-700" : "text-slate-700 hover:bg-slate-100"}`}><Filter size={16} /> Filter{activeVoucherRules.length ? <span className="rounded-full bg-sky-100 px-1.5 text-[11px] text-sky-700">{activeVoucherRules.length}</span> : null}</button>
+          {showVoucherFilter && <div className="absolute left-0 top-full z-[100] mt-1"><AdvancedFilters columns={voucherFilterColumns} rules={voucherRules} join={voucherJoin} onRulesChange={setVoucherRules} onJoinChange={setVoucherJoin} onClear={() => setVoucherRules([{ id: crypto.randomUUID(), column: "", condition: "", value: "" }])} /></div>}
+        </div>
         </div>
       </div>
       <div className="space-y-4">
