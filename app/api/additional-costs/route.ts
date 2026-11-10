@@ -350,6 +350,7 @@ export async function POST(request: NextRequest) {
         reason?: unknown;
         relatedSubitemIds?: unknown;
         courier?: unknown;
+        courierOptionId?: unknown;
         remarks?: unknown;
         orderNumber?: unknown;
         modeOfPaymentOptionId?: unknown;
@@ -490,9 +491,12 @@ export async function POST(request: NextRequest) {
       "additional_cost_reason",
       body.values?.reason,
     );
+    const courierOptionId = String(body.values?.courierOptionId ?? "").trim();
     const courier = isOtherVoucher
       ? { value: "", id: null }
-      : await resolveLabel("additional_cost_courier", body.values?.courier);
+      : courierOptionId
+        ? await resolveLabelById("additional_cost_courier", courierOptionId)
+        : await resolveLabel("additional_cost_courier", body.values?.courier);
     const modeOfPayment = await resolveLabelById(
       "mode_of_payment",
       body.values?.modeOfPaymentOptionId,

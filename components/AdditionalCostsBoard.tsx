@@ -129,6 +129,22 @@ type AdditionalCost = {
   can_edit?: boolean;
   can_deactivate?: boolean;
 };
+
+const COURIER_MODE_OF_PAYMENT_DEFAULT_LABELS = new Set([
+  "Lalamove",
+  "UPS",
+  "Easyparcel",
+  "A1 - Tiger",
+  "A3 - 小李",
+  "A5",
+]);
+
+// These IDs intentionally link the two label records rather than relying on
+// their displayed names, which users can rename in the label menu.
+const UPS_BROKERAGE_CHARGES_REASON_OPTION_ID =
+  "1c5230c7-cafb-430a-929b-da2cc4fce03b";
+const SG_CREDIT_CARD_MODE_OF_PAYMENT_OPTION_ID =
+  "ca25017c-177a-4821-84ad-15367dae891f";
 type StoredDraftAttachment = {
   id?: string;
   name: string;
@@ -530,6 +546,7 @@ export function AdditionalCostsBoard({
     reasonOptionId: "",
     relatedSubitemIds: [] as string[],
     courier: "",
+    courierOptionId: "",
     remarks: "",
     orderNumber: "",
     modeOfPayment: "",
@@ -576,6 +593,33 @@ export function AdditionalCostsBoard({
         (option) => option.systemKey === "additional_cost_reason_other",
       )?.id ?? "",
     [labelOptions.additional_cost_reason],
+  );
+  const courierModeOfPaymentDefaults = useMemo(() => {
+    const modeOptionIdByValue = new Map(
+      (labelOptions.mode_of_payment ?? []).map((option) => [
+        option.value,
+        option.id,
+      ]),
+    );
+    return new Map(
+      (labelOptions.additional_cost_courier ?? [])
+        .filter((option) =>
+          COURIER_MODE_OF_PAYMENT_DEFAULT_LABELS.has(option.value),
+        )
+        .flatMap((courier) => {
+          const modeOptionId = modeOptionIdByValue.get(courier.value);
+          return courier.id && modeOptionId
+            ? [[courier.id, modeOptionId] as const]
+            : [];
+        }),
+    );
+  }, [labelOptions.additional_cost_courier, labelOptions.mode_of_payment]);
+  const upsBrokerageChargesModeOfPayment = useMemo(
+    () =>
+      (labelOptions.mode_of_payment ?? []).find(
+        (option) => option.id === SG_CREDIT_CARD_MODE_OF_PAYMENT_OPTION_ID,
+      ),
+    [labelOptions.mode_of_payment],
   );
   const voucherReasonIsOther =
     Boolean(otherReasonOptionId) &&
@@ -1225,6 +1269,7 @@ export function AdditionalCostsBoard({
         reasonOptionId: "",
         relatedSubitemIds: [],
         courier: "",
+        courierOptionId: "",
         remarks: "",
         orderNumber: "",
         modeOfPayment: "",
@@ -1287,6 +1332,7 @@ export function AdditionalCostsBoard({
               .filter((subitem) => selectedNames.has(subitem.name))
               .map((subitem) => subitem.id),
         courier: row.courier,
+        courierOptionId: row.courier_option_id ?? "",
         remarks: row.remarks,
         orderNumber: row.order_number ?? "",
         modeOfPayment: row.mode_of_payment ?? "",
@@ -2719,6 +2765,7 @@ export function AdditionalCostsBoard({
       reasonOptionId: "",
       relatedSubitemIds: [],
       courier: "",
+      courierOptionId: "",
       remarks: "",
       orderNumber: "",
       modeOfPayment: "",
@@ -3102,7 +3149,7 @@ export function AdditionalCostsBoard({
                               value={row.mode_of_payment ?? ""}
                               onChange={() => undefined}
                               options={labelOptions.mode_of_payment ?? []}
-                              sectionCount={3}
+                              sectionCount={4}
                               manageLabel="mode of payment"
                               readOnly
                               readOnlyReason="Edit Mode of payment in the Payment Voucher preview."
@@ -4754,6 +4801,16 @@ export function AdditionalCostsBoard({
                                       ...draft,
                                       reason,
                                       reasonOptionId: option?.id ?? "",
+                                      ...(option?.id ===
+                                        UPS_BROKERAGE_CHARGES_REASON_OPTION_ID &&
+                                      upsBrokerageChargesModeOfPayment
+                                        ? {
+                                            modeOfPayment:
+                                              upsBrokerageChargesModeOfPayment.value,
+                                            modeOfPaymentOptionId:
+                                              upsBrokerageChargesModeOfPayment.id ?? "",
+                                          }
+                                        : {}),
                                     }))
                                   }
                                   options={
@@ -4830,7 +4887,7 @@ export function AdditionalCostsBoard({
                             <label className="text-sm font-medium text-slate-700">
                               Mode of payment
                               <div className="mt-1 h-10 overflow-hidden rounded border border-slate-300">
-                                <StatusBadge value={voucherDraft.modeOfPayment} onChange={(value, option) => setVoucherDraft((draft) => ({ ...draft, modeOfPayment: value, modeOfPaymentOptionId: option?.id ?? "" }))} options={labelOptions.mode_of_payment ?? []} sectionCount={3} />
+                                <StatusBadge value={voucherDraft.modeOfPayment} onChange={(value, option) => setVoucherDraft((draft) => ({ ...draft, modeOfPayment: value, modeOfPaymentOptionId: option?.id ?? "" }))} options={labelOptions.mode_of_payment ?? []} sectionCount={4} />
                               </div>
                             </label>
                           </div>
@@ -4961,6 +5018,16 @@ export function AdditionalCostsBoard({
                               ...draft,
                               reason,
                               reasonOptionId: option?.id ?? "",
+                              ...(option?.id ===
+                                UPS_BROKERAGE_CHARGES_REASON_OPTION_ID &&
+                              upsBrokerageChargesModeOfPayment
+                                ? {
+                                    modeOfPayment:
+                                      upsBrokerageChargesModeOfPayment.value,
+                                    modeOfPaymentOptionId:
+                                      upsBrokerageChargesModeOfPayment.id ?? "",
+                                  }
+                                : {}),
                             }))
                           }
                           options={labelOptions.additional_cost_reason ?? []}
@@ -5005,12 +5072,27 @@ export function AdditionalCostsBoard({
                         <div className="mt-1 h-10 overflow-hidden rounded border border-slate-300">
                           <StatusBadge
                             value={voucherDraft.courier}
-                            onChange={(courier) =>
+                            onChange={(courier, option) => {
+                              const modeOptionId = option?.id
+                                ? courierModeOfPaymentDefaults.get(option.id)
+                                : undefined;
+                              const modeOption = modeOptionId
+                                ? (labelOptions.mode_of_payment ?? []).find(
+                                    (entry) => entry.id === modeOptionId,
+                                  )
+                                : undefined;
                               setVoucherDraft((draft) => ({
                                 ...draft,
                                 courier,
-                              }))
-                            }
+                                courierOptionId: option?.id ?? "",
+                                ...(modeOption
+                                  ? {
+                                      modeOfPayment: modeOption.value,
+                                      modeOfPaymentOptionId: modeOption.id ?? "",
+                                    }
+                                  : {}),
+                              }));
+                            }}
                             options={labelOptions.additional_cost_courier ?? []}
                             onAddOption={(value) =>
                               manageLabel("additional_cost_courier", "add", value)
@@ -5068,7 +5150,7 @@ export function AdditionalCostsBoard({
                     <label className="text-sm font-medium text-slate-700">
                       Mode of payment
                       <div className="mt-1 h-10 overflow-hidden rounded border border-slate-300">
-                        <StatusBadge value={voucherDraft.modeOfPayment} onChange={(value, option) => setVoucherDraft((draft) => ({ ...draft, modeOfPayment: value, modeOfPaymentOptionId: option?.id ?? "" }))} options={labelOptions.mode_of_payment ?? []} sectionCount={3} />
+                        <StatusBadge value={voucherDraft.modeOfPayment} onChange={(value, option) => setVoucherDraft((draft) => ({ ...draft, modeOfPayment: value, modeOfPaymentOptionId: option?.id ?? "" }))} options={labelOptions.mode_of_payment ?? []} sectionCount={4} />
                       </div>
                     </label>
                   </div>
