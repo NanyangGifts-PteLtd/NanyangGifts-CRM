@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import type { Client, CRMGroup, Profile } from "@/app/types";
+import { singaporeDateKey } from "@/lib/date-key";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -2975,7 +2976,7 @@ export function AdditionalCostsBoard({
         currency: row.currency ?? "",
         invoice: row.quickbooks_invoice_number ?? "",
         cost: String(row.cost ?? ""),
-        created: row.created_at.slice(0, 10),
+        created: singaporeDateKey(row.created_at),
       })[key] ?? "";
     const matches = (rule: AdvancedFilterRule) => {
       const source = values(rule.column);

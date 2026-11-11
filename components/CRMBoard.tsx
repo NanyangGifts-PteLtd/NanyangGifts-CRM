@@ -9,6 +9,7 @@ import React, {
   useMemo,
 } from "react";
 import { createPortal } from "react-dom";
+import { singaporeDateKey } from "@/lib/date-key";
 import {
   ChevronDown,
   ChevronRight,
@@ -6229,7 +6230,7 @@ export function CRMBoard({
           ?.valueType === "date";
       const dateQuery = Date.parse(resolvedRuleValue);
       const dateTests = values
-        .map((value) => Date.parse(String(value ?? "").slice(0, 10)))
+        .map((value) => Date.parse(singaporeDateKey(value)))
         .filter((value) => Number.isFinite(value));
       if (isDateRule && !Number.isFinite(dateQuery)) return false;
       if (isDateRule && rule.condition === "is")

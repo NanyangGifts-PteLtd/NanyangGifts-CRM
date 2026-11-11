@@ -15,6 +15,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
+import { singaporeDateKey } from "@/lib/date-key";
 import {
   useCallback,
   useEffect,
@@ -202,7 +203,7 @@ function sampleColumnValues(row: SampleRow, key: string): unknown[] {
     case "reference":
       return [row.referenceId];
     case "dateCreated":
-      return [row.created_at.slice(0, 10)];
+      return [singaporeDateKey(row.created_at)];
     default:
       return [];
   }
