@@ -388,6 +388,7 @@ export function AdditionalCostsBoard({
   const [voucherSearch, setVoucherSearch] = useState("");
   const [showVoucherSearch, setShowVoucherSearch] = useState(false);
   const [showVoucherFilter, setShowVoucherFilter] = useState(false);
+  const [activeVoucherFilter, setActiveVoucherFilter] = useState(true);
   const [showVoucherSearchColumns, setShowVoucherSearchColumns] =
     useState(false);
   const [voucherSearchAllColumns, setVoucherSearchAllColumns] = useState(false);
@@ -3106,6 +3107,7 @@ export function AdditionalCostsBoard({
       );
     const outcomes = activeVoucherRules.map(matches);
     return (
+      (!activeVoucherFilter || !row.deactivated_at) &&
       searchMatch &&
       (!outcomes.length ||
         (voucherJoin === "and"
@@ -4202,6 +4204,18 @@ export function AdditionalCostsBoard({
                   {activeVoucherRules.length}
                 </span>
               ) : null}
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveVoucherFilter((active) => !active)}
+              className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-semibold transition-colors ${activeVoucherFilter ? "bg-[#0f8da8] text-white shadow-sm ring-1 ring-[#0b7187]" : "text-slate-700 hover:bg-slate-100"}`}
+              title={
+                activeVoucherFilter
+                  ? "Showing active Payment Vouchers only"
+                  : "Showing active and deactivated Payment Vouchers"
+              }
+            >
+              Active Filter
             </button>
             {showVoucherFilter && (
               <div className="absolute left-0 top-full z-[100] mt-1">
