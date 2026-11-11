@@ -4521,7 +4521,7 @@ export function AdditionalCostsBoard({
                   selectedVoucherClientId &&
                   !quickBooksBillOnlyMode &&
                   otherBillChoice !== null ? (
-                    <section className="border-t border-slate-200 pt-4">
+                    <section className="-mx-5 border-t-4 border-slate-300 px-5 pt-4">
                       <h3 className="font-semibold text-slate-800">
                         (Optional) Merge Subitem
                       </h3>
@@ -4554,10 +4554,73 @@ export function AdditionalCostsBoard({
                       </label>
                     </section>
                   ) : null}
+                  {["other", "payment_requests"].includes(
+                    voucherCreationGroup,
+                  ) &&
+                  selectedVoucherClientId &&
+                  !quickBooksBillOnlyMode &&
+                  otherBillChoice === "add" &&
+                  (!billTargetVoucher || Boolean(editingVoucher?.is_draft)) ? (
+                    <section className="order-0 -mx-5 border-t-4 border-slate-300 px-5 pt-4">
+                      <h3 className="font-semibold text-slate-800">
+                        Bill Pre-fill File
+                      </h3>
+                      <p className="mt-1 text-sm text-slate-500">
+                        Upload a receipt or invoice to pre-fill the QuickBooks
+                        Bill details.
+                      </p>
+                      <FileDropTarget
+                        disabled={extractingBillDocument}
+                        onFiles={(files) => {
+                          const file = files[0];
+                          if (!file) return;
+                          if (prefillFileSignature)
+                            setPendingExtractionFile(file);
+                          else void extractBillDocument(file);
+                        }}
+                      >
+                        <label className="mt-4 block rounded-lg border border-dashed border-sky-300 bg-sky-50 p-3 text-sm font-medium text-slate-700">
+                          Upload Receipt/Invoice for Pre-filling
+                          <span className="mt-1 block text-xs font-normal text-slate-500">
+                            Maximum 1 upload here for pre-filling, upload other
+                            files below.
+                          </span>
+                          <span className="mt-1 block text-xs font-normal text-slate-500">
+                            PDF, JPEG, PNG, TIFF, BMP, or HEIF up to 4 MB. You
+                            can also paste a copied image here. The original
+                            file is also added to the Bill attachments.
+                          </span>
+                          <input
+                            type="file"
+                            accept="application/pdf,image/jpeg,image/png,image/tiff,image/bmp,image/heif"
+                            disabled={extractingBillDocument}
+                            onChange={(event) => {
+                              const file = event.target.files?.[0];
+                              event.currentTarget.value = "";
+                              if (!file) return;
+                              if (prefillFileSignature)
+                                setPendingExtractionFile(file);
+                              else void extractBillDocument(file);
+                            }}
+                            className="mt-2 block w-full text-sm font-normal text-slate-600"
+                          />
+                          {extractingBillDocument ? (
+                            <span className="mt-3 flex items-center gap-2 rounded-md bg-sky-700 px-3 py-2 text-sm font-semibold text-white">
+                              <LoaderCircle
+                                size={18}
+                                className="animate-spin"
+                              />{" "}
+                              Reading file and extracting Bill details…
+                            </span>
+                          ) : null}
+                        </label>
+                      </FileDropTarget>
+                    </section>
+                  ) : null}
                   {!billTargetVoucher &&
                   !quickBooksBillOnlyMode &&
                   otherBillChoice === null ? (
-                    <section className="border-t border-slate-200 pt-4">
+                    <section className="-mx-5 border-t-4 border-slate-300 px-5 pt-4">
                       <h3 className="font-semibold text-slate-800">Bill</h3>
                       <p className="mt-1 text-sm text-slate-500">
                         Does this payment voucher need a QuickBooks Bill?
@@ -4587,7 +4650,7 @@ export function AdditionalCostsBoard({
                     </section>
                   ) : (
                     <>
-                      <section className="order-2 border-t border-slate-200 pt-4">
+                      <section className="order-2 -mx-5 border-t-4 border-slate-300 px-5 pt-4">
                         <div className="flex items-center justify-between gap-3">
                           <div>
                             <h3 className="font-semibold text-slate-800">
@@ -4613,76 +4676,6 @@ export function AdditionalCostsBoard({
                         </div>
                         {otherBillChoice === "add" ? (
                           <div className="mt-4 space-y-4">
-                            <FileDropTarget
-                              disabled={extractingBillDocument}
-                              onFiles={(files) => {
-                                const file = files[0];
-                                if (!file) return;
-                                if (prefillFileSignature)
-                                  setPendingExtractionFile(file);
-                                else void extractBillDocument(file);
-                              }}
-                            >
-                              <label className="block rounded-lg border border-dashed border-sky-300 bg-sky-50 p-3 text-sm font-medium text-slate-700">
-                                Upload Receipt/Invoice for Pre-filling
-                                <span className="mt-1 block text-xs font-normal text-slate-500">
-                                  Maximum 1 upload here for pre-filling, upload
-                                  other files below.
-                                </span>
-                                <span className="mt-1 block text-xs font-normal text-slate-500">
-                                  PDF, JPEG, PNG, TIFF, BMP, or HEIF up to 4 MB.
-                                  You can also paste a copied image here. The
-                                  original file is also added to the Bill
-                                  attachments.
-                                </span>
-                                <input
-                                  type="file"
-                                  accept="application/pdf,image/jpeg,image/png,image/tiff,image/bmp,image/heif"
-                                  disabled={extractingBillDocument}
-                                  onChange={(event) => {
-                                    const file = event.target.files?.[0];
-                                    event.currentTarget.value = "";
-                                    if (!file) return;
-                                    if (prefillFileSignature)
-                                      setPendingExtractionFile(file);
-                                    else void extractBillDocument(file);
-                                  }}
-                                  className="mt-2 block w-full text-sm font-normal text-slate-600"
-                                />
-                                {extractingBillDocument ? (
-                                  <span className="mt-3 flex items-center gap-2 rounded-md bg-sky-700 px-3 py-2 text-sm font-semibold text-white">
-                                    <LoaderCircle
-                                      size={18}
-                                      className="animate-spin"
-                                    />{" "}
-                                    Reading file and extracting Bill details…
-                                  </span>
-                                ) : null}
-                              </label>
-                            </FileDropTarget>
-                            {["other", "payment_requests"].includes(
-                              voucherCreationGroup,
-                            ) &&
-                            !quickBooksBillOnlyMode &&
-                            (!billTargetVoucher ||
-                              Boolean(editingVoucher?.is_draft)) ? (
-                              <>
-                                <button
-                                  type="button"
-                                  disabled={creatingFor !== null}
-                                  onClick={() =>
-                                    void savePaymentVoucherDraft(true)
-                                  }
-                                  className="self-start rounded border border-violet-300 bg-violet-50 px-4 py-2 text-sm font-semibold text-violet-800 hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-50"
-                                >
-                                  {creatingFor ? "Saving…" : "Save as draft"}
-                                </button>
-                                <div
-                                  aria-hidden="true"
-                                  className="h-8 border-b border-slate-100"
-                                />
-                              </>
-                            ) : null}
                             {billOptionsLoading ? (
                               <p className="text-sm text-slate-500">
                                 Loading QuickBooks options…
@@ -5374,7 +5367,7 @@ export function AdditionalCostsBoard({
                         ) : null}
                       </section>
                       {!billTargetVoucher && !quickBooksBillOnlyMode ? (
-                        <section className="order-1 border-t border-slate-200 pt-4">
+                        <section className="order-1 -mx-5 border-t-4 border-slate-300 px-5 pt-4">
                           <h3 className="font-semibold text-slate-800">
                             Voucher information
                           </h3>
@@ -5544,6 +5537,21 @@ export function AdditionalCostsBoard({
                               className="mt-1 min-h-20 w-full rounded border border-slate-300 px-3 py-2 font-normal"
                             />
                           </label>
+                          {["other", "payment_requests"].includes(
+                            voucherCreationGroup,
+                          ) &&
+                          otherBillChoice === "add" &&
+                          (!billTargetVoucher ||
+                            Boolean(editingVoucher?.is_draft)) ? (
+                            <button
+                              type="button"
+                              disabled={creatingFor !== null}
+                              onClick={() => void savePaymentVoucherDraft(true)}
+                              className="mt-3 rounded border border-violet-300 bg-violet-50 px-4 py-2 text-sm font-semibold text-violet-800 hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              {creatingFor ? "Saving…" : "Save as draft"}
+                            </button>
+                          ) : null}
                         </section>
                       ) : null}
                       <button
@@ -5628,7 +5636,7 @@ export function AdditionalCostsBoard({
                     </p>
                   </section>
                   {voucherCreationGroup === "courier" ? (
-                  <section className="border-t border-slate-200 pt-4">
+                  <section className="-mx-4 border-t-4 border-slate-300 px-4 pt-4">
                     <h3 className="font-semibold text-slate-800">
                       (Optional) Merge Subitem
                     </h3>
@@ -5666,7 +5674,7 @@ export function AdditionalCostsBoard({
                         "Linked client")
                       : clientLabel(clientsById.get(selectedVoucherClientId!)!)}
                   </p>
-                  <div className="border-t border-slate-200 pt-3">
+                  <div className="-mx-4 border-t-4 border-slate-300 px-4 pt-3">
                     <p className="text-sm font-semibold text-slate-700">
                       Voucher information
                     </p>
