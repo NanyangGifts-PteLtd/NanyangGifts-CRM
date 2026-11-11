@@ -6,6 +6,7 @@ const READ_CODES = new Set([
   "additional_cost_status",
   "additional_cost_reason",
   "additional_cost_courier",
+  "payment_voucher_payment_status",
   // Read-only in this route; its option IDs define Related Subitem eligibility.
   "subitem_status",
   "mode_of_payment",

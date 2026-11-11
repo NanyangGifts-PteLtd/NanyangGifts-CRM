@@ -25,6 +25,7 @@ const EDITABLE_FIELDS = new Set([
   "order_number",
   "mode_of_payment",
   "currency",
+  "payment_evidence_files",
 ]);
 
 async function authorize() {
@@ -813,6 +814,28 @@ export async function PATCH(request: NextRequest) {
     );
     if (!Object.keys(values).length)
       throw new Error("No editable changes were supplied.");
+    if (values.payment_evidence_files !== undefined) {
+      if (existing.is_draft)
+        throw new Error("Payment Evidence can only be added after the draft is completed.");
+      if (existing.voucher_group === "quickbooks_bills_only")
+        throw new Error("QuickBooks-Bills-only rows do not support Payment Evidence.");
+      if (!Array.isArray(values.payment_evidence_files))
+        throw new Error("Payment Evidence must be a list of uploaded files.");
+      const allowedPath = `clients/${existing.client_id}/payment-vouchers/${existing.id}/payment-evidence/`;
+      values.payment_evidence_files = values.payment_evidence_files.map((file) => {
+        const raw = file as Record<string, unknown>;
+        const storagePath = String(raw?.storagePath ?? "");
+        if (!storagePath.startsWith(allowedPath))
+          throw new Error("Payment Evidence must be uploaded for this Payment Voucher.");
+        return {
+          id: String(raw?.id ?? ""),
+          name: String(raw?.name ?? ""),
+          storagePath,
+          url: `/api/files/download?path=${encodeURIComponent(storagePath)}`,
+          mimeType: String(raw?.mimeType ?? "") || undefined,
+        };
+      }).filter((file) => file.name);
+    }
     // New records persist their group explicitly. The legacy fallback keeps
     // historical rows without a Courier in the Other group.
     const isOtherVoucher =

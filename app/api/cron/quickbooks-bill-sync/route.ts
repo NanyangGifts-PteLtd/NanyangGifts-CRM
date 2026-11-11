@@ -36,6 +36,8 @@ export async function GET(request: NextRequest) {
       const hasGstOverride = (bill.TxnTaxDetail?.TaxLine ?? []).some(
         (line: { TaxLineDetail?: { OverrideDeltaAmount?: unknown } }) => line.TaxLineDetail?.OverrideDeltaAmount != null,
       );
+      const balance = Number(bill.Balance ?? 0);
+      const quickbooksBillBalance = Number.isFinite(balance) ? balance : 0;
       const { error: updateError } = await supabaseAdmin.from("additional_costs").update({
         cost,
         quickbooks_invoice_number: String(bill.DocNumber ?? ""),
@@ -46,6 +48,8 @@ export async function GET(request: NextRequest) {
           ? Number(bill.TxnTaxDetail?.TotalTax ?? 0)
           : null,
         quickbooks_bill_sync_error: null,
+        quickbooks_bill_balance: quickbooksBillBalance,
+        quickbooks_bill_paid: Math.abs(quickbooksBillBalance) < 0.005,
         updated_at: new Date().toISOString(),
       }).eq("id", voucher.id);
       if (updateError) throw updateError;

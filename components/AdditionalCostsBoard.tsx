@@ -37,7 +37,7 @@ import {
   type BadgeOptionLayout,
 } from "@/components/ui/statusbadge";
 import { createClient as createSupabaseClient } from "@/lib/supabase/client";
-import { uploadCrmFiles } from "@/lib/crm-files";
+import { uploadCrmFiles, type StoredCrmFile } from "@/lib/crm-files";
 import { FilePreview } from "@/components/ui/file-preview";
 import { FileDropTarget } from "@/components/ui/file-drop-target";
 import { AWARDED_OR_LATER_SUBITEM_STATUS_SYSTEM_KEYS } from "@/lib/board-labels";
@@ -92,6 +92,8 @@ type AdditionalCost = {
   quickbooks_memo?: string | null;
   quickbooks_overall_gst_override?: number | null;
   quickbooks_bill_id?: string | null;
+  quickbooks_bill_balance?: number | null;
+  quickbooks_bill_paid?: boolean;
   quickbooks_bill_sync_error?: string | null;
   isGeneratingQuickBooksBill?: boolean;
   quickbooks_attachment_files?: Array<{
@@ -101,6 +103,7 @@ type AdditionalCost = {
     url?: string;
     storagePath?: string;
   }>;
+  payment_evidence_files?: StoredCrmFile[];
   voucher_group?:
     | "courier"
     | "other"
@@ -203,6 +206,8 @@ const otherVoucherColumns: Column[] = [
   { key: "remarks", label: "Remarks", width: 260 },
   { key: "trip_id", label: "Reference ID", width: 145 },
   { key: "items_sent", label: "Related Subitems", width: 210 },
+  { key: "payment_status", label: "Payment Status", width: 145 },
+  { key: "payment_evidence", label: "Payment Evidence", width: 220 },
   { key: "mode_of_payment", label: "Mode of payment", width: 165 },
   { key: "has_quickbooks_bill", label: "Has QuickBooks Bill?", width: 165 },
   {
@@ -228,6 +233,7 @@ const quickBooksBillsOnlyColumns: Column[] = [
   { key: "activity", label: "", width: 52 },
   { key: "cost", label: "Cost", width: 115 },
   { key: "trip_id", label: "Reference ID", width: 145 },
+  { key: "payment_status", label: "Payment Status", width: 145 },
   { key: "has_quickbooks_bill", label: "Has QuickBooks Bill?", width: 165 },
   { key: "quickbooks_supplier_name", label: "Supplier", width: 220 },
   { key: "quickbooks_memo", label: "Memo", width: 280 },
@@ -664,6 +670,23 @@ export function AdditionalCostsBoard({
   const voucherReasonIsOther =
     Boolean(otherReasonOptionId) &&
     voucherDraft.reasonOptionId === otherReasonOptionId;
+  const paymentVoucherStatusFor = (row: AdditionalCost) => {
+    const systemKey = row.is_draft
+      ? "payment_voucher_payment_status_draft"
+      : row.payment_evidence_files?.length || row.quickbooks_bill_paid
+        ? "payment_voucher_payment_status_paid"
+        : "payment_voucher_payment_status_unpaid";
+    const fallback = row.is_draft
+      ? { value: "Draft", color: "#64748b" }
+      : row.payment_evidence_files?.length || row.quickbooks_bill_paid
+        ? { value: "Paid", color: "#16a34a" }
+        : { value: "Unpaid", color: "#dc2626" };
+    return (
+      labelOptions.payment_voucher_payment_status?.find(
+        (option) => option.systemKey === systemKey,
+      ) ?? fallback
+    );
+  };
   // A completed Group 2 voucher can be edited independently of its
   // QuickBooks Bill. Drafts intentionally remain on the Bill workflow so a
   // user can continue completing their saved bill details.
@@ -1206,14 +1229,22 @@ export function AdditionalCostsBoard({
               ? candidate.widths
               : (result.value.widths ?? {});
           return {
-            order: [
-              ...order.filter((key: string) =>
+            order: (() => {
+              const next = order.filter((key: string) =>
                 base.some((column) => column.key === key),
-              ),
-              ...base
-                .map((column) => column.key)
-                .filter((key) => !order.includes(key)),
-            ],
+              );
+              for (const key of base.map((column) => column.key)) {
+                if (next.includes(key)) continue;
+                const baseIndex = base.findIndex((column) => column.key === key);
+                const nextKnown = base
+                  .slice(baseIndex + 1)
+                  .map((column) => column.key)
+                  .find((candidate) => next.includes(candidate));
+                if (nextKnown) next.splice(next.indexOf(nextKnown), 0, key);
+                else next.push(key);
+              }
+              return next;
+            })(),
             widths: Object.fromEntries(
               base.map((column) => [
                 column.key,
@@ -1302,6 +1333,27 @@ export function AdditionalCostsBoard({
     },
     [rows],
   );
+  const addPaymentEvidence = async (row: AdditionalCost, files: File[]) => {
+    if (!files.length || row.is_draft || !canDelete(row)) return;
+    try {
+      const uploaded = await uploadCrmFiles(
+        files,
+        `payment-vouchers/${row.id}/payment-evidence`,
+        { clientId: row.client_id },
+      );
+      await update(row.id, {
+        payment_evidence_files: [
+          ...(row.payment_evidence_files ?? []),
+          ...uploaded,
+        ],
+      });
+    } catch (error) {
+      toast.error("Payment Evidence could not be uploaded", {
+        description:
+          error instanceof Error ? error.message : "Please try again.",
+      });
+    }
+  };
   const create = async (clientId: string) => {
     setCreatingFor(clientId);
     try {
@@ -3549,6 +3601,113 @@ export function AdditionalCostsBoard({
                         >
                           {renderBoardRelatedSubitemSelector(row, client)}
                         </td>
+                        {String(group.id) !== "courier" ? (
+                          <td
+                            data-voucher-col="payment_status"
+                            className="min-h-10 h-full border-b border-r border-slate-200 bg-slate-100 p-0"
+                          >
+                            <StatusBadge
+                              value={paymentVoucherStatusFor(row).value}
+                              onChange={() => undefined}
+                              options={[
+                                ...(labelOptions.payment_voucher_payment_status ??
+                                  []),
+                                ...(labelOptions.payment_voucher_payment_status
+                                  ?.length
+                                  ? []
+                                  : [
+                                      { value: "Draft", color: "#64748b" },
+                                      { value: "Unpaid", color: "#dc2626" },
+                                      { value: "Paid", color: "#16a34a" },
+                                    ]),
+                              ]}
+                              includeBlankOption={false}
+                              readOnly
+                              readOnlyReason="Payment Status is calculated from draft state, Payment Evidence, and the linked QuickBooks Bill."
+                            />
+                          </td>
+                        ) : null}
+                        {!["courier", "quickbooks_bills_only"].includes(
+                          String(group.id),
+                        ) ? (
+                          <td
+                            data-voucher-col="payment_evidence"
+                            className="border-b border-r border-slate-200 p-1"
+                          >
+                            <FileDropTarget
+                              disabled={row.is_draft || !canDelete(row)}
+                              onFiles={(files) =>
+                                void addPaymentEvidence(row, files)
+                              }
+                            >
+                              <div className="flex min-h-8 flex-wrap items-center gap-1">
+                                {(row.payment_evidence_files ?? []).map(
+                                  (file, index) => (
+                                    <span
+                                      key={`${file.storagePath}-${index}`}
+                                      className="group/evidence relative h-8 w-9 overflow-hidden rounded border border-sky-200 bg-sky-50"
+                                    >
+                                      <a
+                                        href={file.url}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        title={file.name}
+                                        className="block h-full w-full"
+                                      >
+                                        <FilePreview
+                                          url={file.url}
+                                          name={file.name}
+                                          mimeType={file.mimeType}
+                                          className="h-full w-full border-0"
+                                        />
+                                      </a>
+                                      {!row.is_draft && canDelete(row) ? (
+                                        <button
+                                          type="button"
+                                          aria-label={`Remove ${file.name}`}
+                                          onClick={() =>
+                                            void update(row.id, {
+                                              payment_evidence_files: (
+                                                row.payment_evidence_files ?? []
+                                              ).filter(
+                                                (_, fileIndex) =>
+                                                  fileIndex !== index,
+                                              ),
+                                            })
+                                          }
+                                          className="absolute right-0 top-0 hidden rounded-bl bg-white/90 p-0.5 text-red-600 group-hover/evidence:block"
+                                        >
+                                          <X size={12} />
+                                        </button>
+                                      ) : null}
+                                    </span>
+                                  ),
+                                )}
+                                {!row.is_draft && canDelete(row) ? (
+                                  <label className="cursor-pointer rounded px-1 text-xs font-medium text-sky-700 hover:bg-sky-50">
+                                    + Add
+                                    <input
+                                      type="file"
+                                      multiple
+                                      className="sr-only"
+                                      onChange={(event) => {
+                                        const files = Array.from(
+                                          event.target.files ?? [],
+                                        );
+                                        event.currentTarget.value = "";
+                                        void addPaymentEvidence(row, files);
+                                      }}
+                                    />
+                                  </label>
+                                ) : row.is_draft ? (
+                                  <span className="px-1 text-xs text-slate-400">
+                                    Complete draft first
+                                  </span>
+                                ) : null}
+                              </div>
+                            </FileDropTarget>
+                          </td>
+                        ) : null}
                         {String(group.id) !== "quickbooks_bills_only" ? (
                           <td
                             data-voucher-col="mode_of_payment"
