@@ -303,7 +303,7 @@ async function addActivityLog(params: {
   subitemId: string | null;
   subitemName: string;
   actorId: string;
-  action: "subitem_added" | "subitem_deleted";
+  action: "subitem_added" | "subitem_deleted" | "subitem_restored";
   title: string;
 }) {
   const { data: profile } = await supabaseAdmin
@@ -1173,6 +1173,14 @@ export async function DELETE(request: NextRequest) {
       if (subitemError) throw subitemError;
       linkedSubitem = subitem;
     }
+    const { data: mergeSnapshot, error: mergeSnapshotError } = await supabaseAdmin
+      .from("payment_voucher_merge_snapshots")
+      .select("voucher_id, subitem_id, restored_at")
+      .eq("voucher_id", record.id)
+      .maybeSingle();
+    if (mergeSnapshotError) throw mergeSnapshotError;
+    if (mergeSnapshot?.restored_at)
+      throw new Error("This Payment Voucher's merged subitem has already been restored.");
     const deletedAt = new Date().toISOString();
     const { error } = await supabaseAdmin
       .from("additional_costs")
@@ -1188,7 +1196,23 @@ export async function DELETE(request: NextRequest) {
     if (error) {
       throw error;
     }
-    if (linkedSubitem) {
+    if (mergeSnapshot) {
+      const { error: restoreError } = await supabaseAdmin.rpc(
+        "restore_payment_voucher_merged_subitem",
+        { p_voucher_id: record.id, p_restored_by: user.id },
+      );
+      if (restoreError) {
+        await supabaseAdmin
+          .from("additional_costs")
+          .update({
+            deactivated_at: null,
+            deactivated_by: null,
+            deactivation_reason: null,
+          })
+          .eq("id", record.id);
+        throw restoreError;
+      }
+    } else if (linkedSubitem) {
       const { error: subitemDeleteError } = await supabaseAdmin
         .from("subitems")
         .delete()
@@ -1207,13 +1231,27 @@ export async function DELETE(request: NextRequest) {
     }
     const { data: profile } = await supabaseAdmin
       .from("profiles").select("full_name, email").eq("id", user.id).maybeSingle();
+    if (mergeSnapshot) {
+      await addActivityLog({
+        clientId: record.client_id,
+        subitemId: mergeSnapshot.subitem_id,
+        subitemName: linkedSubitem?.name ?? "Merged subitem",
+        actorId: user.id,
+        action: "subitem_restored",
+        title: "restored this subitem after its Payment Voucher was deactivated",
+      }).catch((activityError) =>
+        console.error("Merged subitem restoration activity log failed", activityError),
+      );
+    }
     await supabaseAdmin.from("additional_cost_activity_log").insert({
       additional_cost_id: record.id,
       actor_id: user.id,
       actor_name: profile?.full_name?.trim() || profile?.email || "Unknown user",
       action: "deactivated",
-      title: "deactivated this Payment Voucher",
-      meta: { reason },
+      title: mergeSnapshot
+        ? "deactivated this Payment Voucher and restored the merged subitem"
+        : "deactivated this Payment Voucher",
+      meta: { reason, restoredMergedSubitem: Boolean(mergeSnapshot) },
     });
     return NextResponse.json({ ok: true });
   } catch (error) {

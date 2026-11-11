@@ -14,6 +14,30 @@ export async function mergePaymentVoucherSubitem({
   quickBooksBillId?: string;
 }) {
   const subitem = await validatePaymentVoucherMergeTarget(clientId, subitemId);
+  const { data: originalSubitem, error: originalSubitemError } = await supabaseAdmin
+    .from("subitems")
+    .select("id, name, status, status_option_id, qty, currency, currency_option_id, cost, payment_amount, difference, payment_status, payment_status_option_id, custom_fields")
+    .eq("id", subitemId)
+    .eq("client_id", clientId)
+    .is("deleted_at", null)
+    .single();
+  if (originalSubitemError || !originalSubitem)
+    throw originalSubitemError ?? new Error("The selected merge subitem is no longer available.");
+  const { data: originalPaymentRows, error: originalPaymentRowsError } = await supabaseAdmin
+    .from("subitem_payment_rows")
+    .select("*")
+    .eq("subitem_id", subitemId)
+    .order("position", { ascending: true });
+  if (originalPaymentRowsError) throw originalPaymentRowsError;
+  const { error: snapshotError } = await supabaseAdmin
+    .from("payment_voucher_merge_snapshots")
+    .insert({
+      voucher_id: voucherId,
+      subitem_id: subitemId,
+      original_subitem: originalSubitem,
+      original_payment_rows: originalPaymentRows ?? [],
+    });
+  if (snapshotError) throw snapshotError;
   const { data: existingCurrency } = subitem.currency_option_id
     ? await supabaseAdmin.from("option_values").select("system_key").eq("id", subitem.currency_option_id).maybeSingle()
     : { data: null };
