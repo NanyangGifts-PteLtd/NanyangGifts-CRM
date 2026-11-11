@@ -22,12 +22,14 @@ export type AdvancedFilterCondition =
   | "is before"
   | "is on or before"
   | "is after"
-  | "is on or after";
+  | "is on or after"
+  | "is between";
 export type AdvancedFilterRule = {
   id: string;
   column: string;
   condition: AdvancedFilterCondition | "";
   value: string;
+  valueTo?: string;
   valueOptionId?: string;
 };
 export type AdvancedFilterLabelOption = {
@@ -75,6 +77,7 @@ const dateConditions: AdvancedFilterCondition[] = [
   "is on or before",
   "is after",
   "is on or after",
+  "is between",
   "is empty",
   "is not empty",
 ];
@@ -82,6 +85,14 @@ const dateConditions: AdvancedFilterCondition[] = [
 export const advancedFilterConditionRequiresValue = (
   condition: AdvancedFilterCondition | "",
 ) => condition !== "is empty" && condition !== "is not empty";
+
+export const advancedFilterRuleHasRequiredValues = (
+  rule: AdvancedFilterRule,
+) =>
+  !advancedFilterConditionRequiresValue(rule.condition) ||
+  (rule.condition === "is between"
+    ? Boolean(rule.value && rule.valueTo)
+    : Boolean(rule.value || rule.valueOptionId));
 
 function Combo({
   value,
@@ -346,7 +357,9 @@ export function AdvancedFilters({
         <button
           type="button"
           onClick={onClear}
-          disabled={!rules.some((rule) => rule.column || rule.value)}
+          disabled={!rules.some(
+            (rule) => rule.column || rule.value || rule.valueTo,
+          )}
           className="text-sm text-slate-400 hover:text-slate-700 disabled:opacity-40"
         >
           Clear all
@@ -406,6 +419,7 @@ export function AdvancedFilters({
                     column,
                     condition: column ? "is" : "",
                     value: "",
+                    valueTo: "",
                     valueOptionId: undefined,
                   })
                 }
@@ -421,14 +435,46 @@ export function AdvancedFilters({
                 onChange={(condition) =>
                   update(rule.id, {
                     condition: condition as AdvancedFilterCondition,
+                    valueTo:
+                      condition === "is between" ? rule.valueTo : "",
                     ...(!advancedFilterConditionRequiresValue(
                       condition as AdvancedFilterCondition,
                     )
-                      ? { value: "", valueOptionId: undefined }
+                      ? { value: "", valueTo: "", valueOptionId: undefined }
                       : {}),
                   })
                 }
               />
+              {isDate && rule.condition === "is between" ? (
+                <div className="flex min-w-0 flex-1 gap-2">
+                  <input
+                    type="date"
+                    value={rule.value}
+                    max={rule.valueTo || undefined}
+                    onChange={(event) =>
+                      update(rule.id, {
+                        value: event.target.value,
+                        valueOptionId: undefined,
+                      })
+                    }
+                    aria-label="Start date"
+                    className="h-10 min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-3 text-sm outline-none focus:border-sky-400"
+                  />
+                  <input
+                    type="date"
+                    value={rule.valueTo ?? ""}
+                    min={rule.value || undefined}
+                    onChange={(event) =>
+                      update(rule.id, {
+                        valueTo: event.target.value,
+                        valueOptionId: undefined,
+                      })
+                    }
+                    aria-label="End date"
+                    className="h-10 min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-3 text-sm outline-none focus:border-sky-400"
+                  />
+                </div>
+              ) : (
               <Combo
                 disabled={!selected || !needsValue}
                 value={needsValue ? currentLabelValue : ""}
@@ -453,6 +499,7 @@ export function AdvancedFilters({
                   update(rule.id, { value, valueOptionId })
                 }
               />
+              )}
               <button
                 type="button"
                 onClick={() =>

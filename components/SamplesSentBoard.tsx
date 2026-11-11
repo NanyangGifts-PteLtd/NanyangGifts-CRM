@@ -38,7 +38,7 @@ import { InlineDatePicker } from "@/components/ui/inline-date-picker";
 import { EditableCell } from "@/components/ui/editablecell";
 import {
   AdvancedFilters,
-  advancedFilterConditionRequiresValue,
+  advancedFilterRuleHasRequiredValues,
   type AdvancedFilterColumn,
   type AdvancedFilterRule,
 } from "@/components/AdvancedFilters";
@@ -271,6 +271,9 @@ function matchesSampleRule(
       return false;
     }
     if (column.valueType === "date") {
+      const targetTo = rule.valueTo?.trim() ?? "";
+      if (rule.condition === "is between")
+        return source >= target && source <= targetTo;
       if (rule.condition === "is") return source === target;
       if (rule.condition === "is not") return source !== target;
       if (rule.condition === "is before") return source < target;
@@ -563,7 +566,7 @@ export function SamplesSentBoard() {
   const activeAdvancedRules = useMemo(
     () => advancedRules.filter((rule) =>
       rule.column && rule.condition &&
-      (!advancedFilterConditionRequiresValue(rule.condition) || rule.value || rule.valueOptionId),
+      advancedFilterRuleHasRequiredValues(rule),
     ),
     [advancedRules],
   );

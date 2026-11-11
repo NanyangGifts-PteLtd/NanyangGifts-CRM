@@ -47,7 +47,7 @@ import {
 } from "@/lib/crm";
 import {
   AdvancedFilters,
-  advancedFilterConditionRequiresValue,
+  advancedFilterRuleHasRequiredValues,
   type AdvancedFilterColumn,
   type AdvancedFilterRule,
 } from "@/components/AdvancedFilters";
@@ -2961,7 +2961,7 @@ export function AdditionalCostsBoard({
     (rule) =>
       rule.column &&
       rule.condition &&
-      (!advancedFilterConditionRequiresValue(rule.condition) || rule.value),
+      advancedFilterRuleHasRequiredValues(rule),
   );
   const filteredRows = rows.filter((row) => {
     const values = (key: string) =>
@@ -3016,6 +3016,8 @@ export function AdditionalCostsBoard({
           ? source === target
           : rule.condition === "is not"
             ? source !== target
+            : rule.condition === "is between"
+              ? source >= target && source <= (rule.valueTo?.trim() ?? "")
             : rule.condition === "is before"
               ? source < target
               : rule.condition === "is on or before"

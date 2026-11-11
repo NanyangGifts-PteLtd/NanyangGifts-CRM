@@ -1540,6 +1540,7 @@ export type CrmBoardQuery = {
     column: string;
     condition: string;
     value: string;
+    valueTo?: string;
     valueType?: "text" | "number" | "date";
   }>;
   advancedJoin?: "and" | "or";

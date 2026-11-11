@@ -122,7 +122,7 @@ import { ClientDetailView } from "./ClientDetailView";
 import { SubitemDetailView } from "./SubitemDetailView";
 import {
   AdvancedFilters,
-  advancedFilterConditionRequiresValue,
+  advancedFilterRuleHasRequiredValues,
   type AdvancedFilterColumn,
   type AdvancedFilterRule,
 } from "./AdvancedFilters";
@@ -6229,14 +6229,25 @@ export function CRMBoard({
         advancedColumns.find((column) => column.key === rule.column)
           ?.valueType === "date";
       const dateQuery = Date.parse(resolvedRuleValue);
+      const dateQueryTo = Date.parse(rule.valueTo?.trim() ?? "");
       const dateTests = values
         .map((value) => Date.parse(singaporeDateKey(value)))
         .filter((value) => Number.isFinite(value));
       if (isDateRule && !Number.isFinite(dateQuery)) return false;
+      if (
+        isDateRule &&
+        rule.condition === "is between" &&
+        !Number.isFinite(dateQueryTo)
+      )
+        return false;
       if (isDateRule && rule.condition === "is")
         return dateTests.some((value) => value === dateQuery);
       if (isDateRule && rule.condition === "is not")
         return dateTests.every((value) => value !== dateQuery);
+      if (isDateRule && rule.condition === "is between")
+        return dateTests.some(
+          (value) => value >= dateQuery && value <= dateQueryTo,
+        );
       if (rule.condition === "is before")
         return dateTests.some((value) => value < dateQuery);
       if (rule.condition === "is on or before")
@@ -6311,8 +6322,10 @@ export function CRMBoard({
       (rule) =>
         rule.column &&
         rule.condition &&
-        (!advancedFilterConditionRequiresValue(rule.condition) ||
-          advancedRuleValue(rule).trim()),
+        advancedFilterRuleHasRequiredValues({
+          ...rule,
+          value: advancedRuleValue(rule).trim(),
+        }),
     ).length;
   const shouldExpandGroupsForResults =
     boardSearchActive || activeFilterCount > 0;
@@ -6528,8 +6541,10 @@ export function CRMBoard({
       (rule) =>
         rule.column &&
         rule.condition &&
-        (!advancedFilterConditionRequiresValue(rule.condition) ||
-          advancedRuleValue(rule).trim()),
+        advancedFilterRuleHasRequiredValues({
+          ...rule,
+          value: advancedRuleValue(rule).trim(),
+        }),
     );
     const matchesAdvanced =
       !populatedRules.length ||
@@ -6600,13 +6615,16 @@ export function CRMBoard({
         (rule) =>
           rule.column &&
           rule.condition &&
-          (!advancedFilterConditionRequiresValue(rule.condition) ||
-            advancedRuleValue(rule).trim()),
+          advancedFilterRuleHasRequiredValues({
+            ...rule,
+            value: advancedRuleValue(rule).trim(),
+          }),
       )
       .map((rule) => ({
         column: rule.column,
         condition: rule.condition,
         value: advancedRuleValue(rule).trim(),
+        valueTo: rule.valueTo?.trim() ?? "",
         valueType:
           advancedColumns.find(
             (definition) => definition.key === rule.column,
