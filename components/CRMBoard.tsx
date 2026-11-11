@@ -1066,6 +1066,7 @@ export function CRMBoard({
   const [collapsedGroups, setCollapsedGroups] = useState<
     Record<string, boolean>
   >({});
+  const [groups, setGroups] = useState<CRMGroup[]>([]);
 
   const focusDuplicatedClients = useCallback(
     (duplicates: DuplicatedClientPayload[]) => {
@@ -1135,7 +1136,10 @@ export function CRMBoard({
           : current,
       );
     }
+  }, [clients, groups, searchTarget, setExpandedIds]);
 
+  useEffect(() => {
+    if (!searchTarget || searchTarget.kind !== "timeline") return;
     if (searchTarget.kind === "timeline") {
       setClients((current) =>
         current.map((client) =>
@@ -1158,7 +1162,7 @@ export function CRMBoard({
         ),
       );
     }
-  }, [searchTarget, setClients, setExpandedIds]);
+  }, [searchTarget, setClients]);
 
   const filterRef = useRef<HTMLDivElement>(null);
   const peopleFilterRef = useRef<HTMLDivElement>(null);
@@ -1894,8 +1898,6 @@ export function CRMBoard({
   const channelColors = Object.fromEntries(
     channelEntries.map((e) => [e.value, e.color]),
   );
-
-  const [groups, setGroups] = useState<CRMGroup[]>([]);
 
   // Let the page-level Realtime reconciler know which groups are actually
   // visible. It can then update only an open group's loaded page window when

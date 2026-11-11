@@ -1459,8 +1459,39 @@ export default function Page() {
     ],
   );
   const openPaymentVoucherProject = useCallback(
-    (clientId: string) => {
+    async (clientId: string) => {
       openCrmRecord(clientId);
+      setExpandedClientIds((current) =>
+        current.includes(clientId) ? current : [...current, clientId],
+      );
+      if (!clients.some((client) => client.id === clientId)) {
+        try {
+          const hydration = await fetchHydratedClientBundle([clientId]);
+          const [hydratedClient] = hydration.clients;
+          if (hydratedClient) {
+            setClients((current) =>
+              current.some((client) => client.id === hydratedClient.id)
+                ? current
+                : [...current, hydratedClient],
+            );
+            setClientAssignees((current) => ({
+              ...current,
+              ...hydration.clientAssignees,
+            }));
+            setClientPmAssignees((current) => ({
+              ...current,
+              ...hydration.clientPmAssignees,
+            }));
+            setSubitemAssignees((current) => ({
+              ...current,
+              ...hydration.subitemAssignees,
+            }));
+          }
+        } catch (error) {
+          console.error("Failed to load Payment Voucher client", error);
+          toast.error("Could not load the selected client on the CRM Board");
+        }
+      }
       setSearchTarget({
         id: `payment-voucher-project-${clientId}-${Date.now()}`,
         clientId,
@@ -1472,7 +1503,7 @@ export default function Page() {
         query: "",
       });
     },
-    [openCrmRecord],
+    [clients, openCrmRecord],
   );
 
   const reloadClients = useCallback(async (options: ReloadClientsOptions = {}) => {
