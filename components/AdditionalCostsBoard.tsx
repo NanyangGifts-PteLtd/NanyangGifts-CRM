@@ -3179,6 +3179,9 @@ export function AdditionalCostsBoard({
     setPickerOpen(true);
   };
   const renderVoucherGroup = (group: (typeof voucherGroups)[number]) => {
+    const activeVoucherCount = group.rows.filter(
+      (row) => !row.deactivated_at,
+    ).length;
     const baseColumns =
       group.id === "courier"
         ? initialColumns
@@ -3235,7 +3238,7 @@ export function AdditionalCostsBoard({
                 {group.name}
               </span>
               <span className="text-[13px] text-slate-500">
-                {group.rows.length} vouchers
+                {activeVoucherCount} vouchers
               </span>
             </span>
           </div>

@@ -91,6 +91,7 @@ type SampleRow = {
   date_returned: string | null;
   photo_files: StoredCrmFile[];
   created_at: string;
+  can_delete?: boolean;
   linkedClient: {
     id: string;
     name: string;
@@ -208,7 +209,6 @@ function sampleColumnValues(row: SampleRow, key: string): unknown[] {
       return [];
   }
 }
-
 function uniqueSampleColumnValues(rows: SampleRow[], key: string) {
   return [...new Set(rows.flatMap((row) => sampleColumnValues(row, key))
     .map((value) => String(value ?? "").trim())
@@ -303,7 +303,6 @@ export function SamplesSentBoard() {
   const [canManageGroups, setCanManageGroups] = useState(false);
   const [showCreator, setShowCreator] = useState(false);
   const [showAddGroup, setShowAddGroup] = useState(false);
-  const [groupToDelete, setGroupToDelete] = useState<Group | null>(null);
   const [focusedRecordId, setFocusedRecordId] = useState<string | null>(null);
   const [pendingFocusedRecordId, setPendingFocusedRecordId] = useState<string | null>(null);
   const [columnWidths, setColumnWidths] = useState(DEFAULT_COLUMN_WIDTHS);
@@ -313,6 +312,8 @@ export function SamplesSentBoard() {
   const [linkingClientRow, setLinkingClientRow] = useState<SampleRow | null>(null);
   const [failedReturn, setFailedReturn] = useState<{ row: SampleRow; optionId: string } | null>(null);
   const [failedReturnRemarks, setFailedReturnRemarks] = useState("");
+  const [pendingDeleteRecord, setPendingDeleteRecord] = useState<SampleRow | null>(null);
+  const [deletingRecord, setDeletingRecord] = useState(false);
   const [activityRecord, setActivityRecord] = useState<SampleRow | null>(null);
   const [activityRows, setActivityRows] = useState<Array<{ id: string; actor_name: string; title: string; created_at: string }>>([]);
   const [activityLoading, setActivityLoading] = useState(false);
@@ -339,8 +340,8 @@ export function SamplesSentBoard() {
     { id: "initial", column: "", condition: "", value: "" },
   ]);
   const [advancedJoin, setAdvancedJoin] = useState<"and" | "or">("and");
-  const searchCollapseSnapshotRef = useRef<Map<string, boolean> | null>(null);
   const toolbarFiltersRef = useRef<HTMLDivElement>(null!);
+  const queryExpansionAppliedRef = useRef(false);
 
   const loadBoard = useCallback(async () => {
     setLoading(true);
@@ -600,35 +601,14 @@ export function SamplesSentBoard() {
     [groups, queryActive, visibleRows],
   );
   useEffect(() => {
-    if (queryActive) {
-      if (!searchCollapseSnapshotRef.current) {
-        searchCollapseSnapshotRef.current = new Map(
-          groups.map((group) => [group.id, group.collapsed]),
-        );
-      }
-      setGroups((current) => {
-        let changed = false;
-        const next = current.map((group) => {
-          if (!group.collapsed || !visibleRows.some((row) => row.group_id === group.id)) {
-            return group;
-          }
-          changed = true;
-          return { ...group, collapsed: false };
-        });
-        return changed ? next : current;
-      });
-      return;
-    }
-    if (!queryActive && searchCollapseSnapshotRef.current) {
-      const saved = searchCollapseSnapshotRef.current;
-      searchCollapseSnapshotRef.current = null;
-      setGroups((current) => current.map((group) => ({
-        ...group,
-        collapsed: saved.get(group.id) ?? group.collapsed,
-      })));
-    }
-  }, [groups, queryActive, visibleRows]);
-
+    if (!queryActive) { queryExpansionAppliedRef.current = false; return; }
+    if (queryExpansionAppliedRef.current) return;
+    queryExpansionAppliedRef.current = true;
+    const matchingGroupIds = new Set(visibleRows.map((row) => row.group_id));
+    setGroups((current) => current.map((group) =>
+      matchingGroupIds.has(group.id) ? { ...group, collapsed: false } : group,
+    ));
+  }, [queryActive, visibleRows]);
   return (
     <section className="crm-board min-h-full min-w-max bg-[#f8fafc] p-4 text-slate-700 sm:p-6">
       <SamplesToolbar
@@ -677,7 +657,7 @@ export function SamplesSentBoard() {
               onUpdateStatus={updateStatus}
               onEditItems={setItemsEditorRow}
               onOpenActivity={openActivity}
-              canManage={canManageGroups}
+              onDeleteRecord={setPendingDeleteRecord}
               onToggle={() =>
                 setGroups((all) =>
                   all.map((entry) =>
@@ -687,7 +667,6 @@ export function SamplesSentBoard() {
                   ),
                 )
               }
-              onDelete={() => setGroupToDelete(group)}
             />
           ))}
           {queryActive && visibleGroups.length === 0 && (
@@ -719,13 +698,6 @@ export function SamplesSentBoard() {
         onOpenChange={setShowAddGroup}
         onCreated={(group) => setGroups((current) => [...current, group])}
       />
-      <DeleteGroupDialog
-        group={groupToDelete}
-        onOpenChange={(open) => !open && setGroupToDelete(null)}
-        onDeleted={(id) =>
-          setGroups((current) => current.filter((group) => group.id !== id))
-        }
-      />
       <EditSampleItemsDialog
         row={itemsEditorRow}
         onOpenChange={(open) => !open && setItemsEditorRow(null)}
@@ -754,6 +726,25 @@ export function SamplesSentBoard() {
           setLinkingClientRow(null);
         }}
       />
+      <AlertDialog open={!!pendingDeleteRecord} onOpenChange={(open) => !open && setPendingDeleteRecord(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this Samples Sent record?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently deletes {pendingDeleteRecord?.referenceId ?? "this record"}, including its items, activity history, and uploaded photos. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deletingRecord}>Cancel</AlertDialogCancel>
+            <AlertDialogAction disabled={deletingRecord} className="bg-red-600 hover:bg-red-700" onClick={async (event) => {
+              event.preventDefault(); if (!pendingDeleteRecord) return; setDeletingRecord(true);
+              try { const response = await fetch(`/api/samples-sent?id=${encodeURIComponent(pendingDeleteRecord.id)}`, { method: "DELETE" }); const data = await response.json(); if (!response.ok) throw new Error(data.error); setRows((current) => current.filter((row) => row.id !== pendingDeleteRecord.id)); setPendingDeleteRecord(null); toast.success("Samples Sent record deleted"); }
+              catch (error) { toast.error("Samples Sent record could not be deleted", { description: error instanceof Error ? error.message : undefined }); }
+              finally { setDeletingRecord(false); }
+            }}>Delete record</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       {activityRecord && <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 p-4" onMouseDown={() => setActivityRecord(null)}><div className="max-h-[80vh] w-full max-w-2xl overflow-hidden rounded-xl bg-white shadow-2xl" onMouseDown={(event) => event.stopPropagation()}><div className="flex items-center justify-between border-b px-5 py-4"><div><h2 className="text-lg font-semibold">Samples Sent Activity Log</h2><p className="text-sm text-slate-500">Reference ID: {activityRecord.referenceId}</p></div><button type="button" onClick={() => setActivityRecord(null)}><X size={20} /></button></div><div className="max-h-[65vh] overflow-y-auto p-5">{activityLoading ? <p className="text-sm text-slate-500">Loading activity history…</p> : !activityRows.length ? <p className="text-sm text-slate-500">No activity recorded yet.</p> : <div className="space-y-3">{activityRows.map((entry) => <div key={entry.id} className="rounded-lg border p-3"><div className="flex justify-between gap-4"><p className="font-medium text-slate-800">{entry.title}</p><time className="shrink-0 text-xs text-slate-500">{new Date(entry.created_at).toLocaleString("en-SG")}</time></div><p className="mt-1 text-xs text-slate-500">{entry.actor_name}</p></div>)}</div>}</div></div></div>}
     </section>
   );
@@ -968,9 +959,8 @@ function SamplesGroup({
   onUpdateStatus,
   onEditItems,
   onOpenActivity,
-  canManage,
+  onDeleteRecord,
   onToggle,
-  onDelete,
 }: {
   group: Group;
   rows: SampleRow[];
@@ -986,9 +976,8 @@ function SamplesGroup({
   onUpdateStatus: (row: SampleRow, optionId: string) => void;
   onEditItems: (row: SampleRow) => void;
   onOpenActivity: (row: SampleRow) => void;
-  canManage: boolean;
+  onDeleteRecord: (row: SampleRow) => void;
   onToggle: () => void;
-  onDelete: () => void;
 }) {
   return (
     <section className="relative min-w-max overflow-visible border-y border-[#d0d4e4] bg-white">
@@ -1011,15 +1000,6 @@ function SamplesGroup({
             <span className="text-[13px] text-slate-400">{rows.length} sample record{rows.length === 1 ? "" : "s"}</span>
           </span>
         </button>
-        {canManage && (
-          <button
-            type="button"
-            onClick={onDelete}
-            className="w-9 text-slate-400 hover:text-red-600"
-          >
-            <Trash2 size={15} className="mx-auto" />
-          </button>
-        )}
       </div>
       {!group.collapsed && (
         <div className="overflow-visible">
@@ -1040,6 +1020,7 @@ function SamplesGroup({
               onUpdateStatus={onUpdateStatus}
               onEditItems={onEditItems}
               onOpenActivity={onOpenActivity}
+              onDeleteRecord={onDeleteRecord}
             />
           ))}
           {!rows.length && <EmptyRecordLine grid={grid} />}
@@ -1102,6 +1083,7 @@ function SampleRecordLine({
   onUpdateStatus,
   onEditItems,
   onOpenActivity,
+  onDeleteRecord,
 }: {
   row: SampleRow;
   groupName: string;
@@ -1116,6 +1098,7 @@ function SampleRecordLine({
   onUpdateStatus: (row: SampleRow, optionId: string) => void;
   onEditItems: (row: SampleRow) => void;
   onOpenActivity: (row: SampleRow) => void;
+  onDeleteRecord: (row: SampleRow) => void;
 }) {
   const creator = row.createdByProfile;
   const creationTitle = `Created by ${creator ? profileName(creator) : "System"} on ${new Date(row.created_at).toLocaleDateString("en-GB")} at ${new Date(row.created_at).toLocaleTimeString("en-GB")}`;
@@ -1267,6 +1250,7 @@ function SampleRecordLine({
           <button type="button" onClick={() => onOpenActivity(row)} title="View Samples Sent activity log" className="text-slate-500 hover:text-sky-700"><History size={15} /></button>
           {creator && <Avatar profile={creator} />}
           {new Date(row.created_at).toLocaleDateString("en-GB")}
+          {row.can_delete ? <button type="button" onClick={() => onDeleteRecord(row)} title="Delete this Samples Sent record" className="text-slate-400 hover:text-red-600"><Trash2 size={14} /></button> : null}
         </span>,
       )}
     </div>
@@ -1398,7 +1382,6 @@ function FailedReturnDialog({
     </AlertDialog>
   );
 }
-
 function LinkSampleClientDialog({
   row,
   onOpenChange,
@@ -2417,63 +2400,6 @@ function AddGroupDialog({
             }}
           >
             Add group
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
-  );
-}
-
-function DeleteGroupDialog({
-  group,
-  onOpenChange,
-  onDeleted,
-}: {
-  group: Group | null;
-  onOpenChange: (open: boolean) => void;
-  onDeleted: (id: string) => void;
-}) {
-  const [saving, setSaving] = useState(false);
-  const remove = async () => {
-    if (!group) return;
-    setSaving(true);
-    try {
-      const response = await fetch(
-        `/api/samples-sent/groups?id=${encodeURIComponent(group.id)}`,
-        { method: "DELETE" },
-      );
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error);
-      onDeleted(group.id);
-      onOpenChange(false);
-    } catch (error) {
-      toast.error("Group could not be deleted", {
-        description: error instanceof Error ? error.message : undefined,
-      });
-    } finally {
-      setSaving(false);
-    }
-  };
-  return (
-    <AlertDialog open={!!group} onOpenChange={onOpenChange}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>Delete {group?.name}?</AlertDialogTitle>
-          <AlertDialogDescription>
-            Groups with records must be emptied or deactivated first.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel disabled={saving}>Cancel</AlertDialogCancel>
-          <AlertDialogAction
-            disabled={saving}
-            onClick={(event) => {
-              event.preventDefault();
-              void remove();
-            }}
-            className="bg-red-600 hover:bg-red-700"
-          >
-            Delete group
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

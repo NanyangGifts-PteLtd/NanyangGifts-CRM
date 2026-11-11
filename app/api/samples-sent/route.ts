@@ -104,6 +104,18 @@ async function assertRecordEditor(clientId: string | null, userId: string, role:
   if (!assignment) throw new Error("You can only edit Samples Sent records for clients assigned to you.");
 }
 
+async function canDeleteRecord(record: { client_id: string | null; created_at: string }, userId: string, role: string) {
+  if (PRIVILEGED_ROLES.has(role)) return true;
+  if (Date.now() - new Date(record.created_at).getTime() >= 72 * 60 * 60 * 1000)
+    return false;
+  if (!record.client_id) return false;
+  const { data, error } = await supabaseAdmin.from("client_assignees")
+    .select("client_id").eq("client_id", record.client_id).eq("user_id", userId)
+    .in("assignment_type", ["people", "pm"]).maybeSingle();
+  if (error) throw error;
+  return Boolean(data);
+}
+
 async function resolveLabel(code: string, optionId: unknown) {
   const id = String(optionId ?? "").trim();
   if (!id) return { value: "", id: null, systemKey: null };
@@ -252,18 +264,57 @@ async function selectSamplesRows(
 
 export async function GET() {
   try {
-    await authorize();
+    const { user, role } = await authorize();
     const { data, error } = await supabaseAdmin
       .from("samples_sent")
       .select("*")
       .order("created_at", { ascending: false });
     if (error) throw error;
-    return NextResponse.json({
-      rows: await hydrateRows((data ?? []) as Array<Record<string, unknown>>),
-    });
+    const rows = await hydrateRows((data ?? []) as Array<Record<string, unknown>>) as Array<Record<string, unknown>>;
+    const clientIds = [...new Set(rows.map((row) => String(row.client_id ?? "")).filter(Boolean))];
+    let assignedClientIds = new Set<string>();
+    if (PRIVILEGED_ROLES.has(role)) assignedClientIds = new Set(clientIds);
+    else if (clientIds.length) {
+      const { data: assignments, error: assignmentsError } = await supabaseAdmin
+        .from("client_assignees").select("client_id").eq("user_id", user.id)
+        .in("assignment_type", ["people", "pm"]).in("client_id", clientIds);
+      if (assignmentsError) throw assignmentsError;
+      assignedClientIds = new Set((assignments ?? []).map((assignment) => assignment.client_id));
+    }
+    return NextResponse.json({ rows: rows.map((row) => ({
+      ...row,
+      can_delete: PRIVILEGED_ROLES.has(role) || (
+        Boolean(row.client_id && assignedClientIds.has(String(row.client_id))) &&
+        Date.now() - new Date(String(row.created_at)).getTime() < 72 * 60 * 60 * 1000
+      ),
+    })) });
   } catch (error) {
     return failure(error);
   }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const { user, role } = await authorize();
+    const id = request.nextUrl.searchParams.get("id")?.trim();
+    if (!id) throw new Error("A Samples Sent record is required.");
+    const { data: record, error } = await supabaseAdmin.from("samples_sent")
+      .select("id, client_id, created_at, photo_files").eq("id", id).maybeSingle();
+    if (error || !record) throw new Error("Samples Sent record not found.");
+    if (!await canDeleteRecord(record, user.id, role))
+      throw new Error("You can only delete assigned items created within the last 72 hours.");
+    const { error: itemsError } = await supabaseAdmin.from("samples_sent_items").delete().eq("sample_sent_id", id);
+    if (itemsError) throw itemsError;
+    const { error: activityError } = await supabaseAdmin.from("samples_sent_activity_log").delete().eq("sample_sent_id", id);
+    if (activityError) throw activityError;
+    const { error: deleteError } = await supabaseAdmin.from("samples_sent").delete().eq("id", id);
+    if (deleteError) throw deleteError;
+    const paths = Array.isArray(record.photo_files)
+      ? record.photo_files.map((file: { storagePath?: unknown }) => String(file.storagePath ?? "")).filter(Boolean)
+      : [];
+    if (paths.length) await supabaseAdmin.storage.from("crm-files").remove(paths);
+    return NextResponse.json({ ok: true });
+  } catch (error) { return failure(error); }
 }
 
 export async function POST(request: NextRequest) {
