@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { qboQuery } from "@/lib/quickbooks/api";
+import { qboQuery, qboRequest } from "@/lib/quickbooks/api";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { canEditClient } from "@/lib/client-access";
@@ -27,9 +27,11 @@ type QboInvoice = QuickBooksInvoiceRecord & {
   TxnTaxDetail?: { TotalTax?: number | string };
   LinkedTxn?: QboLink[];
   Line?: QboLine[];
+  SyncToken?: string | number | null;
 };
 
 type QboLine = {
+  Id?: string | number | null;
   DetailType?: string;
   Description?: string;
   Amount?: number | string;
@@ -39,6 +41,7 @@ type QboLine = {
     Qty?: number | string;
     UnitPrice?: number | string;
   };
+  [key: string]: unknown;
 };
 
 type QboTransaction = {
@@ -150,6 +153,134 @@ function previewQuote(quote: QboTransaction) {
   return previewTransaction(quote, false);
 }
 
+function qboErrorDetail(error: unknown) {
+  const raw = error instanceof Error ? error.message : String(error ?? "");
+  const jsonStart = raw.indexOf("{");
+  if (jsonStart < 0) return raw || "QuickBooks did not provide a reason.";
+  try {
+    const payload = JSON.parse(raw.slice(jsonStart));
+    const fault = payload?.Fault?.Error?.[0];
+    return String(fault?.Detail ?? fault?.Message ?? raw);
+  } catch {
+    return raw;
+  }
+}
+
+function estimateLinkedInvoice(
+  invoice: QboInvoice,
+  estimateId: string,
+) {
+  return invoiceEstimateIds(invoice).includes(estimateId);
+}
+
+/**
+ * Makes a real QuickBooks Estimate → Invoice link before the CRM writes its
+ * manual Tracking association. The existing Tracking link alone is only a
+ * local record and must never be presented as a QuickBooks conversion.
+ */
+async function linkInvoiceToQuickBooksEstimate(
+  estimateId: string,
+  invoiceId: string,
+) {
+  const [estimateResult, invoiceResult] = await Promise.all([
+    qboRequest(`/estimate/${encodeURIComponent(estimateId)}`, {
+      method: "GET",
+    }),
+    qboRequest(`/invoice/${encodeURIComponent(invoiceId)}`, {
+      method: "GET",
+    }),
+  ]);
+  const estimate = estimateResult?.Estimate as QboTransaction | undefined;
+  let invoice = invoiceResult?.Invoice as QboInvoice | undefined;
+  if (!estimate?.Id) throw new Error("The selected QuickBooks quote is unavailable.");
+  if (!invoice?.Id || invoice.SyncToken == null) {
+    throw new Error("QuickBooks did not return a current version of this invoice.");
+  }
+  if (estimateLinkedInvoice(invoice, String(estimate.Id))) return invoice;
+
+  const quoteStatus = String(estimate.TxnStatus ?? "").trim();
+  if (quoteStatus.toLowerCase() !== "accepted") {
+    throw new Error(
+      `QuickBooks quote ${estimate.DocNumber ?? estimate.Id} must be Accepted before an invoice can be linked. Its current status is ${quoteStatus || "unknown"}.`,
+    );
+  }
+
+  const estimateLines = (estimate.Line ?? []).filter(
+    (line) => line.DetailType === "SalesItemLineDetail",
+  );
+  const currentInvoiceLines = (invoice.Line ?? []) as QboLine[];
+  const invoiceLines = currentInvoiceLines.filter(
+    (line) => line.DetailType === "SalesItemLineDetail",
+  );
+  if (!estimateLines.length || !invoiceLines.length) {
+    throw new Error(
+      "QuickBooks could not link these records because one has no sales-item lines.",
+    );
+  }
+  if (estimateLines.length !== invoiceLines.length) {
+    throw new Error(
+      "QuickBooks could not link this invoice because its sales-item lines do not match the quote. No CRM-only link was created.",
+    );
+  }
+  const estimateLineIds = estimateLines.map((line) => String(line.Id ?? "").trim());
+  if (estimateLineIds.some((id) => !id)) {
+    throw new Error(
+      "QuickBooks could not link this invoice because the quote has a sales-item line without an ID. Open and save the quote in QuickBooks, then try again.",
+    );
+  }
+
+  let sourceIndex = 0;
+  const updatedLines = currentInvoiceLines.map((line) => {
+    if (line.DetailType !== "SalesItemLineDetail") return line;
+    const estimateLineId = estimateLineIds[sourceIndex++];
+    return {
+      ...line,
+      LinkedTxn: [
+        ...(line.LinkedTxn ?? []).filter(
+          (link) => String(link.TxnType ?? "").toLowerCase() !== "estimate",
+        ),
+        {
+          TxnId: String(estimate.Id),
+          TxnType: "Estimate",
+          TxnLineId: estimateLineId,
+        },
+      ],
+    };
+  });
+
+  let updated: QboInvoice | undefined;
+  try {
+    const updateResult = await qboRequest("/invoice", {
+      method: "POST",
+      body: JSON.stringify({
+        sparse: true,
+        Id: String(invoice.Id),
+        SyncToken: String(invoice.SyncToken),
+        LinkedTxn: [{ TxnId: String(estimate.Id), TxnType: "Estimate" }],
+        Line: updatedLines,
+      }),
+    });
+    updated = updateResult?.Invoice as QboInvoice | undefined;
+  } catch (error) {
+    throw new Error(
+      `QuickBooks rejected the quote-to-invoice link: ${qboErrorDetail(error)}`,
+    );
+  }
+
+  const verification = await qboQuery(
+    `SELECT * FROM Invoice WHERE Id = '${escapeQueryValue(String(invoice.Id))}'`,
+  );
+  const verified = verification?.QueryResponse?.Invoice?.[0] as
+    | QboInvoice
+    | undefined;
+  if (!verified || !estimateLinkedInvoice(verified, String(estimate.Id))) {
+    throw new Error(
+      "QuickBooks did not confirm the quote-to-invoice link. No CRM-only link was created.",
+    );
+  }
+  return updated?.Id ? updated : verified;
+}
+
 function previewInvoice(invoice: QboInvoice) {
   return previewTransaction(invoice, true);
 }
@@ -185,11 +316,16 @@ async function lookupQuote(number: string) {
 async function lookupInvoice(number: string, generation?: EstimateGeneration) {
   const { data: existing, error } = await supabaseAdmin
     .from("quickbooks_estimate_invoices")
-    .select("id")
+    .select("id, estimate_generation_id")
     .eq("quickbooks_invoice_doc_number", number)
     .limit(1);
   if (error) throw error;
-  if (existing?.length) throw new Error("This QuickBooks invoice number is already linked to a quote.");
+  if (
+    existing?.length &&
+    (!generation || existing[0].estimate_generation_id !== generation.id)
+  ) {
+    throw new Error("This QuickBooks invoice number is already linked to a quote.");
+  }
   const { data: directExisting, error: directExistingError } = await supabaseAdmin
     .from("quickbooks_client_invoices")
     .select("id")
@@ -208,11 +344,16 @@ async function lookupInvoice(number: string, generation?: EstimateGeneration) {
   if (!invoice?.Id) throw new Error("QuickBooks returned an invoice without an ID.");
   const { data: idMatch, error: idMatchError } = await supabaseAdmin
     .from("quickbooks_estimate_invoices")
-    .select("id")
+    .select("id, estimate_generation_id")
     .eq("quickbooks_invoice_id", String(invoice.Id))
     .limit(1);
   if (idMatchError) throw idMatchError;
-  if (idMatch?.length) throw new Error("This QuickBooks invoice is already linked to a quote.");
+  if (
+    idMatch?.length &&
+    (!generation || idMatch[0].estimate_generation_id !== generation.id)
+  ) {
+    throw new Error("This QuickBooks invoice is already linked to a quote.");
+  }
   const { data: directIdMatch, error: directIdMatchError } = await supabaseAdmin
     .from("quickbooks_client_invoices")
     .select("id")
@@ -332,10 +473,17 @@ export async function POST(request: NextRequest) {
     const invoice = await lookupInvoice(number, generation);
     if (phase === "lookup") return NextResponse.json({ preview: previewInvoice(invoice) });
 
-    const snapshot = invoiceSnapshot(invoice);
+    // Do the external QuickBooks write before persisting the local Tracking
+    // association. If it fails or cannot be verified, this flow must not
+    // create a Friday-only relationship that appears to be a QBO conversion.
+    const linkedQuickBooksInvoice = await linkInvoiceToQuickBooksEstimate(
+      String(generation.quickbooks_estimate_id),
+      String(invoice.Id),
+    );
+    const snapshot = invoiceSnapshot(linkedQuickBooksInvoice);
     const { error: linkError } = await supabaseAdmin
       .from("quickbooks_estimate_invoices")
-      .insert({
+      .upsert({
         estimate_generation_id: generation.id,
         ...snapshot,
         quickbooks_invoice_doc_number:
@@ -344,6 +492,8 @@ export async function POST(request: NextRequest) {
         manually_linked_at: new Date().toISOString(),
         manually_linked_by: user.id,
         last_synced_at: new Date().toISOString(),
+      }, {
+        onConflict: "estimate_generation_id,quickbooks_invoice_id",
       });
     if (linkError) throw linkError;
 

@@ -50,7 +50,13 @@ export function ManualTrackingLinkDialog({ open, onOpenChange, kind, clientId, e
     <AlertDialogContent className="max-h-[90vh] w-[calc(100vw-3rem)] max-w-[1280px] overflow-x-hidden overflow-y-auto sm:max-w-[1280px]">
       <AlertDialogHeader>
         <AlertDialogTitle>Link QuickBooks {isQuote ? "quote" : "invoice"}</AlertDialogTitle>
-        <AlertDialogDescription>{preview ? `Check the QuickBooks ${noun} below before linking it.` : `Enter the QuickBooks ${noun} number to find it.`}</AlertDialogDescription>
+        <AlertDialogDescription>
+          {preview
+            ? kind === "invoice"
+              ? "Confirm this invoice to link it to the selected quote in QuickBooks, then add it to Tracking."
+              : `Check the QuickBooks ${noun} below before linking it.`
+            : `Enter the QuickBooks ${noun} number to find it.`}
+        </AlertDialogDescription>
       </AlertDialogHeader>
       {!preview ? <label className="grid gap-1.5 text-sm font-medium text-slate-700">
         QuickBooks {isQuote ? "quote" : "invoice"} number
@@ -61,7 +67,15 @@ export function ManualTrackingLinkDialog({ open, onOpenChange, kind, clientId, e
         <AlertDialogCancel disabled={working}>Cancel</AlertDialogCancel>
         {preview && <button type="button" onClick={() => { setPreview(null); setMessage(null); }} disabled={working} className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium hover:bg-slate-50 disabled:opacity-50">Change number</button>}
         <button type="button" onClick={() => void request(preview ? "confirm" : "lookup")} disabled={working} className="rounded-md bg-sky-600 px-3 py-2 text-sm font-medium text-white hover:bg-sky-700 disabled:opacity-50">
-          {working ? (preview ? "Linking…" : "Finding…") : preview ? `Link ${isQuote ? "quote" : "invoice"}` : `Find ${isQuote ? "quote" : "invoice"}`}
+          {working
+            ? preview
+              ? "Linking…"
+              : "Finding…"
+            : preview
+              ? kind === "invoice"
+                ? "Link in QuickBooks"
+                : `Link ${isQuote ? "quote" : "invoice"}`
+              : `Find ${isQuote ? "quote" : "invoice"}`}
         </button>
       </AlertDialogFooter>
     </AlertDialogContent>
