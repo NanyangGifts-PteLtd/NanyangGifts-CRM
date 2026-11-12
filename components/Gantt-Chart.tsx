@@ -921,6 +921,7 @@ export default function GanttChart({
     y: number;
   } | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [serverSearchQuery, setServerSearchQuery] = useState("");
   const [searchScope, setSearchScope] = useState<SearchScope>("all");
   const [filters, setFilters] = useState<GanttFilters>(() => ({
     ...EMPTY_FILTERS,
@@ -1273,9 +1274,18 @@ export default function GanttChart({
     filters.processStatuses.size +
     Number(!!filters.dateFrom) +
     Number(!!filters.dateTo);
+  useEffect(() => {
+    // Search the currently loaded rows immediately, but wait until typing has
+    // paused before asking the paged server dataset for additional matches.
+    const timer = window.setTimeout(
+      () => setServerSearchQuery(searchQuery),
+      350,
+    );
+    return () => window.clearTimeout(timer);
+  }, [searchQuery]);
   const serverQuery = useMemo<GanttServerQuery>(
     () => ({
-      search: searchQuery,
+      search: serverSearchQuery,
       searchScope,
       groupIds: Array.from(filters.groupIds).sort(),
       clientIds: Array.from(filters.clientIds).sort(),
@@ -1285,7 +1295,7 @@ export default function GanttChart({
       dateFrom: filters.dateFrom,
       dateTo: filters.dateTo,
     }),
-    [filters, searchQuery, searchScope],
+    [filters, searchScope, serverSearchQuery],
   );
   const serverQueryKey = useMemo(() => JSON.stringify(serverQuery), [serverQuery]);
   const prefetchedPageCountRef = useRef<{ key: string; count: number }>({

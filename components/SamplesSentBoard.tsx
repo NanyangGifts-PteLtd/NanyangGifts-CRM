@@ -130,6 +130,7 @@ const DEFAULT_COLUMN_WIDTHS = [
   115, 125, 155,
 ];
 const COLUMN_WIDTHS_SETTING_KEY = "samples_sent_column_widths_v2";
+const SAMPLES_SENT_PAGE_SIZE = 100;
 const LEGACY_COLUMN_WIDTHS_ORDER = [
   0, 1, 17, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 18,
 ];
@@ -297,6 +298,10 @@ function matchesSampleRule(
 export function SamplesSentBoard() {
   const [groups, setGroups] = useState<Group[]>([]);
   const [rows, setRows] = useState<SampleRow[]>([]);
+  const [totalRows, setTotalRows] = useState(0);
+  const [groupRowCounts, setGroupRowCounts] = useState<Record<string, number>>({});
+  const [nextRowsOffset, setNextRowsOffset] = useState(0);
+  const [loadingMoreRows, setLoadingMoreRows] = useState(false);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [currentUserId, setCurrentUserId] = useState("");
   const [loading, setLoading] = useState(true);
@@ -341,6 +346,7 @@ export function SamplesSentBoard() {
   ]);
   const [advancedJoin, setAdvancedJoin] = useState<"and" | "or">("and");
   const toolbarFiltersRef = useRef<HTMLDivElement>(null!);
+  const loadMoreSentinelRef = useRef<HTMLDivElement>(null);
   const queryExpansionAppliedRef = useRef(false);
 
   const loadBoard = useCallback(async () => {
@@ -349,7 +355,9 @@ export function SamplesSentBoard() {
       const [groupsResponse, recordsResponse, fetchedProfiles, auth] =
         await Promise.all([
           fetch("/api/samples-sent/groups", { cache: "no-store" }),
-          fetch("/api/samples-sent", { cache: "no-store" }),
+          fetch(`/api/samples-sent?offset=0&limit=${SAMPLES_SENT_PAGE_SIZE}`, {
+            cache: "no-store",
+          }),
           fetchProfiles(),
           createSupabaseClient().auth.getUser(),
         ]);
@@ -366,6 +374,9 @@ export function SamplesSentBoard() {
         })),
       );
       setRows(recordData.rows ?? []);
+      setTotalRows(Number(recordData.total ?? 0));
+      setGroupRowCounts(recordData.groupCounts ?? {});
+      setNextRowsOffset(Number(recordData.nextOffset ?? 0));
       setProfiles(fetchedProfiles);
       setCurrentUserId(auth.data.user?.id ?? "");
       setCanManageGroups(Boolean(groupData.canManage));
@@ -376,6 +387,54 @@ export function SamplesSentBoard() {
       setLoading(false);
     }
   }, []);
+
+  const loadMoreRows = useCallback(async () => {
+    if (loadingMoreRows || nextRowsOffset >= totalRows) return;
+    setLoadingMoreRows(true);
+    try {
+      const response = await fetch(
+        `/api/samples-sent?offset=${nextRowsOffset}&limit=${SAMPLES_SENT_PAGE_SIZE}`,
+        { cache: "no-store" },
+      );
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Could not load more Samples Sent records.");
+      setRows((current) => {
+        const next = new Map(current.map((row) => [row.id, row]));
+        for (const row of data.rows ?? []) next.set(row.id, row);
+        return Array.from(next.values());
+      });
+      setTotalRows(Number(data.total ?? totalRows));
+      setGroupRowCounts(data.groupCounts ?? {});
+      setNextRowsOffset(Number(data.nextOffset ?? nextRowsOffset));
+    } catch (error) {
+      toast.error("Could not load more Samples Sent records", {
+        description: error instanceof Error ? error.message : undefined,
+      });
+    } finally {
+      setLoadingMoreRows(false);
+    }
+  }, [loadingMoreRows, nextRowsOffset, totalRows]);
+
+  const hasExpandedGroups = groups.some((group) => !group.collapsed);
+  useEffect(() => {
+    const sentinel = loadMoreSentinelRef.current;
+    if (
+      !sentinel ||
+      !hasExpandedGroups ||
+      loadingMoreRows ||
+      nextRowsOffset >= totalRows
+    ) {
+      return;
+    }
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) void loadMoreRows();
+      },
+      { rootMargin: "480px 0px" },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [hasExpandedGroups, loadMoreRows, loadingMoreRows, nextRowsOffset, totalRows]);
 
   useEffect(() => {
     void loadBoard();
@@ -645,6 +704,7 @@ export function SamplesSentBoard() {
               key={group.id}
               group={group}
               rows={visibleRows.filter((row) => row.group_id === group.id)}
+              recordCount={queryActive ? undefined : groupRowCounts[group.id]}
               focusedRecordId={focusedRecordId}
               grid={gridForWidths(columnWidths)}
               onResizeColumn={resizeColumn}
@@ -674,6 +734,16 @@ export function SamplesSentBoard() {
               No Samples Sent records match the current search or filter.
             </div>
           )}
+          {nextRowsOffset < totalRows && (
+            <div ref={loadMoreSentinelRef} className="min-h-px">
+              {loadingMoreRows && (
+                <div className="flex items-center justify-center gap-2 py-3 text-sm text-slate-500">
+                  <LoaderCircle size={16} className="animate-spin" />
+                  Loading more records…
+                </div>
+              )}
+            </div>
+          )}
           {canManageGroups && (
             <button
               type="button"
@@ -691,7 +761,14 @@ export function SamplesSentBoard() {
         groups={groups}
         profiles={profiles}
         currentUserId={currentUserId}
-        onCreated={(row) => setRows((current) => [row, ...current])}
+        onCreated={(row) => {
+          setRows((current) => [row, ...current]);
+          setTotalRows((current) => current + 1);
+          setGroupRowCounts((current) => ({
+            ...current,
+            [row.group_id ?? ""]: (current[row.group_id ?? ""] ?? 0) + 1,
+          }));
+        }}
       />
       <AddGroupDialog
         open={showAddGroup}
@@ -738,7 +815,7 @@ export function SamplesSentBoard() {
             <AlertDialogCancel disabled={deletingRecord}>Cancel</AlertDialogCancel>
             <AlertDialogAction disabled={deletingRecord} className="bg-red-600 hover:bg-red-700" onClick={async (event) => {
               event.preventDefault(); if (!pendingDeleteRecord) return; setDeletingRecord(true);
-              try { const response = await fetch(`/api/samples-sent?id=${encodeURIComponent(pendingDeleteRecord.id)}`, { method: "DELETE" }); const data = await response.json(); if (!response.ok) throw new Error(data.error); setRows((current) => current.filter((row) => row.id !== pendingDeleteRecord.id)); setPendingDeleteRecord(null); toast.success("Samples Sent record deleted"); }
+              try { const response = await fetch(`/api/samples-sent?id=${encodeURIComponent(pendingDeleteRecord.id)}`, { method: "DELETE" }); const data = await response.json(); if (!response.ok) throw new Error(data.error); const groupId = pendingDeleteRecord.group_id ?? ""; setRows((current) => current.filter((row) => row.id !== pendingDeleteRecord.id)); setTotalRows((current) => Math.max(0, current - 1)); setGroupRowCounts((current) => ({ ...current, [groupId]: Math.max(0, (current[groupId] ?? 0) - 1) })); setPendingDeleteRecord(null); toast.success("Samples Sent record deleted"); }
               catch (error) { toast.error("Samples Sent record could not be deleted", { description: error instanceof Error ? error.message : undefined }); }
               finally { setDeletingRecord(false); }
             }}>Delete record</AlertDialogAction>
@@ -947,6 +1024,7 @@ function LoadingState() {
 function SamplesGroup({
   group,
   rows,
+  recordCount,
   focusedRecordId,
   grid,
   onResizeColumn,
@@ -964,6 +1042,7 @@ function SamplesGroup({
 }: {
   group: Group;
   rows: SampleRow[];
+  recordCount?: number;
   focusedRecordId: string | null;
   grid: string;
   onResizeColumn: (index: number, startX: number) => void;
@@ -997,7 +1076,7 @@ function SamplesGroup({
           )}
           <span className={group.collapsed ? "flex flex-col" : "flex items-center gap-2"}>
             <span className="crm-group-name" style={{ color: group.color }}>{group.name}</span>
-            <span className="text-[13px] text-slate-400">{rows.length} sample record{rows.length === 1 ? "" : "s"}</span>
+            <span className="text-[13px] text-slate-400">{recordCount ?? rows.length} sample record{(recordCount ?? rows.length) === 1 ? "" : "s"}</span>
           </span>
         </button>
       </div>

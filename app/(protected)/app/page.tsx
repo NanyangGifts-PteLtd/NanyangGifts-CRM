@@ -3985,7 +3985,13 @@ export default function Page() {
               onOpenClientTimeline={openGanttClientTimeline}
               onUpdateSubitem={updateGanttSubitem}
               canEditSubitem={canEditGanttSubitem}
-              isLoading={ganttClientsLoading || groups.length === 0}
+              // Keep the existing chart mounted during a search/filter refresh.
+              // Unmounting it here destroys the focused search input while the
+              // user is still typing.
+              isLoading={
+                (ganttClientsLoading && ganttClients.length === 0) ||
+                groups.length === 0
+              }
               resourceIds={ganttResourceIds}
               totalResourceCount={ganttResourceTotal}
               hasMoreResources={ganttHasMoreResources}

@@ -262,14 +262,37 @@ async function selectSamplesRows(
   return { data: rows, error: null };
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const { user, role } = await authorize();
-    const { data, error } = await supabaseAdmin
-      .from("samples_sent")
-      .select("*")
-      .order("created_at", { ascending: false });
-    if (error) throw error;
+    const offsetValue = Number(request.nextUrl.searchParams.get("offset") ?? 0);
+    const limitValue = Number(request.nextUrl.searchParams.get("limit") ?? 100);
+    const offset = Number.isFinite(offsetValue) ? Math.max(0, Math.floor(offsetValue)) : 0;
+    // A bounded page avoids hydrating every related client/subitem/item for
+    // large migrated groups in one request.
+    const limit = Number.isFinite(limitValue)
+      ? Math.min(100, Math.max(1, Math.floor(limitValue)))
+      : 100;
+    const [pageResult, groupCountResult] = await Promise.all([
+      supabaseAdmin
+        .from("samples_sent")
+        .select("*", { count: "exact" })
+        .order("created_at", { ascending: false })
+        .range(offset, offset + limit - 1),
+      // Group headers still need their true record totals even though only a
+      // page of full records is hydrated at a time.
+      supabaseAdmin.from("samples_sent").select("group_id"),
+    ]);
+    const { data, error, count } = pageResult;
+    if (error || groupCountResult.error) throw error ?? groupCountResult.error;
+    const groupCounts = (groupCountResult.data ?? []).reduce<Record<string, number>>(
+      (counts, row) => {
+        const groupId = String(row.group_id ?? "");
+        if (groupId) counts[groupId] = (counts[groupId] ?? 0) + 1;
+        return counts;
+      },
+      {},
+    );
     const rows = await hydrateRows((data ?? []) as Array<Record<string, unknown>>) as Array<Record<string, unknown>>;
     const clientIds = [...new Set(rows.map((row) => String(row.client_id ?? "")).filter(Boolean))];
     let assignedClientIds = new Set<string>();
@@ -287,7 +310,7 @@ export async function GET() {
         Boolean(row.client_id && assignedClientIds.has(String(row.client_id))) &&
         Date.now() - new Date(String(row.created_at)).getTime() < 72 * 60 * 60 * 1000
       ),
-    })) });
+    })), total: count ?? 0, groupCounts, nextOffset: offset + rows.length });
   } catch (error) {
     return failure(error);
   }
