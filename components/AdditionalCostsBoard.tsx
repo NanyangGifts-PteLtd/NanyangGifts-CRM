@@ -9,6 +9,7 @@ import {
   LockKeyhole,
   LoaderCircle,
   History,
+  Info,
   Search,
   SlidersHorizontal,
   Filter,
@@ -397,6 +398,10 @@ export function AdditionalCostsBoard({
     new Set(["project", "reference", "reason", "courier", "remarks"]),
   );
   const voucherToolbarRef = useRef<HTMLDivElement>(null);
+  const voucherGroupInfoRef = useRef<HTMLDivElement>(null);
+  const [openVoucherGroupInfo, setOpenVoucherGroupInfo] = useState<string | null>(
+    null,
+  );
   const [voucherRules, setVoucherRules] = useState<AdvancedFilterRule[]>([
     { id: "initial", column: "", condition: "", value: "" },
   ]);
@@ -418,6 +423,15 @@ export function AdditionalCostsBoard({
     showVoucherSearchColumns,
     voucherSearch,
   ]);
+  useEffect(() => {
+    if (!openVoucherGroupInfo) return;
+    const close = (event: MouseEvent) => {
+      if (!voucherGroupInfoRef.current?.contains(event.target as Node))
+        setOpenVoucherGroupInfo(null);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [openVoucherGroupInfo]);
   const [collapsedVoucherGroups, setCollapsedVoucherGroups] = useState<
     Record<VoucherGroupId, boolean>
   >({
@@ -3147,6 +3161,8 @@ export function AdditionalCostsBoard({
     {
       id: "payment_requests" as const,
       name: "Payment Requests",
+      description:
+        "Payments that do not create a PV subitem (Example: Paying for Singapore supplier's invoice)",
       rows: filteredRows.filter(
         (row) => row.voucher_group === "payment_requests",
       ),
@@ -3295,6 +3311,28 @@ export function AdditionalCostsBoard({
                 {activeVoucherCount} vouchers
               </span>
             </span>
+            {group.description ? (
+              <div ref={voucherGroupInfoRef} className="relative shrink-0">
+                <button
+                  type="button"
+                  aria-label={`About ${group.name}`}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setOpenVoucherGroupInfo((current) =>
+                      current === group.id ? null : group.id,
+                    );
+                  }}
+                  className="rounded-full p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                >
+                  <Info size={16} />
+                </button>
+                {openVoucherGroupInfo === group.id ? (
+                  <div className="absolute left-0 top-full z-[90] mt-2 w-72 rounded-md border border-slate-200 bg-white p-3 text-sm font-normal text-slate-600 shadow-lg">
+                    {group.description}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
           </div>
 
           <button
