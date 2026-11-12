@@ -2131,6 +2131,10 @@ export function CRMBoard({
     top: number;
     scrollTop: number;
   } | null>(null);
+  // A direct group toggle must remain anchored at its own header. Keep this
+  // separate from the general row-anchor mechanism, which is intended only
+  // for asynchronous Board inserts above the reader's current position.
+  const userToggledGroupRef = useRef<string | null>(null);
   const [boardToolbarWidth, setBoardToolbarWidth] = useState<number | null>(
     null,
   );
@@ -2220,8 +2224,33 @@ export function CRMBoard({
       scrollViewport.querySelectorAll<HTMLElement>("[data-client-row]"),
     );
 
+    const userToggledGroupId = userToggledGroupRef.current;
+    const userToggledGroup = userToggledGroupId
+      ? Array.from(
+          scrollViewport.querySelectorAll<HTMLElement>("[data-client-group]"),
+        ).find((group) => group.dataset.clientGroup === userToggledGroupId)
+      : null;
+    const shouldSkipAnchorCompensation = Boolean(userToggledGroupId);
+
+    // Loading an unopened group first renders a skeleton, then inserts its
+    // rows on a later render. Retain the suppression across that transition;
+    // otherwise the second render would still preserve the next group's row
+    // and make the newly opened group appear to expand upward.
+    if (userToggledGroupId) {
+      const hasClientRows = Boolean(
+        userToggledGroup?.querySelector("[data-client-row]"),
+      );
+      const isLoadingInitialRows = Boolean(
+        userToggledGroup?.querySelector('[aria-busy="true"]'),
+      );
+      if (hasClientRows || !isLoadingInitialRows) {
+        userToggledGroupRef.current = null;
+      }
+    }
+
     const previous = boardViewportAnchorRef.current;
     if (
+      !shouldSkipAnchorCompensation &&
       previous &&
       Math.abs(scrollViewport.scrollTop - previous.scrollTop) <= 2
     ) {
@@ -7822,6 +7851,7 @@ export function CRMBoard({
   const toggleGroup = useCallback(
     (id: string) => {
       const isCollapsed = Boolean(collapsedGroups[id]);
+      userToggledGroupRef.current = id;
       setCollapsedGroups((current) => ({ ...current, [id]: !isCollapsed }));
       if (isCollapsed) void (onPrimeGroup ?? onLoadMoreGroup)?.(id);
     },
