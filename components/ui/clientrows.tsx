@@ -1224,6 +1224,23 @@ export function ClientRow({
       created_at: string;
     }>
   >([]);
+  const [launcherQuotes, setLauncherQuotes] = useState<
+    Array<{
+      id: string;
+      quickbooks_estimate_doc_number: string | null;
+      created_at: string;
+      files: Array<{
+        name: string;
+        url: string;
+        created_at: string | null;
+      }>;
+    }>
+  >([]);
+  const [isLoadingLauncherQuotes, setIsLoadingLauncherQuotes] =
+    useState(false);
+  const [launcherQuotesError, setLauncherQuotesError] = useState<string | null>(
+    null,
+  );
   const [selectedEstimateGenerationId, setSelectedEstimateGenerationId] =
     useState("");
   const [updateEstimatePreview, setUpdateEstimatePreview] = useState<{
@@ -1299,6 +1316,8 @@ export function ClientRow({
     docNumber?: string | null;
     quotePdfError?: string | null;
   } | null>(null);
+  const hasQuickBooksQuote =
+    Boolean(client.hasQuickBooksQuote) || Boolean(estimateResult?.estimateId);
   const [sampleEstimate, setSampleEstimate] = useState<{
     filename: string;
     url: string;
@@ -1734,6 +1753,7 @@ export function ClientRow({
         docNumber?: string | null;
       };
       setEstimateResult(result);
+      void loadLauncherQuotes();
     } catch {
       // The hook already retains the error for the result state in this dialog.
     }
@@ -1756,6 +1776,28 @@ export function ClientRow({
       );
     } finally {
       setIsLoadingUpdateEstimates(false);
+    }
+  };
+  const loadLauncherQuotes = async () => {
+    setIsLoadingLauncherQuotes(true);
+    setLauncherQuotesError(null);
+    try {
+      const response = await fetch(
+        `/api/quickbooks/tracking-quotes?clientId=${encodeURIComponent(client.id)}`,
+      );
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result?.error ?? "Could not load QuickBooks quotes");
+      }
+      setLauncherQuotes(result.quotes ?? []);
+    } catch (error) {
+      setLauncherQuotesError(
+        error instanceof Error
+          ? error.message
+          : "Could not load QuickBooks quotes",
+      );
+    } finally {
+      setIsLoadingLauncherQuotes(false);
     }
   };
   const loadUpdatePreview = async (generationId: string) => {
@@ -3474,57 +3516,133 @@ export function ClientRow({
               </div>
             )}
           {estimateMode === "choice" ? (
-            <div className="grid gap-4 sm:grid-cols-3">
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedDraftQuoteSubitemIds(
-                    estimateEligibleSubitems.map((subitem) => subitem.id),
-                  );
-                  setEstimateMode("sample");
-                }}
-                className="min-h-56 rounded-xl border-2 border-sky-200 bg-sky-50 p-7 text-left transition-colors hover:border-sky-400"
-              >
-                <strong className="block text-center text-xl leading-snug text-sky-800">
-                  Generate draft quote
-                </strong>
-                <span className="mt-4 block text-[11px] leading-relaxed text-slate-500">
-                  Create and save a PDF preview. Nothing is sent to QuickBooks.
-                </span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setEstimateMode("quickbooks");
-                  void loadQuickBooksDefaults();
-                }}
-                className="min-h-56 rounded-xl border-2 border-emerald-200 bg-emerald-50 p-7 text-left transition-colors hover:border-emerald-400"
-              >
-                <strong className="block text-center text-xl leading-snug text-emerald-800">
-                  Generate QuickBooks quote
-                </strong>
-                <span className="mt-4 block text-[11px] leading-relaxed text-slate-500">
-                  Create the customer/items if needed, then send the quote to
-                  QuickBooks.
-                </span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setEstimateMode("update");
-                  void loadQuickBooksDefaults();
-                  void loadUpdateEstimates();
-                }}
-                className="min-h-56 rounded-xl border-2 border-amber-200 bg-amber-50 p-7 text-left transition-colors hover:border-amber-400"
-              >
-                <strong className="block text-center text-xl leading-snug text-amber-800">
-                  Update QuickBooks quote
-                </strong>
-                <span className="mt-4 block text-[11px] leading-relaxed text-slate-500">
-                  Compare a prior QuickBooks quote with current CRM details,
-                  then update it.
-                </span>
-              </button>
+            <div className="space-y-5">
+              <div className="grid gap-4 sm:grid-cols-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedDraftQuoteSubitemIds(
+                      estimateEligibleSubitems.map((subitem) => subitem.id),
+                    );
+                    setEstimateMode("sample");
+                  }}
+                  className="min-h-56 rounded-xl border-2 border-sky-200 bg-sky-50 p-7 text-left transition-colors hover:border-sky-400"
+                >
+                  <strong className="block text-center text-xl leading-snug text-sky-800">
+                    Generate draft quote
+                  </strong>
+                  <span className="mt-4 block text-[11px] leading-relaxed text-slate-500">
+                    Create and save a PDF preview. Nothing is sent to QuickBooks.
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEstimateMode("quickbooks");
+                    void loadQuickBooksDefaults();
+                  }}
+                  className="min-h-56 rounded-xl border-2 border-emerald-200 bg-emerald-50 p-7 text-left transition-colors hover:border-emerald-400"
+                >
+                  <strong className="block text-center text-xl leading-snug text-emerald-800">
+                    Generate QuickBooks quote
+                  </strong>
+                  <span className="mt-4 block text-[11px] leading-relaxed text-slate-500">
+                    Create the customer/items if needed, then send the quote to
+                    QuickBooks.
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEstimateMode("update");
+                    void loadQuickBooksDefaults();
+                    void loadUpdateEstimates();
+                  }}
+                  className="min-h-56 rounded-xl border-2 border-amber-200 bg-amber-50 p-7 text-left transition-colors hover:border-amber-400"
+                >
+                  <strong className="block text-center text-xl leading-snug text-amber-800">
+                    Update QuickBooks quote
+                  </strong>
+                  <span className="mt-4 block text-[11px] leading-relaxed text-slate-500">
+                    Compare a prior QuickBooks quote with current CRM details,
+                    then update it.
+                  </span>
+                </button>
+              </div>
+              <section className="border-t border-slate-200 pt-4">
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-semibold text-slate-800">
+                      Linked QuickBooks quotes
+                    </h3>
+                    <p className="text-[11px] text-slate-500">
+                      Archived PDF revisions are available here when present.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void loadLauncherQuotes()}
+                    disabled={isLoadingLauncherQuotes}
+                    className="rounded border border-slate-200 bg-white px-2 py-1 text-[11px] font-medium text-slate-600 hover:border-sky-300 hover:bg-sky-50 hover:text-sky-700 disabled:cursor-wait disabled:opacity-60"
+                  >
+                    {isLoadingLauncherQuotes ? "Loading…" : "Refresh"}
+                  </button>
+                </div>
+                {launcherQuotesError ? (
+                  <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                    {launcherQuotesError}
+                  </p>
+                ) : isLoadingLauncherQuotes && !launcherQuotes.length ? (
+                  <p className="rounded border border-slate-200 px-3 py-2 text-xs text-slate-500">
+                    Loading linked QuickBooks quotes…
+                  </p>
+                ) : !launcherQuotes.length ? (
+                  <p className="rounded border border-slate-200 px-3 py-2 text-xs text-slate-500">
+                    No QuickBooks quotes are linked to this client.
+                  </p>
+                ) : (
+                  <div className="divide-y divide-slate-200 overflow-hidden rounded border border-slate-200">
+                    {launcherQuotes.map((quote) => (
+                      <div
+                        key={quote.id}
+                        className="flex flex-wrap items-center gap-2 px-3 py-2"
+                      >
+                        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
+                          <p className="truncate text-sm font-medium text-slate-800">
+                            Quote {quote.quickbooks_estimate_doc_number ?? "(no document number)"}
+                          </p>
+                          {quote.files.length ? (
+                            quote.files.map((file, index) => (
+                              <a
+                                key={`${file.url}-${index}`}
+                                href={file.url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-[11px] text-sky-700 hover:text-sky-900 hover:underline"
+                              >
+                                {quote.files.length === 1
+                                  ? "Open quote PDF"
+                                  : `Open PDF ${index + 1}`}
+                              </a>
+                            ))
+                          ) : (
+                            <span className="text-[11px] text-slate-400">No archived PDF</span>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            toast.info("Convert to Invoice will be available soon.")
+                          }
+                          className="shrink-0 rounded border border-emerald-300 bg-emerald-50 px-2.5 py-1.5 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-100"
+                        >
+                          Convert to Invoice
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
             </div>
           ) : (
             estimateMode !== "update" &&
@@ -4501,11 +4619,22 @@ export function ClientRow({
                         resetEstimateState();
                         onBeginFocusedAction?.();
                         setShowEstimateDialog(true);
+                        void loadLauncherQuotes();
                       }}
-                      className="px-2 py-2 text-[10px] font-medium text-teal-500"
+                      className={`inline-flex items-center justify-center rounded border px-2 py-1.5 text-[10px] font-medium transition active:scale-95 ${
+                        hasQuickBooksQuote
+                          ? "border-emerald-500 bg-emerald-500 text-white hover:bg-emerald-600"
+                          : "border-transparent text-teal-500 hover:bg-teal-50"
+                      }`}
                       aria-label="Generate draft quote or QuickBooks quote"
                     >
-                      <span className="text-[#7BCBD5] transition duration-200 active:scale-150">
+                      <span
+                        className={
+                          hasQuickBooksQuote
+                            ? "transition duration-200 active:scale-150"
+                            : "text-[#7BCBD5] transition duration-200 active:scale-150"
+                        }
+                      >
                         <PdfIcon size={16} />
                       </span>
                     </button>

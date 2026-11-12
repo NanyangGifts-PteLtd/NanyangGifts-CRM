@@ -256,6 +256,8 @@ export interface Client {
   trackingOverallInvoicePaymentStatus?: string | null;
   trackingOverallInvoicePaymentStatusOptionId?: string | null;
   trackingInvoiceStatusSummary?: Record<string, number>;
+  /** Set during Board hydration from active QuickBooks quote links. */
+  hasQuickBooksQuote?: boolean;
   company: string;
   email: string;
   phone: string;

@@ -64,6 +64,39 @@ export async function GET(request: NextRequest) {
       : { data: [], error: null };
     if (invoicesError) throw invoicesError;
 
+    // QuickBooks quote PDFs are archived in the client's Files area. Their
+    // upload activity retains the estimate ID, which lets the launcher show
+    // the exact archived revisions without inventing a second file store.
+    const { data: quoteFileActivities, error: quoteFileActivitiesError } =
+      estimateIds.length
+        ? await supabase
+            .from("activity_log")
+            .select("link, created_at, meta")
+            .eq("client_id", clientId)
+            .eq("action", "file_uploaded")
+            .order("created_at", { ascending: false })
+        : { data: [], error: null };
+    if (quoteFileActivitiesError) throw quoteFileActivitiesError;
+
+    const filesByEstimateId = new Map<
+      string,
+      Array<{ name: string; url: string; created_at: string | null }>
+    >();
+    for (const activity of quoteFileActivities ?? []) {
+      const meta =
+        activity.meta && typeof activity.meta === "object" ? activity.meta : {};
+      const estimateId = String(meta.quickbooksEstimateId ?? "").trim();
+      const url = String(activity.link ?? "").trim();
+      if (!estimateId || !url || !estimateIds.includes(estimateId)) continue;
+      const files = filesByEstimateId.get(estimateId) ?? [];
+      files.push({
+        name: String(meta.fileName ?? "QuickBooks quote PDF"),
+        url,
+        created_at: activity.created_at ?? null,
+      });
+      filesByEstimateId.set(estimateId, files);
+    }
+
     const invoicesByQuote = new Map<string, typeof invoices>();
     for (const invoice of invoices ?? []) {
       const rows = invoicesByQuote.get(invoice.estimate_generation_id) ?? [];
@@ -95,6 +128,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       quotes: (generations ?? []).map((quote) => ({
         ...quote,
+        files:
+          filesByEstimateId.get(
+            String(quote.quickbooks_estimate_id ?? "").trim(),
+          ) ?? [],
         can_unlink_duplicate:
           (linkedClientsByEstimateId.get(
             String(quote.quickbooks_estimate_id ?? "").trim(),

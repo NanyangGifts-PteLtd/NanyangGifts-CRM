@@ -1318,13 +1318,30 @@ async function hydrateBoardAttachmentMetadata(
   const clientIds = hydration.clients.map((client) => client.id);
   if (!clientIds.length) return hydration;
 
-  let request = supabase
+  let attachmentRequest = supabase
     .from("clients")
     .select("id, custom_fields")
     .in("id", clientIds);
-  if (signal) request = request.abortSignal(signal);
-  const { data, error } = await request;
+  let quoteRequest = supabase
+    .from("estimate_generations")
+    .select("client_id")
+    .in("client_id", clientIds)
+    .is("archived_at", null);
+  if (signal) {
+    attachmentRequest = attachmentRequest.abortSignal(signal);
+    quoteRequest = quoteRequest.abortSignal(signal);
+  }
+  const [attachmentResult, quoteResult] = await Promise.all([
+    attachmentRequest,
+    quoteRequest,
+  ]);
+  const { data, error } = attachmentResult;
   if (error) throw error;
+  if (quoteResult.error) throw quoteResult.error;
+
+  const quoteClientIds = new Set(
+    (quoteResult.data ?? []).map((quote) => String(quote.client_id)),
+  );
 
   const attachmentFieldsByClientId = new Map<string, Record<string, string>>();
   for (const row of data ?? []) {
@@ -1346,8 +1363,9 @@ async function hydrateBoardAttachmentMetadata(
         ? {
             ...client,
             customFields: { ...client.customFields, ...attachmentFields },
+            hasQuickBooksQuote: quoteClientIds.has(client.id),
           }
-        : client;
+        : { ...client, hasQuickBooksQuote: quoteClientIds.has(client.id) };
     }),
   };
 }
