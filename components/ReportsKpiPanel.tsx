@@ -5,6 +5,7 @@ import {
   BarChart3,
   ChevronDown,
   ChevronRight,
+  Download,
   Lock,
   Settings2,
   Target,
@@ -115,6 +116,7 @@ export function ReportsKpiPanel({
   const [progressYear, setProgressYear] = useState(year);
   const [editingTargets, setEditingTargets] = useState(false);
   const [targetDrafts, setTargetDrafts] = useState<Record<number, string>>({});
+  const [exporting, setExporting] = useState(false);
 
   const availableYears = useMemo(
     () =>
@@ -275,6 +277,97 @@ export function ReportsKpiPanel({
     }
   };
 
+  const exportReport = async () => {
+    if (!report || exporting) return;
+    setExporting(true);
+    try {
+      const XLSX = await import("xlsx");
+      const progressPercent = report.progress.yearlyTarget > 0
+        ? (report.progress.currentProgress / report.progress.yearlyTarget) * 100
+        : 0;
+      const summaryRows = [
+        ["Commission Calculator"],
+        [],
+        ["Report range", `${report.range.start} to ${report.range.end}`],
+        ["Salespeople", report.salespeople.map(personName).join(", ") || "All Salespeople"],
+        [],
+        ["Total Eligible Markup (SGD)", report.summary.markup],
+        ["Closed Leads", report.summary.closedLeads],
+        [],
+        ["Cumulative Progress Tracker"],
+        ["Target year", report.progress.year],
+        ["Yearly target (SGD)", report.progress.yearlyTarget],
+        ["Current progress (SGD)", report.progress.currentProgress],
+        ["Current progress (%)", progressPercent / 100],
+      ];
+      const breakdownRows: Array<Record<string, string | number | null>> = [];
+      for (const person of report.salespeople) {
+        for (const client of person.clients) {
+          const base = {
+            Salesperson: personName(person),
+            "Client ID": client.displayId,
+            "Client Name": client.name,
+            Channel: client.channel || "",
+            Verification: client.verified ? "Verified" : "",
+            "Closed Date": client.closedDate,
+            "Client Markup (SGD)": client.markup,
+            "Client Revenue (SGD)": client.revenue,
+            "Invoice #": client.invoices || "",
+          };
+          if (client.subitems.length) {
+            for (const subitem of client.subitems) {
+              breakdownRows.push({
+                ...base,
+                "Subitem ID": subitem.displayId,
+                Subitem: subitem.name,
+                "Subitem Status": subitem.status,
+                "Subitem Markup (SGD)": subitem.markup,
+                "Subitem Revenue (SGD)": subitem.revenue,
+              });
+            }
+          } else {
+            breakdownRows.push({
+                ...base,
+                "Subitem ID": "",
+                Subitem: "",
+                "Subitem Status": "",
+                "Subitem Markup (SGD)": null,
+                "Subitem Revenue (SGD)": null,
+              });
+          }
+        }
+      }
+      const targetRows = report.progress.monthlyTargets.map((target) => ({
+        Year: report.progress.year,
+        Month: monthName(target.month),
+        "Target (SGD)": target.amount,
+      }));
+      const workbook = XLSX.utils.book_new();
+      const summarySheet = XLSX.utils.aoa_to_sheet(summaryRows);
+      summarySheet["!cols"] = [{ wch: 32 }, { wch: 36 }];
+      summarySheet["B6"].z = '"SGD" #,##0.00';
+      summarySheet["B11"].z = '"SGD" #,##0.00';
+      summarySheet["B12"].z = '"SGD" #,##0.00';
+      summarySheet["B13"].z = "0.0%";
+      const breakdownSheet = XLSX.utils.json_to_sheet(breakdownRows);
+      breakdownSheet["!cols"] = [
+        { wch: 22 }, { wch: 14 }, { wch: 28 }, { wch: 18 }, { wch: 14 },
+        { wch: 14 }, { wch: 20 }, { wch: 21 }, { wch: 18 }, { wch: 14 },
+        { wch: 32 }, { wch: 24 }, { wch: 22 }, { wch: 23 },
+      ];
+      const targetsSheet = XLSX.utils.json_to_sheet(targetRows);
+      targetsSheet["!cols"] = [{ wch: 12 }, { wch: 14 }, { wch: 20 }];
+      XLSX.utils.book_append_sheet(workbook, summarySheet, "Summary");
+      XLSX.utils.book_append_sheet(workbook, breakdownSheet, "Individual Breakdown");
+      XLSX.utils.book_append_sheet(workbook, targetsSheet, "Monthly Targets");
+      XLSX.writeFile(workbook, `commission-calculator-${report.range.start}-to-${report.range.end}.xlsx`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not export the Commission Calculator report.");
+    } finally {
+      setExporting(false);
+    }
+  };
+
   if (!report)
     return (
       <>
@@ -323,12 +416,21 @@ export function ReportsKpiPanel({
               Closed-lead markup and Salesperson breakdown.
             </p>
           </div>
-          <button
-            onClick={() => setShowSetup(true)}
-            className="inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium hover:bg-slate-50"
-          >
-            <Settings2 size={16} /> Report settings
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => void exportReport()}
+              disabled={exporting}
+              className="inline-flex items-center gap-2 rounded-md bg-sky-600 px-3 py-2 text-sm font-semibold text-white hover:bg-sky-700 disabled:cursor-wait disabled:opacity-60"
+            >
+              <Download size={16} /> {exporting ? "Exporting…" : "Export Excel"}
+            </button>
+            <button
+              onClick={() => setShowSetup(true)}
+              className="inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium hover:bg-slate-50"
+            >
+              <Settings2 size={16} /> Report settings
+            </button>
+          </div>
         </header>
         <section className="grid gap-4 sm:grid-cols-2">
           <Metric
