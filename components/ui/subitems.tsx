@@ -2778,7 +2778,11 @@ export function SubitemsTable({
         return (
           <div className="overflow-hidden whitespace-nowrap text-ellipsis !text-center border-r border-[#D0D4E4] p-0 h-[33.1px] flex-shrink-0 transition transform active:scale-95 duration-150">
             <StatusBadge
-              value={sub.status ?? ""}
+              value={
+                subitemStatusOptions.find(
+                  (option) => option.id === sub.statusOptionId,
+                )?.value ?? sub.status ?? ""
+              }
               onChange={(v, option) => {
                 const statusOptionId = option?.id ?? null;
                 if (
@@ -3244,7 +3248,11 @@ export function SubitemsTable({
         return (
           <div className="overflow-hidden whitespace-nowrap text-ellipsis !text-center border-r border-[#D0D4E4] p-0 h-[33.1px] flex-shrink-0 transition transform active:scale-95 duration-150">
             <StatusBadge
-              value={sub.status ?? ""}
+              value={
+                subitemStatusOptions.find(
+                  (option) => option.id === sub.statusOptionId,
+                )?.value ?? sub.status ?? ""
+              }
               onChange={(v, option) =>
                 onUpdateSubitem(sub.id, {
                   status: v,

@@ -4364,6 +4364,42 @@ export function CRMBoard({
         });
         return;
       }
+      if (code === "subitem_status") {
+        const response = await fetch("/api/options/rename-subitem-status", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            optionId: option.id,
+            previousValue: oldName,
+            nextValue: trimmed,
+          }),
+        });
+        const result = (await response.json().catch(() => ({}))) as {
+          error?: string;
+          skippedLockedSubitems?: number;
+        };
+        if (!response.ok) {
+          toast.error("Label could not be renamed", {
+            description: result.error ?? "Please try again.",
+          });
+          return;
+        }
+
+        setSubitemStatusEntries((previous) =>
+          previous.map((entry) =>
+            entry.id === option.id ? { ...entry, value: trimmed } : entry,
+          ),
+        );
+        await reloadClients({ reason: "label-rename" });
+        notifyChange("Label renamed", `${oldName} was renamed to ${trimmed}.`);
+        if (result.skippedLockedSubitems) {
+          toast.info("Locked subitems kept their stored label text", {
+            description:
+              "Their stable label link remains unchanged, so they will display the renamed label without bypassing the client lock.",
+          });
+        }
+        return;
+      }
       const { error: optionError } = await supabase
         .from("option_values")
         .update({ value: trimmed })
@@ -6523,7 +6559,8 @@ export function CRMBoard({
       client.subitems.some(
         (subitem) =>
           subitem.statusOptionId ===
-          optionIdForValue(subitemStatusEntries, filterSubitemStatus),
+          optionIdForValue(subitemStatusEntries, filterSubitemStatus) ||
+          String(subitem.status ?? "").trim() === filterSubitemStatus,
       );
     const matchesPayment =
       filterPayment === "All" ||
@@ -6641,7 +6678,21 @@ export function CRMBoard({
   // orders rows within each returned client rather than the client page.
   useEffect(() => {
     if (!onServerQueryChange) return;
-    const populatedRules = advancedRules
+    const populatedRules = [
+      ...advancedRules,
+      ...(filterSubitemStatus === "All"
+        ? []
+        : [
+            {
+              id: "__quick_subitem_status",
+              column: "subitem:status",
+              condition: "is" as const,
+              value: filterSubitemStatus,
+              valueTo: "",
+              valueType: "text" as const,
+            },
+          ]),
+    ]
       .filter(
         (rule) =>
           rule.column &&
@@ -6726,14 +6777,6 @@ export function CRMBoard({
         ? {}
         : {
             channelOptionId: optionIdForValue(channelEntries, filterChannel),
-          }),
-      ...(filterSubitemStatus === "All"
-        ? {}
-        : {
-            subitemStatusOptionId: optionIdForValue(
-              subitemStatusEntries,
-              filterSubitemStatus,
-            ),
           }),
       ...(filterPayment === "All"
         ? {}
@@ -12586,20 +12629,6 @@ export function CRMBoard({
           )}
         </div>
 
-        <button
-          type="button"
-          onClick={toggleClosedFilter}
-          disabled={!closedFilterStatusOptions.length}
-          title="Show clients with Awarded, To Verify At A Later Date, Verified, or Variation subitems"
-          className={`rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-            closedFilterActive
-              ? "bg-[#3b82f6] text-white hover:bg-[#2563eb]"
-              : "text-slate-700 hover:bg-slate-100"
-          }`}
-        >
-          Closed Filter
-        </button>
-
         <div className="relative" data-crm-menu-trigger>
           <button
             type="button"
@@ -12830,6 +12859,20 @@ export function CRMBoard({
           className={`flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium text-white shadow-sm transition-colors ${trackingView ? "bg-[#0b7188] ring-2 ring-[#7BCBD5]/50" : "bg-[#0f8da8] hover:bg-[#0b7188]"}`}
         >
           Tracking View
+        </button>
+
+        <button
+          type="button"
+          onClick={toggleClosedFilter}
+          disabled={!closedFilterStatusOptions.length}
+          title="Show clients with Awarded, To Verify At A Later Date, Verified, or Variation subitems"
+          className={`rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+            closedFilterActive
+              ? "bg-[#3b82f6] text-white hover:bg-[#2563eb]"
+              : "text-slate-700 hover:bg-slate-100"
+          }`}
+        >
+          Closed Filter
         </button>
 
         <div className="flex-1" />
