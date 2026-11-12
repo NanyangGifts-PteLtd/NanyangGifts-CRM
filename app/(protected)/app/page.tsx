@@ -679,6 +679,7 @@ export default function Page() {
   const [search, setSearch] = useState("");
   const [user, setUser] = useState<User | null>(null);
   const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
+  const [paymentVoucherAttention, setPaymentVoucherAttention] = useState(0);
   const [emailReviewPending, setEmailReviewPending] = useState(0);
   const [unqualifiedVerificationPending, setUnqualifiedVerificationPending] =
     useState(0);
@@ -3634,6 +3635,45 @@ export default function Page() {
     setUnqualifiedVerificationPending(Number(result.pendingCount) || 0);
   }, []);
 
+  const loadPaymentVoucherAttention = useCallback(async () => {
+    const response = await fetch("/api/additional-costs/attention-count");
+    if (!response.ok) return;
+    const result = await response.json();
+    setPaymentVoucherAttention(Number(result.count) || 0);
+  }, []);
+
+  useEffect(() => {
+    const canViewPaymentVouchers = ["pm", "admin", "director", "dev"].includes(
+      String(currentUserRole ?? "").toLowerCase(),
+    );
+    if (!canViewPaymentVouchers) {
+      setPaymentVoucherAttention(0);
+      return;
+    }
+    let refreshTimer: number | undefined;
+    const scheduleRefresh = () => {
+      if (refreshTimer !== undefined) window.clearTimeout(refreshTimer);
+      refreshTimer = window.setTimeout(() => {
+        refreshTimer = undefined;
+        void loadPaymentVoucherAttention();
+      }, 300);
+    };
+    void loadPaymentVoucherAttention();
+    const supabase = createSupabaseClient();
+    const channel = supabase
+      .channel("payment-voucher-attention-count")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "additional_costs" },
+        scheduleRefresh,
+      )
+      .subscribe();
+    return () => {
+      if (refreshTimer !== undefined) window.clearTimeout(refreshTimer);
+      void supabase.removeChannel(channel);
+    };
+  }, [currentUserRole, loadPaymentVoucherAttention]);
+
   useEffect(() => {
     const canReviewEmails = ["admin", "director", "dev"].includes(
       String(currentUserRole ?? "").toLowerCase(),
@@ -3973,6 +4013,7 @@ export default function Page() {
             clientAssignees={clientAssignees}
             clientPmAssignees={clientPmAssignees}
             onOpenProject={openPaymentVoucherProject}
+            onAttentionCountChange={setPaymentVoucherAttention}
           />
         ) : null;
 
@@ -4069,6 +4110,7 @@ export default function Page() {
         emailUnread={0}
         emailReviewPending={emailReviewPending}
         unqualifiedVerificationPending={unqualifiedVerificationPending}
+        paymentVoucherAttention={paymentVoucherAttention}
         collapsed={sidebarCollapsed}
         onToggleCollapsed={() => setSidebarCollapsed((v) => !v)}
         currentUserRole={currentUserRole}

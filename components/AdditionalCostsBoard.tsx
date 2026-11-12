@@ -183,6 +183,7 @@ type Props = {
   clientAssignees: Record<string, string[]>;
   clientPmAssignees: Record<string, string[]>;
   onOpenProject?: (clientId: string) => void;
+  onAttentionCountChange?: (count: number) => void;
 };
 type Column = { key: string; label: string; width: number };
 const initialColumns: Column[] = [
@@ -384,6 +385,7 @@ export function AdditionalCostsBoard({
   clientAssignees,
   clientPmAssignees,
   onOpenProject,
+  onAttentionCountChange,
 }: Props) {
   const [rows, setRows] = useState<AdditionalCost[]>([]);
   const [voucherSearch, setVoucherSearch] = useState("");
@@ -702,6 +704,12 @@ export function AdditionalCostsBoard({
       ) ?? fallback
     );
   };
+  const paymentVoucherStatusKeyFor = (row: AdditionalCost) =>
+    row.is_draft
+      ? "draft"
+      : row.payment_evidence_files?.length || row.quickbooks_bill_paid
+        ? "paid"
+        : "unpaid";
   // A completed Group 2 voucher can be edited independently of its
   // QuickBooks Bill. Drafts intentionally remain on the Bill workflow so a
   // user can continue completing their saved bill details.
@@ -3183,6 +3191,21 @@ export function AdditionalCostsBoard({
         ]
       : []),
   ];
+  const paymentVoucherAttentionCount = rows.filter((row) => {
+    if (row.deactivated_at || row.voucher_group === "courier") return false;
+    if (
+      row.voucher_group === "quickbooks_bills_only" &&
+      !["admin", "director", "dev"].includes(
+        String(currentUserRole ?? "").toLowerCase(),
+      )
+    )
+      return false;
+    const status = paymentVoucherStatusKeyFor(row);
+    return status === "draft" || status === "unpaid";
+  }).length;
+  useEffect(() => {
+    onAttentionCountChange?.(paymentVoucherAttentionCount);
+  }, [onAttentionCountChange, paymentVoucherAttentionCount]);
   useEffect(() => {
     if (!voucherSearch.trim() && !activeVoucherRules.length) return;
     setCollapsedVoucherGroups({
@@ -3252,6 +3275,20 @@ export function AdditionalCostsBoard({
     const activeVoucherCount = group.rows.filter(
       (row) => !row.deactivated_at,
     ).length;
+    const paymentStatusCounts = group.rows.reduce(
+      (counts, row) => {
+        if (row.deactivated_at) return counts;
+        const status = paymentVoucherStatusKeyFor(row);
+        if (status === "draft") counts.draft += 1;
+        if (status === "unpaid") counts.unpaid += 1;
+        return counts;
+      },
+      { draft: 0, unpaid: 0 },
+    );
+    const paymentStatusOption = (systemKey: string, fallbackColor: string) =>
+      labelOptions.payment_voucher_payment_status?.find(
+        (option) => option.systemKey === systemKey,
+      ) ?? { color: fallbackColor };
     const baseColumns =
       group.id === "courier"
         ? initialColumns
@@ -3311,6 +3348,32 @@ export function AdditionalCostsBoard({
                 {activeVoucherCount} vouchers
               </span>
             </span>
+            {group.id !== "courier" ? (
+              <span className="flex shrink-0 items-center gap-1.5">
+                <span
+                  className="rounded-full px-2 py-0.5 text-xs font-semibold text-white"
+                  style={{
+                    backgroundColor: paymentStatusOption(
+                      "payment_voucher_payment_status_draft",
+                      "#64748b",
+                    ).color,
+                  }}
+                >
+                  {paymentStatusCounts.draft} Draft
+                </span>
+                <span
+                  className="rounded-full px-2 py-0.5 text-xs font-semibold text-white"
+                  style={{
+                    backgroundColor: paymentStatusOption(
+                      "payment_voucher_payment_status_unpaid",
+                      "#dc2626",
+                    ).color,
+                  }}
+                >
+                  {paymentStatusCounts.unpaid} Unpaid
+                </span>
+              </span>
+            ) : null}
             {group.description ? (
               <div ref={voucherGroupInfoRef} className="relative shrink-0">
                 <button

@@ -44,6 +44,7 @@ interface SidebarProps {
   emailUnread: number;
   emailReviewPending: number;
   unqualifiedVerificationPending: number;
+  paymentVoucherAttention: number;
   collapsed: boolean;
   onToggleCollapsed: () => void;
   currentUserRole?: string | null;
@@ -108,6 +109,7 @@ export default function Sidebar({
   emailUnread,
   emailReviewPending,
   unqualifiedVerificationPending,
+  paymentVoucherAttention,
   collapsed,
   onToggleCollapsed,
   currentUserRole,
@@ -234,6 +236,15 @@ export default function Sidebar({
                     aria-label={`${unqualifiedVerificationPending} Unqualified Leads pending verification`}
                   >
                     {unqualifiedVerificationPending}
+                  </span>
+                )}
+                {item.id === "additionalcosts" && paymentVoucherAttention > 0 && (
+                  <span
+                    className="ml-auto rounded-full bg-amber-500 px-1.5 py-0.5 text-xs text-white hidden lg:flex min-w-5 items-center justify-center leading-none"
+                    style={{ fontSize: "10px" }}
+                    aria-label={`${paymentVoucherAttention} Payment Vouchers are draft or unpaid`}
+                  >
+                    {paymentVoucherAttention}
                   </span>
                 )}
                 <div className="absolute left-full ml-2 px-2 py-1 bg-gray-800 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 lg:hidden">

@@ -294,7 +294,7 @@ const CLIENT_HEADER_COLS: HeaderCol[] = [
   { key: "status", label: "Status", width: 80, minWidth: 7 },
   {
     key: "overallPaymentStatus",
-    label: "Overall Payment Status",
+    label: "All Items Paid?",
     width: 150,
     minWidth: 100,
   },
