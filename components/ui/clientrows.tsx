@@ -1241,6 +1241,12 @@ export function ClientRow({
   const [launcherQuotesError, setLauncherQuotesError] = useState<string | null>(
     null,
   );
+  const [convertingQuoteId, setConvertingQuoteId] = useState<string | null>(
+    null,
+  );
+  const [quoteConversionError, setQuoteConversionError] = useState<
+    string | null
+  >(null);
   const [selectedEstimateGenerationId, setSelectedEstimateGenerationId] =
     useState("");
   const [updateEstimatePreview, setUpdateEstimatePreview] = useState<{
@@ -1798,6 +1804,75 @@ export function ClientRow({
       );
     } finally {
       setIsLoadingLauncherQuotes(false);
+    }
+  };
+  const convertQuoteToInvoice = async (quote: {
+    id: string;
+    quickbooks_estimate_doc_number: string | null;
+  }) => {
+    const quoteLabel = quote.quickbooks_estimate_doc_number ?? "this quote";
+    if (!canEditClient) {
+      const message =
+        "You cannot convert this quote to an invoice. You must be assigned to this client, or have Admin, Director, or Dev access.";
+      setQuoteConversionError(message);
+      toast.error("Invoice could not be created", { description: message });
+      return;
+    }
+    const approved = await confirm({
+      title: "Convert quote to invoice?",
+      description: `This will create a new QuickBooks invoice linked to quote ${quoteLabel}. The quote itself will not be changed in the CRM.`,
+      confirmLabel: "Convert to Invoice",
+    });
+    if (!approved) return;
+
+    setConvertingQuoteId(quote.id);
+    setQuoteConversionError(null);
+    try {
+      const response = await fetch(
+        "/api/quickbooks/convert-estimate-to-invoice",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ estimateGenerationId: quote.id }),
+        },
+      );
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(
+          [result?.error, result?.detail].filter(Boolean).join(" ") ||
+            "Invoice could not be created.",
+        );
+      }
+      if (result?.trackingSynced === false || result?.warning) {
+        const message = String(
+          result?.warning ??
+            "The invoice was created in QuickBooks, but Tracking has not yet been updated.",
+        );
+        setQuoteConversionError(message);
+        toast.warning(
+          result?.trackingSynced === false
+            ? "Invoice created with a Tracking warning"
+            : "Invoice created with a QuickBooks link warning",
+          {
+          description: message,
+          },
+        );
+      } else {
+        const invoiceLabel = result?.invoiceNumber || result?.invoiceId || "";
+        toast.success("QuickBooks invoice created", {
+          description: invoiceLabel
+            ? `Invoice ${invoiceLabel} is now linked to quote ${quoteLabel} and will appear in Tracking.`
+            : "The invoice is now linked to this quote and will appear in Tracking.",
+        });
+      }
+      await loadLauncherQuotes();
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Invoice could not be created.";
+      setQuoteConversionError(message);
+      toast.error("Invoice could not be created", { description: message });
+    } finally {
+      setConvertingQuoteId(null);
     }
   };
   const loadUpdatePreview = async (generationId: string) => {
@@ -3588,6 +3663,11 @@ export function ClientRow({
                     {isLoadingLauncherQuotes ? "Loading…" : "Refresh"}
                   </button>
                 </div>
+                {quoteConversionError && (
+                  <p className="mb-2 rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                    {quoteConversionError}
+                  </p>
+                )}
                 {launcherQuotesError ? (
                   <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
                     {launcherQuotesError}
@@ -3631,12 +3711,18 @@ export function ClientRow({
                         </div>
                         <button
                           type="button"
-                          onClick={() =>
-                            toast.info("Convert to Invoice will be available soon.")
+                          disabled={convertingQuoteId !== null}
+                          onClick={() => void convertQuoteToInvoice(quote)}
+                          title={
+                            canEditClient
+                              ? "Create a QuickBooks invoice linked to this quote"
+                              : "You must be assigned to this client, or have Admin, Director, or Dev access."
                           }
-                          className="shrink-0 rounded border border-emerald-300 bg-emerald-50 px-2.5 py-1.5 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-100"
+                          className="shrink-0 rounded border border-emerald-300 bg-emerald-50 px-2.5 py-1.5 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-100 disabled:cursor-wait disabled:opacity-60"
                         >
-                          Convert to Invoice
+                          {convertingQuoteId === quote.id
+                            ? "Converting…"
+                            : "Convert to Invoice"}
                         </button>
                       </div>
                     ))}
@@ -4615,6 +4701,7 @@ export function ClientRow({
                         setEstimateResult(null);
                         setSampleEstimate(null);
                         setSampleEstimateError(null);
+                        setQuoteConversionError(null);
                         setEstimateMode("choice");
                         resetEstimateState();
                         onBeginFocusedAction?.();
