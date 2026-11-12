@@ -1,7 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Check, RefreshCw, Send, ShieldAlert } from "lucide-react";
+import {
+  Check,
+  ChevronDown,
+  ChevronRight,
+  RefreshCw,
+  Send,
+  ShieldAlert,
+} from "lucide-react";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -39,6 +46,11 @@ export function EmailReviewPanel({ currentUserRole }: Props) {
   const [canReview, setCanReview] = useState(false);
   const [workingId, setWorkingId] = useState<string | null>(null);
   const [bulkWorking, setBulkWorking] = useState(false);
+  // Pending emails are intentionally collapsed on first load so a large
+  // review queue stays scannable. The subject/meta header remains visible.
+  const [expandedPendingIds, setExpandedPendingIds] = useState<Set<string>>(
+    new Set(),
+  );
   const [selectedPendingIds, setSelectedPendingIds] = useState<Set<string>>(
     new Set(),
   );
@@ -395,6 +407,7 @@ export function EmailReviewPanel({ currentUserRole }: Props) {
                 const actionable =
                   row.review_status === "pending" ||
                   row.review_status === "failed";
+                const expanded = expandedPendingIds.has(row.id);
                 return (
                   <article
                     key={row.id}
@@ -422,6 +435,27 @@ export function EmailReviewPanel({ currentUserRole }: Props) {
                       />
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            aria-expanded={expanded}
+                            aria-label={`${expanded ? "Collapse" : "Expand"} ${row.subject || "email"}`}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setExpandedPendingIds((current) => {
+                                const next = new Set(current);
+                                if (next.has(row.id)) next.delete(row.id);
+                                else next.add(row.id);
+                                return next;
+                              });
+                            }}
+                            className="rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                          >
+                            {expanded ? (
+                              <ChevronDown size={17} />
+                            ) : (
+                              <ChevronRight size={17} />
+                            )}
+                          </button>
                           <h3 className="font-semibold text-slate-800">
                             {row.subject || "(No subject)"}
                           </h3>
@@ -474,14 +508,18 @@ export function EmailReviewPanel({ currentUserRole }: Props) {
                         </button>
                       </div>
                     )}
-                    <p className="mt-3 max-h-[32rem] overflow-y-auto whitespace-pre-wrap rounded bg-slate-50 p-3 text-sm text-slate-700">
-                      {row.body_text || "(No email body)"}
-                    </p>
-                    {attachments(row)}
-                    {row.promotion_error && (
-                      <p className="mt-2 text-sm text-red-600">
-                        Promotion error: {row.promotion_error}
-                      </p>
+                    {expanded && (
+                      <>
+                        <p className="mt-3 max-h-[32rem] overflow-y-auto whitespace-pre-wrap rounded bg-slate-50 p-3 text-sm text-slate-700">
+                          {row.body_text || "(No email body)"}
+                        </p>
+                        {attachments(row)}
+                        {row.promotion_error && (
+                          <p className="mt-2 text-sm text-red-600">
+                            Promotion error: {row.promotion_error}
+                          </p>
+                        )}
+                      </>
                     )}
                   </article>
                 );
