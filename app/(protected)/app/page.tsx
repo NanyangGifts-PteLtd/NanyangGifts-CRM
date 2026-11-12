@@ -1416,15 +1416,22 @@ export default function Page() {
           {},
           ...pages.map((page) => page.subitemAssignees),
         );
-        const targetResourcePrefix = new Set(
-          requestedClientIds.map((clientId) => `${clientId}::`),
-        );
-
         setGanttClients((current) => {
-          const next = new Map(current.map((client) => [client.id, client]));
-          for (const clientId of requestedClientIds) next.delete(clientId);
-          for (const client of refreshedClients.values()) next.set(client.id, client);
-          return Array.from(next.values());
+          // Realtime reconciliation must preserve the visible client order.
+          // Deleting a client from a Map and adding it again moves it to the
+          // end, which made a date-only timeline edit look like a reorder.
+          const present = new Set(current.map((client) => client.id));
+          const replaced = current.flatMap((client) => {
+            if (!requestedClientIds.includes(client.id)) return [client];
+            const refreshed = refreshedClients.get(client.id);
+            return refreshed ? [refreshed] : [];
+          });
+          // A record can enter the active server-filter result set because of
+          // the edit. It did not have a previous local position, so append it.
+          for (const client of refreshedClients.values()) {
+            if (!present.has(client.id)) replaced.push(client);
+          }
+          return replaced;
         });
         setGanttClientAssignees((current) => {
           const next = { ...current };
@@ -1441,15 +1448,35 @@ export default function Page() {
           for (const subitemId of previousSubitemIds) delete next[subitemId];
           return { ...next, ...refreshedSubitemAssignees };
         });
-        setGanttResourceIds((current) => [
-          ...current.filter(
-            (resourceId) =>
-              ![...targetResourcePrefix].some((prefix) =>
-                resourceId.startsWith(prefix),
-              ),
-          ),
-          ...pages.flatMap((page) => page.resourceIds),
-        ]);
+        setGanttResourceIds((current) => {
+          const refreshedByClientId = new Map(
+            requestedClientIds.map((clientId, index) => [
+              clientId,
+              pages[index]?.resourceIds ?? [],
+            ]),
+          );
+          const pendingClientIds = new Set(refreshedByClientId.keys());
+          const next: string[] = [];
+          for (const resourceId of current) {
+            const clientId = requestedClientIds.find((id) =>
+              resourceId.startsWith(`${id}::`),
+            );
+            if (!clientId) {
+              next.push(resourceId);
+              continue;
+            }
+            // Insert a refreshed client's resource block at its first prior
+            // position, then skip its remaining stale resource IDs.
+            if (pendingClientIds.delete(clientId)) {
+              next.push(...(refreshedByClientId.get(clientId) ?? []));
+            }
+          }
+          // These are newly matching clients with no previous resource block.
+          for (const clientId of pendingClientIds) {
+            next.push(...(refreshedByClientId.get(clientId) ?? []));
+          }
+          return next;
+        });
         setGanttResourceTotal(totalPage.total);
       } catch (error) {
         console.warn("Could not reconcile targeted Gantt changes", error);
