@@ -10824,13 +10824,25 @@ export function CRMBoard({
 
   const clearSubitemSelection = useCallback(() => {
     setSelectedSubitemIds([]);
+    subitemSelectionAnchorRef.current = null;
     setShowSubitemMoveMenu(false);
     setSubitemMoveSearch("");
   }, []);
   const clearAllSelections = useCallback(() => {
     setSelectedIds(new Set());
+    clientSelectionAnchorRef.current = null;
     clearSubitemSelection();
   }, [clearSubitemSelection]);
+  useEffect(() => {
+    const clearSelectionOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      if (selectedIds.size > 0 || selectedSubitemIds.length > 0) {
+        clearAllSelections();
+      }
+    };
+    window.addEventListener("keydown", clearSelectionOnEscape);
+    return () => window.removeEventListener("keydown", clearSelectionOnEscape);
+  }, [clearAllSelections, selectedIds.size, selectedSubitemIds.length]);
 
   const updateSelectedSubitemStatus = useCallback(
     async (status: string, statusOptionId: string | null) => {
