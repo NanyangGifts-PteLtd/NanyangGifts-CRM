@@ -226,8 +226,8 @@ export function ClientDetailView({
         .filter(Boolean) as Profile[],
     [assigneeIds, pmIds, profiles],
   );
-  const pmProfiles = profiles.filter(
-    (profile) => profile.role?.toLowerCase() === "pm",
+  const pmProfiles = profiles.filter((profile) =>
+    ["pm", "director"].includes(profile.role?.toLowerCase() ?? ""),
   );
   const textFields: Array<[string, keyof Client]> = [
     ["Company", "company"],

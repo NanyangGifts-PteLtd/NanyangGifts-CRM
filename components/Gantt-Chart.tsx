@@ -1235,7 +1235,9 @@ export default function GanttChart({
   const pmOptions = useMemo<FilterOption[]>(
     () =>
       profiles
-        .filter((profile) => profile.role?.toLowerCase() === "pm")
+        .filter((profile) =>
+          ["pm", "director"].includes(profile.role?.toLowerCase() ?? ""),
+        )
         .map((profile) => ({
           value: profile.id,
           label: profileLabels.get(profile.id) ?? profile.id,

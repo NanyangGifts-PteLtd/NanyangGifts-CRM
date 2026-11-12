@@ -831,8 +831,8 @@ export function ClientRow({
     });
     window.setTimeout(() => setPermissionNotice(null), 2600);
   };
-  const pmProfiles = profiles.filter(
-    (profile) => profile.role?.toLowerCase() === "pm",
+  const pmProfiles = profiles.filter((profile) =>
+    ["pm", "director"].includes(profile.role?.toLowerCase() ?? ""),
   );
   const pmAssignedIds = clientPmAssignedIds;
   const canEditWithoutAssignment = ["admin", "director", "dev"].includes(
