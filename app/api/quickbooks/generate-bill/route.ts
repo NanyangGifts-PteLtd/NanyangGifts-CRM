@@ -488,20 +488,9 @@ export async function POST(request: NextRequest) {
     // differently-rounded value returned by QuickBooks.
     const billGstValue =
       overallGstAmount ?? quickBooksBillGstTotal(quickBooksBill);
-    const shippingUpsReason = await getSystemLabel(
-      "additional_cost_reason",
-      "additional_cost_reason_shipping_ups",
-    );
-    const isUpsLinkedSubitem =
-      reason?.id === shippingUpsReason.id ||
-      /\bups\b/i.test(
-        String(bill.supplierName ?? quickBooksBill.VendorRef?.name ?? ""),
-      );
     const linkedSubitemStatus = await getSystemLabel(
       "subitem_status",
-      isUpsLinkedSubitem
-        ? "subitem_status_awarded"
-        : "subitem_status_variation_cost_difference",
+      "subitem_status_variation_cost_difference",
     );
     const attachmentErrors: string[] = [];
     const uploadedAttachments: Array<{
@@ -563,12 +552,6 @@ export async function POST(request: NextRequest) {
         .from("subitems")
         .update({
           cost: String(expenseTotal),
-          ...(isUpsLinkedSubitem
-            ? {
-                status: linkedSubitemStatus.value,
-                status_option_id: linkedSubitemStatus.id,
-              }
-            : {}),
         })
         .eq("custom_fields->>additionalCostId", existingVoucher.id)
         .is("deleted_at", null);
