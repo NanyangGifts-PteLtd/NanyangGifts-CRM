@@ -112,6 +112,13 @@ const WorkingCalendarPanel = dynamic(
     ),
   { ssr: false, loading: PanelLoading },
 );
+const ReportsKpiPanel = dynamic(
+  () =>
+    import("@/components/ReportsKpiPanel").then(
+      (module) => module.ReportsKpiPanel,
+    ),
+  { ssr: false, loading: PanelLoading },
+);
 
 const PANEL_IDS: SidePanel[] = [
   "crm",
@@ -4031,11 +4038,7 @@ export default function Page() {
         return <EmailReviewPanel currentUserRole={currentUserRole} />;
 
       case "reports":
-        return (
-          <div className="flex h-full items-center justify-center text-sm text-gray-500">
-            Reports &amp; KPIs are temporarily unavailable.
-          </div>
-        );
+        return <ReportsKpiPanel currentUserRole={currentUserRole} />;
 
       case "roundrobin":
         return (
