@@ -5842,6 +5842,50 @@ export function CRMBoard({
       ].sort((a, b) => a.localeCompare(b));
     const profileName = (id: string) =>
       peopleProfilesById[id]?.full_name || peopleProfilesById[id]?.email || id;
+    // Keep the People and PM advanced-filter menus aligned with the toolbar's
+    // Person filter. In particular, do not limit the menu to assignees found
+    // in the currently loaded client pages.
+    const personFilterValues = unique(
+      profiles
+        .filter(
+          (profile) =>
+            profile.id && profile.role?.toLowerCase() !== "shipper",
+        )
+        .map((profile) => profile.full_name || profile.email || profile.id),
+    );
+    const personFilterValueOptions = personFilterProfiles.map((profile) => {
+      const label = profile.full_name || profile.email || profile.id;
+      const initials = label
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean)
+        .slice(0, 2)
+        .map((part) => part[0])
+        .join("")
+        .toUpperCase();
+      return {
+        value: label,
+        label,
+        avatar: {
+          initials,
+          background: gradientForId(profile.id, avatarColorForProfile(profile)),
+        },
+      };
+    });
+    const pmFilterProfiles = personFilterProfiles.filter((profile) =>
+      ["pm", "director"].includes(profile.role?.toLowerCase() ?? ""),
+    );
+    const pmFilterValues = unique(
+      pmFilterProfiles.map(
+        (profile) => profile.full_name || profile.email || profile.id,
+      ),
+    );
+    const pmFilterValueOptions = personFilterValueOptions.filter((option) =>
+      pmFilterProfiles.some(
+        (profile) =>
+          (profile.full_name || profile.email || profile.id) === option.value,
+      ),
+    );
     const labelColors = (options: OptionEntry[]) =>
       Object.fromEntries(options.map((option) => [option.value, option.color]));
     const labelOptionsFor = (category: string, key: string) => {
@@ -5994,11 +6038,20 @@ export function CRMBoard({
         key: `client:${column.key}`,
         label: column.label || column.key,
         category: "Client" as const,
-        values: unique(
-          clients.map((client) => clientValue(client, column.key)),
-        ),
+        values:
+          column.key === "pm"
+            ? pmFilterValues
+            : column.key === "people"
+            ? personFilterValues
+            : unique(clients.map((client) => clientValue(client, column.key))),
         labelColors: labelColorsFor("client", column.key),
         labelOptions: labelOptionsFor("client", column.key),
+        valueOptions:
+          column.key === "pm"
+            ? pmFilterValueOptions
+            : column.key === "people"
+            ? personFilterValueOptions
+            : undefined,
         valueType: valueTypeFor("client", column.key, column.field_type),
       }));
     // Display IDs are intentionally separate search/filter fields. Unlike
@@ -6045,6 +6098,8 @@ export function CRMBoard({
       ),
       labelColors: labelColorsFor("subitem", column.key),
       labelOptions: labelOptionsFor("subitem", column.key),
+      valueOptions:
+        column.key === "people" ? personFilterValueOptions : undefined,
       valueType: valueTypeFor(
         "subitem",
         column.key,
@@ -6122,6 +6177,7 @@ export function CRMBoard({
       ...timelineColumns,
     ];
   }, [
+    avatarColorForProfile,
     clientAssignees,
     clientPeopleIds,
     clientPmAssigneeIds,
@@ -6140,6 +6196,7 @@ export function CRMBoard({
     paymentEntries,
     paymentReceivedEntries,
     paymentStatusEntries,
+    profiles,
     progressEntries,
     replyStatusEntries,
     shipperEntries,

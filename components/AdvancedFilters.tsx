@@ -38,6 +38,12 @@ export type AdvancedFilterLabelOption = {
   color: string;
   section?: number;
 };
+export type AdvancedFilterValueOption = {
+  value: string;
+  label: string;
+  id?: string;
+  avatar?: { initials: string; background: string };
+};
 export type AdvancedFilterColumn = {
   key: string;
   label: string;
@@ -45,6 +51,7 @@ export type AdvancedFilterColumn = {
     "Client" | "Subitem" | "Payment" | "Subpayment" | "Timeline" | "Sample";
   values: string[];
   valueType?: "text" | "number" | "date";
+  valueOptions?: AdvancedFilterValueOption[];
   labelColors?: Record<string, string>;
   labelOptions?: AdvancedFilterLabelOption[];
 };
@@ -108,7 +115,7 @@ function Combo({
 }: {
   value: string;
   placeholder: string;
-  options: Array<{ value: string; label: string; id?: string }>;
+  options: AdvancedFilterValueOption[];
   groups?: boolean;
   disabled?: boolean;
   labelColors?: Record<string, string>;
@@ -187,7 +194,17 @@ function Combo({
           {option.label}
         </span>
       ) : (
-        option.label
+        <span className="flex min-w-0 items-center gap-2">
+          {option.avatar && (
+            <span
+              className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white"
+              style={{ background: option.avatar.background }}
+            >
+              {option.avatar.initials || "U"}
+            </span>
+          )}
+          <span className="truncate">{option.label}</span>
+        </span>
       )}
     </button>
   );
@@ -486,7 +503,7 @@ export function AdvancedFilters({
                         label: option.value,
                         id: option.id,
                       }))
-                    : (selected?.values ?? []).map((value) => ({
+                    : selected?.valueOptions ?? (selected?.values ?? []).map((value) => ({
                         value,
                         label: value,
                       }))
