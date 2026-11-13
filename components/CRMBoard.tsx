@@ -128,6 +128,10 @@ import {
 } from "./AdvancedFilters";
 import { ColumnSelectionPicker } from "./ColumnSelectionPicker";
 import { uploadCrmFiles } from "@/lib/crm-files";
+import {
+  exceedsStandardFileUploadLimit,
+  standardFileUploadLimitMessage,
+} from "@/lib/file-upload-limits";
 import { CombinedPushPreviewModal } from "./shipper/CombinedPushPreviewModal";
 import { useEscapeClose } from "./hooks/use-escape-close";
 import {
@@ -13943,9 +13947,17 @@ export function CRMBoard({
                     type="file"
                     disabled={savingCloseLead}
                     onChange={(event) => {
+                      const file = event.target.files?.[0] ?? null;
+                      if (file && exceedsStandardFileUploadLimit(file)) {
+                        toast.error(`${label} could not be added`, {
+                          description: `${file.name}: ${standardFileUploadLimitMessage()}.`,
+                        });
+                        event.currentTarget.value = "";
+                        return;
+                      }
                       setCloseLeadFiles((current) => ({
                         ...current,
-                        [key]: event.target.files?.[0] ?? null,
+                        [key]: file,
                       }));
                       setCloseLeadFileDates((current) => ({
                         ...current,

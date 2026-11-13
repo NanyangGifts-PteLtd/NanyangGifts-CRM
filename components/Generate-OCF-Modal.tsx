@@ -5,6 +5,10 @@ import { X } from "lucide-react";
 import { Client, Subitem } from "@/app/types";
 import { FileDropTarget } from "./ui/file-drop-target";
 import { useEscapeClose } from "./hooks/use-escape-close";
+import {
+  exceedsStandardFileUploadLimit,
+  standardFileUploadLimitMessage,
+} from "@/lib/file-upload-limits";
 
 type AwardedSubitem = Pick<
   Subitem,
@@ -504,6 +508,13 @@ export function GenerateOcfModal({
 
   async function uploadRowFile(row: UploadRow) {
     if (!row || !row.file || !clientId) return;
+
+    if (exceedsStandardFileUploadLimit(row.file)) {
+      updateRow(row.subitemId, {
+        error: standardFileUploadLimitMessage("Images"),
+      });
+      return null;
+    }
 
     updateRow(row.subitemId, { isUploading: true, error: null });
 

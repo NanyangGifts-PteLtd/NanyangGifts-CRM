@@ -11,6 +11,7 @@ import { listQuickBooksTaxCodes } from "@/lib/quickbooks/bill-options";
 import { quickBooksBillGstTotal } from "@/lib/quickbooks/bill-tax";
 import { ensureQuickBooksBillNumberAvailable } from "@/lib/quickbooks/bill-duplicate-check";
 import { getSystemLabel } from "@/lib/system-labels";
+import { exceedsStandardFileUploadLimit } from "@/lib/file-upload-limits";
 
 const INTERNAL_ROLES = new Set(["sales", "pm", "admin", "director", "dev"]);
 const BILL_NOT_FOUND_ERROR = "ERROR - Could not find Bill";
@@ -549,6 +550,8 @@ export async function PATCH(request: NextRequest) {
     const attachments = formData
       .getAll("attachments")
       .filter((file): file is File => file instanceof File && file.size > 0);
+    if (attachments.some(exceedsStandardFileUploadLimit))
+      throw new Error("Each attachment must be 10 MB or smaller.");
     const uploaded = [...(voucher.quickbooks_attachment_files ?? [])];
     for (const [index, attachment] of attachments.entries()) {
       const upload = await qboUploadAttachment(attachment, {

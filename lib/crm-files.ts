@@ -1,3 +1,8 @@
+import {
+  exceedsStandardFileUploadLimit,
+  standardFileUploadLimitMessage,
+} from "@/lib/file-upload-limits";
+
 export type StoredCrmFile = {
   id: string;
   name: string;
@@ -16,6 +21,12 @@ export async function uploadCrmFiles(
   scope: string,
   target: CrmFileTarget,
 ): Promise<StoredCrmFile[]> {
+  const oversizedFile = files.find(exceedsStandardFileUploadLimit);
+  if (oversizedFile)
+    throw new Error(
+      `${oversizedFile.name}: ${standardFileUploadLimitMessage()}.`,
+    );
+
   return Promise.all(files.map(async (file) => {
     const formData = new FormData();
     formData.set("file", file);

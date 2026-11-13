@@ -31,6 +31,10 @@ import { fetchProfiles } from "@/lib/assignments";
 import { fetchHydratedClientGroupPage } from "@/lib/crm";
 import { createClient as createSupabaseClient } from "@/lib/supabase/client";
 import { uploadCrmFiles, type StoredCrmFile } from "@/lib/crm-files";
+import {
+  exceedsStandardFileUploadLimit,
+  standardFileUploadLimitMessage,
+} from "@/lib/file-upload-limits";
 import { FilePreview } from "@/components/ui/file-preview";
 import { FileDropTarget } from "@/components/ui/file-drop-target";
 import { StatusBadge, type BadgeOption, type BadgeOptionLayout } from "@/components/ui/statusbadge";
@@ -1624,6 +1628,13 @@ function PhotoCell({
 }) {
   const upload = async (files: File[]) => {
     if (!files.length) return;
+    const oversizedFile = files.find(exceedsStandardFileUploadLimit);
+    if (oversizedFile) {
+      toast.error("Photo could not be uploaded", {
+        description: `${oversizedFile.name}: ${standardFileUploadLimitMessage("Photos")}.`,
+      });
+      return;
+    }
     try {
       const uploaded = await Promise.all(files.map(async (file) => {
         const formData = new FormData();

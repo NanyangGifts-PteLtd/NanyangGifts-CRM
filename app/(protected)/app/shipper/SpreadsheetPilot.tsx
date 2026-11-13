@@ -23,6 +23,10 @@ import { ImagePlus, PaintBucket, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useAppConfirmation } from "@/components/ui/confirmation-provider";
 import { createClient } from "@/lib/supabase/client";
+import {
+  exceedsStandardFileUploadLimit,
+  standardFileUploadLimitMessage,
+} from "@/lib/file-upload-limits";
 import "@glideapps/glide-data-grid/dist/index.css";
 
 type Row = {
@@ -2592,6 +2596,10 @@ export function SpreadsheetPilot({
     if (!target || !row) return;
     if (!file.type.startsWith("image/")) {
       toast.error("Please select an image file.");
+      return;
+    }
+    if (exceedsStandardFileUploadLimit(file)) {
+      toast.error(standardFileUploadLimitMessage("Images"));
       return;
     }
     setUploadingAttachment(true);

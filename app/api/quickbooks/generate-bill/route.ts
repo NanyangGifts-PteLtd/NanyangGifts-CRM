@@ -15,6 +15,7 @@ import { ensureQuickBooksBillNumberAvailable } from "@/lib/quickbooks/bill-dupli
 import { getSystemLabel } from "@/lib/system-labels";
 import { formatPaymentVoucherReference } from "@/lib/payment-voucher-reference";
 import { mergePaymentVoucherSubitem, validatePaymentVoucherMergeTarget } from "@/lib/payment-voucher-merge";
+import { exceedsStandardFileUploadLimit } from "@/lib/file-upload-limits";
 
 const INTERNAL_ROLES = new Set(["sales", "pm", "admin", "director", "dev"]);
 
@@ -188,7 +189,7 @@ export async function POST(request: NextRequest) {
           typeof (entry as File).arrayBuffer === "function" &&
           typeof (entry as File).name === "string",
       );
-    if (attachments.some((file) => file.size > 10 * 1024 * 1024))
+    if (attachments.some(exceedsStandardFileUploadLimit))
       throw new Error("Each attachment must be 10 MB or smaller.");
     if (!body.clientId)
       throw new Error("Choose a client before generating a Bill.");

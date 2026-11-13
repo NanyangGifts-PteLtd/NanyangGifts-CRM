@@ -13,6 +13,7 @@ import { ensureQuickBooksBillNumberAvailable } from "@/lib/quickbooks/bill-dupli
 import { listQuickBooksTaxCodes } from "@/lib/quickbooks/bill-options";
 import { quickBooksBillGstTotal } from "@/lib/quickbooks/bill-tax";
 import { formatPaymentVoucherReference } from "@/lib/payment-voucher-reference";
+import { exceedsStandardFileUploadLimit } from "@/lib/file-upload-limits";
 
 const ALLOWED_ROLES = new Set(["admin", "director", "dev"]);
 
@@ -226,6 +227,8 @@ export async function POST(request: NextRequest) {
     const attachments = formData
       .getAll("attachments")
       .filter((entry): entry is File => entry instanceof File);
+    if (attachments.some(exceedsStandardFileUploadLimit))
+      throw new Error("Each attachment must be 10 MB or smaller.");
     const savedAttachments: Array<{
       name: string;
       id?: string;
