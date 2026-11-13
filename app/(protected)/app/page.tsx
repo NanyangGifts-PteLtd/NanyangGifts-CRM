@@ -1172,6 +1172,23 @@ export default function Page() {
     [clients, expandedClientIds, openCrmRecord],
   );
 
+  const navigateToHistoricalSubitem = useCallback(
+    (clientId: string, subitemId: string) => {
+      void selectSearchResult({
+        id: `price-calculator-${clientId}-${subitemId}-${Date.now()}`,
+        clientId,
+        subitemId,
+        kind: "subitem",
+        label: "Historical transaction",
+        context: "Opened from Price Calculator",
+        field: "Subitem",
+        value: "Historical transaction",
+        query: "",
+      });
+    },
+    [selectSearchResult],
+  );
+
   const searchAllCrmRecords = useCallback(
     (query: string, offset = 0, limit = 40) =>
       searchCrmClients(query, offset, limit),
@@ -4016,6 +4033,7 @@ export default function Page() {
             subitemAssignees={subitemAssignees}
             setSubitemAssignees={setSubitemAssignees}
             searchTarget={searchTarget}
+            onNavigateToSubitem={navigateToHistoricalSubitem}
             detailViewTarget={crmDetailTarget}
             onDetailViewTargetChange={updateCrmDetailLink}
             labelOptionsVersion={labelOptionsVersion}

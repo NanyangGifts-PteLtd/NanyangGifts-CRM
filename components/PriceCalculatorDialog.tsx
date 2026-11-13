@@ -69,7 +69,7 @@ const fmtPrecision = (n: number | null | undefined, digits = 3) => {
 };
 const pct = (n: number | null) => (n == null ? "—" : `${n.toFixed(1)}%`);
 const grid =
-  "grid min-w-[980px] grid-cols-[minmax(190px,1.4fr)_100px_repeat(6,minmax(76px,1fr))_110px] gap-3";
+  "grid min-w-[1660px] grid-cols-[minmax(190px,1.4fr)_70px_repeat(11,minmax(82px,1fr))_110px] gap-3";
 
 function Header() {
   return (
@@ -77,13 +77,18 @@ function Header() {
       className={`${grid} border-b bg-slate-50 px-3 py-2 text-[11px] font-semibold text-slate-500`}
     >
       <span>Client / Date Created</span>
-      <span>Quantity</span>
-      <span>Total Cost (including manpower and shipping)</span>
+      <span>Qty</span>
       <span>Unit Cost</span>
+      <span>Unit Cost SGD</span>
+      <span>Manpower</span>
+      <span>LS</span>
+      <span>OS</span>
+      <span>Total Cost SGD</span>
+      <span>Total Unit Cost SGD</span>
       <span>Price</span>
       <span>Unit Price</span>
       <span>Markup</span>
-      <span>Percentage Markup</span>
+      <span>% Markup</span>
       <span />
     </div>
   );
@@ -363,6 +368,11 @@ export function PriceCalculatorDialog(props: Props) {
               </span>
             </button>
             <span>{f.quantity || "—"}</span>
+            <span>{fmt(parseSubitemNumber(record.cost))}</span>
+            <span>{fmtPrecision(f.cSgd, 5)}</span>
+            <span>{fmt(parseSubitemNumber(record.manpower))}</span>
+            <span>{fmt(parseSubitemNumber(record.ls))}</span>
+            <span>{fmt(parseSubitemNumber(record.os))}</span>
             <span>{fmt(f.tc)}</span>
             <span>{fmt(f.quantity ? f.tc / f.quantity : null)}</span>
             <span>{fmt(f.price)}</span>
@@ -388,7 +398,7 @@ export function PriceCalculatorDialog(props: Props) {
         <div>
           <h3 className="font-semibold">Historical Pricing / Transactions</h3>
           <p className="text-xs text-slate-500">
-            Similar subitems Awarded before in Closed leads
+            Matching subitems at Awarded or later
           </p>
         </div>
         {records.length > 0 && (
@@ -430,7 +440,7 @@ export function PriceCalculatorDialog(props: Props) {
   const sliderPosition = Math.min(10000, Math.max(0, markup));
   return (
     <div className="fixed inset-0 z-modal flex items-center justify-center bg-slate-950/45 p-4">
-      <section className="max-h-[calc(100vh-2rem)] w-full max-w-[1600px] overflow-y-auto rounded-xl bg-slate-50 p-6 shadow-2xl">
+      <section className="max-h-[calc(100vh-2rem)] w-full max-w-none overflow-y-auto rounded-xl bg-slate-50 p-6 shadow-2xl">
         <header className="relative mb-5 flex justify-center border-b pb-4 text-center">
           <div>
             <h2 className="text-2xl font-bold">Price Calculator</h2>

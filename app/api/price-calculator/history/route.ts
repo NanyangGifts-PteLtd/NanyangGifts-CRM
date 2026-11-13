@@ -27,13 +27,8 @@ export async function GET(request: NextRequest) {
   if (!name)
     return NextResponse.json({ records: [] });
 
-  const [closedStatus, awardedStatuses] = await Promise.all([
-    supabaseAdmin
-      .from("option_values")
-      .select("id")
-      .eq("system_key", "client_status_closed")
-      .maybeSingle(),
-    supabaseAdmin
+  const { data: awardedStatuses, error: awardedStatusesError } =
+    await supabaseAdmin
       .from("option_values")
       .select("id")
       .in("system_key", [
@@ -41,26 +36,21 @@ export async function GET(request: NextRequest) {
         "subitem_status_verify_later",
         "subitem_status_verified",
         "subitem_status_variation_cost_difference",
-      ]),
-  ]);
-  if (closedStatus.error || awardedStatuses.error)
+      ]);
+  if (awardedStatusesError)
     return NextResponse.json(
-      { error: closedStatus.error?.message ?? awardedStatuses.error?.message },
+      { error: awardedStatusesError.message },
       { status: 500 },
     );
-  if (!closedStatus.data?.id || !(awardedStatuses.data ?? []).length)
+  if (!(awardedStatuses ?? []).length)
     return NextResponse.json({ records: [] });
 
   let subitemsQuery = supabaseAdmin
     .from("subitems")
-    // Keep the Closed-client condition inside one relational query. Building
-    // an `IN` list from every closed client becomes an oversized REST request
-    // on the migrated production dataset and can fail before history is read.
     .select("id, client_id, created_at, name, qty, cost, currency, currency_option_id, manpower, ls, os, up, clients!subitems_client_id_fkey!inner(id, name, display_id)")
-    .eq("clients.status_option_id", closedStatus.data.id)
     .is("clients.deleted_at", null)
     .eq("name", name)
-    .in("status_option_id", (awardedStatuses.data ?? []).map((status) => status.id))
+    .in("status_option_id", awardedStatuses.map((status) => status.id))
     .is("deleted_at", null)
     .order("created_at", { ascending: false });
   if (excludeSubitemId) subitemsQuery = subitemsQuery.neq("id", excludeSubitemId);

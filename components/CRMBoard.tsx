@@ -596,6 +596,7 @@ interface CRMBoardProps {
   subitemAssignees: SubitemAssigneeMap;
   setSubitemAssignees: React.Dispatch<React.SetStateAction<SubitemAssigneeMap>>;
   searchTarget?: SearchResult | null;
+  onNavigateToSubitem?: (clientId: string, subitemId: string) => void;
   openClientId?: string | null;
   onOpenClientHandled?: () => void;
   detailViewTarget?: { clientId: string; subitemId?: string } | null;
@@ -874,6 +875,7 @@ export function CRMBoard({
   subitemAssignees,
   setSubitemAssignees,
   searchTarget,
+  onNavigateToSubitem,
   labelOptionsVersion = 0,
   boardMetadataVersion = 0,
   groupVersion = 0,
@@ -1002,6 +1004,10 @@ export function CRMBoard({
         event as CustomEvent<{ clientId?: string; subitemId?: string }>
       ).detail;
       if (!detail?.clientId || !detail.subitemId) return;
+      if (onNavigateToSubitem) {
+        onNavigateToSubitem(detail.clientId, detail.subitemId);
+        return;
+      }
       setExpandedIds((current) =>
         current.includes(detail.clientId!)
           ? current
@@ -1033,7 +1039,7 @@ export function CRMBoard({
     window.addEventListener("crm:navigate-subitem", navigateToSubitem);
     return () =>
       window.removeEventListener("crm:navigate-subitem", navigateToSubitem);
-  }, [setExpandedIds]);
+  }, [onNavigateToSubitem, setExpandedIds]);
   const [focusedFilterColumn, setFocusedFilterColumn] = useState<string | null>(
     null,
   );
