@@ -4,6 +4,8 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 
 const allowedRoles = new Set(["sales", "pm", "admin", "director", "dev"]);
 const normalizePhone = (value: unknown) => String(value ?? "").replace(/\D/g, "");
+const normalizeEmail = (value: unknown) =>
+  String(value ?? "").trim().toLocaleLowerCase();
 const normalizeCompany = (value: unknown) =>
   String(value ?? "").trim().replace(/\s+/g, " ").toLocaleLowerCase();
 
@@ -52,12 +54,27 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: indexError.message }, { status: 500 });
 
   if (type === "client") {
-    const { data: phones, error } = await supabaseAdmin
+    const [{ data: phones, error }, { data: profile, error: profileError }, { data: emailValues, error: emailIndexError }] = await Promise.all([
+      supabaseAdmin
       .from("customer_client_profile_phone_numbers")
       .select("phone_number")
-      .eq("client_profile_id", profileId);
+      .eq("client_profile_id", profileId),
+      supabaseAdmin
+        .from("customer_client_profiles")
+        .select("email")
+        .eq("id", profileId)
+        .maybeSingle(),
+      supabaseAdmin
+        .from("crm_board_read_values")
+        .select("client_id, text_value")
+        .eq("column_key", "client:email"),
+    ]);
     if (error)
       return NextResponse.json({ error: error.message }, { status: 500 });
+    if (profileError)
+      return NextResponse.json({ error: profileError.message }, { status: 500 });
+    if (emailIndexError)
+      return NextResponse.json({ error: emailIndexError.message }, { status: 500 });
     const targets = new Set(
       (phones ?? [])
         .map((phone) => normalizePhone(phone.phone_number))
@@ -65,6 +82,11 @@ export async function GET(request: NextRequest) {
     );
     for (const value of indexedValues ?? []) {
       if (targets.has(normalizePhone(value.text_value)))
+        clientIds.add(String(value.client_id));
+    }
+    const email = normalizeEmail(profile?.email ?? "");
+    for (const value of emailValues ?? []) {
+      if (email && normalizeEmail(value.text_value) === email)
         clientIds.add(String(value.client_id));
     }
   } else {

@@ -41,7 +41,7 @@ type ClientPhoneNumber = {
 };
 type ClientProfile = {
   id: string;
-  phone_number: string;
+  phone_number: string | null;
   phone_numbers: ClientPhoneNumber[];
   email: string | null;
   name: string;
@@ -154,10 +154,11 @@ function clientPhoneNumbers(client: ClientProfile): ClientPhoneNumber[] {
     return [...client.phone_numbers].sort(
       (a, b) => Number(b.is_primary) - Number(a.is_primary),
     );
+  if (!client.phone_number?.trim()) return [];
   return [
     {
       id: `legacy-${client.id}`,
-      phone_number: client.phone_number,
+      phone_number: client.phone_number ?? "",
       is_primary: true,
     },
   ];
@@ -172,12 +173,14 @@ function clientProfileValidationError(
   const normalized = phones.map((phone) =>
     normalizeProfilePhone(phone.phone_number),
   );
-  if (!phones.length) return "At least one phone number is required.";
-  if (normalized.some((phone) => !phone))
+  const hasEmail = Boolean((client.email ?? "").trim());
+  if (!phones.length && !hasEmail)
+    return "Enter at least one phone number or email address.";
+  if (phones.length && normalized.some((phone) => !phone))
     return "Phone numbers cannot be blank.";
-  if (new Set(normalized).size !== normalized.length)
+  if (normalized.length && new Set(normalized).size !== normalized.length)
     return "The same phone number cannot be added more than once.";
-  if (phones.filter((phone) => phone.is_primary).length !== 1)
+  if (phones.length && phones.filter((phone) => phone.is_primary).length !== 1)
     return "Choose exactly one main phone number.";
   const conflictingProfile = allClients.find(
     (other) =>
@@ -1085,7 +1088,7 @@ export function CustomerProfilesPanel({
     const query = clientSearch.trim().toLowerCase();
     return query
       ? clients.filter((client) =>
-          `${client.name} ${clientPhoneNumbers(client)
+          `${client.name} ${client.email ?? ""} ${clientPhoneNumbers(client)
             .map((phone) => phone.phone_number)
             .join(" ")}`
             .toLowerCase()
@@ -1786,7 +1789,7 @@ export function CustomerProfilesPanel({
                       Client Profiles
                     </h2>
                     <p className="text-xs text-slate-500">
-                      Identified by unique phone number - {clients.length}{" "}
+                      Identified by a unique phone number or email - {clients.length}{" "}
                       profile{clients.length === 1 ? "" : "s"}
                     </p>
                   </div>
@@ -1821,9 +1824,8 @@ export function CustomerProfilesPanel({
                     />
                   </label>
                   <label className="grid gap-1.5 text-xs font-medium text-slate-600">
-                    Phone number *
+                    Phone number
                     <input
-                      required
                       type="tel"
                       value={clientForm.phoneNumber}
                       onChange={(event) =>
@@ -1868,7 +1870,7 @@ export function CustomerProfilesPanel({
                   <input
                     value={clientSearch}
                     onChange={(event) => setClientSearch(event.target.value)}
-                    placeholder="Search by name or phone number"
+                    placeholder="Search by name, phone number, or email"
                     className="h-9 w-full rounded-md border border-slate-200 pl-9 pr-3 text-sm outline-none focus:border-[#16a5c4]"
                   />
                 </div>
@@ -1879,6 +1881,7 @@ export function CustomerProfilesPanel({
                     <tr>
                       <th className="px-5 py-3">Name</th>
                       <th className="px-5 py-3">Phone number</th>
+                      <th className="px-5 py-3">Email</th>
                       <th className="w-12 px-3 py-3" />
                     </tr>
                   </thead>
@@ -1916,7 +1919,10 @@ export function CustomerProfilesPanel({
                           </div>
                         </td>
                         <td className="whitespace-nowrap px-5 py-3 text-slate-600">
-                          {client.phone_number}
+                          {client.phone_number || "—"}
+                        </td>
+                        <td className="whitespace-nowrap px-5 py-3 text-slate-600">
+                          {client.email || "—"}
                         </td>
                         <td className="px-3 py-3 text-slate-300">
                           <ChevronRight size={17} />
@@ -1926,7 +1932,7 @@ export function CustomerProfilesPanel({
                     {!filteredClients.length && (
                       <tr>
                         <td
-                          colSpan={3}
+                          colSpan={4}
                           className="px-5 py-10 text-center text-slate-400"
                         >
                           {clients.length

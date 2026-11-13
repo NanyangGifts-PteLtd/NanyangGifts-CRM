@@ -655,6 +655,8 @@ function canViewPanel(panel: SidePanel, role: string | null) {
 
 export default function Page() {
   const searchParams = useSearchParams();
+  const [customerProfileNavigationTarget, setCustomerProfileNavigationTarget] =
+    useState<{ type: "client" | "company"; id: string } | null>(null);
   const [clients, setClients] = useState<Client[]>([]);
   // Reload callbacks need the latest hydrated-state snapshot without taking a
   // `clients` dependency, which would otherwise recreate the callback after
@@ -960,6 +962,8 @@ export default function Page() {
     (panel: SidePanel) => {
       if (!canViewPanel(panel, currentUserRole)) return;
 
+      if (panel !== "customerprofiles")
+        setCustomerProfileNavigationTarget(null);
       setActivePanel(panel);
       const nextParams = new URLSearchParams(window.location.search);
       [
@@ -1002,6 +1006,7 @@ export default function Page() {
 
   const openCustomerProfile = useCallback(
     (type: "client" | "company", id: string) => {
+      setCustomerProfileNavigationTarget({ type, id });
       setActivePanel("customerprofiles");
       const nextParams = new URLSearchParams(window.location.search);
       nextParams.set("panel", "customerprofiles");
@@ -1018,6 +1023,7 @@ export default function Page() {
 
   const updateCustomerProfileLink = useCallback(
     (target: { type: "client" | "company"; id: string } | null) => {
+      setCustomerProfileNavigationTarget(target);
       const currentParams = new URLSearchParams(window.location.search);
       const currentType = currentParams.get("profileType");
       const currentId = currentParams.get("profile");
@@ -4111,7 +4117,9 @@ export default function Page() {
         return (
           <CustomerProfilesPanel
             currentUserRole={currentUserRole}
-            initialProfile={customerProfileTarget}
+            initialProfile={
+              customerProfileTarget ?? customerProfileNavigationTarget
+            }
             onProfileChange={updateCustomerProfileLink}
             onOpenLead={(clientId) => {
               const client = clients.find((item) => item.id === clientId);

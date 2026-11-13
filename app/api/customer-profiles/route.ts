@@ -31,12 +31,17 @@ function resolveEmail(value: unknown) {
 }
 
 function resolvePhoneEntries(body: Record<string, unknown>) {
-  const supplied = Array.isArray(body.phoneNumbers) ? body.phoneNumbers : [{ phoneNumber: body.phoneNumber, isPrimary: true }];
+  const supplied = Array.isArray(body.phoneNumbers)
+    ? body.phoneNumbers
+    : String(body.phoneNumber ?? "").trim()
+      ? [{ phoneNumber: body.phoneNumber, isPrimary: true }]
+      : [];
   const entries = supplied.map((entry) => {
     const value = entry && typeof entry === "object" ? entry as Record<string, unknown> : {};
     return { phoneNumber: String(value.phoneNumber ?? "").trim(), isPrimary: value.isPrimary === true };
   });
-  if (entries.length < 1 || entries.length > 20) return { error: "A client must have between 1 and 20 phone numbers." };
+  if (entries.length > 20) return { error: "A client can have at most 20 phone numbers." };
+  if (!entries.length) return { entries: [], primary: null };
   if (entries.some((entry) => !normalizePhone(entry.phoneNumber))) return { error: "Phone numbers cannot be blank." };
   if (entries.filter((entry) => entry.isPrimary).length !== 1) return { error: "Choose exactly one main phone number." };
   const normalized = entries.map((entry) => normalizePhone(entry.phoneNumber));
@@ -90,7 +95,7 @@ export async function GET(request: NextRequest) {
 
   if (request.nextUrl.searchParams.get("summary") === "blacklist") {
     const [clientsResult, linksResult] = await Promise.all([
-      supabaseAdmin.from("customer_client_profiles").select("id, is_blacklisted, phone_number, phone_numbers:customer_client_profile_phone_numbers(phone_number)").eq("is_blacklisted", true),
+      supabaseAdmin.from("customer_client_profiles").select("id, is_blacklisted, phone_number, email, phone_numbers:customer_client_profile_phone_numbers(phone_number)").eq("is_blacklisted", true),
       supabaseAdmin.from("customer_profile_lead_links").select("client_id, client_profile_id"),
     ]);
     if (clientsResult.error) return NextResponse.json({ error: clientsResult.error.message }, { status: 500 });
@@ -120,12 +125,15 @@ export async function POST(request: NextRequest) {
     const name = String(body.name ?? "").trim();
     const email = resolveEmail(body.email);
     if (!name) return NextResponse.json({ error: "Name is required." }, { status: 400 });
-    if (phones.error || !phones.entries || !phones.primary) return NextResponse.json({ error: phones.error }, { status: 400 });
+    if (phones.error || !phones.entries) return NextResponse.json({ error: phones.error }, { status: 400 });
     if (email.error) return NextResponse.json({ error: email.error }, { status: 400 });
+    if (!phones.primary && !email.value) return NextResponse.json({ error: "Enter at least one phone number or email address." }, { status: 400 });
     const { data: created, error } = await supabaseAdmin.from("customer_client_profiles").insert({ phone_number: phones.primary, email: email.value, name, created_by: user.id }).select("id").single();
-    if (error?.code === "23505") return NextResponse.json({ error: "A client profile with this phone number already exists." }, { status: 409 });
+    if (error?.code === "23505") return NextResponse.json({ error: "A client profile with this phone number or email address already exists." }, { status: 409 });
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    const { error: phoneError } = await supabaseAdmin.rpc("replace_customer_client_profile_phone_numbers", { target_profile_id: created.id, phone_entries: phones.entries });
+    const { error: phoneError } = phones.entries.length
+      ? await supabaseAdmin.rpc("replace_customer_client_profile_phone_numbers", { target_profile_id: created.id, phone_entries: phones.entries })
+      : { error: null };
     if (phoneError) {
       await supabaseAdmin.from("customer_client_profiles").delete().eq("id", created.id);
       const duplicate = phoneError.code === "23505" || phoneError.message.toLowerCase().includes("unique");
@@ -177,12 +185,16 @@ export async function PATCH(request: NextRequest) {
     if (!name) return NextResponse.json({ error: "Name is required." }, { status: 400 });
     if (phones.error || !phones.entries) return NextResponse.json({ error: phones.error }, { status: 400 });
     if (email.error) return NextResponse.json({ error: email.error }, { status: 400 });
-    const { error: phoneError } = await supabaseAdmin.rpc("replace_customer_client_profile_phone_numbers", { target_profile_id: id, phone_entries: phones.entries });
+    if (!phones.primary && !email.value) return NextResponse.json({ error: "Enter at least one phone number or email address." }, { status: 400 });
+    const { error: phoneError } = phones.entries.length
+      ? await supabaseAdmin.rpc("replace_customer_client_profile_phone_numbers", { target_profile_id: id, phone_entries: phones.entries })
+      : await supabaseAdmin.from("customer_client_profile_phone_numbers").delete().eq("client_profile_id", id);
     if (phoneError) {
       const duplicate = phoneError.code === "23505" || phoneError.message.toLowerCase().includes("unique");
       return NextResponse.json({ error: duplicate ? "One of these phone numbers already belongs to another client profile." : phoneError.message }, { status: duplicate ? 409 : 500 });
     }
-    const { error: updateError } = await supabaseAdmin.from("customer_client_profiles").update({ name, email: email.value }).eq("id", id);
+    const { error: updateError } = await supabaseAdmin.from("customer_client_profiles").update({ name, email: email.value, phone_number: phones.primary }).eq("id", id);
+    if (updateError?.code === "23505") return NextResponse.json({ error: "That email address already belongs to another client profile." }, { status: 409 });
     if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 });
     const { data, error } = await loadClientProfile(id);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });

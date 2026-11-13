@@ -229,13 +229,16 @@ const BULK_STATUS_EXCLUDED_SYSTEM_KEYS = new Set([
   "client_status_failed",
 ]);
 const normalizeBlacklistPhone = (value: string) => value.replace(/\D/g, "");
+const normalizeBlacklistEmail = (value: string) =>
+  value.trim().toLocaleLowerCase();
 type CustomerMatchPending = {
   clientId: string;
   clientName: string;
-  field: "phone" | "company";
+  field: "phone" | "email" | "company";
   oldValue: string;
   value: string;
   linkedProfileId: string | null;
+  linkedProfileValue: string | null;
   exactProfile: { id: string; name: string } | null;
   suggestions: Array<{ id: string; name: string; similarity: number }>;
   isLoading: boolean;
@@ -1053,6 +1056,9 @@ export function CRMBoard({
   const [blacklistedPhones, setBlacklistedPhones] = useState<Set<string>>(
     new Set(),
   );
+  const [blacklistedEmails, setBlacklistedEmails] = useState<Set<string>>(
+    new Set(),
+  );
   const [blacklistedClientIds, setBlacklistedClientIds] = useState<Set<string>>(
     new Set(),
   );
@@ -1432,6 +1438,11 @@ export function CRMBoard({
       )
       .map(normalizeBlacklistPhone)
       .filter(Boolean);
+    const emails = blacklistedProfiles
+      .map((profile: { email?: string | null }) =>
+        normalizeBlacklistEmail(profile.email ?? ""),
+      )
+      .filter(Boolean);
     const linkedClientIds = (result.links ?? [])
       .filter(
         (link: { client_id?: string; client_profile_id?: string | null }) =>
@@ -1440,6 +1451,7 @@ export function CRMBoard({
       )
       .map((link: { client_id: string }) => link.client_id);
     setBlacklistedPhones(new Set(numbers));
+    setBlacklistedEmails(new Set(emails));
     setBlacklistedClientIds(new Set(linkedClientIds));
   }, []);
 
@@ -8287,6 +8299,23 @@ export function CRMBoard({
           typeof result.resolvedValue === "string" && result.resolvedValue.trim()
             ? result.resolvedValue.trim()
             : pending.value;
+        const resolvedProfileUpdates: Partial<Client> =
+          pending.field === "company"
+            ? { company: resolvedValue }
+            : {
+                phone:
+                  typeof result.resolvedPhone === "string"
+                    ? result.resolvedPhone
+                    : pending.field === "phone"
+                      ? resolvedValue
+                      : "",
+                email:
+                  typeof result.resolvedEmail === "string"
+                    ? result.resolvedEmail
+                    : pending.field === "email"
+                      ? resolvedValue
+                      : "",
+              };
         // The user may have cancelled while the profile request was in
         // flight. Never commit the staged field after that cancellation.
         if (
@@ -8300,27 +8329,32 @@ export function CRMBoard({
           );
           return;
         }
+        let previousProfileValues: Pick<Client, "phone" | "email" | "company"> | null =
+          null;
         setClients((current) =>
-          current.map((client) =>
-            client.id === pending.clientId
-              ? { ...client, [pending.field]: resolvedValue }
-              : client,
-          ),
+          current.map((client) => {
+            if (client.id !== pending.clientId) return client;
+            previousProfileValues = {
+              phone: client.phone,
+              email: client.email,
+              company: client.company,
+            };
+            return { ...client, ...resolvedProfileUpdates };
+          }),
         );
         try {
           await enqueueBoardWrite("client", pending.clientId, () =>
             updateClientRow(
               pending.clientId,
-              { [pending.field]: resolvedValue } as Partial<Client>,
+              resolvedProfileUpdates,
               { customerProfileAction: action },
             ),
           );
         } catch (saveError) {
           setClients((current) =>
             current.map((client) =>
-              client.id === pending.clientId &&
-              client[pending.field] === resolvedValue
-                ? { ...client, [pending.field]: pending.oldValue }
+              client.id === pending.clientId && previousProfileValues
+                ? { ...client, ...previousProfileValues }
                 : client,
             ),
           );
@@ -8436,6 +8470,10 @@ export function CRMBoard({
       const customerField =
         updates.phone !== undefined && updates.phone !== existingClient?.phone
           ? "phone"
+          : updates.email !== undefined &&
+              updates.email !== existingClient?.email &&
+              String(updates.email ?? "").trim()
+            ? "email"
           : updates.company !== undefined &&
               updates.company !== existingClient?.company
             ? "company"
@@ -8444,7 +8482,13 @@ export function CRMBoard({
         const revisionKey = `${clientId}:${customerField}`;
         if (customerProfileSavingRef.current.has(revisionKey)) {
           toast.info(
-            `This ${customerField === "phone" ? "phone number" : "company name"} is still being linked to a customer profile. Please wait a moment before editing it again.`,
+            `This ${
+              customerField === "phone"
+                ? "phone number"
+                : customerField === "email"
+                  ? "email address"
+                  : "company name"
+            } is still being linked to a customer profile. Please wait a moment before editing it again.`,
           );
           return;
         }
@@ -8464,7 +8508,13 @@ export function CRMBoard({
         if (!value) {
           releaseCustomerMatchProtection(clientId, customerField, revision);
           toast.error(
-            `${customerField === "phone" ? "Phone number" : "Company name"} cannot be blank`,
+            `${
+              customerField === "phone"
+                ? "Phone number"
+                : customerField === "email"
+                  ? "Email address"
+                  : "Company name"
+            } cannot be blank`,
             {
               description:
                 "A customer profile can only be matched using a filled value.",
@@ -8517,6 +8567,7 @@ export function CRMBoard({
           oldValue,
           value,
           linkedProfileId: null,
+          linkedProfileValue: null,
           exactProfile: null,
           suggestions: [],
           isLoading: true,
@@ -8549,6 +8600,7 @@ export function CRMBoard({
           const pending: CustomerMatchPending = {
             ...pendingBase,
             linkedProfileId: preview.linkedProfileId ?? null,
+            linkedProfileValue: preview.linkedProfileValue ?? null,
             exactProfile: preview.exactProfile ?? null,
             suggestions: preview.suggestions ?? [],
             isLoading: false,
@@ -8567,19 +8619,32 @@ export function CRMBoard({
             !customerMatchOptions?.requireConfirmation &&
             !oldValue &&
             !preview.exactProfileId &&
-            !pending.suggestions.length
+            !pending.suggestions.length &&
+            !(
+              pending.linkedProfileId &&
+              pending.field === "email" &&
+              pending.linkedProfileValue
+            )
           ) {
-            await commitCustomerMatch(pending, "different");
+            await commitCustomerMatch(
+              pending,
+              pending.linkedProfileId
+                ? pending.field === "phone"
+                  ? "same_add"
+                  : "same_correct"
+                : "different",
+            );
             return;
           }
-          // An exact normalized value is unambiguous, whether it belongs to
-          // another profile or the profile already linked to this lead. Link
-          // it immediately so the board adopts the profile's canonical value.
-          // Similar (but not exact) names still require a user decision,
-          // because they may be an intentional rename.
+          // An initial identifier on an otherwise unlinked client can adopt
+          // its exact profile immediately. Once the client has a linked
+          // profile (or is replacing an existing value), the user must make
+          // the relink decision because it changes the phone/email pair.
           if (
             preview.exactProfileId &&
-            !customerMatchOptions?.requireConfirmation
+            !customerMatchOptions?.requireConfirmation &&
+            !oldValue &&
+            !pending.linkedProfileId
           ) {
             await commitCustomerMatch(pending, "different");
             return;
@@ -11086,10 +11151,12 @@ export function CRMBoard({
               groups={groups}
               isBlacklisted={
                 blacklistedClientIds.has(detailClient.id) ||
-                (blacklistedPhones.has(
+                blacklistedPhones.has(
                   normalizeBlacklistPhone(detailClient.phone ?? ""),
-                ) &&
-                  Boolean(normalizeBlacklistPhone(detailClient.phone ?? "")))
+                ) ||
+                blacklistedEmails.has(
+                  normalizeBlacklistEmail(detailClient.email ?? ""),
+                )
               }
               customColumns={clientCustomCols}
               initialTab={detailClientInitialTab ?? undefined}
@@ -13034,14 +13101,16 @@ export function CRMBoard({
                       The edited{" "}
                       {customerMatchPending.field === "phone"
                         ? "phone number"
-                        : "company name"}{" "}
+                        : customerMatchPending.field === "email"
+                          ? "email address"
+                          : "company name"}{" "}
                       is already used by{" "}
                       <span className="font-semibold">
                         {customerMatchPending.exactProfile.name}
                       </span>
                       . Choosing “different customer” will detach this lead from
                       its original profile and link it to that existing profile.
-                      It will not create a duplicate.
+                      Phone Number and Email will update to match.
                     </p>
                   </div>
                 )}
@@ -13108,6 +13177,45 @@ export function CRMBoard({
               </div>
 
               <div className="grid gap-4 md:grid-cols-2">
+              {!customerMatchPending.oldValue &&
+                customerMatchPending.field === "email" &&
+                customerMatchPending.linkedProfileValue && (
+                  <div className="rounded-xl border border-sky-200 bg-sky-50/50 p-4 text-center">
+                    <p className="text-sm font-medium text-slate-700">
+                      The currently linked customer profile already uses
+                    </p>
+                    <div className="mt-3 grid gap-2 text-sm">
+                      <div className="rounded-md border border-sky-100 bg-white px-3 py-2 text-center">
+                        <span className="block font-medium text-slate-700">
+                          {customerMatchPending.linkedProfileValue}
+                        </span>
+                      </div>
+                      <div className="flex justify-center py-0.5 text-sky-600">
+                        <ArrowDown size={18} aria-hidden="true" />
+                      </div>
+                      <div className="rounded-md border border-sky-200 bg-white px-3 py-2 text-center">
+                        <span className="block font-semibold text-sky-950">
+                          {customerMatchPending.value}
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={
+                        savingCustomerMatch || customerMatchPending.isLoading
+                      }
+                      onClick={() =>
+                        void commitCustomerMatch(
+                          customerMatchPending,
+                          "same_correct",
+                        )
+                      }
+                      className="mt-2 rounded-md border border-sky-300 bg-white px-3 py-2 text-xs font-semibold text-sky-800 hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Update the linked profile email
+                    </button>
+                  </div>
+                )}
               {customerMatchPending.oldValue && (
                 <div className="rounded-xl border border-sky-200 bg-sky-50/50 p-4 text-center">
                   <div className="mt-3 grid gap-2 text-sm">
@@ -13171,7 +13279,9 @@ export function CRMBoard({
                       {" "}
                       {customerMatchPending.field === "phone"
                         ? "Edit and save the number"
-                        : "Rename and save the company name"}
+                        : customerMatchPending.field === "email"
+                          ? "Edit and save the email address"
+                          : "Rename and save the company name"}
                     </button>
                   </div>
                 </div>
@@ -14766,12 +14876,12 @@ export function CRMBoard({
                           }
                           isBlacklisted={
                             blacklistedClientIds.has(client.id) ||
-                            (blacklistedPhones.has(
+                            blacklistedPhones.has(
                               normalizeBlacklistPhone(client.phone ?? ""),
-                            ) &&
-                              Boolean(
-                                normalizeBlacklistPhone(client.phone ?? ""),
-                              ))
+                            ) ||
+                            blacklistedEmails.has(
+                              normalizeBlacklistEmail(client.email ?? ""),
+                            )
                           }
                           isExpanded={expandedIdSet.has(client.id)}
                           hasTopBorder={

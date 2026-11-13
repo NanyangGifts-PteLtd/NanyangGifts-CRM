@@ -2,9 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
-type Field = "phone" | "company";
+type Field = "phone" | "email" | "company";
 
 const normalizePhone = (value: string) => value.replace(/\D/g, "");
+const normalizeEmail = (value: string) => value.trim().toLocaleLowerCase();
+const isValidEmail = (value: string) =>
+  value.length <= 320 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 const COMPANY_SUGGESTION_MIN_SIMILARITY = 0.65;
 
 const normalizeCompany = (value: string) => {
@@ -50,8 +53,9 @@ async function auth() {
 }
 
 async function currentLink(clientId: string, field: Field, oldValue: string) {
-  const column = field === "phone" ? "client_profile_id" : "company_profile_id";
-  const primaryColumn = field === "phone" ? "is_primary_client" : "is_primary_company";
+  const isClientField = field === "phone" || field === "email";
+  const column = isClientField ? "client_profile_id" : "company_profile_id";
+  const primaryColumn = isClientField ? "is_primary_client" : "is_primary_company";
   const { data: link } = await supabaseAdmin.from("customer_profile_lead_links").select(column).eq("client_id", clientId).eq(primaryColumn, true).maybeSingle();
   const linkedId = link?.[column as keyof typeof link] as string | null | undefined;
   if (linkedId) return linkedId;
@@ -61,6 +65,14 @@ async function currentLink(clientId: string, field: Field, oldValue: string) {
     const { data } = await supabaseAdmin.from("customer_client_profile_phone_numbers").select("client_profile_id").eq("normalized_phone", normalized).maybeSingle();
     return data?.client_profile_id ?? null;
   }
+  if (field === "email") {
+    const { data } = await supabaseAdmin
+      .from("customer_client_profiles")
+      .select("id")
+      .ilike("email", normalizeEmail(oldValue))
+      .maybeSingle();
+    return data?.id ?? null;
+  }
   const { data } = await supabaseAdmin.from("customer_company_profiles").select("id, name");
   return data?.find((profile) => normalizeCompany(profile.name) === normalizeCompany(oldValue))?.id ?? null;
 }
@@ -69,6 +81,14 @@ async function exactMatch(field: Field, value: string) {
   if (field === "phone") {
     const { data } = await supabaseAdmin.from("customer_client_profile_phone_numbers").select("client_profile_id").eq("normalized_phone", normalizePhone(value)).maybeSingle();
     return data?.client_profile_id ?? null;
+  }
+  if (field === "email") {
+    const { data } = await supabaseAdmin
+      .from("customer_client_profiles")
+      .select("id")
+      .ilike("email", normalizeEmail(value))
+      .maybeSingle();
+    return data?.id ?? null;
   }
   const { data } = await supabaseAdmin.from("customer_company_profiles").select("id, name");
   return data?.find((profile) => normalizeCompany(profile.name) === normalizeCompany(value))?.id ?? null;
@@ -87,6 +107,16 @@ async function canonicalProfileValue(
       .maybeSingle();
     if (error) throw error;
     return data?.name?.trim() || null;
+  }
+
+  if (field === "email") {
+    const { data, error } = await supabaseAdmin
+      .from("customer_client_profiles")
+      .select("email")
+      .eq("id", profileId)
+      .maybeSingle();
+    if (error) throw error;
+    return data?.email?.trim() || null;
   }
 
   const { data, error } = await supabaseAdmin
@@ -116,9 +146,34 @@ async function canonicalProfileValue(
   return profile?.phone_number?.trim() || null;
 }
 
+async function clientProfileContactValues(profileId: string) {
+  const [{ data: profile, error: profileError }, { data: phones, error: phoneError }] =
+    await Promise.all([
+      supabaseAdmin
+        .from("customer_client_profiles")
+        .select("email")
+        .eq("id", profileId)
+        .maybeSingle(),
+      supabaseAdmin
+        .from("customer_client_profile_phone_numbers")
+        .select("phone_number")
+        .eq("client_profile_id", profileId)
+        .order("is_primary", { ascending: false })
+        .order("created_at")
+        .limit(1),
+    ]);
+  if (profileError) throw profileError;
+  if (phoneError) throw phoneError;
+  return {
+    email: profile?.email?.trim() || "",
+    phone: phones?.[0]?.phone_number?.trim() || "",
+  };
+}
+
 async function link(clientId: string, field: Field, profileId: string, userId: string) {
-  const column = field === "phone" ? "client_profile_id" : "company_profile_id";
-  const primaryColumn = field === "phone" ? "is_primary_client" : "is_primary_company";
+  const isClientField = field === "phone" || field === "email";
+  const column = isClientField ? "client_profile_id" : "company_profile_id";
+  const primaryColumn = isClientField ? "is_primary_client" : "is_primary_company";
   const timestamp = new Date().toISOString();
   const { data: primary, error: findError } = await supabaseAdmin
     .from("customer_profile_lead_links")
@@ -140,10 +195,19 @@ async function createAndLink(clientId: string, field: Field, value: string, clie
     await link(clientId, field, data.id, userId);
     return data.id;
   }
-  const { data, error } = await supabaseAdmin.from("customer_client_profiles").insert({ name: clientName.trim() || "Unnamed client", phone_number: value.trim(), created_by: userId }).select("id").single();
+  const profileValues = field === "email"
+    ? { name: clientName.trim() || "Unnamed client", email: value.trim(), created_by: userId }
+    : { name: clientName.trim() || "Unnamed client", phone_number: value.trim(), created_by: userId };
+  const { data, error } = await supabaseAdmin
+    .from("customer_client_profiles")
+    .insert(profileValues as never)
+    .select("id")
+    .single();
   if (error) throw error;
-  const { error: phoneError } = await supabaseAdmin.rpc("replace_customer_client_profile_phone_numbers", { target_profile_id: data.id, phone_entries: [{ phoneNumber: value.trim(), isPrimary: true }] });
-  if (phoneError) { await supabaseAdmin.from("customer_client_profiles").delete().eq("id", data.id); throw phoneError; }
+  if (field === "phone") {
+    const { error: phoneError } = await supabaseAdmin.rpc("replace_customer_client_profile_phone_numbers", { target_profile_id: data.id, phone_entries: [{ phoneNumber: value.trim(), isPrimary: true }] });
+    if (phoneError) { await supabaseAdmin.from("customer_client_profiles").delete().eq("id", data.id); throw phoneError; }
+  }
   await link(clientId, field, data.id, userId);
   return data.id;
 }
@@ -157,7 +221,7 @@ export async function POST(request: NextRequest) {
   const field = String(body.field ?? "") as Field;
   const value = String(body.value ?? "").trim();
   const oldValue = String(body.oldValue ?? "").trim();
-  if (!clientId || !["phone", "company"].includes(field) || !value || (field === "phone" && !normalizePhone(value))) return NextResponse.json({ error: "A valid client, field, and value are required." }, { status: 400 });
+  if (!clientId || !["phone", "email", "company"].includes(field) || !value || (field === "phone" && !normalizePhone(value)) || (field === "email" && !isValidEmail(value))) return NextResponse.json({ error: "A valid client, field, and value are required." }, { status: 400 });
 
   const [{ data: client }, { data: assignments, error: assignmentError }] = await Promise.all([
     supabaseAdmin.from("clients").select("id").eq("id", clientId).maybeSingle(),
@@ -170,9 +234,12 @@ export async function POST(request: NextRequest) {
   const linkedProfileId = await currentLink(clientId, field, oldValue);
   const exactProfileId = await exactMatch(field, value);
   if (body.operation === "preview") {
+    const linkedProfileValue = linkedProfileId
+      ? await canonicalProfileValue(field, linkedProfileId)
+      : null;
     let exactProfile: { id: string; name: string } | null = null;
     if (exactProfileId) {
-      const table = field === "phone" ? "customer_client_profiles" : "customer_company_profiles";
+      const table = field === "company" ? "customer_company_profiles" : "customer_client_profiles";
       const { data } = await supabaseAdmin.from(table).select("id, name").eq("id", exactProfileId).maybeSingle();
       exactProfile = data ?? null;
     }
@@ -198,7 +265,13 @@ export async function POST(request: NextRequest) {
         .sort((a, b) => b.similarity - a.similarity)
         .slice(0, 5);
     }
-    return NextResponse.json({ linkedProfileId, exactProfileId, exactProfile, suggestions });
+    return NextResponse.json({
+      linkedProfileId,
+      linkedProfileValue,
+      exactProfileId,
+      exactProfile,
+      suggestions,
+    });
   }
 
   const action = String(body.action ?? "");
@@ -208,8 +281,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "This value already belongs to another customer profile. It cannot be added to the currently linked profile." }, { status: 409 });
     }
     let resolvedValue: string | null = null;
+    let resolvedClientProfileId: string | null = null;
     if (action === "link" && chosenProfileId) {
       await link(clientId, field, chosenProfileId, user.id);
+      if (field !== "company") resolvedClientProfileId = chosenProfileId;
       resolvedValue = await canonicalProfileValue(
         field,
         chosenProfileId,
@@ -219,16 +294,31 @@ export async function POST(request: NextRequest) {
     else if (action === "different") {
       if (exactProfileId) {
         await link(clientId, field, exactProfileId, user.id);
+        if (field !== "company") resolvedClientProfileId = exactProfileId;
         resolvedValue = await canonicalProfileValue(
           field,
           exactProfileId,
           value,
         );
       } else {
-        await createAndLink(clientId, field, value, String(body.clientName ?? ""), user.id);
+        const createdProfileId = await createAndLink(
+          clientId,
+          field,
+          value,
+          String(body.clientName ?? ""),
+          user.id,
+        );
+        if (field !== "company") resolvedClientProfileId = createdProfileId;
       }
     } else if ((action === "same_add" || action === "same_correct") && !linkedProfileId) {
-      await createAndLink(clientId, field, value, String(body.clientName ?? ""), user.id);
+      const createdProfileId = await createAndLink(
+        clientId,
+        field,
+        value,
+        String(body.clientName ?? ""),
+        user.id,
+      );
+      if (field !== "company") resolvedClientProfileId = createdProfileId;
     } else if ((action === "same_add" || action === "same_correct") && field === "phone" && linkedProfileId) {
       const { data: phones, error } = await supabaseAdmin.from("customer_client_profile_phone_numbers").select("phone_number, is_primary").eq("client_profile_id", linkedProfileId).order("created_at");
       if (error) throw error;
@@ -240,11 +330,23 @@ export async function POST(request: NextRequest) {
       const { error: replaceError } = await supabaseAdmin.rpc("replace_customer_client_profile_phone_numbers", { target_profile_id: linkedProfileId, phone_entries: unique });
       if (replaceError) throw replaceError;
       await link(clientId, field, linkedProfileId, user.id);
+      resolvedClientProfileId = linkedProfileId;
+    } else if (action === "same_correct" && field === "email" && linkedProfileId) {
+      const { error } = await supabaseAdmin
+        .from("customer_client_profiles")
+        .update({ email: value })
+        .eq("id", linkedProfileId);
+      if (error) throw error;
+      await link(clientId, field, linkedProfileId, user.id);
+      resolvedClientProfileId = linkedProfileId;
     } else if (action === "same_correct" && field === "company" && linkedProfileId) {
       const { error } = await supabaseAdmin.from("customer_company_profiles").update({ name: value }).eq("id", linkedProfileId);
       if (error) throw error;
       await link(clientId, field, linkedProfileId, user.id);
     } else return NextResponse.json({ error: "Invalid matching action." }, { status: 400 });
+    const resolvedContact = resolvedClientProfileId
+      ? await clientProfileContactValues(resolvedClientProfileId)
+      : null;
     return NextResponse.json({
       ok: true,
       // A selected/exact profile is authoritative for the board cell. For an
@@ -252,9 +354,11 @@ export async function POST(request: NextRequest) {
       // canonical value and remains authoritative.
       resolvedValue: resolvedValue || value,
       companyName: field === "company" ? resolvedValue : null,
+      resolvedPhone: resolvedContact?.phone ?? null,
+      resolvedEmail: resolvedContact?.email ?? null,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to update the customer profile link.";
-    return NextResponse.json({ error: message.includes("unique") ? "That phone number or company is already assigned to another profile." : message }, { status: 409 });
+    return NextResponse.json({ error: message.includes("unique") ? "That phone number, email address, or company is already assigned to another profile." : message }, { status: 409 });
   }
 }

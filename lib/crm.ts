@@ -2873,7 +2873,11 @@ export async function updateClientRow(
 
   if (error) throw error;
 
-  if (updates.email !== undefined && updates.email !== existing.email) {
+  if (
+    updates.email !== undefined &&
+    updates.email !== existing.email &&
+    !activityMeta?.customerProfileAction
+  ) {
     // Profile enrichment is deliberately best-effort and non-blocking. The
     // client edit has already succeeded; this endpoint only fills a blank
     // profile email and never overwrites one.

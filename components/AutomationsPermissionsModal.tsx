@@ -204,7 +204,7 @@ const automations: ReferenceItem[] = [
     title: "Client-profile email enrichment",
     trigger: "A CRM client's email address is changed successfully.",
     behaviour:
-      "Best-effort background enrichment copies the email into the linked customer profile only when that profile email is blank. It never overwrites an existing profile email and does not block the CRM edit if enrichment fails.",
+      "Legacy best-effort enrichment may fill a blank profile email only for non-profile-matching writes. CRM email/phone matching uses its explicit confirmation flow instead, so it cannot be bypassed by this fallback.",
     source:
       "lib/crm.ts; app/api/customer-profiles/auto-save-email/route.ts",
   },

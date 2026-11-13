@@ -54,7 +54,8 @@ type RelatedProfileData = {
   clients: Array<{
     id: string;
     name: string;
-    phone_number: string;
+    phone_number: string | null;
+    email: string | null;
     phone_numbers?: Array<{ phone_number: string }>;
   }>;
   companies: Array<{ id: string; name: string }>;
@@ -69,6 +70,8 @@ type RelatedProfileData = {
 };
 
 const normalizeRelatedPhone = (value: string) => value.replace(/\D/g, "");
+const normalizeRelatedEmail = (value: string) =>
+  value.trim().toLocaleLowerCase();
 const normalizeRelatedCompany = (value: string) =>
   value.trim().replace(/\s+/g, " ").toLocaleLowerCase();
 
@@ -210,7 +213,7 @@ export function ClientDetailView({
   );
   const [relatedLoading, setRelatedLoading] = useState(false);
   const [relatedRefresh, setRelatedRefresh] = useState(0);
-  const [linkedContact, setLinkedContact] = useState({ name: "", phone: "" });
+  const [linkedContact, setLinkedContact] = useState({ name: "", phone: "", email: "" });
   const [linkingContact, setLinkingContact] = useState(false);
   const [linkContactError, setLinkContactError] = useState<string | null>(null);
   const [pendingUnlinkProfileId, setPendingUnlinkProfileId] = useState<
@@ -433,13 +436,19 @@ export function ClientDetailView({
         (link) => link.client_id === client.id && link.is_primary_client,
       ) ?? relatedData.links.find((link) => link.client_id === client.id);
     const phone = normalizeRelatedPhone(client.phone ?? "");
+    const email = normalizeRelatedEmail(client.email ?? "");
     const profileId =
       currentLink?.client_profile_id ??
       relatedData.clients.find((profile) =>
         [
           profile.phone_number,
           ...(profile.phone_numbers ?? []).map((item) => item.phone_number),
-        ].some((value) => normalizeRelatedPhone(value) === phone),
+        ].some(
+          (value) => phone && normalizeRelatedPhone(value ?? "") === phone,
+        ),
+      )?.id ?? relatedData.clients.find(
+        (profile) =>
+          email && normalizeRelatedEmail(profile.email ?? "") === email,
       )?.id;
     const linkedIds = new Set(
       relatedData.links
@@ -450,9 +459,10 @@ export function ClientDetailView({
       (lead) =>
         lead.id !== client.id &&
         (linkedIds.has(lead.id) ||
-          Boolean(phone && normalizeRelatedPhone(lead.phone ?? "") === phone)),
+          Boolean(phone && normalizeRelatedPhone(lead.phone ?? "") === phone) ||
+          Boolean(email && normalizeRelatedEmail(lead.email ?? "") === email)),
     );
-  }, [client.id, client.phone, clients, relatedData]);
+  }, [client.email, client.id, client.phone, clients, relatedData]);
   const relatedByCompany = useMemo(() => {
     if (!relatedData) return [];
     const currentLink =
@@ -494,16 +504,22 @@ export function ClientDetailView({
       });
     if (linked.some((item) => item.primary)) return linked;
     const phone = normalizeRelatedPhone(client.phone ?? "");
+    const email = normalizeRelatedEmail(client.email ?? "");
     const inferred = relatedData.clients.find((profile) =>
       [
         profile.phone_number,
         ...(profile.phone_numbers ?? []).map((item) => item.phone_number),
-      ].some((value) => normalizeRelatedPhone(value) === phone),
+      ].some(
+        (value) => phone && normalizeRelatedPhone(value ?? "") === phone,
+      ) ||
+      Boolean(
+        email && normalizeRelatedEmail(profile.email ?? "") === email,
+      ),
     );
     return inferred && !seen.has(inferred.id)
       ? [{ profile: inferred, primary: true }, ...linked]
       : linked;
-  }, [client.id, relatedData]);
+  }, [client.email, client.id, client.phone, relatedData]);
   const linkedCompanyProfiles = useMemo(() => {
     if (!relatedData) return [];
     const seen = new Set<string>();
@@ -529,13 +545,22 @@ export function ClientDetailView({
   const addLinkedContact = async () => {
     setLinkContactError(null);
     const requestedPhone = normalizeRelatedPhone(linkedContact.phone);
+    const requestedEmail = normalizeRelatedEmail(linkedContact.email);
     const alreadyLinked = linkedClientProfiles.some(({ profile }) =>
       [
         profile.phone_number,
         ...(profile.phone_numbers ?? []).map((item) => item.phone_number),
-      ].some((phone) => normalizeRelatedPhone(phone) === requestedPhone),
+      ].some(
+        (phone) =>
+          requestedPhone &&
+          normalizeRelatedPhone(phone ?? "") === requestedPhone,
+      ) ||
+      Boolean(
+        requestedEmail &&
+          normalizeRelatedEmail(profile.email ?? "") === requestedEmail,
+      ),
     );
-    if (requestedPhone && alreadyLinked) {
+    if ((requestedPhone || requestedEmail) && alreadyLinked) {
       setLinkContactError(
         "This client profile is already linked to this lead.",
       );
@@ -551,7 +576,7 @@ export function ClientDetailView({
       const result = (await response.json()) as { error?: string };
       if (!response.ok)
         throw new Error(result.error || "Unable to link the client profile.");
-      setLinkedContact({ name: "", phone: "" });
+      setLinkedContact({ name: "", phone: "", email: "" });
       setRelatedRefresh((value) => value + 1);
     } catch (error) {
       setLinkContactError(
@@ -1189,7 +1214,7 @@ export function ClientDetailView({
                 }
                 icon={<UserRound size={19} />}
                 leads={relatedByClient}
-                detail={(lead) => lead.phone || "No phone number"}
+                detail={(lead) => lead.phone || lead.email || "No contact details"}
                 loading={relatedLoading}
                 onOpen={onNavigate}
               />
@@ -1236,7 +1261,9 @@ export function ClientDetailView({
                           {profile.name || "Unnamed client"}
                         </span>
                         <span className="mt-0.5 block truncate text-xs text-slate-500">
-                          {profile.phone_number}
+                          {[profile.phone_number, profile.email]
+                            .filter(Boolean)
+                            .join(" · ") || "No contact details"}
                         </span>
                       </span>
                       {primary && (
@@ -1279,10 +1306,10 @@ export function ClientDetailView({
                       Add or link another contact
                     </h3>
                     <p className="mt-1 text-xs text-slate-500">
-                      An existing number links its profile; a new number creates
-                      a new client profile.
+                      An existing phone number or email links its profile; a new
+                      contact creates a client profile.
                     </p>
-                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    <div className="mt-3 grid gap-2 sm:grid-cols-3">
                       <input
                         value={linkedContact.name}
                         onChange={(event) =>
@@ -1303,6 +1330,18 @@ export function ClientDetailView({
                           }))
                         }
                         placeholder="Phone number"
+                        className="h-9 rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-sky-500"
+                      />
+                      <input
+                        type="email"
+                        value={linkedContact.email}
+                        onChange={(event) =>
+                          setLinkedContact((value) => ({
+                            ...value,
+                            email: event.target.value,
+                          }))
+                        }
+                        placeholder="Email address"
                         className="h-9 rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-sky-500"
                       />
                     </div>
