@@ -117,6 +117,8 @@ type SchedulerResource = {
   subitemDisplayId: string;
   subitemDescription: string;
   timelineName: string;
+  timelineProgress: string;
+  timelineProgressColor?: string;
   timelineIndex: number;
   processNames: string[];
   pmIds: string[];
@@ -359,6 +361,7 @@ function buildSchedulerData(
       section?: number;
     }
   >,
+  timelineHeaderProgressById: Map<string, { value: string; color?: string }>,
   awardedOrLaterStatusIds: Set<string>,
   allowedResourceIds?: Set<string>,
 ): SchedulerResource[] {
@@ -392,6 +395,10 @@ function buildSchedulerData(
           : [{ id: "default", name: "", rows: subitem.timelineRows ?? [] }];
         return timelines.flatMap((timeline, timelineIndex) => {
         const timelineName = timeline.name?.trim() ?? "";
+        const timelineProgress = timeline.progress?.trim() ?? "";
+        const timelineProgressOption = timeline.progressOptionId
+          ? timelineHeaderProgressById.get(timeline.progressOptionId)
+          : timelineHeaderProgressById.get(`value:${timelineProgress}`);
         const storedTimelineRows = (timeline.rows ?? []).filter(
           (row): row is TimelineRow => !!row && typeof row === "object",
         );
@@ -477,6 +484,8 @@ function buildSchedulerData(
           subitemDisplayId,
           subitemDescription,
           timelineName,
+          timelineProgress,
+          timelineProgressColor: timelineProgressOption?.color,
           timelineIndex,
           processNames,
           pmIds: clientPmAssignees[client.id] ?? parsePmIds(client),
@@ -1043,6 +1052,16 @@ export default function GanttChart({
     () => (resourceIds ? new Set(resourceIds) : undefined),
     [resourceIds],
   );
+  const timelineHeaderProgressById = useMemo(
+    () =>
+      new Map(
+        timelineHeaderProgressOptions.flatMap((option) => [
+          [option.id, { value: option.value, color: option.color }],
+          [`value:${option.value}`, { value: option.value, color: option.color }],
+        ]),
+      ),
+    [timelineHeaderProgressOptions],
+  );
   const unfilteredData = useMemo(
     () =>
       buildSchedulerData(
@@ -1052,10 +1071,21 @@ export default function GanttChart({
         clientPmAssignees,
         subitemAssignees,
         progressById,
+        timelineHeaderProgressById,
         awardedOrLaterStatusIds ?? new Set<string>(),
         allowedResourceIds,
       ),
-    [orderedClients, orderedGroups, clientAssignees, clientPmAssignees, subitemAssignees, progressById, awardedOrLaterStatusIds, allowedResourceIds],
+    [
+      orderedClients,
+      orderedGroups,
+      clientAssignees,
+      clientPmAssignees,
+      subitemAssignees,
+      progressById,
+      timelineHeaderProgressById,
+      awardedOrLaterStatusIds,
+      allowedResourceIds,
+    ],
   );
   const data = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -2364,9 +2394,25 @@ export default function GanttChart({
                           ? `Overdue process in ${resource.subitemName}`
                           : resource.subitemName}
                       </span>
-                      {resource.timelineName ? (
-                        <span className="mt-0.5 block text-[10px] font-normal text-slate-500">
-                          {resource.timelineName}
+                      {(resource.timelineName || resource.timelineProgress) ? (
+                        <span className="mt-0.5 flex min-w-0 items-center gap-1">
+                          {resource.timelineName ? (
+                            <span className="min-w-0 truncate text-[10px] font-normal text-slate-500">
+                              {resource.timelineName}
+                            </span>
+                          ) : null}
+                          {resource.timelineProgress ? (
+                            <span
+                              className="inline-flex h-5 max-w-[112px] shrink-0 items-center truncate rounded px-1.5 text-[10px] font-medium leading-none text-white"
+                              style={{
+                                backgroundColor:
+                                  resource.timelineProgressColor ?? "#e5e7eb",
+                              }}
+                              title={`Progress: ${resource.timelineProgress}`}
+                            >
+                              {resource.timelineProgress}
+                            </span>
+                          ) : null}
                         </span>
                       ) : null}
                     </span>
