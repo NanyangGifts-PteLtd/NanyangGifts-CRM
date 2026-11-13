@@ -390,9 +390,15 @@ function buildSchedulerData(
         const subitemName = subitem.name || "Untitled subitem";
         const subitemDisplayId = subitem.displayId || "";
         const subitemDescription = subitem.description?.trim() ?? "";
-        const timelines = Array.isArray(subitem.timelineGroups) && subitem.timelineGroups.length
+        const timelines: TimelineGroup[] = Array.isArray(subitem.timelineGroups) && subitem.timelineGroups.length
           ? subitem.timelineGroups
-          : [{ id: "default", name: "", rows: subitem.timelineRows ?? [] }];
+          : [{
+              id: "default",
+              name: "",
+              cnTracking: "",
+              sgTracking: "",
+              rows: subitem.timelineRows ?? [],
+            }];
         return timelines.flatMap((timeline, timelineIndex) => {
         const timelineName = timeline.name?.trim() ?? "";
         const timelineProgress = timeline.progress?.trim() ?? "";
@@ -1054,11 +1060,13 @@ export default function GanttChart({
   );
   const timelineHeaderProgressById = useMemo(
     () =>
-      new Map(
-        timelineHeaderProgressOptions.flatMap((option) => [
-          [option.id, { value: option.value, color: option.color }],
-          [`value:${option.value}`, { value: option.value, color: option.color }],
-        ]),
+      new Map<string, { value: string; color?: string }>(
+        timelineHeaderProgressOptions.flatMap((option) => {
+          const entry = { value: option.value, color: option.color };
+          return option.id
+            ? [[option.id, entry], [`value:${option.value}`, entry]]
+            : [[`value:${option.value}`, entry]];
+        }),
       ),
     [timelineHeaderProgressOptions],
   );

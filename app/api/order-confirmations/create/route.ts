@@ -186,12 +186,6 @@ export async function POST(req: NextRequest) {
           { status: 400 },
         );
       }
-      if (!upload.imagePath) {
-        return NextResponse.json(
-          { error: "Every included subitem needs an uploaded image" },
-          { status: 400 },
-        );
-      }
       if (
         upload.needBy !== "ASAP" &&
         !/^\d{4}-\d{2}-\d{2}$/.test(String(upload.needBy ?? ""))

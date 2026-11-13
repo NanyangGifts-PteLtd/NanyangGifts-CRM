@@ -349,12 +349,6 @@ export function GenerateOcfModal({
     [awardedSubitems, includedSubitemIds],
   );
   const hasIncludedItems = selectedRows.length > 0;
-  const allFilesChosen = useMemo(
-    () =>
-      hasIncludedItems &&
-      selectedRows.every((r) => !!r.file || !!r.uploadedPath),
-    [hasIncludedItems, selectedRows],
-  );
   const allNeedByDatesSet = useMemo(
     () =>
       hasIncludedItems &&
@@ -570,11 +564,6 @@ export function GenerateOcfModal({
       return;
     }
 
-    if (!allFilesChosen) {
-      setFormError("Please choose an image for every included subitem.");
-      return;
-    }
-
     if (!allNeedByDatesSet) {
       setFormError(
         "Set a Need by Date (NBD), or select ASAP, for every included subitem.",
@@ -603,8 +592,16 @@ export function GenerateOcfModal({
       if (ocfWindow) showOcfGenerationLoading(ocfWindow, "update");
       setCreating(true);
       try {
-        const resolvedRows = await Promise.all(selectedRows.map(async (row) => ({ row, imagePath: row.uploadedPath || (await uploadRowFile(row)) })));
-        if (resolvedRows.some(({ imagePath }) => !imagePath)) throw new Error("One or more artwork images could not be uploaded.");
+        const resolvedRows = await Promise.all(
+          selectedRows.map(async (row) => ({
+            row,
+            imagePath:
+              row.uploadedPath || (row.file ? await uploadRowFile(row) : null),
+          })),
+        );
+        if (resolvedRows.some(({ row, imagePath }) => row.file && !imagePath)) {
+          throw new Error("One or more artwork images could not be uploaded.");
+        }
         const response = await fetch("/api/order-confirmations/revise", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -658,10 +655,11 @@ export function GenerateOcfModal({
       const resolvedRows = await Promise.all(
         selectedRows.map(async (row) => ({
           row,
-          imagePath: row.uploadedPath || (await uploadRowFile(row)),
+          imagePath:
+            row.uploadedPath || (row.file ? await uploadRowFile(row) : null),
         })),
       );
-      if (resolvedRows.some(({ imagePath }) => !imagePath)) {
+      if (resolvedRows.some(({ row, imagePath }) => row.file && !imagePath)) {
         throw new Error("One or more artwork images could not be uploaded.");
       }
       const payload = {
@@ -942,7 +940,7 @@ export function GenerateOcfModal({
                               className="block text-sm file:mr-4 file:rounded-md file:border-0 file:bg-[#7BCBD5] file:px-3 file:py-2 file:font-medium file:text-white hover:file:bg-[#6cbac4]"
                             />
                               <p className="text-xs text-slate-500">
-                                PNG, JPEG, or WebP up to 10 MB.
+                                Optional. PNG, JPEG, or WebP up to 10 MB.
                               </p>
 
                             {row.uploadedPath && (

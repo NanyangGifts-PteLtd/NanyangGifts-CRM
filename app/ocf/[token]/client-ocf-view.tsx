@@ -282,7 +282,7 @@ export default function ClientOcfView({ ocf }: { ocf: Ocf }) {
 
         <div className="relative print:hidden">
           <OcfFloatingInstruction side="left" step={1} className="top-16">
-            Please check and verify the Item Artwork(s). Click the image to enlarge
+            Please check and verify any Item Artwork(s). Click an image to enlarge
           </OcfFloatingInstruction>
           <OcfFloatingInstruction side="right" step={2} className="top-16">
             Please fill in your Delivery Information
@@ -358,20 +358,22 @@ export default function ClientOcfView({ ocf }: { ocf: Ocf }) {
                           <span className="hidden print:inline">Full image at the end</span>
                         </div>
                       ) : null}
-                      <label
-                        className={`flex w-full items-start gap-2 rounded border border-gray-200 px-2 py-2 text-xs font-medium ${isLocked ? "cursor-default bg-gray-50" : "cursor-pointer hover:bg-gray-50"}`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={artworkConfirmedIds.has(item.id)}
-                          onChange={(event) =>
-                            setArtworkConfirmed(item.id, event.target.checked)
-                          }
-                          disabled={isLocked}
-                          className="mt-0.5 h-4 w-4 shrink-0 accent-[#7BCBD5]"
-                        />
-                        <span>I have confirmed the artwork/image.</span>
-                      </label>
+                      {item.image_url ? (
+                        <label
+                          className={`flex w-full items-start gap-2 rounded border border-gray-200 px-2 py-2 text-xs font-medium ${isLocked ? "cursor-default bg-gray-50" : "cursor-pointer hover:bg-gray-50"}`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={artworkConfirmedIds.has(item.id)}
+                            onChange={(event) =>
+                              setArtworkConfirmed(item.id, event.target.checked)
+                            }
+                            disabled={isLocked}
+                            className="mt-0.5 h-4 w-4 shrink-0 accent-[#7BCBD5]"
+                          />
+                          <span>I have confirmed the artwork/image.</span>
+                        </label>
+                      ) : null}
                     </div>
                   </td>
                   <td className="border border-black px-2 py-3">
@@ -611,7 +613,9 @@ export default function ClientOcfView({ ocf }: { ocf: Ocf }) {
               confirmationsComplete={
                 termsRead &&
                 termsAgreed &&
-                items.every((item) => artworkConfirmedIds.has(item.id))
+                items
+                  .filter((item) => Boolean(item.image_url))
+                  .every((item) => artworkConfirmedIds.has(item.id))
               }
             />
           )}

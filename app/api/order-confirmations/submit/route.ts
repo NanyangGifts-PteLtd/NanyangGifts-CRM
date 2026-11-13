@@ -87,7 +87,7 @@ export async function POST(request: NextRequest) {
             return NextResponse.json(
                 {
                     error:
-                        "Every artwork must be confirmed and both terms must be accepted before submission",
+                        "Artwork acknowledgements and both terms are required before submission",
                 },
                 { status: 400 }
             );
@@ -121,23 +121,26 @@ export async function POST(request: NextRequest) {
 
         const { data: ocfItems, error: ocfItemsError } = await supabase
             .from("order_confirmation_items")
-            .select("id")
+            .select("id, image_path")
             .eq("order_confirmation_id", ocf.id);
 
         if (ocfItemsError) {
             return NextResponse.json({ error: ocfItemsError.message }, { status: 500 });
         }
 
-        const requiredItemIds = (ocfItems ?? []).map((item) => item.id);
+        // Images are optional OCF content. Only items with an artwork image
+        // require acknowledgement from the client.
+        const requiredItemIds = (ocfItems ?? [])
+            .filter((item) => Boolean(item.image_path))
+            .map((item) => item.id);
         const confirmedItemIds = new Set(
             artworkConfirmedItemIds.filter((id): id is string => typeof id === "string")
         );
         if (
-            requiredItemIds.length === 0 ||
             requiredItemIds.some((id) => !confirmedItemIds.has(id))
         ) {
             return NextResponse.json(
-                { error: "Every artwork/image must be confirmed before submission" },
+                { error: "Every displayed artwork/image must be confirmed before submission" },
                 { status: 400 }
             );
         }

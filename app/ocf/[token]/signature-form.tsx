@@ -196,7 +196,7 @@ export default function SignatureForm({
 
     async function submitSignature() {
         if (!confirmationsComplete) {
-            setError("Please confirm every artwork and accept both terms before signing and submitting.");
+            setError("Please confirm every displayed artwork and accept both terms before signing and submitting.");
             return;
         }
         const canvas = canvasRef.current;
@@ -265,7 +265,7 @@ export default function SignatureForm({
         <div className="mt-3">
             {!confirmationsComplete ? (
                 <p className="mb-3 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                    Confirm every artwork and complete both terms checkboxes before signing.
+                    Confirm every displayed artwork and complete both terms checkboxes before signing.
                 </p>
             ) : null}
             <fieldset disabled={!confirmationsComplete || submitting} className="disabled:opacity-50">

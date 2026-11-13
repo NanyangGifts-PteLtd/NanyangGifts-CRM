@@ -459,7 +459,7 @@ export default function OcfInternalView({
 
         <div className="relative print:hidden">
           <OcfFloatingInstruction side="left" step={1} className="top-16">
-            Please check and verify the Item Artwork(s). Click the image to enlarge
+            Please check and verify any Item Artwork(s). Click an image to enlarge
           </OcfFloatingInstruction>
           <OcfFloatingInstruction side="right" step={2} className="top-16">
             Please fill in your Delivery Information
@@ -534,18 +534,20 @@ export default function OcfInternalView({
                           <span className="hidden print:inline">Full image at the end</span>
                         </div>
                       ) : null}
-                      <label className="flex w-full items-start gap-2 rounded border border-gray-200 bg-gray-50 px-2 py-2 text-[10px] font-medium">
-                        <input
-                          type="checkbox"
-                          checked={
-                            ocf.artwork_confirmed_item_ids?.includes(item.id) ??
-                            false
-                          }
-                          readOnly
-                          className="mt-0.5 h-4 w-4 shrink-0 accent-[#7BCBD5]"
-                        />
-                        <span>I have confirmed the artwork/image.</span>
-                      </label>
+                      {item.image_url ? (
+                        <label className="flex w-full items-start gap-2 rounded border border-gray-200 bg-gray-50 px-2 py-2 text-[10px] font-medium">
+                          <input
+                            type="checkbox"
+                            checked={
+                              ocf.artwork_confirmed_item_ids?.includes(item.id) ??
+                              false
+                            }
+                            readOnly
+                            className="mt-0.5 h-4 w-4 shrink-0 accent-[#7BCBD5]"
+                          />
+                          <span>I have confirmed the artwork/image.</span>
+                        </label>
+                      ) : null}
                     </div>
                   </td>
                   <td className="border border-black px-2 py-3">

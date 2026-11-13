@@ -42,8 +42,8 @@ export async function POST(request: NextRequest) {
     const itemIds = items.map((item) => String(item?.id ?? "")).filter(Boolean);
     if (itemIds.length !== items.length || new Set(itemIds).size !== itemIds.length) return NextResponse.json({ error: "Each OCF item must be included once" }, { status: 400 });
     for (const item of items) {
-      if (!item?.imagePath || (item.needBy !== "ASAP" && !DATE.test(String(item.needBy ?? "")))) {
-        return NextResponse.json({ error: "Every item requires artwork and a Need by Date or ASAP." }, { status: 400 });
+      if (item.needBy !== "ASAP" && !DATE.test(String(item.needBy ?? ""))) {
+        return NextResponse.json({ error: "Every item requires a Need by Date or ASAP." }, { status: 400 });
       }
     }
 
@@ -82,7 +82,7 @@ export async function POST(request: NextRequest) {
         // The OCF's internal `remarks` column is the snapshot displayed to
         // users as Description. Refresh it alongside quantity and artwork.
         remarks: descriptionBySubitemId.get(source.subitem_id) ?? "",
-        image_path: item.imagePath,
+        image_path: String(item.imagePath ?? "").trim() || null,
         need_by_date: item.needBy,
       };
     });
