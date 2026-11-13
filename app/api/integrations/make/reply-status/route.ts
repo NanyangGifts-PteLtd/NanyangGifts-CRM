@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getSystemLabel } from "@/lib/system-labels";
+import { NO_REPLY_NEEDED_REPLY_STATUS_OPTION_ID } from "@/lib/client-reply-status-rules";
 
 type ReplyDetectedBody = {
   eventId?: string;
@@ -198,7 +199,10 @@ export async function POST(request: NextRequest) {
     const repliedLabel = await getSystemLabel("reply_status", "reply_status_replied");
 
     const alreadyReplied = client.reply_status_option_id === repliedLabel.id;
-    if (!alreadyReplied) {
+    const replyStatusAlreadyFinal =
+      alreadyReplied ||
+      client.reply_status_option_id === NO_REPLY_NEEDED_REPLY_STATUS_OPTION_ID;
+    if (!replyStatusAlreadyFinal) {
       const { error: updateError } = await supabaseAdmin
         .from("clients")
         .update({
@@ -245,8 +249,13 @@ export async function POST(request: NextRequest) {
       clientId,
       matchedBy: requestedClientId ? "clientId" : clientEmail ? "clientEmail" : "recipients",
       clientEmail: client.email?.trim().toLowerCase() || clientEmail || null,
-      replyStatus: repliedLabel.value,
+      replyStatus: replyStatusAlreadyFinal
+        ? client.reply_status
+        : repliedLabel.value,
       alreadyReplied,
+      noReplyNeeded:
+        client.reply_status_option_id ===
+        NO_REPLY_NEEDED_REPLY_STATUS_OPTION_ID,
     };
     await setInboundEvent(eventId, {
       status: "completed",

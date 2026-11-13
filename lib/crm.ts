@@ -18,6 +18,7 @@ import { addClientAssignee } from "./assignments";
 import { capitaliseFirstCharacter } from "./text-format";
 import { roundMonetaryAmount, roundUnitPrice } from "./subitem-calculations";
 import { toNullableDateValue } from "./date-values";
+import { NO_REPLY_NEEDED_REPLY_STATUS_OPTION_ID } from "./client-reply-status-rules";
 
 const supabase = createClient();
 
@@ -99,6 +100,9 @@ async function retryTimedOutRead<T extends SupabaseReadResult>(
 // identity. Those values must stay as Board text only, never as profiles.
 const supplierValueContainsUrl = (value: string) =>
   /(?:https?:\/\/|ftp:\/\/|www\.|Wechat:|mailto:)[^\s]+/i.test(value);
+
+const TO_REQUOTE_CLIENT_STATUS_OPTION_ID =
+  "90b74482-a796-481f-87d6-52f0b34ac6ee";
 
 const CLIENT_LOG_IGNORE_FIELDS = new Set<keyof Client>([
   "expanded",
@@ -2686,6 +2690,8 @@ export async function updateClientRow(
       clientOptionIds.status_option_id === failedLabel.id;
     const isToDeleteStatusUpdate =
       clientOptionIds.status_option_id === toDeleteLabel.id;
+    const isToRequoteStatusUpdate =
+      clientOptionIds.status_option_id === TO_REQUOTE_CLIENT_STATUS_OPTION_ID;
 
     if (isQuotedStatusUpdate) {
       const { data: followUpGroup, error: followUpGroupError } = await supabase
@@ -2714,14 +2720,19 @@ export async function updateClientRow(
         nextUpdates.replyStatusOptionId = repliedLabel.id;
         clientOptionIds.reply_status_option_id = repliedLabel.id;
       }
-    } else if (isContactedStatusUpdate) {
+    } else if (
+      (isContactedStatusUpdate || isToRequoteStatusUpdate) &&
+      existing.reply_status_option_id !== NO_REPLY_NEEDED_REPLY_STATUS_OPTION_ID
+    ) {
       const repliedLabel = await resolveSystemOption(
         "reply_status",
         "replied",
       );
-      nextUpdates.replyStatus = repliedLabel.value;
-      nextUpdates.replyStatusOptionId = repliedLabel.id;
-      clientOptionIds.reply_status_option_id = repliedLabel.id;
+      if (existing.reply_status_option_id !== repliedLabel.id) {
+        nextUpdates.replyStatus = repliedLabel.value;
+        nextUpdates.replyStatusOptionId = repliedLabel.id;
+        clientOptionIds.reply_status_option_id = repliedLabel.id;
+      }
     } else if (isFailedStatusUpdate) {
       const { data: failedGroup, error: failedGroupError } = await supabase
         .from("crm_groups")

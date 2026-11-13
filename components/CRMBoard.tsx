@@ -137,6 +137,7 @@ import {
   type OptionEntry,
 } from "@/lib/board-labels";
 import { overallPaymentStatus as calculateOverallPaymentStatus } from "@/lib/payment-status";
+import { NO_REPLY_NEEDED_REPLY_STATUS_OPTION_ID } from "@/lib/client-reply-status-rules";
 import {
   boardSearchColumnsForQuery,
   matchesBoardSearchValues,
@@ -154,6 +155,9 @@ const DEFAULT_BOARD_SEARCH_COLUMNS = [
   "client:phone",
   "client:email",
 ];
+
+const TO_REQUOTE_CLIENT_STATUS_OPTION_ID =
+  "90b74482-a796-481f-87d6-52f0b34ac6ee";
 
 type PendingOptionDeletion = {
   code: string;
@@ -8652,11 +8656,17 @@ export function CRMBoard({
           (updates.statusOptionId === undefined &&
             updates.status === failedStatus.value)
         : updates.status === failedStatus.value;
+      const isToRequoteStatusUpdate =
+        updates.statusOptionId === TO_REQUOTE_CLIENT_STATUS_OPTION_ID;
       if (
-        (isContactedStatusUpdate ||
+        (isToRequoteStatusUpdate ||
+          isContactedStatusUpdate ||
           (isQuotedStatusUpdate &&
             existingClient?.replyStatusOptionId === waitingReplyStatus.id)) &&
-        existingClient
+        existingClient &&
+        existingClient.replyStatusOptionId !==
+          NO_REPLY_NEEDED_REPLY_STATUS_OPTION_ID &&
+        existingClient.replyStatusOptionId !== doneReplyStatus.id
       ) {
         // Mirror the server-side status rule in the optimistic board state so
         // the reply cell does not briefly remain Waiting before realtime arrives.

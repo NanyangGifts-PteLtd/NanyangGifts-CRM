@@ -87,6 +87,7 @@ export function StatusBadge({
   readOnlyReason,
   includeBlankOption = true,
   sectionCount = 1,
+  sectionWidth = SECTION_WIDTH,
   sectionTitles,
   autoOpen = false,
   onAutoOpen,
@@ -106,6 +107,8 @@ export function StatusBadge({
   readOnlyReason?: string;
   includeBlankOption?: boolean;
   sectionCount?: number;
+  /** Width of each section in a multi-section label menu. */
+  sectionWidth?: number;
   /** Optional headings for multi-column label-menu sections. */
   sectionTitles?: string[];
   /** Opens the selector in response to a related field requiring a label. */
@@ -152,6 +155,10 @@ export function StatusBadge({
   const options = editingLabels && editorOptions ? editorOptions : baseOptions;
   optionsRef.current = options;
   const normalizedSectionCount = Math.max(1, sectionCount);
+  const normalizedSectionWidth = Math.max(
+    SECTION_WIDTH,
+    Math.floor(sectionWidth),
+  );
   const hasSectionTitles =
     normalizedSectionCount > 1 &&
     Array.from({ length: normalizedSectionCount }).some((_, section) =>
@@ -182,7 +189,7 @@ export function StatusBadge({
     const rect = btnRef.current.getBoundingClientRect();
     const desiredWidth =
       normalizedSectionCount > 1
-        ? normalizedSectionCount * SECTION_WIDTH + 32
+        ? normalizedSectionCount * normalizedSectionWidth + 32
         : MENU_WIDTH;
     const width = Math.min(desiredWidth, window.innerWidth - 16);
     const clampedLeft = Math.min(
@@ -219,7 +226,13 @@ export function StatusBadge({
       ? clampedLeft
       : rect.left + rect.width / 2 - width / 2;
     setMenuStyle({ position: "fixed", top, left, width, zIndex: 9999 });
-  }, [hasSectionTitles, largestSectionSize, normalizedSectionCount, options.length]);
+  }, [
+    hasSectionTitles,
+    largestSectionSize,
+    normalizedSectionCount,
+    normalizedSectionWidth,
+    options.length,
+  ]);
 
   const resetMenuState = () => {
     if (localLayoutTimerRef.current !== null) {
@@ -579,7 +592,7 @@ export function StatusBadge({
           style={
             normalizedSectionCount > 1
               ? {
-                  gridTemplateColumns: `repeat(${normalizedSectionCount}, minmax(${SECTION_WIDTH - 24}px, 1fr))`,
+                  gridTemplateColumns: `repeat(${normalizedSectionCount}, minmax(${normalizedSectionWidth - 24}px, 1fr))`,
                 }
               : undefined
           }

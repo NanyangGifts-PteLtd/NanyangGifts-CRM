@@ -1031,6 +1031,7 @@ export function TrackingQuoteList({
                             options={paymentStatusOptions}
                             small
                             sectionCount={2}
+                            sectionWidth={250}
                             sectionTitles={["Sales", "Admin"]}
                             readOnly={!canEdit || invoice.is_voided}
                             readOnlyReason={invoice.is_voided ? "Voided invoices cannot be updated" : "You can only edit items that are assigned to you"}
@@ -1160,6 +1161,7 @@ export function TrackingQuoteList({
                     options={paymentStatusOptions}
                     small
                     sectionCount={2}
+                    sectionWidth={250}
                     sectionTitles={["Sales", "Admin"]}
                     readOnly={!canEdit || invoice.is_voided}
                     readOnlyReason={invoice.is_voided ? "Voided invoices cannot be updated" : "You can only edit items that are assigned to you"}
