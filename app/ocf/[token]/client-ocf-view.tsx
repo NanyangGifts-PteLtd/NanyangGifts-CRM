@@ -7,7 +7,6 @@ import logo from "./nanyanggifts-gifts-and-merch.png";
 import { DEFAULT_IMPORTANT_NOTES } from "@/components/Important-Notes";
 import OcfImportantNotes from "@/components/OcfImportantNotes";
 import { OcfFloatingInstruction } from "@/components/OcfFloatingInstruction";
-import { PrintOcfItemPages } from "@/components/ocf/PrintOcfItemPages";
 
 type OcfItem = {
   id: string;
@@ -62,6 +61,162 @@ const formatNeedBy = (value?: string | null) =>
     ? String(value).split("-").reverse().join("/")
     : value || "-";
 
+function PrintCheckbox({ checked }: { checked: boolean }) {
+  return <span aria-label={checked ? "Checked" : "Not checked"}>{checked ? "☑" : "☐"}</span>;
+}
+
+function ClientOcfPrintLayout({
+  ocf,
+  company,
+  items,
+  importantNotes,
+  strictNeedByDate,
+  termsRead,
+  termsAgreed,
+  artworkConfirmedIds,
+  sameAddressForAllItems,
+  isLocked,
+  draftSignature,
+}: {
+  ocf: Ocf;
+  company: string;
+  items: EditableItem[];
+  importantNotes: string;
+  strictNeedByDate: boolean;
+  termsRead: boolean;
+  termsAgreed: boolean;
+  artworkConfirmedIds: Set<string>;
+  sameAddressForAllItems: boolean;
+  isLocked: boolean;
+  draftSignature: string | null;
+}) {
+  return (
+    <section className="ocf-client-print hidden print:block">
+      <style>{`
+        @media print {
+          @page { size: A4 portrait; margin: 12mm; }
+          .ocf-client-print {
+            display: block !important;
+            box-sizing: border-box;
+            width: calc(100% - 1px);
+            color: #000;
+          }
+          .ocf-client-print * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          .ocf-client-print table {
+            box-sizing: border-box;
+            width: 100%;
+            border-collapse: collapse;
+          }
+          .ocf-client-print .ocf-print-item-table { table-layout: fixed; }
+          .ocf-client-print tr, .ocf-client-print .ocf-print-keep { break-inside: avoid; page-break-inside: avoid; }
+          .ocf-client-print img { max-width: 100%; }
+        }
+      `}</style>
+      <header className="flex items-start justify-between border-b-2 border-black pb-3 text-sm">
+        <div>
+          <img src={logo.src} alt="Nanyang Gifts Logo" className="h-12 w-auto" />
+          <p className="mt-1 font-semibold">NANYANGGIFTS PTE. LTD.</p>
+        </div>
+        <div className="text-right">
+          <h1 className="font-bold tracking-wide">ORDER CONFIRMATION FORM</h1>
+          <p className="mt-2">Date: {ocf.generated_at ? new Date(ocf.generated_at).toLocaleDateString("en-SG") : "-"}</p>
+        </div>
+      </header>
+
+      <table className="mt-3 bg-[#eef2ff] text-xs">
+        <tbody>
+          <tr>
+            <th className="w-[18%] px-2 py-1.5 text-left">Project Name</th>
+            <td className="w-[32%] px-2 py-1.5">{ocf.client_name_snapshot || "-"}</td>
+            <th className="w-[18%] px-2 py-1.5 text-left">Account Manager</th>
+            <td className="px-2 py-1.5">{ocf.salesperson_name || "-"}</td>
+          </tr>
+          <tr>
+            <th className="px-2 py-1.5 text-left">Client&apos;s Company</th>
+            <td className="px-2 py-1.5">{company || "-"}</td>
+            <th className="px-2 py-1.5 text-left">Email</th>
+            <td className="break-all px-2 py-1.5">{ocf.salesperson_email || "-"}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p className="mt-3 text-xs"><PrintCheckbox checked={sameAddressForAllItems} /> Same address for all items</p>
+      <table className="ocf-print-item-table mt-2 table-fixed text-xs">
+        <thead>
+          <tr className="bg-gray-100">
+            <th className="w-[22%] border border-black px-2 py-2 text-left">Item</th>
+            <th className="w-[7%] border border-black px-2 py-2 text-left">Qty</th>
+            <th className="w-[11%] border border-black px-2 py-2 text-left">Need by</th>
+            <th className="w-[17%] border border-black px-2 py-2 text-left">Description</th>
+            <th className="border border-black px-2 py-2 text-left">Delivery Information</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((item) => (
+            <tr key={item.id} className="align-top">
+              <td className="border border-black px-2 py-2">
+                <p className="font-semibold">{item.item_name || "-"}</p>
+                {item.image_url ? <img src={item.image_url} alt={item.item_name || "Artwork"} className="mt-2 h-auto max-h-[82mm] w-full object-contain" /> : null}
+                {item.image_url ? <p className="mt-1 text-[11px]"><PrintCheckbox checked={artworkConfirmedIds.has(item.id)} /> Artwork/image confirmed</p> : null}
+              </td>
+              <td className="border border-black px-2 py-2">{item.qty || "-"}</td>
+              <td className="border border-black px-2 py-2">{formatNeedBy(item.need_by_date)}</td>
+              <td className="whitespace-pre-wrap break-words [overflow-wrap:anywhere] border border-black px-2 py-2">{item.remarks || "-"}</td>
+              <td className="border border-black px-2 py-2">
+                <dl className="space-y-2">
+                  <div><dt className="font-semibold">Name</dt><dd className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{item.delivery_name || "-"}</dd></div>
+                  <div><dt className="font-semibold">Address</dt><dd className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{item.delivery_address || "-"}</dd></div>
+                  <div>
+                    <dt className="font-semibold">Contact Number</dt>
+                    <dd className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
+                      {item.delivery_contact_number || "-"}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="font-semibold">Delivery Remarks</dt>
+                    <dd className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
+                      {item.delivery_remarks || "-"}
+                    </dd>
+                  </div>
+                </dl>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <section className="ocf-print-keep mt-4 border border-black p-3 text-xs">
+        <h2 className="font-semibold">Estimated Delivery Date</h2>
+        <p className="mt-2 whitespace-pre-wrap break-words">{ocf.estimated_delivery_notes || "-"}</p>
+      </section>
+      <section className="ocf-print-keep mt-4 w-full border border-black text-xs">
+        <p className="bg-[#eef2ff] px-3 py-2 font-semibold"><PrintCheckbox checked={strictNeedByDate} /> I have a compulsory/strict Need by Date for the item(s).</p>
+        {strictNeedByDate ? <div className="border-t border-amber-300 bg-amber-50 px-3 py-2"><OcfImportantNotes notes={ocf.strict_need_by_warning ?? ""} /></div> : null}
+      </section>
+      <section className="mt-6 border-t-2 border-black pt-4 text-xs">
+        <h2 className="bg-[#eef2ff] px-3 py-2 text-center text-sm font-semibold">Important notes, please read carefully:</h2>
+        <OcfImportantNotes notes={importantNotes} className="py-3" />
+        <div className="grid grid-cols-2 gap-3">
+          <p className="bg-[#eef2ff] px-3 py-2"><PrintCheckbox checked={termsRead} /> I have read the above terms.</p>
+          <p className="bg-[#eef2ff] px-3 py-2"><PrintCheckbox checked={termsAgreed} /> I agree with the above terms.</p>
+        </div>
+      </section>
+      <section className="ocf-print-keep mt-5 border-t border-black pt-3 text-xs">
+        <p className="font-semibold">Client Signature</p>
+        {draftSignature ? <img src={draftSignature} alt="Client signature" className="mt-2 h-auto max-h-20 max-w-[260px] object-contain" /> : null}
+        {isLocked ? (
+          <p className="mt-1">
+            <span className="font-semibold">Signed at:</span>{" "}
+            {ocf.client_signed_at
+              ? new Date(ocf.client_signed_at).toLocaleString("en-SG")
+              : "-"}
+          </p>
+        ) : null}
+      </section>
+    </section>
+  );
+}
+
 export default function ClientOcfView({ ocf }: { ocf: Ocf }) {
   const isLocked =
     ocf.status === "submitted" ||
@@ -95,6 +250,7 @@ export default function ClientOcfView({ ocf }: { ocf: Ocf }) {
     src: string;
     alt: string;
   } | null>(null);
+  const [draftSignature, setDraftSignature] = useState<string | null>(null);
 
   useEffect(() => {
     if (sameAddressForAllItems && items.length > 0) {
@@ -223,6 +379,19 @@ export default function ClientOcfView({ ocf }: { ocf: Ocf }) {
   return (
     <main className="ocf-light-document min-h-screen bg-[#f3f4f6] px-4 py-8 print:bg-white print:p-0">
       <div className="mx-auto max-w-5xl bg-white p-6 shadow-lg print:max-w-none print:p-0 print:shadow-none">
+        <ClientOcfPrintLayout
+          ocf={ocf}
+          company={company}
+          items={items}
+          importantNotes={importantNotes}
+          strictNeedByDate={strictNeedByDate}
+          termsRead={termsRead}
+          termsAgreed={termsAgreed}
+          artworkConfirmedIds={artworkConfirmedIds}
+          sameAddressForAllItems={sameAddressForAllItems}
+          isLocked={isLocked}
+          draftSignature={draftSignature}
+        />
         <div className="mb-4 flex items-start justify-between gap-4 border-b border-black pb-4 print:hidden">
           <div>
             <Image
@@ -495,17 +664,6 @@ export default function ClientOcfView({ ocf }: { ocf: Ocf }) {
           </tbody>
         </table>
 
-        <PrintOcfItemPages
-          items={items}
-          projectName={ocf.client_name_snapshot ?? ""}
-          companyName={company}
-          salespersonName={ocf.salesperson_name ?? ""}
-          salespersonEmail={ocf.salesperson_email ?? ""}
-          generatedAt={ocf.generated_at}
-          estimatedDeliveryNotes={ocf.estimated_delivery_notes ?? ""}
-          brandLogoSrc={logo.src}
-        />
-
         <div className="relative mt-4 border border-gray-300 text-sm print:hidden">
           <OcfFloatingInstruction side="right" step={3} className="top-1/2">
             [Optional] Please tick here if you have a strict Need By Date
@@ -531,7 +689,7 @@ export default function ClientOcfView({ ocf }: { ocf: Ocf }) {
           ) : null}
         </div>
 
-        <div className="relative mt-10 break-before-page print:break-before-page max-w-5xl">
+        <div className="relative mt-10 max-w-5xl print:hidden">
           <span className="flex bg-[#eef2ff] px-1 rounded-sm py-3 text-black items-center justify-center text-[15px]">
             𝐈𝐦𝐩𝐨𝐫𝐭𝐚𝐧𝐭 𝐧𝐨𝐭𝐞𝐬, 𝐩𝐥𝐞𝐚𝐬𝐞 𝐫𝐞𝐚𝐝 𝐜𝐚𝐫𝐞𝐟𝐮𝐥𝐥𝐲:{" "}
           </span>
@@ -575,7 +733,7 @@ export default function ClientOcfView({ ocf }: { ocf: Ocf }) {
           </div>
         </div>
 
-        <div className="relative mt-6">
+        <div className="relative mt-6 print:hidden">
           <OcfFloatingInstruction side="right" step={5} className="top-1/2">
             Please sign and submit here
           </OcfFloatingInstruction>
@@ -617,6 +775,7 @@ export default function ClientOcfView({ ocf }: { ocf: Ocf }) {
                   .filter((item) => Boolean(item.image_url))
                   .every((item) => artworkConfirmedIds.has(item.id))
               }
+              onSignatureChange={setDraftSignature}
             />
           )}
           {isLocked ? (
@@ -633,6 +792,16 @@ export default function ClientOcfView({ ocf }: { ocf: Ocf }) {
               </p>
             </div>
           ) : null}
+        </div>
+
+        <div className="mt-8 flex justify-center border-t border-gray-200 pt-5 print:hidden">
+          <button
+            type="button"
+            onClick={() => window.print()}
+            className="rounded bg-slate-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-slate-800"
+          >
+            Print / Download OCF
+          </button>
         </div>
 
       </div>

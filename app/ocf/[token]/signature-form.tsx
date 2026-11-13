@@ -12,6 +12,7 @@ type Props = {
     termsAgreed: boolean;
     artworkConfirmedItemIds: string[];
     confirmationsComplete: boolean;
+    onSignatureChange?: (dataUrl: string | null) => void;
     items: {
         id: string;
         delivery_name?: string | null;
@@ -33,6 +34,7 @@ export default function SignatureForm({
     termsAgreed,
     artworkConfirmedItemIds,
     confirmationsComplete,
+    onSignatureChange,
     items,
 }: Props) {
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -153,6 +155,9 @@ export default function SignatureForm({
 
     function stopDrawing() {
         setDrawing(false);
+        if (canvasRef.current) {
+            onSignatureChange?.(canvasRef.current.toDataURL("image/png"));
+        }
     }
 
     function clearSignature() {
@@ -160,6 +165,7 @@ export default function SignatureForm({
         setTypedInitials("");
         setError(null);
         setupCanvas();
+        onSignatureChange?.(null);
     }
 
     function drawTypedSignature() {
@@ -172,6 +178,7 @@ export default function SignatureForm({
 
         if (!typedInitials.trim()) {
             setHasSignature(false);
+            onSignatureChange?.(null);
             return;
         }
 
@@ -182,6 +189,7 @@ export default function SignatureForm({
 
         setHasSignature(true);
         setError(null);
+        onSignatureChange?.(canvas.toDataURL("image/png"));
     }
 
     useEffect(() => {
