@@ -87,6 +87,39 @@ function money(value: unknown, field: string) {
   return parsed;
 }
 
+async function syncCompletedPaymentRequestRow(voucher: {
+  voucher_group?: string | null;
+  is_draft?: boolean | null;
+  payment_request_payment_row_id?: string | null;
+  cost?: number | null;
+  order_number?: string | null;
+  mode_of_payment?: string | null;
+  mode_of_payment_option_id?: string | null;
+  remarks?: string | null;
+}) {
+  if (
+    voucher.voucher_group !== "payment_requests" ||
+    voucher.is_draft ||
+    !voucher.payment_request_payment_row_id
+  )
+    return;
+  const paid = await getSystemLabel("payment_received", "payment_received_yes");
+  const { error } = await supabaseAdmin
+    .from("subitem_payment_rows")
+    .update({
+      amount: voucher.cost == null ? "" : String(voucher.cost),
+      order_number: voucher.order_number ?? "",
+      mode_of_payment: voucher.mode_of_payment ?? "",
+      mode_of_payment_option_id: voucher.mode_of_payment_option_id ?? null,
+      remarks: voucher.remarks ?? "",
+      payment_received: true,
+      payment_received_label: paid.value,
+      payment_received_option_id: paid.id,
+    })
+    .eq("id", voucher.payment_request_payment_row_id);
+  if (error) throw error;
+}
+
 export async function POST(request: NextRequest) {
   try {
     assertSupabaseAdminConfiguration();
@@ -111,6 +144,7 @@ export async function POST(request: NextRequest) {
       clientId?: string;
       voucherId?: string;
       paymentVoucherGroup?: "other" | "payment_requests";
+      paymentRequestPaymentRowId?: string;
       voucher?: {
         cost?: unknown;
         reason?: unknown;
@@ -204,7 +238,7 @@ export async function POST(request: NextRequest) {
         "Payment Voucher Cost must equal the expense-line total.",
       );
 
-    const relatedSubitemIds = Array.isArray(voucher?.relatedSubitemIds)
+    let relatedSubitemIds = Array.isArray(voucher?.relatedSubitemIds)
       ? [
           ...new Set(
             voucher.relatedSubitemIds.filter(
@@ -272,11 +306,15 @@ export async function POST(request: NextRequest) {
       deactivated_at: string | null;
       is_draft?: boolean | null;
       voucher_group?: string | null;
+      payment_request_payment_row_id?: string | null;
+      related_subitem_ids?: string[] | null;
     } | null = null;
     if (existingVoucherId) {
       const { data, error } = await supabaseAdmin
         .from("additional_costs")
-        .select("id, client_id, courier_option_id, reason, has_quickbooks_bill, deactivated_at, is_draft, voucher_group")
+        .select(
+          "id, client_id, courier_option_id, reason, has_quickbooks_bill, deactivated_at, is_draft, voucher_group, payment_request_payment_row_id, related_subitem_ids",
+        )
         .eq("id", existingVoucherId)
         .is("deleted_at", null)
         .maybeSingle();
@@ -315,10 +353,39 @@ export async function POST(request: NextRequest) {
     const isPaymentRequest = existingVoucher
       ? existingVoucher.voucher_group === "payment_requests"
       : requestedPaymentRequest;
+    if (isPaymentRequest && !voucher && existingVoucher)
+      relatedSubitemIds = existingVoucher.related_subitem_ids ?? [];
     if (!isPaymentRequest && client.custom_fields?.subitemsLocked === "true")
       throw new Error("This client is locked.");
     if (isPaymentRequest && mergeSubitemId)
       throw new Error("Payment Requests cannot merge into a CRM subitem.");
+    const paymentRequestPaymentRowId = isPaymentRequest
+      ? String(
+          body.paymentRequestPaymentRowId ??
+            existingVoucher?.payment_request_payment_row_id ??
+            "",
+        ).trim()
+      : "";
+    if (isPaymentRequest && !paymentRequestPaymentRowId)
+      throw new Error("Choose a subpayment row before creating a Payment Request.");
+    const { data: paymentRequestRow, error: paymentRequestRowError } =
+      isPaymentRequest
+        ? await supabaseAdmin
+            .from("subitem_payment_rows")
+            .select("id, subitem_id")
+            .eq("id", paymentRequestPaymentRowId)
+            .maybeSingle()
+        : { data: null, error: null };
+    if (paymentRequestRowError || (isPaymentRequest && !paymentRequestRow))
+      throw new Error("The selected subpayment row is no longer available.");
+    if (
+      isPaymentRequest &&
+      (relatedSubitemIds.length !== 1 ||
+        relatedSubitemIds[0] !== paymentRequestRow?.subitem_id)
+    )
+      throw new Error(
+        "A Payment Request must remain linked to its selected subitem.",
+      );
     const { data: relatedSubitems, error: relatedError } = await supabaseAdmin
       .from("subitems")
       .select("id, name, custom_fields")
@@ -326,6 +393,8 @@ export async function POST(request: NextRequest) {
       .is("deleted_at", null)
       .in("id", relatedSubitemIds);
     if (relatedError) throw relatedError;
+    if (isPaymentRequest && (relatedSubitems ?? []).length !== 1)
+      throw new Error("The selected subpayment row no longer belongs to this client.");
     if (
       (!existingVoucher || existingVoucher.is_draft) &&
       ((relatedSubitems ?? []).length !== relatedSubitemIds.length ||
@@ -556,6 +625,7 @@ export async function POST(request: NextRequest) {
         .eq("custom_fields->>additionalCostId", existingVoucher.id)
         .is("deleted_at", null);
       if (linkedSubitemError) throw linkedSubitemError;
+      await syncCompletedPaymentRequestRow(updatedVoucher);
       return NextResponse.json({
         row: updatedVoucher,
         billId: quickBooksBill.Id,
@@ -612,6 +682,9 @@ export async function POST(request: NextRequest) {
         ? null
         : await nextPaymentVoucherReference(),
       voucher_group: isPaymentRequest ? "payment_requests" : "other",
+      payment_request_payment_row_id: isPaymentRequest
+        ? paymentRequestPaymentRowId
+        : null,
       ...draftFinalValues,
     };
     const voucherResult = existingVoucher?.is_draft
@@ -637,7 +710,8 @@ export async function POST(request: NextRequest) {
         `Could not save the payment voucher for this QuickBooks Bill: ${voucherError.message}`,
       );
     try {
-      if (isPaymentRequest)
+      if (isPaymentRequest) {
+        await syncCompletedPaymentRequestRow(voucherRow);
         return NextResponse.json(
           {
             row: voucherRow,
@@ -647,6 +721,7 @@ export async function POST(request: NextRequest) {
           },
           { status: 201 },
         );
+      }
       if (mergeSubitemId) {
         const paymentDone = await getSystemLabel("payment_received", "payment_received_yes");
         const paidStatus = await getSystemLabel("payment_status", "payment_status_paid");

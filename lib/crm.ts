@@ -4250,6 +4250,21 @@ export async function deleteSubitemPaymentRow(
     .eq("subitem_id", subitemId)
     .single();
   if (rowError) throw rowError;
+  const { data: linkedPaymentRequest, error: linkedPaymentRequestError } =
+    await supabase
+      .from("additional_costs")
+      .select("id")
+      .eq("payment_request_payment_row_id", paymentRowId)
+      .eq("voucher_group", "payment_requests")
+      .is("deactivated_at", null)
+      .is("deleted_at", null)
+      .maybeSingle();
+  if (linkedPaymentRequestError) throw linkedPaymentRequestError;
+  if (linkedPaymentRequest) {
+    throw new Error(
+      "Deactivate the linked Payment Request before removing this subpayment row.",
+    );
+  }
   const { error } = await supabase
     .from("subitem_payment_rows")
     .delete()

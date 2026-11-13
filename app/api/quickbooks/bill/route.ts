@@ -10,9 +10,43 @@ import {
 import { listQuickBooksTaxCodes } from "@/lib/quickbooks/bill-options";
 import { quickBooksBillGstTotal } from "@/lib/quickbooks/bill-tax";
 import { ensureQuickBooksBillNumberAvailable } from "@/lib/quickbooks/bill-duplicate-check";
+import { getSystemLabel } from "@/lib/system-labels";
 
 const INTERNAL_ROLES = new Set(["sales", "pm", "admin", "director", "dev"]);
 const BILL_NOT_FOUND_ERROR = "ERROR - Could not find Bill";
+
+async function syncCompletedPaymentRequestRow(voucher: {
+  voucher_group?: string | null;
+  is_draft?: boolean | null;
+  payment_request_payment_row_id?: string | null;
+  cost?: number | null;
+  order_number?: string | null;
+  mode_of_payment?: string | null;
+  mode_of_payment_option_id?: string | null;
+  remarks?: string | null;
+}) {
+  if (
+    voucher.voucher_group !== "payment_requests" ||
+    voucher.is_draft ||
+    !voucher.payment_request_payment_row_id
+  )
+    return;
+  const paid = await getSystemLabel("payment_received", "payment_received_yes");
+  const { error } = await supabaseAdmin
+    .from("subitem_payment_rows")
+    .update({
+      amount: voucher.cost == null ? "" : String(voucher.cost),
+      order_number: voucher.order_number ?? "",
+      mode_of_payment: voucher.mode_of_payment ?? "",
+      mode_of_payment_option_id: voucher.mode_of_payment_option_id ?? null,
+      remarks: voucher.remarks ?? "",
+      payment_received: true,
+      payment_received_label: paid.value,
+      payment_received_option_id: paid.id,
+    })
+    .eq("id", voucher.payment_request_payment_row_id);
+  if (error) throw error;
+}
 
 async function setBillSyncError(voucherId: string, error: string | null) {
   const { error: updateError } = await supabaseAdmin
@@ -215,6 +249,7 @@ export async function POST(request: NextRequest) {
       .select("*")
       .single();
     if (error) throw error;
+    await syncCompletedPaymentRequestRow(row);
     await supabaseAdmin
       .from("subitems")
       .update({ cost: String(total) })
@@ -277,6 +312,7 @@ export async function GET(request: NextRequest) {
       .select("*")
       .single();
     if (refreshError) throw refreshError;
+    await syncCompletedPaymentRequestRow(refreshedVoucher);
     const { error: subitemError } = await supabaseAdmin
       .from("subitems")
       .update({ cost: String(total) })
@@ -553,6 +589,7 @@ export async function PATCH(request: NextRequest) {
       .select("*")
       .single();
     if (error) throw error;
+    await syncCompletedPaymentRequestRow(row);
     const { error: subitemError } = await supabaseAdmin
       .from("subitems")
       .update({ cost: String(total) })

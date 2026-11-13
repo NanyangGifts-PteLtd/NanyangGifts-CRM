@@ -141,6 +141,7 @@ type AdditionalCost = {
   } | null;
   deactivated_at?: string | null;
   deactivation_reason?: string | null;
+  payment_request_payment_row_id?: string | null;
   can_edit?: boolean;
   can_deactivate?: boolean;
 };
@@ -184,6 +185,19 @@ type Props = {
   clientPmAssignees: Record<string, string[]>;
   onOpenProject?: (clientId: string) => void;
   onAttentionCountChange?: (count: number) => void;
+  embedded?: boolean;
+  paymentRequestLaunch?: {
+    id: string;
+    clientId: string;
+    subitemId: string;
+    paymentRowId: string;
+    amount: string;
+    orderNumber: string;
+    modeOfPayment: string;
+    modeOfPaymentOptionId?: string | null;
+    remarks: string;
+  } | null;
+  onPaymentRequestClosed?: () => void;
 };
 type Column = { key: string; label: string; width: number };
 const initialColumns: Column[] = [
@@ -386,6 +400,9 @@ export function AdditionalCostsBoard({
   clientPmAssignees,
   onOpenProject,
   onAttentionCountChange,
+  embedded = false,
+  paymentRequestLaunch = null,
+  onPaymentRequestClosed,
 }: Props) {
   const [rows, setRows] = useState<AdditionalCost[]>([]);
   const [voucherSearch, setVoucherSearch] = useState("");
@@ -468,6 +485,8 @@ export function AdditionalCostsBoard({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [paymentRequestPaymentRowId, setPaymentRequestPaymentRowId] =
+    useState<string | null>(null);
   const [relatedSubitemsOpen, setRelatedSubitemsOpen] = useState(false);
   const draftRelatedSubitemSelectionAnchorRef = useRef<{
     id: string;
@@ -1386,6 +1405,7 @@ export function AdditionalCostsBoard({
         body: JSON.stringify({
           clientId,
           paymentVoucherGroup: voucherCreationGroup,
+          paymentRequestPaymentRowId,
           values: voucherDraft,
         }),
       });
@@ -1395,6 +1415,9 @@ export function AdditionalCostsBoard({
           result.error ?? "Could not create the additional cost.",
         );
       setRows((current) => [result.row, ...current]);
+      if (voucherCreationGroup === "payment_requests")
+        window.dispatchEvent(new Event("crm:payment-request-links-changed"));
+      if (embedded) closePaymentVoucherPreview();
       setPickerOpen(false);
       setPickerQuery("");
       setSelectedVoucherClientId(null);
@@ -1469,6 +1492,9 @@ export function AdditionalCostsBoard({
           : row.voucher_group === "other"
             ? "other"
             : "courier",
+      );
+      setPaymentRequestPaymentRowId(
+        row.payment_request_payment_row_id ?? null,
       );
       setOtherBillChoice(row.is_draft ? "add" : null);
       setSelectedVoucherClientId(row.client_id);
@@ -1644,6 +1670,7 @@ export function AdditionalCostsBoard({
           ...(editingVoucher?.is_draft ? { id: editingVoucher.id } : {}),
           clientId: selectedVoucherClientId,
           paymentVoucherGroup: voucherCreationGroup,
+          paymentRequestPaymentRowId,
           values: voucherDraft,
           bill: {
             ...billDraft,
@@ -1671,6 +1698,8 @@ export function AdditionalCostsBoard({
           : current.map((row) => (row.id === result.row.id ? result.row : row));
       });
       setEditingVoucher(result.row);
+      if (voucherCreationGroup === "payment_requests")
+        window.dispatchEvent(new Event("crm:payment-request-links-changed"));
       setSavedDraftAttachments(attachmentFiles);
       setBillDraft((draft) => ({ ...draft, attachments: [] }));
       toast.success("Payment Voucher draft saved", {
@@ -1700,6 +1729,8 @@ export function AdditionalCostsBoard({
     setBillDocumentPreview(null);
     setPrefillFileSignature(null);
     setSavedDraftAttachments([]);
+    setPaymentRequestPaymentRowId(null);
+    if (embedded) onPaymentRequestClosed?.();
   };
   const requestClosePaymentVoucherPreview = () => {
     const canSaveDraft =
@@ -1867,6 +1898,7 @@ export function AdditionalCostsBoard({
             : {
                 clientId,
                 paymentVoucherGroup: voucherCreationGroup,
+                paymentRequestPaymentRowId,
                 voucher: voucherDraft,
                 bill,
               },
@@ -1891,6 +1923,12 @@ export function AdditionalCostsBoard({
             )
           : current.map((row) => (row.id === pendingId ? result.row : row)),
       );
+      if (
+        (existingVoucher?.voucher_group ?? voucherCreationGroup) ===
+        "payment_requests"
+      )
+        window.dispatchEvent(new Event("crm:payment-request-links-changed"));
+      if (embedded) onPaymentRequestClosed?.();
       toast.dismiss(generatingToast);
       toast.success(
         existingVoucher
@@ -2559,6 +2597,8 @@ export function AdditionalCostsBoard({
       );
       setPendingDelete(null);
       setDeactivationReason("");
+      if (row.voucher_group === "payment_requests")
+        window.dispatchEvent(new Event("crm:payment-request-links-changed"));
       toast.success("Payment Voucher deactivated");
     } catch (deleteError) {
       toast.error("Additional cost could not be deleted", {
@@ -2665,6 +2705,17 @@ export function AdditionalCostsBoard({
     return () => window.clearTimeout(timer);
   }, [loadPickerClientPage, pickerOpen, pickerQuery, selectedVoucherClientId]);
   const renderRelatedSubitemSelector = (clientId: string) => {
+    if (paymentRequestPaymentRowId) {
+      const selected = (clientsById.get(clientId)?.subitems ?? []).find(
+        (subitem) => subitem.id === voucherDraft.relatedSubitemIds[0],
+      );
+      return (
+        <div className="mt-1 rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+          {selected?.name || "Selected subitem"}
+          {selected?.displayId ? ` · ${selected.displayId}` : ""}
+        </div>
+      );
+    }
     const subitems = (clientsById.get(clientId)?.subitems ?? []).filter(
       (subitem) =>
         subitem.id !== voucherDraft.mergeSubitemId &&
@@ -3223,6 +3274,7 @@ export function AdditionalCostsBoard({
       new Set([...groups.map((group) => group.id), "ungrouped"]),
     );
     setVoucherCreationGroup(groupId);
+    setPaymentRequestPaymentRowId(null);
     setQuickBooksBillOnlyMode(groupId === "quickbooks_bills_only");
     setSelectedVoucherClientId(null);
     setOtherBillChoice(groupId === "quickbooks_bills_only" ? "add" : null);
@@ -3271,6 +3323,52 @@ export function AdditionalCostsBoard({
     });
     setPickerOpen(true);
   };
+  const openedPaymentRequestRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (
+      !paymentRequestLaunch ||
+      openedPaymentRequestRef.current === paymentRequestLaunch.id
+    )
+      return;
+    openedPaymentRequestRef.current = paymentRequestLaunch.id;
+    const selectedClient = clients.find(
+      (client) => client.id === paymentRequestLaunch.clientId,
+    );
+    if (!selectedClient) {
+      toast.error("The selected client is no longer available.");
+      onPaymentRequestClosed?.();
+      return;
+    }
+    setVoucherCreationGroup("payment_requests");
+    setPickerClients((current) => {
+      const next = new Map(current.map((client) => [client.id, client]));
+      next.set(selectedClient.id, selectedClient);
+      return Array.from(next.values());
+    });
+    setQuickBooksBillOnlyMode(false);
+    setSelectedVoucherClientId(paymentRequestLaunch.clientId);
+    setOtherBillChoice(null);
+    setBillTargetVoucher(null);
+    setEditingVoucher(null);
+    setPaymentRequestPaymentRowId(paymentRequestLaunch.paymentRowId);
+    setVoucherDraft({
+      cost: paymentRequestLaunch.amount,
+      reason: "",
+      reasonOptionId: "",
+      relatedSubitemIds: [paymentRequestLaunch.subitemId],
+      mergeSubitemEnabled: false,
+      mergeSubitemId: "",
+      courier: "",
+      courierOptionId: "",
+      remarks: paymentRequestLaunch.remarks,
+      orderNumber: paymentRequestLaunch.orderNumber,
+      modeOfPayment: paymentRequestLaunch.modeOfPayment,
+      modeOfPaymentOptionId: paymentRequestLaunch.modeOfPaymentOptionId ?? "",
+      currency: "SGD",
+      currencyOptionId: "",
+    });
+    setPickerOpen(true);
+  }, [clients, onPaymentRequestClosed, paymentRequestLaunch]);
   const renderVoucherGroup = (group: (typeof voucherGroups)[number]) => {
     const activeVoucherCount = group.rows.filter(
       (row) => !row.deactivated_at,
@@ -3310,6 +3408,14 @@ export function AdditionalCostsBoard({
       (total, column) => total + column.width,
       0,
     );
+    const voucherRowVisibilityStyles = [
+      `[data-voucher-group="${group.id}"] .payment-voucher-row>[data-voucher-col]{display:none;align-items:center;}`,
+      ...tableColumns.map(
+        (column, index) =>
+          `[data-voucher-group="${group.id}"] .payment-voucher-row [data-voucher-col="${column.key}"]{display:flex;order:${index};}`,
+      ),
+      ".deactivated-voucher-row [data-voucher-col]:not([data-voucher-col=\"activity\"]):not([data-voucher-col=\"trip_id\"]):not([data-voucher-col=\"actions\"]){text-decoration:line-through;}",
+    ].join("");
     return (
       <section
         key={group.id}
@@ -3398,6 +3504,7 @@ export function AdditionalCostsBoard({
             ) : null}
           </div>
 
+          {group.id !== "payment_requests" ? (
           <button
             type="button"
             onClick={(e) => {
@@ -3410,6 +3517,7 @@ export function AdditionalCostsBoard({
               ? "+ Add QuickBooks Bill"
               : "+ Add payment voucher"}
           </button>
+          ) : null}
         </div>
         {!collapsedVoucherGroups[group.id] && (
           <div className="overflow-visible">
@@ -3417,7 +3525,7 @@ export function AdditionalCostsBoard({
               data-voucher-group={group.id}
               className="min-w-full border-collapse text-sm"
             >
-              <style>{`[data-voucher-group="${group.id}"] .payment-voucher-row>[data-voucher-col]{display:none;align-items:center;} ${tableColumns.map((column, index) => `[data-voucher-group="${group.id}"] .payment-voucher-row [data-voucher-col="${column.key}"]{display:flex;order:${index};}`).join("")} .deactivated-voucher-row [data-voucher-col]:not([data-voucher-col="activity"]):not([data-voucher-col="trip_id"]):not([data-voucher-col="actions"]){text-decoration:line-through;}`}</style>
+              <style>{voucherRowVisibilityStyles}</style>
               <thead className="sticky top-0 z-[77] bg-slate-50 text-left text-xs font-semibold text-slate-500 shadow-[0_1px_0_rgba(148,163,184,0.35)]">
                 <tr
                   className="grid"
@@ -3492,7 +3600,14 @@ export function AdditionalCostsBoard({
                         setDraggedVoucherColumn(null);
                         setVoucherDropTarget(null);
                       }}
-                      className={`relative whitespace-nowrap border-b border-r border-slate-200 px-3 py-3 last:border-r-0 ${voucherDropTarget?.group === group.id && voucherDropTarget.key === column.key ? (voucherDropTarget.edge === "left" ? "border-l-2 border-l-sky-500" : "border-r-2 border-r-sky-500") : ""}`}
+                      className={`relative whitespace-nowrap border-b border-r border-slate-200 px-3 py-3 last:border-r-0 ${
+                        voucherDropTarget?.group === group.id &&
+                        voucherDropTarget.key === column.key
+                          ? voucherDropTarget.edge === "left"
+                            ? "border-l-2 border-l-sky-500"
+                            : "border-r-2 border-r-sky-500"
+                          : ""
+                      }`}
                     >
                       {column.label}
                       <button
@@ -4157,7 +4272,9 @@ export function AdditionalCostsBoard({
           </div>
         )}
         {!collapsedVoucherGroups[group.id] &&
-          String(group.id) !== "quickbooks_bills_only" && (
+          !["quickbooks_bills_only", "payment_requests"].includes(
+            String(group.id),
+          ) && (
             <div className="border-t border-slate-200 px-3 py-2">
               <button
                 type="button"
@@ -4174,7 +4291,15 @@ export function AdditionalCostsBoard({
     );
   };
   return (
-    <section className="crm-board min-h-full bg-slate-50 p-4 sm:p-6">
+    <section
+      className={
+        embedded
+          ? "crm-board contents"
+          : "crm-board min-h-full bg-slate-50 p-4 sm:p-6"
+      }
+    >
+      {!embedded && (
+        <>
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2">
           <div>
@@ -4647,6 +4772,8 @@ export function AdditionalCostsBoard({
         </div>
       </div>
       {error ? <p className="m-3 text-sm text-red-600">{error}</p> : null}
+        </>
+      )}
       {pickerOpen ? (
         <div
           className="fixed inset-0 z-modal flex items-center justify-center gap-5 bg-slate-950/35 p-4"
@@ -4924,7 +5051,10 @@ export function AdditionalCostsBoard({
                     </section>
                   ) : (
                     <>
-                      <section className="order-2 -mx-5 border-t-4 border-slate-300 px-5 pt-4">
+                      {otherBillChoice === "add" ||
+                      billTargetVoucher ||
+                      (editingQuickBooksBill && otherBillChoice !== "none") ? (
+                        <section className="order-2 -mx-5 border-t-4 border-slate-300 px-5 pt-4">
                         <div className="flex items-center justify-between gap-3">
                           <div>
                             <h3 className="font-semibold text-slate-800">
@@ -5639,7 +5769,8 @@ export function AdditionalCostsBoard({
                             ) : null}
                           </div>
                         ) : null}
-                      </section>
+                        </section>
+                      ) : null}
                       {!billTargetVoucher && !quickBooksBillOnlyMode ? (
                         <section className="order-1 -mx-5 border-t-4 border-slate-300 px-5 pt-4">
                           <h3 className="font-semibold text-slate-800">

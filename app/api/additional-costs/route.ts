@@ -224,6 +224,65 @@ async function assertVoucherClientEditor(
   return client;
 }
 
+async function assertPaymentRequestPaymentRow(
+  paymentRowId: unknown,
+  clientId: string,
+) {
+  const id = String(paymentRowId ?? "").trim();
+  if (!id) return null;
+  const { data: paymentRow, error: paymentRowError } = await supabaseAdmin
+    .from("subitem_payment_rows")
+    .select("id, subitem_id")
+    .eq("id", id)
+    .maybeSingle();
+  if (paymentRowError || !paymentRow)
+    throw new Error("The selected subpayment row is no longer available.");
+  const { data: subitem, error: subitemError } = await supabaseAdmin
+    .from("subitems")
+    .select("id, client_id")
+    .eq("id", paymentRow.subitem_id)
+    .eq("client_id", clientId)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (subitemError || !subitem)
+    throw new Error("The selected subpayment row does not belong to this client.");
+  return { id: paymentRow.id, subitemId: subitem.id };
+}
+
+async function syncCompletedPaymentRequestRow(
+  voucher: {
+    voucher_group?: string | null;
+    is_draft?: boolean | null;
+    payment_request_payment_row_id?: string | null;
+    cost?: number | null;
+    order_number?: string | null;
+    mode_of_payment?: string | null;
+    mode_of_payment_option_id?: string | null;
+    remarks?: string | null;
+  },
+) {
+  if (
+    voucher.voucher_group !== "payment_requests" ||
+    voucher.is_draft ||
+    !voucher.payment_request_payment_row_id
+  ) return;
+  const paid = await getSystemLabel("payment_received", "payment_received_yes");
+  const { error } = await supabaseAdmin
+    .from("subitem_payment_rows")
+    .update({
+      amount: voucher.cost == null ? "" : String(voucher.cost),
+      order_number: voucher.order_number ?? "",
+      mode_of_payment: voucher.mode_of_payment ?? "",
+      mode_of_payment_option_id: voucher.mode_of_payment_option_id ?? null,
+      remarks: voucher.remarks ?? "",
+      payment_received: true,
+      payment_received_label: paid.value,
+      payment_received_option_id: paid.id,
+    })
+    .eq("id", voucher.payment_request_payment_row_id);
+  if (error) throw error;
+}
+
 async function nextPaymentVoucherReference() {
   const { data, error } = await supabaseAdmin.rpc(
     "next_payment_voucher_reference_id",
@@ -365,12 +424,21 @@ export async function POST(request: NextRequest) {
       };
       bill?: Record<string, unknown>;
       ocr?: Record<string, unknown>;
+      paymentRequestPaymentRowId?: string;
     };
     if (!body.clientId)
       throw new Error("Choose a client before creating an additional cost.");
 
     if (body.action === "save-draft") {
       const client = await assertVoucherClientEditor(body.clientId, user.id, role);
+      const paymentRequestRow = body.paymentVoucherGroup === "payment_requests"
+        ? await assertPaymentRequestPaymentRow(
+            body.paymentRequestPaymentRowId,
+            client.id,
+          )
+        : null;
+      if (body.paymentVoucherGroup === "payment_requests" && !paymentRequestRow)
+        throw new Error("Choose a subpayment row before creating a Payment Request.");
       const draftId = String(body.id ?? "").trim();
       const costText = String(body.values?.cost ?? "").trim();
       const cost = costText === "" ? null : Number(costText);
@@ -396,6 +464,10 @@ export async function POST(request: NextRequest) {
             ),
           ]
         : [];
+      if (
+        paymentRequestRow &&
+        (relatedSubitemIds.length !== 1 || relatedSubitemIds[0] !== paymentRequestRow.subitemId)
+      ) throw new Error("A Payment Request must remain linked to its selected subitem.");
       const { data: selectedSubitems, error: selectedSubitemsError } =
         relatedSubitemIds.length
           ? await supabaseAdmin
@@ -425,6 +497,7 @@ export async function POST(request: NextRequest) {
         currency: currency.value,
         currency_option_id: currency.id,
         related_subitem_ids: relatedSubitemIds,
+        payment_request_payment_row_id: paymentRequestRow?.id ?? null,
         items_sent: itemsSent,
         voucher_group:
           body.paymentVoucherGroup === "payment_requests"
@@ -520,6 +593,15 @@ export async function POST(request: NextRequest) {
     const relatedSubitemIds = Array.isArray(body.values?.relatedSubitemIds)
       ? [...new Set(body.values.relatedSubitemIds.filter((id): id is string => typeof id === "string" && id.trim().length > 0))]
       : [];
+    const paymentRequestRow = isPaymentRequest
+      ? await assertPaymentRequestPaymentRow(body.paymentRequestPaymentRowId, body.clientId)
+      : null;
+    if (isPaymentRequest && !paymentRequestRow)
+      throw new Error("Choose a subpayment row before creating a Payment Request.");
+    if (
+      paymentRequestRow &&
+      (relatedSubitemIds.length !== 1 || relatedSubitemIds[0] !== paymentRequestRow.subitemId)
+    ) throw new Error("A Payment Request must remain linked to its selected subitem.");
     const mergeSubitemId = String(body.values?.mergeSubitemId ?? "").trim();
     if (isPaymentRequest && mergeSubitemId)
       throw new Error("Payment Requests cannot merge into a CRM subitem.");
@@ -622,12 +704,13 @@ export async function POST(request: NextRequest) {
         mode_of_payment_option_id: modeOfPayment.id,
         currency: currency.value,
         currency_option_id: currency.id,
+        payment_request_payment_row_id: paymentRequestRow?.id ?? null,
       })
       .select("*")
       .single();
     if (error) throw error;
     if (isPaymentRequest) {
-      // Payment Requests deliberately have no corresponding CRM subitem.
+      await syncCompletedPaymentRequestRow(data);
     } else if (mergeSubitemId) {
       try {
         const paymentDone = await getSystemLabel("payment_received", "payment_received_yes");
@@ -1078,6 +1161,7 @@ export async function PATCH(request: NextRequest) {
       }
       throw error;
     }
+    await syncCompletedPaymentRequestRow(data);
     const { data: editor } = await supabaseAdmin
       .from("profiles").select("full_name, email").eq("id", user.id).maybeSingle();
     const actorName = editor?.full_name?.trim() || editor?.email || "Unknown user";

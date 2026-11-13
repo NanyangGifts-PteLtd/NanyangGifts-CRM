@@ -687,6 +687,17 @@ export default function Page() {
   const [user, setUser] = useState<User | null>(null);
   const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
   const [paymentVoucherAttention, setPaymentVoucherAttention] = useState(0);
+  const [paymentRequestLaunch, setPaymentRequestLaunch] = useState<{
+    id: string;
+    clientId: string;
+    subitemId: string;
+    paymentRowId: string;
+    amount: string;
+    orderNumber: string;
+    modeOfPayment: string;
+    modeOfPaymentOptionId?: string | null;
+    remarks: string;
+  } | null>(null);
   const [emailReviewPending, setEmailReviewPending] = useState(0);
   const [unqualifiedVerificationPending, setUnqualifiedVerificationPending] =
     useState(0);
@@ -710,6 +721,15 @@ export default function Page() {
   const [quickFilterCountsLoading, setQuickFilterCountsLoading] =
     useState(false);
   const [activePanel, setActivePanel] = useState<SidePanel>("crm");
+  useEffect(() => {
+    const openPaymentRequest = (event: Event) => {
+      setPaymentRequestLaunch(
+        (event as CustomEvent<typeof paymentRequestLaunch>).detail,
+      );
+    };
+    window.addEventListener("crm:open-payment-request", openPaymentRequest);
+    return () => window.removeEventListener("crm:open-payment-request", openPaymentRequest);
+  }, []);
   // Whole-board CRM badge counts are optional background work. Keep the
   // current panel in a ref so a scheduled refresh can stand down if the user
   // navigates to Gantt before it reaches the database.
@@ -4176,6 +4196,20 @@ export default function Page() {
         >
           {renderPanel()}
         </main>
+        {paymentRequestLaunch ? (
+          <AdditionalCostsBoard
+            clients={clients}
+            profiles={profiles}
+            groups={groups}
+            currentUserId={user?.id}
+            currentUserRole={currentUserRole}
+            clientAssignees={clientAssignees}
+            clientPmAssignees={clientPmAssignees}
+            embedded
+            paymentRequestLaunch={paymentRequestLaunch}
+            onPaymentRequestClosed={() => setPaymentRequestLaunch(null)}
+          />
+        ) : null}
       </div>
     </div>
   );

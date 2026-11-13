@@ -2,8 +2,42 @@ import { timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { qboRequest } from "@/lib/quickbooks/api";
+import { getSystemLabel } from "@/lib/system-labels";
 
 const BILL_NOT_FOUND_ERROR = "ERROR - Could not find Bill";
+
+async function syncCompletedPaymentRequestRow(voucher: {
+  voucher_group?: string | null;
+  is_draft?: boolean | null;
+  payment_request_payment_row_id?: string | null;
+  cost?: number | null;
+  order_number?: string | null;
+  mode_of_payment?: string | null;
+  mode_of_payment_option_id?: string | null;
+  remarks?: string | null;
+}) {
+  if (
+    voucher.voucher_group !== "payment_requests" ||
+    voucher.is_draft ||
+    !voucher.payment_request_payment_row_id
+  )
+    return;
+  const paid = await getSystemLabel("payment_received", "payment_received_yes");
+  const { error } = await supabaseAdmin
+    .from("subitem_payment_rows")
+    .update({
+      amount: voucher.cost == null ? "" : String(voucher.cost),
+      order_number: voucher.order_number ?? "",
+      mode_of_payment: voucher.mode_of_payment ?? "",
+      mode_of_payment_option_id: voucher.mode_of_payment_option_id ?? null,
+      remarks: voucher.remarks ?? "",
+      payment_received: true,
+      payment_received_label: paid.value,
+      payment_received_option_id: paid.id,
+    })
+    .eq("id", voucher.payment_request_payment_row_id);
+  if (error) throw error;
+}
 
 function authorized(request: NextRequest) {
   const supplied = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? "";
@@ -17,7 +51,7 @@ function authorized(request: NextRequest) {
 export async function GET(request: NextRequest) {
   if (!authorized(request)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { data: vouchers, error } = await supabaseAdmin.from("additional_costs")
-    .select("id, quickbooks_bill_id")
+    .select("id, quickbooks_bill_id, voucher_group, is_draft, payment_request_payment_row_id, order_number, mode_of_payment, mode_of_payment_option_id, remarks")
     .eq("has_quickbooks_bill", true)
     .not("quickbooks_bill_id", "is", null)
     .is("deleted_at", null);
@@ -38,7 +72,7 @@ export async function GET(request: NextRequest) {
       );
       const balance = Number(bill.Balance ?? 0);
       const quickbooksBillBalance = Number.isFinite(balance) ? balance : 0;
-      const { error: updateError } = await supabaseAdmin.from("additional_costs").update({
+      const { data: updatedVoucher, error: updateError } = await supabaseAdmin.from("additional_costs").update({
         cost,
         quickbooks_invoice_number: String(bill.DocNumber ?? ""),
         quickbooks_supplier_id: String(bill.VendorRef?.value ?? ""),
@@ -51,8 +85,9 @@ export async function GET(request: NextRequest) {
         quickbooks_bill_balance: quickbooksBillBalance,
         quickbooks_bill_paid: Math.abs(quickbooksBillBalance) < 0.005,
         updated_at: new Date().toISOString(),
-      }).eq("id", voucher.id);
+      }).eq("id", voucher.id).select("*").single();
       if (updateError) throw updateError;
+      await syncCompletedPaymentRequestRow(updatedVoucher);
       const { error: subitemError } = await supabaseAdmin.from("subitems")
         .update({ cost: String(cost) })
         .eq("custom_fields->>additionalCostId", voucher.id)

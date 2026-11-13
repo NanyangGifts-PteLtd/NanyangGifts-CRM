@@ -92,6 +92,9 @@ const SUBITEM_COLUMN_DESCRIPTIONS: Record<string, string> = {
 const PAID_COST_LOCK_MESSAGE =
   "This field is locked because the subitem has been Paid.";
 
+const SUBPAYMENT_GRID_TEMPLATE =
+  "112px minmax(155px, 1fr) minmax(170px, 1fr) 150px minmax(185px, 1fr) minmax(230px, 1.35fr) 180px 36px";
+
 const LOCKED_COST_INPUTS = new Set([
   "qty",
   "cost",
@@ -986,6 +989,54 @@ export function SubitemsTable({
         : null;
   const activeSubitemView = (subitem: Subitem) =>
     subitemView(subitemViewById, subitem);
+  const [paymentRequestLinks, setPaymentRequestLinks] = useState<
+    Record<string, { voucherId: string; referenceId: string; isDraft: boolean }>
+  >({});
+  const [paymentRequestLinkVersion, setPaymentRequestLinkVersion] =
+    useState(0);
+  useEffect(() => {
+    const refresh = () =>
+      setPaymentRequestLinkVersion((version) => version + 1);
+    window.addEventListener("crm:payment-request-links-changed", refresh);
+    return () =>
+      window.removeEventListener("crm:payment-request-links-changed", refresh);
+  }, []);
+  useEffect(() => {
+    const rowIds = subitems
+      .filter((subitem) => activeSubitemView(subitem) === "subpayment")
+      .flatMap((subitem) => subitem.paymentRows.map((row) => row.id));
+    if (!rowIds.length) return;
+    void fetch(
+      `/api/additional-costs/payment-request-links?paymentRowIds=${encodeURIComponent(rowIds.join(","))}`,
+    )
+      .then(async (response) => {
+        if (!response.ok)
+          throw new Error("Could not load Payment Request links.");
+        return response.json();
+      })
+      .then((result) => {
+        setPaymentRequestLinks(
+          Object.fromEntries(
+            (result.links ?? []).map(
+              (link: {
+                paymentRowId: string;
+                voucherId: string;
+                referenceId: string;
+                isDraft: boolean;
+              }) => [
+                link.paymentRowId,
+                {
+                  voucherId: link.voucherId,
+                  referenceId: link.referenceId,
+                  isDraft: link.isDraft,
+                },
+              ],
+            ),
+          ),
+        );
+      })
+      .catch(() => undefined);
+  }, [paymentRequestLinkVersion, subitems, subitemViewById]);
   const canCreateSubitems =
     !subitemsLocked &&
     !!currentUserId &&
@@ -3653,6 +3704,7 @@ export function SubitemsTable({
       .filter((row) => row.paymentReceived === true)
       .reduce((sum, row) => sum + parseNumber(row.amount), 0);
     const difference = amountPaid - totalToPay;
+    const balance = totalToPay - amountPaid;
     const resolvedOption = findSystemOption(
       paymentStatusOptions,
       "payment_status_resolved",
@@ -3669,7 +3721,7 @@ export function SubitemsTable({
     const summaryRows = [
       ["Total to Pay", formatMoney(totalToPay)],
       ["Amount Paid", formatMoney(amountPaid)],
-      ["Balance", formatMoney(difference)],
+      ["Balance", formatMoney(balance)],
     ] as const;
 
     return (
@@ -4176,7 +4228,7 @@ export function SubitemsTable({
       <div className="relative w-full overflow-visible">
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute top-0 z-[75] w-[6px] rounded-tl-md"
+          className="pointer-events-none absolute top-0 z-tooltip w-[6px] rounded-tl-md"
           style={{
             left: SUBITEM_ACCENT_RAIL_LEFT_OFFSET_PX,
             bottom: SUBITEM_ADD_ROW_HEIGHT_PX,
@@ -4185,7 +4237,7 @@ export function SubitemsTable({
         />
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute bottom-0 z-[75] w-[6px] rounded-bl-md"
+          className="pointer-events-none absolute bottom-0 z-tooltip w-[6px] rounded-bl-md"
           style={{
             left: SUBITEM_ACCENT_RAIL_LEFT_OFFSET_PX,
             height: SUBITEM_ADD_ROW_HEIGHT_PX,
@@ -4648,7 +4700,17 @@ export function SubitemsTable({
                       );
                     }
                   }}
-                  className={`relative group border-b border-r border-[#D0D4E4] hover:bg-blue-50/30 focus-within:z-[70] ${selectedSubitemIds.includes(sub.id) ? "bg-sky-100/80 [&>td]:!bg-sky-100/80 shadow-[inset_0_0_0_1px_rgba(14,165,233,0.5)]" : ""} ${subitemDropMarker?.subitemId === sub.id ? (subitemDropMarker.edge === "top" ? "shadow-[inset_0_3px_0_#0f8da8]" : "shadow-[inset_0_-3px_0_#0f8da8]") : ""}`}
+                  className={`relative group border-b border-r border-[#D0D4E4] hover:bg-blue-50/30 focus-within:z-[70] ${
+                    selectedSubitemIds.includes(sub.id)
+                      ? "bg-sky-100/80 [&>td]:!bg-sky-100/80 shadow-[inset_0_0_0_1px_rgba(14,165,233,0.5)]"
+                      : ""
+                  } ${
+                    subitemDropMarker?.subitemId === sub.id
+                      ? subitemDropMarker.edge === "top"
+                        ? "shadow-[inset_0_3px_0_#0f8da8]"
+                        : "shadow-[inset_0_-3px_0_#0f8da8]"
+                      : ""
+                  }`}
                 >
                   <td className="group relative h-[33.1px] overflow-visible align-middle border-r border-[#D0D4E4] px-2 py-1 text-center">
                     <svg
@@ -4802,14 +4864,17 @@ export function SubitemsTable({
                 {tableMode === "payment" &&
                   activeSubitemView(sub) === "subpayment" &&
                   isPaymentViewEligible(sub) && (
-                    <tr className="bg-slate-50/70">
+                    <tr className="relative z-0 bg-slate-50/70 focus-within:z-[80]">
                       <td
                         colSpan={totalColSpan}
-                        className="border-b border-r border-[#D0D4E4] bg-[#fafcff] px-9 py-3"
+                        className="relative z-0 overflow-visible border-b border-r border-[#D0D4E4] bg-[#fafcff] px-9 py-3 focus-within:z-[80]"
                       >
-                        <div className="flex max-w-[1480px] items-start gap-3 overflow-x-auto pb-1">
-                          <div className="relative min-w-[1038px] overflow-visible rounded-md border border-[#D0D4E4] bg-white text-xs text-[#334155] shadow-sm">
-                          <div className="grid grid-cols-[112px_minmax(155px,1fr)_minmax(170px,1fr)_150px_minmax(185px,1fr)_minmax(230px,1.35fr)_36px] border-b border-[#D0D4E4] bg-[#f4f7fb] text-[12.6px] font-semibold text-gray-500">
+                        <div className="flex max-w-none items-start gap-3 overflow-x-auto pb-1 focus-within:overflow-visible">
+                          <div className="relative z-0 min-w-[1258px] overflow-visible rounded-md border border-[#D0D4E4] bg-white text-xs text-[#334155] shadow-sm focus-within:z-[90]">
+                          <div
+                            className="grid border-b border-[#D0D4E4] bg-[#f4f7fb] text-[12.6px] font-semibold text-gray-500"
+                            style={{ gridTemplateColumns: SUBPAYMENT_GRID_TEMPLATE }}
+                          >
                             <span className="px-3 py-2">Subpayment</span>
                             <span className="border-l border-[#D0D4E4] px-3 py-2">
                               Sub-amount
@@ -4826,18 +4891,22 @@ export function SubitemsTable({
                             <span className="border-l border-[#D0D4E4] px-3 py-2">
                               Remarks
                             </span>
+                            <span className="border-l border-[#D0D4E4] px-3 py-2">
+                              Payment Request?
+                            </span>
                             <span className="border-l border-slate-200" />
                           </div>
                           {(sub.paymentRows ?? []).map(
                             (paymentRow: PaymentRow, paymentIndex) => (
                               <div
                                 key={paymentRow.id}
-                                className="grid grid-cols-[112px_minmax(155px,1fr)_minmax(170px,1fr)_150px_minmax(185px,1fr)_minmax(230px,1.35fr)_36px] border-b border-[#e2e8f0] last:border-b-0"
+                                className="relative z-0 grid min-h-[34px] border-b border-[#e2e8f0] last:border-b-0 focus-within:z-[100]"
+                                style={{ gridTemplateColumns: SUBPAYMENT_GRID_TEMPLATE }}
                               >
-                                <div className="flex items-center justify-center px-3 py-2 font-medium text-slate-500">
+                                <div className="flex min-h-[34px] items-center justify-center px-3 py-1 font-medium text-slate-500">
                                   {paymentIndex + 1}
                                 </div>
-                                <div className="border-l border-[#e2e8f0]">
+                                <div className="flex min-h-[34px] items-center border-l border-[#e2e8f0]">
                                   <EditableCell
                                     readOnly={!canEditSubpaymentRows(sub.id)}
                                     readOnlyReason={subpaymentEditBlockMessage(sub.id)}
@@ -4848,10 +4917,10 @@ export function SubitemsTable({
                                         amount: value,
                                       })
                                     }
-                                    className="!justify-start px-3 py-2"
+                                    className="!min-h-[22px] !justify-start px-3 py-1"
                                   />
                                 </div>
-                                <div className="border-l border-[#e2e8f0]">
+                                <div className="flex min-h-[34px] items-center border-l border-[#e2e8f0]">
                                   <EditableCell
                                     readOnly={!canEditSubpaymentRows(sub.id)}
                                     readOnlyReason={subpaymentEditBlockMessage(sub.id)}
@@ -4861,10 +4930,10 @@ export function SubitemsTable({
                                         orderNumber: value,
                                       })
                                     }
-                                    className="!justify-start px-3 py-2"
+                                    className="!min-h-[22px] !justify-start px-3 py-1"
                                   />
                                 </div>
-                                <div className="border-l border-[#e2e8f0] overflow-hidden">
+                                <div className="flex min-h-[34px] items-center overflow-hidden border-l border-[#e2e8f0]">
                                   <StatusBadge
                                     value={
                                       paymentRow.paymentReceivedLabel ??
@@ -4921,7 +4990,7 @@ export function SubitemsTable({
                                     readOnlyReason={subpaymentEditBlockMessage(sub.id)}
                                   />
                                 </div>
-                                <div className="border-l border-[#e2e8f0] overflow-hidden">
+                                <div className="flex min-h-[34px] items-center overflow-hidden border-l border-[#e2e8f0]">
                                   <StatusBadge
                                     value={paymentRow.modeOfPayment}
                                     onChange={(value) =>
@@ -4959,7 +5028,7 @@ export function SubitemsTable({
                                     readOnlyReason={subpaymentEditBlockMessage(sub.id)}
                                   />
                                 </div>
-                                <div className="relative border-l border-[#e2e8f0]">
+                                <div className="relative z-0 flex min-h-[34px] items-center overflow-visible border-l border-[#e2e8f0] focus-within:z-[110]">
                                   <EditableCell
                                     readOnly={!canEditSubpaymentRows(sub.id)}
                                     readOnlyReason={subpaymentEditBlockMessage(sub.id)}
@@ -4971,17 +5040,78 @@ export function SubitemsTable({
                                     }
                                     multiline
                                     resizableMultiline
-                                    className="!justify-start px-3 py-2"
+                                    className="!min-h-[22px] !justify-start px-3 py-1"
                                   />
                                 </div>
-                                <span
+                                <div className="flex min-h-[34px] items-center justify-center border-l border-[#e2e8f0] px-2 py-1">
+                                  {paymentRequestLinks[paymentRow.id] ? (
+                                    <span
+                                      className={`text-center text-xs font-semibold ${
+                                        paymentRequestLinks[paymentRow.id].isDraft
+                                          ? "text-slate-500"
+                                          : "text-sky-700"
+                                      }`}
+                                      title={
+                                        paymentRequestLinks[paymentRow.id].isDraft
+                                          ? "Continue this draft from the Payment Voucher board."
+                                          : `Payment Request ${paymentRequestLinks[paymentRow.id].referenceId}`
+                                      }
+                                    >
+                                      {paymentRequestLinks[paymentRow.id].isDraft
+                                        ? "Saved Draft"
+                                        : paymentRequestLinks[paymentRow.id]
+                                            .referenceId}
+                                    </span>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      disabled={!canEditSubpaymentRows(sub.id)}
+                                      title={subpaymentEditBlockMessage(sub.id)}
+                                      onClick={() => {
+                                        window.dispatchEvent(
+                                          new CustomEvent(
+                                            "crm:open-payment-request",
+                                            {
+                                              detail: {
+                                                id: crypto.randomUUID(),
+                                                clientId,
+                                                subitemId: sub.id,
+                                                paymentRowId: paymentRow.id,
+                                                amount: paymentRow.amount,
+                                                orderNumber:
+                                                  paymentRow.orderNumber,
+                                                modeOfPayment:
+                                                  paymentRow.modeOfPayment,
+                                                modeOfPaymentOptionId:
+                                                  paymentRow.modeOfPaymentOptionId,
+                                                remarks: paymentRow.remarks ?? "",
+                                              },
+                                            },
+                                          ),
+                                        );
+                                      }}
+                                      className="h-6 whitespace-nowrap rounded bg-sky-600 px-2 text-xs font-semibold text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-40"
+                                    >
+                                      Make Payment Request
+                                    </button>
+                                  )}
+                                </div>
+                                <div
+                                  className="flex min-h-[34px] items-stretch border-l border-[#e2e8f0]"
                                   title={subpaymentEditBlockMessage(sub.id)}
                                 >
                                   <button
                                     type="button"
-                                    disabled={!canEditSubpaymentRows(sub.id)}
+                                    disabled={
+                                      !canEditSubpaymentRows(sub.id) ||
+                                      Boolean(paymentRequestLinks[paymentRow.id])
+                                    }
                                     onClick={async () => {
-                                      if (!canEditSubpaymentRows(sub.id)) return;
+                                      if (
+                                        !canEditSubpaymentRows(sub.id) ||
+                                        paymentRequestLinks[paymentRow.id]
+                                      )
+                                        return;
                                       if (
                                         !(await confirm({
                                           title: "Remove payment row?",
@@ -5010,16 +5140,18 @@ export function SubitemsTable({
                                         syncAutomaticPaymentStatus(sub.id);
                                       });
                                     }}
-                                    className="border-l border-[#e2e8f0] text-slate-300 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-40"
+                                    className="h-full w-full text-slate-300 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-40"
                                     title={
-                                      canEditSubpaymentRows(sub.id)
-                                        ? "Remove payment row"
-                                        : undefined
+                                      paymentRequestLinks[paymentRow.id]
+                                        ? "Deactivate the linked Payment Request before removing this row."
+                                        : canEditSubpaymentRows(sub.id)
+                                          ? "Remove payment row"
+                                          : undefined
                                     }
                                   >
                                     <Trash2 size={15} className="mx-auto" />
                                   </button>
-                                </span>
+                                </div>
                               </div>
                             ),
                           )}
