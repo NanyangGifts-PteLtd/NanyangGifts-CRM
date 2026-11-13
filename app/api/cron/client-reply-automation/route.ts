@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { queueLeadReassignedMakeEvent } from "@/lib/make-integration";
 import { getSystemLabel } from "@/lib/system-labels";
-import { addSingaporeWorkingDays } from "@/lib/working-calendar";
+import {
+    addSingaporeWorkingDays,
+    isSingaporeWorkingDay,
+    nextSingaporeWorkingDay,
+} from "@/lib/working-calendar";
 
 const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -17,17 +21,41 @@ function singaporeDateParts(value: Date) {
         year: "numeric",
         month: "2-digit",
         day: "2-digit",
+        hour: "2-digit",
+        hourCycle: "h23",
     }).formatToParts(value);
 
     return {
         year: Number(parts.find((part) => part.type === "year")?.value),
         month: Number(parts.find((part) => part.type === "month")?.value),
         day: Number(parts.find((part) => part.type === "day")?.value),
+        hour: Number(parts.find((part) => part.type === "hour")?.value),
     };
 }
 
 function singaporeMidnightUtc(year: number, month: number, day: number) {
     return new Date(Date.UTC(year, month - 1, day) - 8 * 60 * 60 * 1000);
+}
+
+function singaporeNoonUtc(year: number, month: number, day: number) {
+    return new Date(Date.UTC(year, month - 1, day, 12) - 8 * 60 * 60 * 1000);
+}
+
+function formatSingaporeDate(year: number, month: number, day: number) {
+    return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+function singaporeDateAfter(dateText: string) {
+    const [year, month, day] = dateText.split("-").map(Number);
+    const date = new Date(Date.UTC(year, month - 1, day));
+    date.setUTCDate(date.getUTCDate() + 1);
+    return formatSingaporeDate(date.getUTCFullYear(), date.getUTCMonth() + 1, date.getUTCDate());
+}
+
+function singaporeMidnightAfter(dateText: string) {
+    const nextDate = singaporeDateAfter(dateText);
+    const [year, month, day] = nextDate.split("-").map(Number);
+    return singaporeMidnightUtc(year, month, day);
 }
 
 function isIngestedClient(customFields: unknown) {
@@ -47,17 +75,27 @@ function isIngestedClient(customFields: unknown) {
     );
 }
 
-async function singaporeWorkingDayCutoff(value: Date) {
+/**
+ * Returns the first-response deadline in Singapore time.
+ *
+ * Working-day leads before 14:00 are due at that day's end. Leads from 14:00
+ * onward are due at noon of the next working day. Weekend/closure leads are
+ * treated as an early arrival on the next working day and are due at its end.
+ */
+async function singaporeReplyDeadline(value: Date) {
     const date = singaporeDateParts(value);
-    // The assignee keeps the whole following Singapore working day. This used
-    // to skip weekends only; it now also honours public/company closure days.
-    const deadlineDate = await addSingaporeWorkingDays(
-        `${date.year}-${String(date.month).padStart(2, "0")}-${String(date.day).padStart(2, "0")}`,
-        2,
-    );
-    const [year, month, day] = deadlineDate.split("-").map(Number);
+    const leadDate = formatSingaporeDate(date.year, date.month, date.day);
 
-    return singaporeMidnightUtc(year, month, day);
+    if (!(await isSingaporeWorkingDay(leadDate))) {
+        const nextWorkingDay = await nextSingaporeWorkingDay(leadDate);
+        return singaporeMidnightAfter(nextWorkingDay);
+    }
+
+    if (date.hour < 14) return singaporeMidnightAfter(leadDate);
+
+    const nextWorkingDay = await addSingaporeWorkingDays(leadDate, 1);
+    const [year, month, day] = nextWorkingDay.split("-").map(Number);
+    return singaporeNoonUtc(year, month, day);
 }
 
 async function getNextAssigneeExcluding(currentUserId: string) {
@@ -113,7 +151,7 @@ export async function GET(request: NextRequest) {
         if (!isIngestedClient(client.custom_fields)) continue;
 
         const startedAt = new Date(client.waiting_started_at);
-        const reassignmentDueAt = await singaporeWorkingDayCutoff(startedAt);
+        const reassignmentDueAt = await singaporeReplyDeadline(startedAt);
         if (now < reassignmentDueAt) continue;
 
         const oldAssigneeIds = (client.client_assignees ?? [])

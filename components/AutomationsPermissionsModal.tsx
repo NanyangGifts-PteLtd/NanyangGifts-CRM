@@ -33,9 +33,10 @@ const automations: ReferenceItem[] = [
   },
   {
     title: "Waiting-lead reassignment",
-    trigger: "Daily Vercel Cron at 16:00 UTC (midnight Singapore time).",
+    trigger:
+      "Daily Vercel Crons at 04:00 UTC (noon Singapore time) and 16:00 UTC (midnight Singapore time).",
     behaviour:
-      "Reassigns a lead that remains in Waiting beyond the response window to the next eligible assignee, records the activity, notifies the previous and new assignees, and queues a Make event.",
+      "Reassigns a lead that remains in Waiting beyond its response window to the next eligible assignee, records the activity, notifies the previous and new assignees, and queues a Make event. A working-day lead received before 2pm is due at that day's end; one received at or after 2pm is due at noon of the next working day. A lead received on a non-working day is due at the end of the next working day.",
     scope:
       "The response window honours Singapore weekends, public holidays, and recorded company closures.",
     source: "app/api/cron/client-reply-automation/route.ts",
