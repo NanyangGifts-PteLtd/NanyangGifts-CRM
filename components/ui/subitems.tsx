@@ -3638,6 +3638,79 @@ export function SubitemsTable({
     }
   };
 
+  const renderSubpaymentSummary = (sub: Subitem) => {
+    const qty = parseNumber(sub.qty);
+    const cost = parseNumber(sub.cost);
+    const currencyMultiplier = sgdToCurrencyMultiplier(
+      currencySystemKey(sub.currencyOptionId, currencyOptions, sub.currency),
+    );
+    const totalCost =
+      cost * qty +
+      parseNumber(sub.manpower) * currencyMultiplier +
+      parseNumber(sub.ls) * currencyMultiplier;
+    const totalToPay = totalCost + parseNumber(sub.sample) * cost;
+    const amountPaid = (sub.paymentRows ?? [])
+      .filter((row) => row.paymentReceived === true)
+      .reduce((sum, row) => sum + parseNumber(row.amount), 0);
+    const difference = amountPaid - totalToPay;
+    const resolvedOption = findSystemOption(
+      paymentStatusOptions,
+      "payment_status_resolved",
+      "Resolved",
+    );
+    const paymentStatus =
+      Boolean(resolvedOption.id) &&
+      sub.paymentStatusOptionId === resolvedOption.id
+        ? resolvedOption.value
+        : automaticPaymentStatus(difference, paymentStatusOptions);
+    const paymentStatusOption = paymentStatusOptions.find(
+      (option) => option.value === paymentStatus,
+    );
+    const summaryRows = [
+      ["Total to Pay", formatMoney(totalToPay)],
+      ["Amount Paid", formatMoney(amountPaid)],
+      ["Balance", formatMoney(difference)],
+    ] as const;
+
+    return (
+      <aside
+        className="w-[330px] shrink-0 overflow-hidden rounded-md border border-[#D0D4E4] bg-white text-xs text-[#334155] shadow-sm"
+        aria-label="Subpayment summary"
+      >
+        <div className="grid grid-cols-[1fr_126px]">
+          <div>
+            <div className="border-b border-[#D0D4E4] bg-[#f4f7fb] px-3 py-2 text-[12.6px] font-semibold text-gray-500">
+              Payment Summary
+            </div>
+            {summaryRows.map(([label, value]) => (
+              <div
+                key={label}
+                className="flex items-center justify-between gap-3 border-b border-[#e2e8f0] px-3 py-2 last:border-b-0"
+              >
+                <span className="text-slate-500">{label}</span>
+                <span className="font-medium text-slate-800">{value}</span>
+              </div>
+            ))}
+          </div>
+          <div className="flex min-w-0 flex-col border-l border-[#D0D4E4]">
+            <div className="border-b border-[#D0D4E4] bg-[#f4f7fb] px-3 py-2 text-center text-[12.6px] font-semibold text-gray-500">
+              Payment Status
+            </div>
+            <div className="flex flex-1 items-center justify-center bg-slate-50 px-2 py-3">
+              <span
+                className="inline-flex min-w-[90px] max-w-full items-center justify-center truncate rounded px-3 py-1.5 text-[12.6px] font-medium leading-none text-white"
+                style={{ backgroundColor: paymentStatusOption?.color ?? "#e5e7eb" }}
+                title={paymentStatus}
+              >
+                {paymentStatus}
+              </span>
+            </div>
+          </div>
+        </div>
+      </aside>
+    );
+  };
+
   const renderCell = (sub: Subitem, key: string) =>
     tableMode === "payment"
       ? renderPaymentCell(sub, key)
@@ -4734,7 +4807,8 @@ export function SubitemsTable({
                         colSpan={totalColSpan}
                         className="border-b border-r border-[#D0D4E4] bg-[#fafcff] px-9 py-3"
                       >
-                        <div className="relative max-w-[1180px] overflow-visible rounded-md border border-[#D0D4E4] bg-white text-xs text-[#334155] shadow-sm">
+                        <div className="flex max-w-[1480px] items-start gap-3 overflow-x-auto pb-1">
+                          <div className="relative min-w-[1038px] overflow-visible rounded-md border border-[#D0D4E4] bg-white text-xs text-[#334155] shadow-sm">
                           <div className="grid grid-cols-[112px_minmax(155px,1fr)_minmax(170px,1fr)_150px_minmax(185px,1fr)_minmax(230px,1.35fr)_36px] border-b border-[#D0D4E4] bg-[#f4f7fb] text-[12.6px] font-semibold text-gray-500">
                             <span className="px-3 py-2">Subpayment</span>
                             <span className="border-l border-[#D0D4E4] px-3 py-2">
@@ -4978,6 +5052,8 @@ export function SubitemsTable({
                               <Plus size={15} /> Add payment
                             </button>
                           </span>
+                          </div>
+                          {renderSubpaymentSummary(sub)}
                         </div>
                       </td>
                     </tr>
