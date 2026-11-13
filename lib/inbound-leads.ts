@@ -60,6 +60,8 @@ export class InboundLeadError extends Error {
 }
 
 const INGESTION_COLUMNS = "id, source, external_id, status, client_id, assigned_user_id, subitems_created, activity_logged, notification_sent, attempt_count, updated_at";
+const DUPLICATED_CLIENT_STATUS_OPTION_ID =
+  "5cfcd10e-1374-4b25-9741-46b93f19a6ad";
 
 export function asText(value: unknown, fallback = "") {
   if (value == null) return fallback;
@@ -70,6 +72,54 @@ export function asNumberString(value: unknown, fallback = "") {
   if (value == null || value === "") return fallback;
   const number = typeof value === "number" ? value : Number(String(value).replace(/,/g, "").trim());
   return Number.isFinite(number) ? String(number) : fallback;
+}
+
+function normalizedInboundIdentity(value: string) {
+  return value.trim().toLocaleLowerCase();
+}
+
+function normalizedInboundPhone(value: string) {
+  return value.replace(/\D/g, "");
+}
+
+function isInboundClient(customFields: unknown) {
+  if (!customFields || typeof customFields !== "object" || Array.isArray(customFields))
+    return false;
+  const fields = customFields as Record<string, unknown>;
+  return (
+    typeof fields.source === "string" &&
+    fields.source.trim() !== "" &&
+    typeof fields.external_id === "string" &&
+    fields.external_id.trim() !== ""
+  );
+}
+
+async function hasRecentMatchingInboundLead(
+  lead: NormalizedInboundLead,
+  createdAt: string,
+) {
+  const name = normalizedInboundIdentity(lead.customerName || lead.companyName);
+  const email = normalizedInboundIdentity(lead.email);
+  const phone = normalizedInboundPhone(lead.phone);
+  if (!name && !email && !phone) return false;
+
+  const cutoff = new Date(new Date(createdAt).getTime() - 48 * 60 * 60 * 1000);
+  const { data, error } = await supabaseAdmin
+    .from("clients")
+    .select("name, email, phone, custom_fields")
+    .is("deleted_at", null)
+    .gte("created_at", cutoff.toISOString())
+    .lt("created_at", createdAt);
+  if (error) throw new InboundLeadError(error.message);
+
+  return (data ?? []).some((client) => {
+    if (!isInboundClient(client.custom_fields)) return false;
+    return (
+      (name && normalizedInboundIdentity(String(client.name ?? "")) === name) ||
+      (email && normalizedInboundIdentity(String(client.email ?? "")) === email) ||
+      (phone && normalizedInboundPhone(String(client.phone ?? "")) === phone)
+    );
+  });
 }
 
 export function formatOptionalDate(value: unknown) {
@@ -323,6 +373,7 @@ export async function ingestLead(lead: NormalizedInboundLead): Promise<InboundRe
   const reservation = await reserveIngestion(lead);
   if (reservation.earlyResult) return reservation.earlyResult;
   let ingestion = reservation.row;
+  let isDuplicatedLead = false;
 
   try {
     if (!ingestion.assigned_user_id) {
@@ -345,16 +396,26 @@ export async function ingestLead(lead: NormalizedInboundLead): Promise<InboundRe
         : lead.source === "email"
           ? "email"
           : "forms";
-      const [waitingLabel, newLeadLabel, channelLabel] = await Promise.all([
+      const createdAt = new Date().toISOString();
+      isDuplicatedLead = await hasRecentMatchingInboundLead(lead, createdAt);
+      const [waitingLabel, newLeadLabel, duplicatedLabel, channelLabel] = await Promise.all([
         getSystemLabel("reply_status", "reply_status_waiting"),
         getSystemLabel("client_status", "client_status_new_lead"),
+        supabaseAdmin
+          .from("option_values")
+          .select("id, value")
+          .eq("id", DUPLICATED_CLIENT_STATUS_OPTION_ID)
+          .maybeSingle(),
         getSystemLabel("channel", channelSystemKey),
       ]);
+      if (!duplicatedLabel.data || duplicatedLabel.error)
+        throw new InboundLeadError(
+          duplicatedLabel.error?.message ?? "Duplicated client status is not configured.",
+        );
       const { data: groups, error: groupError } = await supabaseAdmin.from("crm_groups").select("id, name").ilike("name", "New Lead").order("sort_order").limit(1);
       if (groupError) throw new InboundLeadError(groupError.message);
       const groupId = groups?.[0]?.id;
       if (!groupId) throw new InboundLeadError('crm_groups row "New Lead" not found');
-      const createdAt = new Date().toISOString();
       const dateCreated = singaporeDate();
       const { data: client, error: clientError } = await supabaseAdmin.from("clients").insert({
         name: lead.customerName || lead.companyName,
@@ -362,8 +423,8 @@ export async function ingestLead(lead: NormalizedInboundLead): Promise<InboundRe
         reply_status: waitingLabel.value,
         reply_status_option_id: waitingLabel.id,
         follow_up: await addSingaporeWorkingDays(dateCreated, 2),
-        status: newLeadLabel.value,
-        status_option_id: newLeadLabel.id,
+        status: isDuplicatedLead ? duplicatedLabel.data.value : newLeadLabel.value,
+        status_option_id: isDuplicatedLead ? duplicatedLabel.data.id : newLeadLabel.id,
         channel: channelLabel.value,
         channel_option_id: channelLabel.id,
         importance: "",
@@ -494,7 +555,7 @@ export async function ingestLead(lead: NormalizedInboundLead): Promise<InboundRe
       const { data: existingNotification, error: notificationReadError } = await supabaseAdmin.from("notifications").select("id").eq("dedupe_key", dedupeKey).maybeSingle();
       if (notificationReadError) throw new InboundLeadError(notificationReadError.message);
       if (!existingNotification) {
-        const { error } = await supabaseAdmin.from("notifications").insert({ user_id: assignedUserId, client_id: clientId, type: "info", message: `${lead.customerName || lead.companyName} was assigned to you as a new ${inboundSourceLabel(lead.source)} lead.`, read: false, dedupe_key: dedupeKey });
+        const { error } = await supabaseAdmin.from("notifications").insert({ user_id: assignedUserId, client_id: clientId, type: "info", message: `${lead.customerName || lead.companyName} was assigned to you as ${isDuplicatedLead ? "a potential duplicate" : "a new"} ${inboundSourceLabel(lead.source)} lead.`, read: false, dedupe_key: dedupeKey });
         if (error) throw new InboundLeadError(error.message);
       }
       ingestion = await updateIngestion(ingestion.id, { notification_sent: true });
