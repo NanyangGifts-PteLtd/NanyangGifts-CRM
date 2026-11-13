@@ -891,10 +891,6 @@ export function CRMBoard({
     "advanced",
   );
   const [closedFilterActive, setClosedFilterActive] = useState(false);
-  const closedFilterPreviousAdvancedRef = useRef<{
-    rules: AdvancedFilterRule[];
-    join: "and" | "or";
-  } | null>(null);
   const [advancedRules, setAdvancedRules] = useState<AdvancedFilterRule[]>([
     { id: "initial", column: "", condition: "", value: "" },
   ]);
@@ -1781,39 +1777,12 @@ export function CRMBoard({
   );
   const toggleClosedFilter = useCallback(() => {
     if (closedFilterActive) {
-      const previous = closedFilterPreviousAdvancedRef.current;
-      setAdvancedRules(
-        previous?.rules ?? [
-          { id: crypto.randomUUID(), column: "", condition: "", value: "" },
-        ],
-      );
-      setAdvancedJoin(previous?.join ?? "and");
-      closedFilterPreviousAdvancedRef.current = null;
       setClosedFilterActive(false);
       return;
     }
     if (!closedFilterStatusOptions.length) return;
-    closedFilterPreviousAdvancedRef.current = {
-      rules: advancedRules,
-      join: advancedJoin,
-    };
-    setAdvancedRules(
-      closedFilterStatusOptions.map((option) => ({
-        id: crypto.randomUUID(),
-        column: "subitem:status",
-        condition: "is",
-        value: option.value,
-        valueOptionId: option.id,
-      })),
-    );
-    setAdvancedJoin("or");
     setClosedFilterActive(true);
-  }, [
-    advancedJoin,
-    advancedRules,
-    closedFilterActive,
-    closedFilterStatusOptions,
-  ]);
+  }, [closedFilterActive, closedFilterStatusOptions.length]);
   const channelOptions = channelEntries.map((e) => e.value);
   const importanceOptions = importanceEntries.map((e) => e.value);
   const progressOptions = progressEntries.map((e) => e.value);
@@ -6468,6 +6437,7 @@ export function CRMBoard({
       filterReplyStatus,
       filterChannel,
     ].filter((value) => value !== "All").length +
+    (closedFilterActive ? 1 : 0) +
     advancedRules.filter(
       (rule) =>
         rule.column &&
@@ -6645,6 +6615,9 @@ export function CRMBoard({
           optionIdForValue(subitemStatusEntries, filterSubitemStatus) ||
           String(subitem.status ?? "").trim() === filterSubitemStatus,
       );
+    const matchesClosedFilter =
+      !closedFilterActive ||
+      client.subitems.some(contributesToAwardedOrLaterTotals);
     const matchesPayment =
       filterPayment === "All" ||
       client.subitems.some(
@@ -6706,6 +6679,7 @@ export function CRMBoard({
       matchesBoardSearch(client) &&
       matchesStatus &&
       matchesSubitemStatus &&
+      matchesClosedFilter &&
       matchesPayment &&
       matchesPaymentStatus &&
       matchesPeople &&
@@ -6796,6 +6770,15 @@ export function CRMBoard({
           )
             ?.valueType ?? "text",
       }));
+    if (closedFilterActive) {
+      populatedRules.push({
+        column: "__system:closed_subitems",
+        condition: "is",
+        value: closedFilterStatusOptions.map((option) => option.id).join(","),
+        valueTo: "",
+        valueType: "text",
+      });
+    }
     const selectedSearchColumns = boardSearchColumnsForQuery(
       boardSearchAllColumns,
       boardSearchColumns,
@@ -6956,6 +6939,8 @@ export function CRMBoard({
     advancedColumns,
     advancedJoin,
     advancedRules,
+    closedFilterActive,
+    closedFilterStatusOptions,
     advancedRuleValue,
     boardSearchAllColumns,
     boardSearchColumns,
@@ -12559,17 +12544,7 @@ export function CRMBoard({
                     setFilterImportance("All");
                     setFilterReplyStatus("All");
                     setFilterChannel("All");
-                    if (closedFilterActive)
-                      setAdvancedRules([
-                        {
-                          id: crypto.randomUUID(),
-                          column: "",
-                          condition: "",
-                          value: "",
-                        },
-                      ]);
                     setClosedFilterActive(false);
-                    closedFilterPreviousAdvancedRef.current = null;
                   }}
                   className="text-[10px] font-medium text-gray-400 hover:text-gray-700 disabled:opacity-40"
                   disabled={activeFilterCount === 0}
